@@ -1,0 +1,6 @@
+/build/
+/build-*/
+/godot/bin/
+/.godot/
+/godot/.godot/
+compile_commands.json
