@@ -21,9 +21,13 @@ include(cmake/CompilerWarnings.cmake)
 add_library(PlanetSim STATIC
     sim/core/serialization/state_snapshot.cpp
     sim/core/scheduler/simulation_clock.cpp
+    sim/planet/coordinates/local_tangent_basis.cpp
     sim/planet/mesh/icosphere.cpp
     sim/planet/mesh/mesh_diagnostics.cpp
     sim/planet/mesh/planet_mesh.cpp
+    sim/planet/orbit/orbit_state.cpp
+    sim/planet/orbit/solar_diagnostics.cpp
+    sim/planet/orbit/solar_forcing.cpp
     sim/planet/planet_parameters.cpp
     sim/planet/planet_state.cpp
 )
@@ -50,9 +54,17 @@ if(PLANETSIM_BUILD_TESTS)
         NAME planet_cli_mesh_smoke
         COMMAND planet_cli mesh --subdivision 0 --radius 6371000
     )
+    add_test(
+        NAME planet_cli_solar_smoke
+        COMMAND planet_cli solar --subdivision 2 --time-days 0
+    )
     set_tests_properties(
         planet_cli_mesh_smoke
         PROPERTIES PASS_REGULAR_EXPRESSION "cell_count: 20"
+    )
+    set_tests_properties(
+        planet_cli_solar_smoke
+        PROPERTIES PASS_REGULAR_EXPRESSION "solar_forcing_valid: true"
     )
 endif()
 

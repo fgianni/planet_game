@@ -1,9 +1,21 @@
 extends Node3D
 
+@export var simulated_hours_per_second: float = 2.0
+@export var snapshot_updates_per_second: float = 12.0
+
+var _pending_simulation_s: float = 0.0
+var _time_since_snapshot_s: float = 0.0
+
 
 func _ready() -> void:
     $Planet.rebuild(4, 6_371_000.0)
 
 
 func _process(delta: float) -> void:
-    $Planet.rotate_y(delta * 0.12)
+    _pending_simulation_s += delta * simulated_hours_per_second * 3_600.0
+    _time_since_snapshot_s += delta
+    var update_interval_s := 1.0 / maxf(snapshot_updates_per_second, 1.0)
+    if _time_since_snapshot_s >= update_interval_s:
+        $Planet.advance_simulation(_pending_simulation_s)
+        _pending_simulation_s = 0.0
+        _time_since_snapshot_s = 0.0

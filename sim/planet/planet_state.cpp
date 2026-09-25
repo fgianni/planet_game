@@ -5,13 +5,11 @@
 
 namespace planetsim {
 
-PlanetState::PlanetState(std::shared_ptr<const PlanetMesh> mesh,
-                         double initial_debug_scalar)
-    : mesh_(std::move(mesh)) {
+PlanetState::PlanetState(std::shared_ptr<const PlanetMesh> mesh) : mesh_(std::move(mesh)) {
     if (!mesh_) {
         throw std::invalid_argument("PlanetState requires an immutable mesh");
     }
-    surface_.debug_scalar = Field<double>(mesh_->cell_count(), initial_debug_scalar);
+    forcing_.top_of_atmosphere_insolation_W_m2 = Field<double>(mesh_->cell_count(), 0.0);
 }
 
 }  // namespace planetsim

@@ -2,30 +2,32 @@
 
 #include "sim/core/fields/field.hpp"
 #include "sim/planet/mesh/planet_mesh.hpp"
+#include "sim/planet/orbit/orbit_state.hpp"
 
 #include <memory>
 
 namespace planetsim {
 
-struct SurfaceState {
-    Field<double> debug_scalar;
+struct ForcingState {
+    OrbitState orbit;
+    double incident_solar_flux_W_m2 = 0.0;
+    Field<double> top_of_atmosphere_insolation_W_m2;
 };
 
 class PlanetState {
-public:
-    explicit PlanetState(std::shared_ptr<const PlanetMesh> mesh,
-                         double initial_debug_scalar = 0.0);
+  public:
+    explicit PlanetState(std::shared_ptr<const PlanetMesh> mesh);
 
     [[nodiscard]] const PlanetMesh& mesh() const noexcept { return *mesh_; }
     [[nodiscard]] const std::shared_ptr<const PlanetMesh>& mesh_handle() const noexcept {
         return mesh_;
     }
-    [[nodiscard]] SurfaceState& surface() noexcept { return surface_; }
-    [[nodiscard]] const SurfaceState& surface() const noexcept { return surface_; }
+    [[nodiscard]] ForcingState& forcing() noexcept { return forcing_; }
+    [[nodiscard]] const ForcingState& forcing() const noexcept { return forcing_; }
 
-private:
+  private:
     std::shared_ptr<const PlanetMesh> mesh_;
-    SurfaceState surface_;
+    ForcingState forcing_;
 };
 
 }  // namespace planetsim
