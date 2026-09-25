@@ -1,9 +1,10 @@
 # Planetary Civilization Simulator
 
-The repository is currently at **P0 / M1 — Orbit, sun, day/night and
-seasons**. It contains a standalone C++20 `PlanetSim` library, headless mesh
-and solar diagnostics, tests, and an optional Godot 4 presentation adapter.
-M2 terrain and ocean-mask work has not started.
+The repository has completed **P0 / M1 — Orbit, sun, day/night and
+seasons**, including the ADR-0002/0003 conformance migration. It contains a
+standalone C++20 `PlanetSim` library, headless mesh and solar diagnostics,
+tests, and an optional Godot 4 presentation adapter. M2 terrain and ocean-mask
+work has not started.
 
 ## Requirements
 
@@ -39,28 +40,36 @@ ctest --test-dir build-sanitize --output-on-failure
 ./build/planet_cli mesh --subdivision 6 --radius 6371000
 ```
 
-The command reports counts, construction time, spherical area totals and
-error, cell-area and edge-length ranges, center normalization, adjacency
-checks, and non-finite geometry. M0 uses exact spherical-triangle area and
-accepts a global relative area error no larger than `5e-14` in the reference
-CLI and conservation test.
+The command reports dual-cell, corner, and shared-edge counts; construction
+time; spherical area totals and error; cell-area, edge-length, and
+centroid-distance ranges; basis normalization; adjacency checks; memory use;
+and non-finite geometry. M0 partitions exact spherical-triangle area among the
+dual polygons and accepts a global relative area error no larger than `5e-14`
+in the reference CLI and conservation test.
 
 Supported reference test levels are L0 through L6:
 
-| Level | Triangular cells | Indexed vertices |
-|------:|-----------------:|-----------------:|
-| 0 | 20 | 12 |
-| 1 | 80 | 42 |
-| 2 | 320 | 162 |
-| 3 | 1,280 | 642 |
-| 4 | 5,120 | 2,562 |
-| 5 | 20,480 | 10,242 |
-| 6 | 81,920 | 40,962 |
+| Level | Dual cells | Dual corners |
+|------:|-----------:|-------------:|
+| 0 | 12 | 20 |
+| 1 | 42 | 80 |
+| 2 | 162 | 320 |
+| 3 | 642 | 1,280 |
+| 4 | 2,562 | 5,120 |
+| 5 | 10,242 | 20,480 |
+| 6 | 40,962 | 81,920 |
 
-ADR-0002 now selects the indexed-vertex column as the authoritative dual-cell
-count. The current executable still uses the triangular-face column as its
-legacy `CellGeometry` count; migration to the accepted dual topology is
-pending.
+Every level has exactly twelve pentagons; all other cells are hexagons. The
+triangular icosphere remains private construction scaffolding and its face
+centroids become the stored dual corners.
+
+To run the ADR-0002 V7 ordered-versus-naive neighbor-sweep benchmark in an
+optimized build:
+
+```bash
+./build-release/planet_cli mesh --subdivision 6 --benchmark-layout \
+  --benchmark-iterations 1000
+```
 
 ## Headless solar diagnostics
 
@@ -70,11 +79,12 @@ pending.
 ```
 
 The first command evaluates the default epoch, defined as northern vernal
-equinox and periapsis; the second is near northern summer solstice. The report
-includes mean/eccentric/true anomaly, orbital distance, inverse-square incident
-stellar flux, solar declination, body-fixed sun direction, illuminated/night
-cell counts, area-weighted incoming power, `S(d)/4` quadrature error,
-non-finite values, and night-side leakage.
+equinox and periapsis; the second is near northern summer solstice. Requested
+days are rounded to the nearest authoritative one-minute simulation tick. The
+report includes mean/eccentric/true anomaly, orbital distance, inverse-square
+incident stellar flux, solar declination, body-fixed sun direction,
+illuminated/night cell counts, area-weighted incoming power, `S(d)/4`
+quadrature error, non-finite values, and night-side leakage.
 
 Insolation is sampled at cell centers. The L5 annual-balance test permits a
 conservative relative quadrature error of `5e-4`; the current 48-sample
@@ -99,8 +109,8 @@ godot4 --path godot
 The one-time headless editor command imports the project and registers the
 GDExtension before the scene is run. The extension registers
 `PlanetMeshNode`. The included scene builds an L4 preview from immutable
-`PlanetMesh` geometry, advances the authoritative `SimulationClock`, and
-colors each triangular cell from a read-only, versioned
+`PlanetMesh` geometry, advances the authoritative integer-tick
+`SimulationClock`, and colors each dual polygon from a read-only, versioned
 `StateSnapshot.top_of_atmosphere_insolation_W_m2` field. The default preview
 advances two simulated hours per wall-clock second and publishes twelve
 snapshots per second; both values are exported in `scripts/main.gd`.
@@ -112,11 +122,11 @@ geometry come from PlanetSim.
 ## M1 architecture
 
 - `PlanetSim` has no Godot dependency.
-- `PlanetMesh` currently owns immutable indexed vertices and triangular cell
-  geometry; this is the legacy representation pending the accepted ADR-0002
-  dual-mesh migration.
-- Evolving fields are separate dense `Field<T>` arrays indexed by
-  `CellId`.
+- `PlanetMesh` owns immutable dual polygon cells, shared edges, CSR adjacency,
+  dual corners, local tangent bases, and fixed 256-cell logical blocks. The
+  primal triangles exist only while constructing the mesh.
+- Evolving fields are separate 64-byte-aligned `Field2D<T>`, layer-major
+  `Field3D<T>`, or `EdgeField<T>` arrays indexed by strong IDs.
 - `PlanetState` retains a shared immutable mesh handle and owns evolving
   fields.
 - The mesh is body-fixed with geographic north on `+Z`; physical rotation and
@@ -125,8 +135,13 @@ geometry come from PlanetSim.
 - Latitude, longitude, and stable right-handed local East/North/Up bases are
   derived from authoritative 3D surface normals.
 - `ForcingState` owns cell-centered top-of-atmosphere insolation in `W/m²`.
-- `StateSnapshot` has an explicit schema version and copies read-oriented
-  orbital and forcing data across the client boundary.
+- The authoritative clock is a signed 64-bit count of one-minute ticks;
+  physical seconds are derived, never accumulated.
+- Fixed logical blocks, fixed-order reductions, keyed random streams, and
+  disabled floating-point contraction support same-build thread-count
+  determinism.
+- `StateSnapshot` has an explicit schema version and stable field ID, and
+  copies read-oriented orbital and forcing data across the client boundary.
 - The Godot target depends on `PlanetSim`; the dependency never points in the
   other direction.
 

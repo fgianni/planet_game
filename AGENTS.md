@@ -9,10 +9,11 @@ implementation contract and architecture source of truth.
 
 P0 --- Living Planet.
 
-Current milestone: **M1 --- Orbit, sun, day/night and seasons**.
+Most recently completed milestone: **M1 --- Orbit, sun, day/night and
+seasons**.
 
-M0 is complete. Do not implement M2 or later milestones unless explicitly
-requested.
+M0 and M1 are complete. Do not implement M2 or later milestones unless
+explicitly requested.
 
 ## Hard rules
 

@@ -35,7 +35,11 @@ Chasing L2 would mean fixed-point arithmetic or a software FP path, at a large a
 
 ### 3.2 The simulation clock is an integer
 
-Simulated time is an `int64` tick count, one tick = one minute of simulated time (≈ 1.7 × 10⁸ ticks per simulated century, far inside range). Every schedule, RNG key and snapshot label uses ticks. No accumulated `double` seconds anywhere: accumulation drift is a classic source of forks diverging for no physical reason.
+Simulated time is an `int64` tick count, one tick = one minute of simulated time
+(approximately 5.26 × 10⁷ ticks per simulated century, far inside range).
+Every schedule, RNG key and snapshot label uses ticks. No accumulated `double`
+seconds anywhere: accumulation drift is a classic source of forks diverging
+for no physical reason.
 
 ### 3.3 Replay is recorded as inputs, not as outputs
 
@@ -141,3 +145,15 @@ Rolling autosave every simulated decade and every ten minutes of wall-clock time
 - Should a fork share the parent's *command log* as well as its state, so a "what if I had decided otherwise at year 40" fork replays the rest of the decisions automatically? Attractive for comparison, but it assumes later decisions still make sense in a changed world.
 - Do we expose the run manifest as a first-class player artefact ("share this run"), which would also make external playtesting analysis trivial?
 - How long are histories kept by default before old deltas are pruned, and is pruning ever automatic?
+
+## 8. Implementation record
+
+The M1 portion was implemented on 2026-09-25: the authoritative clock uses
+one-minute integer ticks; random values are counter-keyed by world seed,
+stream, tick, cell, and optional sample index; and the field registry assigns
+a compile-time-checked stable numeric ID to top-of-atmosphere insolation.
+The in-process presentation snapshot is schema version 2 and carries the tick
+and field ID. Thread-count determinism is tested for the current forcing and
+diagnostics with 1, 2, 8, and 16 workers. The persistent chunked snapshot
+format, run manifests, hashes, migrations, and delta chains remain assigned to
+M2–M5 by this ADR and were not pulled into M1.

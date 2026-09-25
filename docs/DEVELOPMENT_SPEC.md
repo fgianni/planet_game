@@ -210,8 +210,9 @@ Initial conceptual types:
 
 ``` cpp
 PlanetMesh
-Field<T>
-LayeredField<T>
+Field2D<T>
+Field3D<T>
+EdgeField<T>
 SimulationClock
 Scheduler
 PlanetParameters
@@ -225,35 +226,39 @@ Representative state:
 
 ``` cpp
 struct SurfaceState {
-    Field<double> elevation_m;
-    Field<double> temperature_K;
-    Field<double> soil_moisture_kg_m2;
-    Field<double> snow_water_equivalent_kg_m2;
-    Field<double> vegetation_fraction;
-    Field<double> albedo;
+    Field2D<float> elevation_m;
+    Field2D<float> temperature_K;
+    Field2D<float> soil_moisture_kg_m2;
+    Field2D<float> snow_water_equivalent_kg_m2;
+    Field2D<float> vegetation_fraction;
+    Field2D<float> albedo;
 };
 
 struct AtmosphereState {
-    LayeredField<double> temperature_K;
-    LayeredField<double> pressure_Pa;
-    LayeredField<double> specific_humidity;
-    LayeredField<Vec3d> wind_m_s;
-    LayeredField<double> cloud_water_kg_m2;
-    Field<double> precipitation_kg_m2_s;
+    Field3D<float> temperature_K;
+    Field3D<float> pressure_Pa;
+    Field3D<float> specific_humidity;
+    Field3D<float> eastward_wind_m_s;
+    Field3D<float> northward_wind_m_s;
+    Field3D<float> cloud_water_kg_m2;
+    Field2D<float> precipitation_kg_m2_s;
 };
 
 struct OceanState {
-    Field<double> surface_temperature_K;
-    Field<double> deep_temperature_K;
-    Field<double> mixed_layer_depth_m;
-    Field<Vec3d> surface_current_m_s;
+    Field2D<float> surface_temperature_K;
+    Field2D<double> deep_temperature_K;
+    Field2D<float> mixed_layer_depth_m;
+    Field2D<float> eastward_surface_current_m_s;
+    Field2D<float> northward_surface_current_m_s;
     // Salinity may begin as a constant/reference field,
     // but the architecture must permit dynamic salinity later.
 };
 ```
 
-These are conceptual, not mandatory exact APIs. Before changing
-semantics, document why.
+These are conceptual, not mandatory exact APIs. Scalar component fields keep
+the layout structure-of-arrays. Prognostic and diagnostic fields default to
+`float`; global accumulators and slow ocean/carbon reservoirs use `double` as
+specified by ADR-0002. Before changing semantics, document why.
 
 ## 7. Authoritative state and presentation
 
@@ -893,9 +898,10 @@ Only after M0 is clean, tested and reviewed should development proceed
 to M1.
 
 The original primal-mesh M0 was completed and reviewed on 2026-09-23.
-ADR-0002 was accepted on 2026-09-25 and supersedes that representation, so
-M0 mesh infrastructure and mesh-dependent M1 work require migration and
-revalidation before M1 is complete. Do not begin M2 as part of this migration.
+ADR-0002 was accepted on 2026-09-25 and superseded that representation. The
+dual-mesh M0 infrastructure and mesh-dependent M1 work were migrated and
+revalidated on 2026-09-25. This did not begin M2: finite-volume operators,
+terrain, conservative remapping, and persistent snapshots remain later work.
 
 ## 22. Definition of done for M0
 

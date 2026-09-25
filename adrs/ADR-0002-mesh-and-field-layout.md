@@ -99,8 +99,13 @@ Comfortably inside the ADR-0001 budget even with the counterfactual planet runni
 
 ### 4.6 Parallelism and determinism
 
-- Cells are partitioned into contiguous **blocks** of the space-filling order, one block per worker; block boundaries are fixed at load, not by thread count.
-- **No atomics in reductions.** Each block reduces locally in index order; block results combine in a fixed tree. The result is identical for any thread count.
+- Cells are partitioned into contiguous, fixed-size **logical blocks** of the
+  space-filling order. Block boundaries are fixed at load and independent of
+  thread count; workers receive logical blocks in deterministic round-robin
+  assignment.
+- **No atomics in reductions.** Each logical block reduces locally in index
+  order; block results combine in fixed block-index order. The result is
+  identical for any thread count.
 - Compiled with `-ffp-contract=off` and without fast-math; FMA and reassociation are opt-in per kernel and only where a test shows the result is unchanged.
 - Iteration order over cells and edges is fixed by the topology arrays, never by a hash map or pointer address.
 
@@ -151,3 +156,20 @@ V3 is the one that decides whether the mesh is good: an error map that shows the
 - Does the ocean use the same horizontal mesh as the atmosphere, or a coarser one? Same mesh is simpler and keeps coupling trivial; a coarser ocean would save little at these sizes. Current position: same mesh.
 - Are rivers and runoff routed on the cell mesh, or on a separate flow network derived from elevation? A flow network is more faithful but introduces a second topology.
 - Should coastlines be represented sub-cell (fractional land area per cell) rather than binary land/sea? Fractional coverage would improve coastal realism, sea-level rise and the civilization's coastal exposure at no mesh cost, and is probably worth doing from the start.
+
+## 9. Implementation record
+
+The M0/M1 migration was completed on 2026-09-25 with 256-cell logical
+blocks. L6 contains 40,962 cells, 81,920 corners, 122,880 shared edges, and
+245,760 directed cell-edge incidences. Exactly twelve cells are pentagons.
+Measured geometry/topology allocations are 3,441,160 bytes at L5 and
+13,764,040 bytes at L6, both within the V8 allowance.
+
+For V7, five optimized L6 runs of a representative 1,000-iteration neighbor
+sweep measured naive-to-ordered time ratios from 1.020 to 1.039 (median
+1.028). This is a repeatable but modest gain, not the rough 2× expectation.
+The recursive order is retained because it also reduces mean neighbor-index
+distance from about 10,388 to 395 at L6 and is the canonical order selected
+by this ADR; it should be reassessed against later bandwidth-bound operators.
+V1, V2, V6, and V8 are covered at M0/M1. Operator validation V3/V4 belongs to
+M2, and conservative remapping V5 belongs to M3.

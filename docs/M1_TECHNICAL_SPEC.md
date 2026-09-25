@@ -1,6 +1,6 @@
 # P0 / M1 Technical Specification
 
-Status: accepted M1 physics plan; dual-mesh migration pending
+Status: implemented and validated, including ADR-0002/0003 migration
 
 ## Scope
 
@@ -15,7 +15,9 @@ solver.
 - `+Z` is geographic north and the rotation axis.
 - `+X` is the prime-meridian direction at the epoch.
 - Positive rotation is eastward about `+Z`.
-- Simulation time is finite non-negative SI seconds from the epoch.
+- Authoritative simulation time is a finite non-negative signed 64-bit tick
+  count, with one tick equal to one simulated minute. SI seconds are derived
+  from the tick and never accumulated.
 - Orbital phase is mean anomaly measured from periapsis.
 - At the epoch, the star direction is `+X` in both inertial equatorial and
   body-fixed coordinates.
@@ -51,9 +53,9 @@ Earth defaults use:
 - stellar luminosity chosen to give `1,361 W/m2` at the semi-major axis.
 
 Under accepted ADR-0002, L5 is the development default with 10,242 dual cells,
-and L6 is the shipped/reference target with 40,962 dual cells. The existing
-M1 implementation still places forcing on primal triangles and must be
-migrated and revalidated before M1 is considered complete.
+and L6 is the shipped/reference target with 40,962 dual cells. Forcing is
+stored on the authoritative dual cells; the primal triangles are private mesh
+construction scaffolding.
 
 ## Solar forcing
 
@@ -95,6 +97,8 @@ authoritative orbital physics.
   circular orbit, with the tolerance justified by cell-center quadrature.
 - Repeated evaluation with identical inputs is exactly deterministic within a
   build.
+- Evaluation and diagnostics are bit-identical with 1, 2, 8, and 16 workers,
+  using fixed logical blocks and fixed-order reduction.
 - The CLI reports solar geometry, global incoming power, quadrature error, and
   invalid/non-finite counts headlessly.
 - Godot animates snapshots produced from PlanetSim physical time; presentation
