@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Warming Stripes — prototype</title>
+<style>@import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap');
+:root{
+  --paper:#E4E8E1; --paper2:#D6DCD3; --ink:#1B2B30; --muted:#51625F;
+  --sea:#2E5E74; --coast:#B9B58A; --plains:#CFC99A; --forest:#3F6E4A; --wetland:#86A89C; --hill:#A9926B; --young:#8DB36F;
+  --warm:#B2182B; --cool:#2166AC;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:Archivo,"Helvetica Neue",Arial,sans-serif;font-size:15px;line-height:1.45;font-variant-numeric:tabular-nums}
+h2{font-size:13px;font-weight:700;margin:18px 0 8px;font-stretch:112%;letter-spacing:.01em}
+h2:first-child{margin-top:0}
+button{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--cool);outline-offset:2px}
+
+/* Header band: the stripes are the hero */
+.band{position:relative;min-height:128px;color:#fff;overflow:hidden;background:var(--ink)}
+.stripes{position:absolute;inset:0;display:flex}
+.stripes div{flex:1;transition:background-color .6s}
+.stripes .empty{background:transparent}
+.forecast-strip{position:absolute;left:0;right:0;bottom:0;height:8px;display:flex}
+.forecast-strip div{flex:1}
+.band-inner{position:relative;display:flex;align-items:center;justify-content:space-between;gap:28px;padding:18px 28px 26px;min-height:128px}
+.panel{display:flex;align-items:center;gap:24px;background:rgba(27,43,48,.88);padding:12px 22px 12px 18px;border-radius:3px}
+.yearblock{line-height:.9}
+.year{font-size:64px;font-weight:800;font-stretch:70%;letter-spacing:-.02em}
+.temp{font-size:20px;font-weight:600;font-stretch:90%;margin-top:6px}
+.title{font-size:22px;font-weight:800;font-stretch:125%;margin:0}
+.title span{display:block;font-size:14px;font-weight:400;font-stretch:100%;margin-top:4px;opacity:.9}
+.endturn{background:#fff;color:var(--ink);border:0;border-radius:3px;padding:12px 22px;font-weight:800;font-size:17px;cursor:pointer;display:flex;flex-direction:column;align-items:center;box-shadow:0 2px 0 rgba(0,0,0,.35)}
+.endturn small{font-weight:500;font-size:12px;color:var(--muted)}
+.endturn:active{transform:translateY(1px);box-shadow:none}
+.endturn:disabled{opacity:.5;cursor:default}
+
+.layout>*{min-width:0}
+.tile{min-width:0}
+.layout{display:grid;grid-template-columns:250px minmax(0,1fr) 300px;gap:24px;padding:22px 28px 40px;align-items:start}
+
+/* Tools */
+.toollist{display:flex;flex-direction:column;gap:2px}
+.tool{display:grid;grid-template-columns:26px 1fr auto;align-items:center;gap:8px;padding:6px 8px;border:0;background:none;text-align:left;border-radius:3px;cursor:pointer}
+.tool:hover{background:var(--paper2)}
+.tool[aria-pressed="true"]{background:var(--ink);color:#fff}
+.tool .ic{font-size:18px;text-align:center}
+.tool .cost{font-size:13px;color:var(--muted)}
+.tool[aria-pressed="true"] .cost{color:#cfd8d6}
+.tool.poor .cost{color:var(--warm)}
+.tool.sep{margin-top:10px}
+.tooldetail{margin-top:14px;font-size:13px;color:var(--muted);min-height:120px}
+.tooldetail b{color:var(--ink);display:block;font-size:14px;margin-bottom:2px}
+.fx{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px}
+.fx .p{color:var(--cool)} .fx .n{color:var(--warm)}
+
+/* Map */
+.map{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;background:var(--paper2);padding:2px;border-radius:4px}
+.tile{aspect-ratio:1;border:0;padding:0;display:grid;place-items:center;font-size:clamp(14px,2.2vw,26px);cursor:pointer;position:relative;border-radius:2px}
+.tile.sea{background:var(--sea);cursor:default;background-image:repeating-linear-gradient(170deg,rgba(255,255,255,.07) 0 2px,transparent 2px 9px)}
+.tile.coast{background:var(--coast)}
+.tile.plains{background:var(--plains)}
+.tile.forest{background:var(--forest);background-image:radial-gradient(circle at 30% 35%,rgba(255,255,255,.12) 0 18%,transparent 19%),radial-gradient(circle at 70% 65%,rgba(0,0,0,.12) 0 20%,transparent 21%)}
+.tile.wetland{background:var(--wetland);background-image:repeating-linear-gradient(0deg,rgba(255,255,255,.18) 0 1px,transparent 1px 7px)}
+.tile.hill{background:var(--hill);background-image:linear-gradient(135deg,transparent 45%,rgba(0,0,0,.12) 46% 54%,transparent 55%)}
+.tile.young{background:var(--young)}
+.map.placing .tile.ok{box-shadow:inset 0 0 0 2px rgba(255,255,255,.85)}
+.map.placing .tile.no:not(.sea){filter:saturate(.4) brightness(.9);cursor:not-allowed}
+.tile:hover:not(.sea){filter:brightness(1.08)}
+.tile .age{position:absolute;bottom:2px;right:4px;font-size:10px;font-weight:700;color:var(--ink)}
+.tile.flash{animation:flash .9s}
+@keyframes flash{from{box-shadow:inset 0 0 0 4px var(--warm)}to{box-shadow:inset 0 0 0 0 transparent}}
+.hoverinfo{font-size:13px;color:var(--muted);padding:8px 2px;min-height:40px}
+
+/* Journal */
+.journal ol{list-style:none;margin:0;padding:0;max-height:260px;overflow:auto;border-top:1px solid var(--paper2)}
+.journal li{display:grid;grid-template-columns:44px 1fr;gap:8px;padding:6px 0;border-bottom:1px solid var(--paper2);font-size:14px}
+.journal li .y{color:var(--muted);font-weight:600}
+.journal li.event{color:#7a1420}
+.journal li.tip{background:var(--warm);color:#fff;padding:8px 6px}
+.journal li.tip .y{color:#fff}
+.journal li.good{color:#174a7a}
+.journal li.fresh{animation:fresh 1.2s}
+@keyframes fresh{from{background:#fff}}
+
+/* Status */
+.society{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:0;font-size:14px}
+.society dt{color:var(--muted)} .society dd{margin:0;font-weight:700;text-align:right}
+.society dd .d{font-weight:500;font-size:12px;margin-left:4px}
+.society dd.bad,.d.bad{color:var(--warm)} .d.good{color:var(--cool)}
+.meter{margin:0 0 10px}
+.meter .row{display:flex;justify-content:space-between;font-size:14px}
+.meter .row span:first-child{color:var(--muted)} .meter .row span:last-child{font-weight:700}
+.bar{position:relative;height:10px;background:var(--paper2);border-radius:5px;margin-top:4px;overflow:hidden}
+.bar i{position:absolute;top:0;bottom:0;border-radius:5px;transition:left .5s,width .5s}
+.bar i.fuzzy{filter:blur(1.5px);opacity:.85}
+.hint{font-size:12px;color:var(--muted);margin:0 0 10px}
+canvas{width:100%;height:auto;display:block;margin-top:10px;background:#fff;border-radius:3px}
+
+/* Recap */
+dialog{border:0;border-radius:4px;padding:0;max-width:720px;width:calc(100% - 32px);background:var(--paper);color:var(--ink)}
+dialog::backdrop{background:rgba(27,43,48,.7)}
+.recap{padding:0 0 12px}
+.recap .rhead{padding:24px 28px;color:#fff;background:var(--ink)}
+.recap .rhead h3{margin:0;font-size:32px;font-stretch:80%;font-weight:800;line-height:1}
+.recap .rhead p{margin:6px 0 0}
+.recap section{padding:6px 28px}
+.recap .src{display:grid;grid-template-columns:190px 1fr 44px;gap:8px;align-items:center;font-size:14px;margin:4px 0}
+.recap .src .bar i{background:var(--warm);left:0}
+.recap ol{list-style:none;padding:0;margin:0;max-height:300px;overflow:auto}
+.recap li{display:grid;grid-template-columns:44px 1fr;gap:8px;font-size:14px;padding:3px 0}
+.recap li .y{color:var(--muted);font-weight:600}
+.recap li.emit{color:#7a1420} .recap li.event{color:var(--warm)} .recap li.tip{font-weight:800;color:var(--warm)}
+.recap li.cut,.recap li.good{color:var(--cool)} .recap li.harm{color:#7a1420}
+.recap .lesson{font-size:16px;background:#fff;padding:14px 16px;border-left:4px solid var(--warm);margin:10px 0}
+.again{margin:4px 28px 24px;flex-direction:row;background:var(--ink);color:#fff}
+
+@media (max-width:1100px){.layout{grid-template-columns:220px 1fr}.status{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 24px}.status h2{grid-column:auto}}
+@media (max-width:720px){
+  .layout{grid-template-columns:1fr;padding:14px}
+  .band-inner{flex-wrap:wrap;gap:12px;padding:14px 14px 22px}
+  .panel{flex-wrap:wrap;gap:6px 16px;padding:10px 14px}
+  .year{font-size:46px}.title{font-size:17px;flex-basis:100%}
+  .toollist{flex-direction:row;overflow-x:auto;padding-bottom:4px}
+  .tool{grid-template-columns:auto;justify-items:center;min-width:64px;font-size:11px}.tool .nm{display:none}
+  .tool.sep{margin-top:0}
+  .tooldetail{min-height:0}
+  .recap .src{grid-template-columns:120px 1fr 40px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head>
+<body>
+<!-- UI -->
+<header class="band">
+  <div class="stripes" id="stripes" aria-hidden="true"></div>
+  <div class="forecast-strip" id="fstrip" aria-hidden="true"></div>
+  <div class="band-inner">
+    <div class="panel">
+      <div class="yearblock">
+        <div class="year" id="year">2025</div>
+        <div class="temp" id="tempBig">+1.20 °C</div>
+      </div>
+      <h1 class="title">Warming Stripes<span>Build a society. Live with what it does to the land.</span></h1>
+    </div>
+    <button class="endturn" id="endTurn">End turn<small>+5 years</small></button>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="tools" aria-label="Build">
+    <h2>Build</h2>
+    <div id="toolList" class="toollist"></div>
+    <div class="tooldetail" id="toolDetail"></div>
+  </aside>
+
+  <section class="centre">
+    <div class="map" id="map" role="grid" aria-label="Your land"></div>
+    <div class="hoverinfo" id="hoverInfo">Pick something to build, then choose a tile.</div>
+    <section class="journal">
+      <h2>Journal</h2>
+      <ol id="log"></ol>
+    </section>
+  </section>
+
+  <aside class="status" aria-label="State of the world">
+    <h2>Society</h2>
+    <dl class="society" id="society"></dl>
+    <h2>Ecosystem</h2>
+    <p class="hint" id="ecoHint"></p>
+    <div id="eco"></div>
+    <h2>Climate</h2>
+    <dl class="society" id="climate"></dl>
+    <canvas id="chart" width="560" height="300" aria-label="Temperature history and forecast"></canvas>
+    <p class="hint" id="tipHint"></p>
+  </aside>
+</main>
+
+<dialog id="endDialog">
+  <div class="recap" id="recap"></div>
+  <button id="again" class="endturn again">Play again</button>
+</dialog>
+
+<script>
+// ===== ENGINE (pure logic, no DOM) =====
+const COLS = 12, ROWS = 8, YEARS_PER_TURN = 5, START_YEAR = 2025, MAX_TURNS = 25;
+
+const TILE = {
+  sea:     { name: 'Sea' },
+  coast:   { name: 'Coast' },
+  plains:  { name: 'Plains' },
+  forest:  { name: 'Forest' },
+  wetland: { name: 'Wetland' },
+  hill:    { name: 'Hills' },
+  young:   { name: 'Young forest' },
+};
+
+const B = {
+  farm:     { name: 'Industrial farm', icon: '🌾', cost: 20, upkeep: 1, food: 12, energy: -1, co2: 0.8, soil: -2.5, water: -1.5, bio: -1.5, jobs: 1,
+              desc: 'Big harvests now. Wears out soil, water and pollinators.' },
+  agro:     { name: 'Agroecological farm', icon: '🥕', cost: 25, upkeep: 1, food: 7, energy: 0, co2: 0.1, soil: 0.8, water: -0.4, bio: 0.5,
+              desc: 'Smaller harvests. Rebuilds soil and supports wildlife.' },
+  coal:     { name: 'Coal plant', icon: '🏭', cost: 30, upkeep: 2, energy: 16, co2: 4, water: -1, happy: -1.5, jobs: 3,
+              desc: 'Cheap, abundant power. Heavy emitter, dirty air.' },
+  gas:      { name: 'Gas plant', icon: '🔥', cost: 35, upkeep: 3, energy: 10, co2: 2, jobs: 1,
+              desc: 'Half the emissions of coal, higher running cost.' },
+  solar:    { name: 'Solar farm', icon: '☀️', cost: 45, upkeep: 1, energy: 6, bio: -0.1,
+              desc: 'Clean power, expensive to build, modest output.' },
+  wind:     { name: 'Wind farm', icon: '🌬️', cost: 35, upkeep: 1, energy: 6, bio: -0.2, hillBonus: 4,
+              desc: 'Clean power. Much stronger on hills.' },
+  house:    { name: 'Housing', icon: '🏠', cost: 15, upkeep: 0, cap: 15, energy: -2.5, co2: 0.4,
+              desc: 'Room for 15k people. Poorly insulated.' },
+  ecohouse: { name: 'Efficient housing', icon: '🏡', cost: 30, upkeep: 0, cap: 15, energy: -0.8, co2: 0.05,
+              desc: 'Room for 15k people, a third of the energy use.' },
+  factory:  { name: 'Factory', icon: '⚙️', cost: 35, upkeep: 1, money: 10, energy: -4, co2: 1.5, water: -1, bio: -0.3, jobs: 2,
+              desc: 'Strong income. Hungry for energy and water.' },
+  workshop: { name: 'Repair & recycling', icon: '♻️', cost: 30, upkeep: 1, money: 5, energy: -1, co2: 0.15, jobs: 1,
+              desc: 'Half the income of a factory, a tenth of the emissions.' },
+  station:  { name: 'Monitoring station', icon: '📡', cost: 20, upkeep: 2, info: 1,
+              desc: 'Sharper readings of your ecosystem and better forecasts.' },
+  reservoir:{ name: 'Reservoir', icon: '💧', cost: 25, upkeep: 1, water: 2, bio: -0.5,
+              desc: 'Stores water. Floods a valley ecosystem.' },
+  dike:     { name: 'Dike', icon: '🧱', cost: 25, upkeep: 1, only: ['coast'],
+              desc: 'Holds back floods and rising seas for nearby tiles. Coast only.' },
+  reserve:  { name: 'Nature reserve', icon: '🦋', cost: 10, upkeep: 1, bio: 1.2, happy: 1, only: ['forest', 'wetland'],
+              desc: 'Protects a forest or wetland. Wildlife and wellbeing.' },
+  reforest: { name: 'Plant a forest', icon: '🌱', cost: 15, upkeep: 0, only: ['plains'],
+              desc: 'Takes 15 years to grow, then absorbs carbon for good.' },
+};
+
+function makeRng(seed) {
+  let s = seed >>> 0;
+  return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const an = w => (/^[aeiou]/i.test(w) ? 'an ' : 'a ') + w;
+
+function newGame(seed = Math.floor(Math.random() * 1e9)) {
+  const rng = makeRng(seed);
+  const map = [];
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+    let type, elev;
+    if (x === 0) { type = 'sea'; elev = 0; }
+    else if (x === 1) { type = 'coast'; elev = 0.3 + rng() * 0.15; }
+    else {
+      elev = 0.6 + (x - 2) * 0.25 + rng() * 0.2;
+      const r = rng();
+      if (x <= 4 && r < 0.25) type = 'wetland';
+      else if (x >= 9 && r < 0.35) type = 'hill';
+      else if (r < 0.62 && !(x >= 4 && x <= 7 && y >= 2 && y <= 5)) type = 'forest';
+      else type = 'plains';
+    }
+    map.push({ x, y, type, elev, b: null });
+  }
+  const s = {
+    seed, rngState: seed, turn: 0, year: START_YEAR,
+    map, pop: 40, food: 0, energy: 0, money: 100, happy: 60,
+    soil: 70, water: 70, bio: 70, co2: 420, temp: 1.2, sea: 0,
+    tipThr: 1.9 + rng() * 0.5, tipOffset: (rng() - 0.5), tipped: false, tippedYear: null,
+    nextId: 1, ledger: [], history: [], log: [], timeline: [],
+    drained: [], lowHappy: 0, over: false, result: null, lastReport: null,
+  };
+  // starting society: industrial, fossil-powered
+  const start = [['coal', 5, 3], ['farm', 4, 2], ['farm', 4, 5], ['house', 6, 3], ['house', 6, 4], ['house', 5, 4], ['factory', 7, 3]];
+  for (const [t, x, y] of start) placeRaw(s, tileAt(s, x, y), t, true);
+  s.history.push(snapshot(s));
+  addLog(s, 'You inherit a young industrial society: one coal plant, two big farms, one factory.', 'info');
+  s._rng = rng;
+  return s;
+}
+
+function rngOf(s) { if (!s._rng) s._rng = makeRng(s.seed + s.turn * 7919); return s._rng; }
+const tileAt = (s, x, y) => s.map[y * COLS + x];
+const neighbors = (s, t) => s.map.filter(o => Math.abs(o.x - t.x) <= 1 && Math.abs(o.y - t.y) <= 1 && o !== t);
+const buildings = s => s.map.filter(t => t.b && t.b.type !== 'reforest');
+const count = (s, type) => s.map.filter(t => t.b && t.b.type === type).length;
+function snapshot(s) { return { year: s.year, temp: s.temp, co2: s.co2, pop: s.pop, happy: s.happy, soil: s.soil, water: s.water, bio: s.bio }; }
+function addLog(s, text, kind = 'info') { s.log.unshift({ year: s.year, text, kind }); }
+function addTimeline(s, text, kind) { s.timeline.push({ year: s.year, text, kind }); }
+
+function canPlace(s, t, type) {
+  const d = B[type];
+  if (!d) return 'Unknown building';
+  if (t.type === 'sea') return 'Nothing can be built at sea';
+  if (t.b) return 'This tile is already used';
+  if (d.only && !d.only.includes(t.type)) return `${d.name} can only go on ${d.only.join(' or ')}`;
+  if (!d.only && t.type === 'young') return 'Young forest is growing here';
+  if (s.money < d.cost) return `Needs ${d.cost} credits`;
+  return null;
+}
+
+function placeRaw(s, t, type, silent) {
+  const d = B[type];
+  const entry = { id: s.nextId++, type, name: d.name, built: s.year, removed: null, cum: 0, x: t.x, y: t.y };
+  if (type === 'reforest') { t.type = 'young'; t.b = { ...entry, age: 0 }; return entry; }
+  if (!d.only || !d.only.includes(t.type)) {
+    if (t.type === 'forest') {
+      const clear = { id: s.nextId++, type: 'clearing', name: 'Forest clearing', built: s.year, removed: s.year, cum: 3, x: t.x, y: t.y };
+      s.ledger.push(clear); s.co2 += silent ? 0 : 3; s.bio -= silent ? 0 : 1;
+      if (!silent) addTimeline(s, `Cleared forest for ${an(d.name.toLowerCase())}.`, 'harm');
+      t.type = 'plains';
+    }
+    if (t.type === 'wetland') {
+      if (!silent) s.drained.push({ year: s.year, x: t.x, y: t.y });
+      if (!silent) addTimeline(s, `Drained a wetland for ${an(d.name.toLowerCase())}.`, 'harm');
+      t.type = 'plains'; s.bio -= silent ? 0 : 1.5;
+    }
+  }
+  t.b = entry; s.ledger.push(entry);
+  return entry;
+}
+
+function place(s, t, type) {
+  const err = canPlace(s, t, type);
+  if (err) return err;
+  s.money -= B[type].cost;
+  placeRaw(s, t, type, false);
+  addLog(s, `Built ${B[type].name.toLowerCase()}.`, 'build');
+  addTimeline(s, `Built ${B[type].name.toLowerCase()}.`, B[type].co2 >= 1 ? 'emit' : 'build');
+  return null;
+}
+
+function demolish(s, t) {
+  if (!t.b) return 'Nothing to remove here';
+  if (s.money < 5) return 'Needs 5 credits';
+  const d = B[t.b.type];
+  s.money -= 5;
+  if (t.b.type === 'reforest') { t.type = 'plains'; t.b = null; addLog(s, 'Young forest cut down.', 'harm'); return null; }
+  const e = s.ledger.find(l => l.id === t.b.id); if (e) e.removed = s.year;
+  if (d.jobs) { s.happy -= d.jobs * 2.5; addLog(s, `${d.name} closed. ${d.jobs * 2.5 >= 5 ? 'Workers protest the lost jobs.' : 'Some jobs lost.'}`, 'harm'); }
+  else addLog(s, `${d.name} removed.`, 'info');
+  addTimeline(s, `Closed ${d.name.toLowerCase()} (built ${t.b.built}).`, d.co2 >= 1 ? 'cut' : 'info');
+  t.b = null;
+  return null;
+}
+
+// Per-turn flows from the current buildings (no climate multipliers)
+function flows(s) {
+  const f = { food: 0, energyProd: 0, energyUse: 0, money: 0, upkeep: 0, cap: 0, co2: 0, soil: 0, water: 0, bio: 0, happy: 0, info: 0 };
+  for (const t of s.map) {
+    if (!t.b || t.b.type === 'reforest') continue;
+    const d = B[t.b.type];
+    f.food += d.food || 0;
+    let e = d.energy || 0;
+    if (d.hillBonus && t.type === 'hill') e += d.hillBonus;
+    if (e > 0) f.energyProd += e; else f.energyUse -= e;
+    f.money += d.money || 0; f.upkeep += d.upkeep || 0; f.cap += d.cap || 0;
+    f.co2 += d.co2 || 0; f.soil += d.soil || 0; f.water += d.water || 0;
+    f.bio += d.bio || 0; f.happy += d.happy || 0; f.info += d.info || 0;
+  }
+  f.energyUse += s.pop * 0.05;
+  f.foodNeed = s.pop / 4;
+  f.tax = s.pop * 0.4;
+  return f;
+}
+
+function forestFrac(s) {
+  const land = s.map.filter(t => t.type !== 'sea').length;
+  return s.map.filter(t => t.type === 'forest').length / land;
+}
+function yieldMul(s) {
+  let m = 1 - 0.12 * Math.max(0, s.temp - 1.5);
+  if (s.soil < 30) m *= 0.6; else if (s.soil < 50) m *= 0.85;
+  if (s.bio < 35) m *= 0.75;
+  return Math.max(0.2, m);
+}
+const eqTemp = co2 => 3 * Math.log2(co2 / 280);
+function sink(s, co2 = s.co2, ff = forestFrac(s)) { return 0.012 * Math.max(0, co2 - 280) * (0.4 + ff * 1.5); }
+
+// Contributors to cumulative emissions
+function contributors(s, n = 3) {
+  const total = s.ledger.reduce((a, l) => a + l.cum, 0) || 1;
+  const byKey = {};
+  for (const l of s.ledger) {
+    if (l.cum <= 0) continue;
+    const k = l.type === 'clearing' ? 'clearing' : l.id;
+    if (!byKey[k]) byKey[k] = { ...l, cum: 0, count: 0 };
+    byKey[k].cum += l.cum; byKey[k].count++;
+  }
+  return Object.values(byKey).sort((a, b) => b.cum - a.cum).slice(0, n)
+    .map(l => ({ ...l, share: l.cum / total }));
+}
+function blame(s) {
+  const c = contributors(s, 2);
+  if (!c.length) return '';
+  return ' Biggest sources of the carbon behind it: ' + c.map(l =>
+    l.type === 'clearing' ? `forest clearings (${Math.round(l.share * 100)}%)`
+    : `the ${l.name.toLowerCase()} built in ${l.built} (${Math.round(l.share * 100)}%)`).join(', ') + '.';
+}
+
+function endTurn(s) {
+  if (s.over) return;
+  const rng = rngOf(s);
+  const f = flows(s);
+  const rep = { events: [] };
+  const T = s.temp;
+
+  // --- climate-driven events (use this turn's temperature) ---
+  const pDrought = clamp(0.03 + 0.18 * (T - 1.2) + (55 - s.water) / 120, 0, 0.85);
+  const drought = rng() < pDrought;
+  let ym = yieldMul(s) * (drought ? 0.6 : 1);
+  if (drought) {
+    addLog(s, `Drought. Harvests fall by 40%.${s.water < 45 ? ' Depleted groundwater made it worse.' : ''}${blame(s)}`, 'event');
+    addTimeline(s, 'Drought hit the harvest.', 'event'); rep.events.push('drought');
+  }
+
+  // --- food & population ---
+  const food = f.food * ym;
+  s.food = food;
+  let shock = 0;
+  if (food < f.foodNeed) {
+    const loss = Math.min(s.pop * 0.3, (f.foodNeed - food) * 2.5);
+    s.pop -= loss; shock -= 10;
+    addLog(s, `Food shortage: ${Math.round(loss)}k people left or starved.`, 'event');
+    addTimeline(s, `Food shortage, population fell by ${Math.round(loss)}k.`, 'event');
+  } else if (s.happy > 40 && s.pop < f.cap) {
+    s.pop = Math.min(f.cap, s.pop + s.pop * 0.08 + 1, s.pop + (food - f.foodNeed) * 3);
+  }
+  if (s.pop > f.cap) { shock -= Math.min(8, (s.pop - f.cap) * 0.5); }
+
+  // --- energy ---
+  const deficit = f.energyUse - f.energyProd;
+  s.energy = f.energyProd - f.energyUse;
+  let moneyMul = 1;
+  if (deficit > 0) { shock -= Math.min(15, deficit * 1.5); moneyMul = clamp(1 - deficit / Math.max(1, f.energyUse), 0.3, 1);
+    addLog(s, `Blackouts: energy short by ${deficit.toFixed(1)}. Factories slow down.`, 'event'); }
+
+  // --- money ---
+  s.money += f.tax + f.money * moneyMul - f.upkeep;
+  if (s.money < 0) { shock -= 5; addLog(s, 'The treasury is in debt. Services are cut.', 'event'); }
+
+  // --- ecosystem stocks ---
+  s.soil = clamp(s.soil + f.soil + 0.06 * (80 - s.soil) * (0.5 + s.bio / 100), 0, 100);
+  s.water = clamp(s.water + f.water - 1.2 * Math.max(0, T - 1) + 0.07 * (85 - s.water), 0, 100);
+  s.bio = clamp(s.bio + f.bio - 2 * Math.max(0, T - 1.5) + 0.05 * (85 - s.bio) * (0.3 + forestFrac(s)) - 0.4 * s.drained.length, 0, 100);
+
+  // --- carbon ---
+  for (const t of s.map) if (t.b && B[t.b.type].co2) { const e = s.ledger.find(l => l.id === t.b.id); if (e) e.cum += B[t.b.type].co2; }
+  let emis = f.co2;
+  if (s.tipped) emis += 2.5;
+  s.co2 += emis - sink(s);
+
+  // --- temperature (lags behind CO2) ---
+  s.temp += 0.15 * (eqTemp(s.co2) - s.temp);
+  if (!s.tipped && s.temp >= s.tipThr) {
+    s.tipped = true; s.tippedYear = s.year;
+    addLog(s, `Tipping point crossed at +${s.temp.toFixed(2)} °C. Thawing permafrost now releases carbon on its own, every turn, whatever you do.`, 'tip');
+    addTimeline(s, `Permafrost tipping point crossed at +${s.temp.toFixed(2)} °C. It cannot be undone.`, 'tip');
+    rep.events.push('tip');
+  }
+
+  // --- sea level ---
+  s.sea += 0.03 * Math.max(0, T - 0.8);
+  let lostLand = 0;
+  for (const t of s.map) {
+    if (t.type === 'sea') continue;
+    const protectedBy = neighbors(s, t).concat([t]).some(o => o.b && o.b.type === 'dike');
+    const limit = t.elev + (protectedBy ? 0.5 : 0);
+    if (s.sea > limit) {
+      if (t.b) {
+        const d = B[t.b.type]; const e = s.ledger.find(l => l.id === t.b.id); if (e) e.removed = s.year;
+        if (d.cap) { const lost = Math.min(s.pop, 10); s.pop -= lost; shock -= 6; }
+        addLog(s, `Rising seas swallowed ${an(d.name.toLowerCase())}.`, 'event');
+        addTimeline(s, `The sea took ${an(d.name.toLowerCase())}.`, 'event');
+      } else lostLand++;
+      t.type = 'sea'; t.b = null; rep.events.push('sea');
+    }
+  }
+  if (lostLand) { addLog(s, `Rising seas reclaimed ${lostLand} tile${lostLand > 1 ? 's' : ''} of empty coast.`, 'event');
+    addTimeline(s, `The sea reclaimed ${lostLand} tile${lostLand > 1 ? 's' : ''} of coast.`, 'event'); }
+
+  // --- floods ---
+  const dikes = count(s, 'dike');
+  const pFlood = clamp(0.02 + 0.1 * (T - 1) + 0.05 * s.drained.length, 0, 0.8);
+  if (rng() < pFlood) {
+    const low = s.map.filter(t => t.b && t.b.type !== 'reforest' && t.elev < 1.3);
+    if (low.length) {
+      if (rng() < Math.min(0.8, dikes * 0.3)) {
+        addLog(s, 'Heavy floods. Your dikes held.', 'good');
+      } else {
+        const t = low[Math.floor(rng() * low.length)];
+        const d = B[t.b.type]; const e = s.ledger.find(l => l.id === t.b.id); if (e) e.removed = s.year;
+        const cause = s.drained.length ? ` Drained wetlands (first in ${s.drained[0].year}) no longer soak up the water.` : '';
+        addLog(s, `Flood destroyed ${an(d.name.toLowerCase())}.${cause}`, 'event');
+        addTimeline(s, `Flood destroyed ${an(d.name.toLowerCase())}.`, 'event');
+        t.b = null; shock -= 4;
+      }
+      rep.events.push('flood');
+    }
+  }
+
+  // --- heatwave ---
+  if (rng() < clamp(0.25 * (T - 1.1), 0, 0.9)) {
+    const loss = s.pop * 0.03 * T; s.pop -= loss; shock -= 4 + 2 * T;
+    addLog(s, `Heatwave. ${Math.round(loss)}k people affected.${blame(s)}`, 'event');
+    addTimeline(s, `Heatwave at +${T.toFixed(1)} °C.`, 'event'); rep.events.push('heat');
+  }
+
+  // --- wildfire ---
+  if (rng() < clamp(0.3 * (T - 1.2) * (1.4 - s.water / 100), 0, 0.7)) {
+    const forests = s.map.filter(t => t.type === 'forest' && !(t.b && t.b.type === 'reserve'));
+    const n = Math.min(forests.length, 1 + Math.floor(rng() * 3));
+    for (let i = 0; i < n; i++) { const t = forests.splice(Math.floor(rng() * forests.length), 1)[0]; t.type = 'plains'; }
+    if (n) {
+      s.ledger.push({ id: s.nextId++, type: 'clearing', name: 'Wildfire', built: s.year, removed: s.year, cum: 0, x: -1, y: -1 });
+      s.co2 += 3 * n; s.bio -= n;
+      addLog(s, `Wildfire burned ${n} forest tile${n > 1 ? 's' : ''}, releasing their carbon.`, 'event');
+      addTimeline(s, `Wildfire burned ${n} forest tile${n > 1 ? 's' : ''}.`, 'event'); rep.events.push('fire');
+    }
+  }
+
+  // --- young forests mature ---
+  for (const t of s.map) if (t.b && t.b.type === 'reforest') {
+    t.b.age++;
+    if (t.b.age >= 3) { t.type = 'forest'; t.b = null; addLog(s, 'A planted forest has matured and now absorbs carbon.', 'good'); }
+  }
+
+  // --- happiness ---
+  const target = 60 + f.happy - Math.max(0, T - 1.5) * 4;
+  s.happy = clamp(s.happy + 0.3 * (target - s.happy) + shock, 0, 100);
+  s.pop = Math.max(0, s.pop);
+  s.bio = clamp(s.bio, 0, 100); s.soil = clamp(s.soil, 0, 100); s.water = clamp(s.water, 0, 100);
+
+  s.turn++; s.year += YEARS_PER_TURN;
+  s.history.push(snapshot(s));
+  s.lastReport = rep;
+
+  // --- end conditions ---
+  s.lowHappy = s.happy < 15 ? s.lowHappy + 1 : 0;
+  if (s.pop < 10) finish(s, 'collapse', 'Your society collapsed. Too few people remain.');
+  else if (s.lowHappy >= 2) finish(s, 'revolt', 'Unrest has toppled the government.');
+  else if (s.turn >= MAX_TURNS) finish(s, 'end', `You reached ${s.year}.`);
+}
+
+function finish(s, kind, text) {
+  s.over = true;
+  const eco = (s.soil + s.water + s.bio) / 3;
+  const score = kind === 'end' ? Math.round(s.pop * 1.5 + s.happy + eco - Math.max(0, s.temp - 1.5) * 40 - (s.tipped ? 30 : 0)) : 0;
+  s.result = { kind, text, score };
+  addLog(s, text, 'tip');
+}
+
+// Forecast: project N turns ahead holding today's emissions
+function forecast(s, turns = 5) {
+  const f = flows(s);
+  let co2 = s.co2, temp = s.temp, tipped = s.tipped;
+  const ff = forestFrac(s);
+  const out = [];
+  for (let i = 0; i < turns; i++) {
+    co2 += f.co2 + (tipped ? 2.5 : 0) - sink(s, co2, ff);
+    temp += 0.15 * (eqTemp(co2) - temp);
+    if (temp >= s.tipThr) tipped = true;
+    out.push({ year: s.year + (i + 1) * YEARS_PER_TURN, temp, co2 });
+  }
+  return out;
+}
+function infoLevel(s) { return count(s, 'station'); }
+function tipRange(s) {
+  const n = infoLevel(s);
+  if (n === 0) return null;
+  const w = 0.9 / n;
+  const c = s.tipThr + s.tipOffset * w * 0.6;
+  return [c - w / 2, c + w / 2];
+}
+
+if (typeof module !== 'undefined') module.exports = { newGame, endTurn, place, demolish, flows, forecast, tileAt, B, COLS, ROWS, contributors, yieldMul, canPlace, tipRange, eqTemp, infoLevel };
+// ===== END ENGINE =====
+
+// ===== UI =====
+let S = newGame();
+let tool = null;
+const $ = id => document.getElementById(id);
+const fmt = (v, d = 0) => (Math.round(v * 10 ** d) / 10 ** d).toFixed(d);
+const sign = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1);
+const TOOL_ORDER = ['house', 'ecohouse', 'farm', 'agro', 'coal', 'gas', 'wind', 'solar', 'factory', 'workshop', 'reservoir', 'dike', 'reserve', 'reforest', 'station'];
+const GROUP_START = new Set(['farm', 'coal', 'factory', 'reservoir', 'station']);
+const FX = [['food', 'food'], ['energy', 'energy'], ['money', 'credits'], ['cap', 'homes'], ['co2', 'CO₂'], ['soil', 'soil'], ['water', 'water'], ['bio', 'wildlife'], ['happy', 'mood']];
+
+function stripeColor(t) {
+  // blue → white → red, Ed Hawkins style
+  const stops = [[0.6, [33, 102, 172]], [1.0, [146, 197, 222]], [1.4, [247, 247, 247]], [1.8, [244, 165, 130]], [2.3, [214, 96, 77]], [2.9, [178, 24, 43]], [3.6, [103, 0, 13]]];
+  if (t <= stops[0][0]) return `rgb(${stops[0][1]})`;
+  for (let i = 1; i < stops.length; i++) if (t <= stops[i][0]) {
+    const [t0, c0] = stops[i - 1], [t1, c1] = stops[i], k = (t - t0) / (t1 - t0);
+    return `rgb(${c0.map((c, j) => Math.round(c + (c1[j] - c) * k))})`;
+  }
+  return `rgb(${stops.at(-1)[1]})`;
+}
+
+function renderTools() {
+  const box = $('toolList'); box.innerHTML = '';
+  for (const k of [...TOOL_ORDER, 'remove']) {
+    const d = k === 'remove' ? { name: 'Remove', icon: '✕', cost: 5 } : B[k];
+    const b = document.createElement('button');
+    b.className = 'tool' + (GROUP_START.has(k) || k === 'remove' ? ' sep' : '') + (S.money < d.cost ? ' poor' : '');
+    b.setAttribute('aria-pressed', tool === k);
+    b.innerHTML = `<span class="ic">${d.icon}</span><span class="nm">${d.name}</span><span class="cost">${d.cost}</span>`;
+    b.title = d.name;
+    b.onclick = () => { tool = tool === k ? null : k; renderAll(); };
+    b.onmouseenter = () => detail(k); b.onfocus = () => detail(k);
+    box.appendChild(b);
+  }
+  detail(tool);
+}
+function detail(k) {
+  const el = $('toolDetail');
+  if (!k) { el.innerHTML = 'Choose a building to see what it does.'; return; }
+  if (k === 'remove') { el.innerHTML = '<b>Remove</b>Clear a building for 5 credits. Closing plants, farms or factories costs jobs and mood.'; return; }
+  const d = B[k];
+  const fx = FX.filter(([f]) => d[f]).map(([f, l]) => {
+    const good = f === 'co2' ? d[f] < 0 : d[f] > 0;
+    return `<span class="${good ? 'p' : 'n'}">${l} ${d[f] > 0 ? '+' : ''}${d[f]}</span>`;
+  });
+  if (d.hillBonus) fx.push(`<span class="p">+${d.hillBonus} energy on hills</span>`);
+  if (d.upkeep) fx.push(`<span class="n">upkeep ${d.upkeep}</span>`);
+  el.innerHTML = `<b>${d.icon} ${d.name}</b>${d.desc}<div class="fx">${fx.join('')}</div><div class="fx">Cost ${d.cost} credits · per 5 years</div>`;
+}
+
+function renderMap() {
+  const m = $('map'); m.innerHTML = '';
+  m.classList.toggle('placing', !!tool);
+  for (const t of S.map) {
+    const b = document.createElement('button');
+    b.className = `tile ${t.type}`;
+    b.dataset.i = t.y * COLS + t.x;
+    if (t.b) b.textContent = B[t.b.type].icon;
+    if (t.b && t.b.type === 'reforest') b.innerHTML += `<span class="age">${3 - t.b.age}</span>`;
+    if (tool) {
+      const ok = tool === 'remove' ? (t.b && S.money >= 5) : !canPlace(S, t, tool);
+      b.classList.add(ok ? 'ok' : 'no');
+    }
+    if (t.type === 'sea') b.tabIndex = -1;
+    b.setAttribute('aria-label', tileText(t));
+    b.onmouseenter = b.onfocus = () => { $('hoverInfo').textContent = tileText(t, true); };
+    b.onclick = () => clickTile(t, b);
+    m.appendChild(b);
+  }
+}
+function tileText(t, withTool) {
+  let s = TILE[t.type].name;
+  if (t.b) s += t.b.type === 'reforest' ? ` · matures in ${(3 - t.b.age) * 5} years` : ` · ${B[t.b.type].name}, built ${t.b.built}`;
+  if (t.type === 'coast') s += ' · low-lying, exposed to rising seas';
+  if (t.type === 'wetland') s += ' · soaks up floods; building here drains it';
+  if (t.type === 'forest') s += ' · stores carbon; building here clears it';
+  if (withTool && tool) {
+    const err = tool === 'remove' ? (t.b ? (S.money < 5 ? 'Needs 5 credits' : null) : 'Nothing to remove here') : canPlace(S, t, tool);
+    s += err ? ` — ${err}.` : ` — click to ${tool === 'remove' ? 'remove' : 'build ' + B[tool].name.toLowerCase()}.`;
+  }
+  return s;
+}
+function clickTile(t, el) {
+  if (!tool || S.over || t.type === 'sea') return;
+  const err = tool === 'remove' ? demolish(S, t) : place(S, t, tool);
+  if (err) { $('hoverInfo').textContent = err + '.'; return; }
+  if (S.money < (tool === 'remove' ? 5 : B[tool].cost)) tool = null;
+  renderAll(1);
+  const nb = $('map').children[t.y * COLS + t.x]; nb && nb.focus();
+}
+
+function renderStripes() {
+  const box = $('stripes'), fs = $('fstrip'); box.innerHTML = ''; fs.innerHTML = '';
+  const fc = forecast(S, MAX_TURNS - S.turn);
+  for (let i = 0; i <= MAX_TURNS; i++) {
+    const d = document.createElement('div'), e = document.createElement('div');
+    if (i < S.history.length) d.style.background = stripeColor(S.history[i].temp);
+    else { d.className = 'empty'; if (!S.over && fc[i - S.history.length]) e.style.background = stripeColor(fc[i - S.history.length].temp); }
+    box.appendChild(d); fs.appendChild(e);
+  }
+  $('year').textContent = S.year;
+  $('tempBig').textContent = `+${fmt(S.temp, 2)} °C`;
+  $('endTurn').disabled = S.over;
+}
+
+function renderSociety() {
+  const f = flows(S);
+  const food = f.food * yieldMul(S), fd = food - f.foodNeed, en = f.energyProd - f.energyUse;
+  const inc = f.tax + f.money - f.upkeep;
+  const rows = [
+    ['Population', `${fmt(S.pop)}k <span class="d">of ${f.cap}k homes</span>`, S.pop > f.cap],
+    ['Food', `${fmt(food)} <span class="d ${fd < 0 ? 'bad' : 'good'}">${sign(fd)}</span>`, fd < 0],
+    ['Energy', `${fmt(f.energyProd)} <span class="d ${en < 0 ? 'bad' : 'good'}">${sign(en)}</span>`, en < 0],
+    ['Credits', `${fmt(S.money)} <span class="d ${inc < 0 ? 'bad' : 'good'}">${sign(inc)}/turn</span>`, S.money < 0],
+    ['Mood', `${fmt(S.happy)}%`, S.happy < 30],
+    ['Emissions', `${fmt(f.co2, 1)} ppm/turn`, f.co2 > 4],
+  ];
+  $('society').innerHTML = rows.map(([k, v, bad]) => `<dt>${k}</dt><dd class="${bad ? 'bad' : ''}">${v}</dd>`).join('');
+}
+
+function jitter(key) { let h = S.turn * 2654435761 + key.charCodeAt(0) * 97 + key.length * 131; h = (h ^ (h >>> 13)) >>> 0; return (h % 1000) / 1000 - 0.5; }
+function renderEco() {
+  const n = infoLevel(S);
+  $('ecoHint').textContent = n === 0 ? 'No monitoring stations: you only have a rough idea of how the land is doing.'
+    : `${n} monitoring station${n > 1 ? 's' : ''}: readings are ${n > 1 ? 'sharp' : 'approximate'}.`;
+  const items = [['Soil health', S.soil, 'soil'], ['Water reserves', S.water, 'water'], ['Biodiversity', S.bio, 'bio']];
+  $('eco').innerHTML = items.map(([label, v, k]) => {
+    const w = n === 0 ? 34 : 14 / n;
+    const c = clamp(v + jitter(k) * w * 0.6, 0, 100);
+    const lo = clamp(c - w / 2, 0, 100), hi = clamp(c + w / 2, 0, 100);
+    const txt = n === 0 ? (c > 65 ? 'Healthy' : c > 42 ? 'Stressed' : c > 22 ? 'Degraded' : 'Critical') : n >= 3 ? fmt(v) : `${fmt(lo)}–${fmt(hi)}`;
+    const col = c > 65 ? '#3F6E4A' : c > 42 ? '#C08A2E' : c > 22 ? '#D6604D' : '#B2182B';
+    return `<div class="meter"><div class="row"><span>${label}</span><span>${txt}</span></div>
+      <div class="bar"><i class="${n === 0 ? 'fuzzy' : ''}" style="left:${lo}%;width:${Math.max(2, hi - lo)}%;background:${col}"></i></div></div>`;
+  }).join('');
+}
+
+function renderClimate() {
+  const n = infoLevel(S);
+  const fc = forecast(S, 5);
+  $('climate').innerHTML = `<dt>CO₂</dt><dd>${fmt(S.co2)} ppm</dd>
+    <dt>Warming</dt><dd class="${S.temp > 2 ? 'bad' : ''}">+${fmt(S.temp, 2)} °C</dd>
+    <dt>Heading for</dt><dd>+${fmt(eqTemp(S.co2), 2)} °C</dd>
+    <dt>Sea level</dt><dd>+${fmt(S.sea * 100)} cm</dd>
+    <dt>Permafrost</dt><dd class="${S.tipped ? 'bad' : ''}">${S.tipped ? 'Thawing' : 'Frozen'}</dd>`;
+  const r = tipRange(S);
+  $('tipHint').textContent = S.tipped ? `The permafrost tipping point was crossed in ${S.tippedYear}. It now adds carbon every turn.`
+    : r ? `Your scientists place the permafrost tipping point between +${fmt(r[0], 2)} and +${fmt(r[1], 2)} °C. Forecast assumes today's emissions continue.`
+    : 'Somewhere ahead is a permafrost tipping point. Without monitoring stations, nobody can say where. Forecast assumes today\u2019s emissions continue.';
+  drawChart(fc, n, r);
+}
+
+function drawChart(fc, n, r) {
+  const c = $('chart'), g = c.getContext('2d'), W = c.width, H = c.height, P = { l: 52, r: 14, t: 16, b: 34 };
+  g.clearRect(0, 0, W, H);
+  const y0 = 2025, y1 = 2150, tMin = 0.8, tMax = Math.max(3.2, ...S.history.map(h => h.temp + 0.2));
+  const X = y => P.l + (y - y0) / (y1 - y0) * (W - P.l - P.r), Y = t => H - P.b - (t - tMin) / (tMax - tMin) * (H - P.t - P.b);
+  g.font = '20px Archivo, Arial'; g.fillStyle = '#51625F';
+  // tipping band
+  if (!S.tipped) {
+    const [a, b] = r || [1.5, 3.0];
+    g.fillStyle = r ? 'rgba(178,24,43,.16)' : 'rgba(178,24,43,.06)';
+    g.fillRect(P.l, Y(b), W - P.l - P.r, Y(a) - Y(b));
+    g.fillStyle = '#B2182B'; g.fillText(r ? 'tipping point' : 'tipping point?', P.l + 8, Y(b) + 22);
+  }
+  // grid
+  g.strokeStyle = '#D6DCD3'; g.lineWidth = 1; g.fillStyle = '#51625F';
+  for (let t = 1; t <= tMax; t += 0.5) { g.beginPath(); g.moveTo(P.l, Y(t)); g.lineTo(W - P.r, Y(t)); g.stroke(); g.fillText(`${t.toFixed(1)}°`, 4, Y(t) + 7); }
+  for (let y = 2050; y <= 2150; y += 50) g.fillText(y, X(y) - 24, H - 8);
+  // forecast band
+  const sd = 0.6 / (1 + n);
+  const pts = [{ year: S.year, temp: S.temp }, ...fc];
+  if (!S.over) {
+    g.fillStyle = 'rgba(33,102,172,.15)'; g.beginPath();
+    pts.forEach((p, i) => { const e = sd * i / fc.length; g.lineTo(X(p.year), Y(p.temp + e)); });
+    [...pts].reverse().forEach((p, i) => { const e = sd * (pts.length - 1 - i) / fc.length; g.lineTo(X(p.year), Y(p.temp - e)); });
+    g.fill();
+    g.setLineDash([8, 6]); g.strokeStyle = '#2166AC'; g.lineWidth = 3; g.beginPath();
+    pts.forEach(p => g.lineTo(X(p.year), Y(p.temp))); g.stroke(); g.setLineDash([]);
+  }
+  // history
+  g.strokeStyle = '#1B2B30'; g.lineWidth = 4; g.beginPath();
+  S.history.forEach(h => g.lineTo(X(h.year), Y(h.temp))); g.stroke();
+}
+
+let seenLog = 0;
+function renderLog(fresh) {
+  const n = S.log.length - seenLog;
+  $('log').innerHTML = S.log.slice(0, 80).map((l, i) =>
+    `<li class="${l.kind}${fresh && i < n ? ' fresh' : ''}"><span class="y">${l.year}</span><span>${l.text}</span></li>`).join('');
+  seenLog = S.log.length;
+}
+
+function renderAll(fresh) { renderStripes(); renderTools(); renderMap(); renderSociety(); renderEco(); renderClimate(); renderLog(fresh); }
+
+$('endTurn').onclick = () => {
+  if (S.over) return;
+  const before = S.map.map(t => t.b && t.b.id + t.type);
+  endTurn(S);
+  renderAll(true);
+  S.map.forEach((t, i) => { if (before[i] && before[i] !== (t.b && t.b.id + t.type) && !(t.type === 'forest')) $('map').children[i].classList.add('flash'); });
+  if (S.over) setTimeout(showRecap, 700);
+};
+
+function showRecap() {
+  const r = S.result, c = contributors(S, 5);
+  const heading = r.kind === 'end' ? `${S.year}. Your society endured.` : r.kind === 'revolt' ? `${S.year}. Revolt.` : `${S.year}. Collapse.`;
+  const peak = eqTemp(S.co2);
+  const lesson = peak > S.temp + 0.05
+    ? `Even if every emission stopped today, warming would keep climbing toward +${fmt(peak, 2)} °C as the planet catches up with the carbon already in the air. Much of what future players suffer was decided decades before they arrive.`
+    : `Warming has caught up with the carbon in the air and is starting to ease. The choices that made that possible were made decades ago.`;
+  $('recap').innerHTML = `
+    <div class="rhead"><h3>${heading}</h3><p>${r.text} Final warming +${fmt(S.temp, 2)} °C · population ${fmt(S.pop)}k · mood ${fmt(S.happy)}%${r.kind === 'end' ? ` · score ${r.score}` : ''}</p></div>
+    <section><p class="lesson">${lesson}</p></section>
+    <section><h2>Where the carbon came from</h2>
+      ${c.map(l => `<div class="src"><span>${l.type === 'clearing' ? 'Forest clearings' : `${l.name}, ${l.built}${l.removed ? '–' + l.removed : ''}`}</span>
+        <div class="bar"><i style="width:${Math.round(l.share * 100 / c[0].share)}%"></i></div><span>${Math.round(l.share * 100)}%</span></div>`).join('') || '<p class="hint">Almost none. Remarkable.</p>'}
+    </section>
+    <section><h2>How it unfolded</h2><ol>${S.timeline.map(t => `<li class="${t.kind}"><span class="y">${t.year}</span><span>${t.text}</span></li>`).join('')}</ol></section>`;
+  $('endDialog').showModal();
+}
+$('again').onclick = () => { $('endDialog').close(); S = newGame(); tool = null; seenLog = 0; renderAll(); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && tool) { tool = null; renderAll(); } });
+
+renderAll();
+
+</script>
+</body></html>
