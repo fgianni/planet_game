@@ -1,7 +1,9 @@
-# ADR 0001: Primal triangular icosphere cells
+# ADR 0002: Primal triangular icosphere cells
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-09-23
+- Superseded: 2026-09-25 by
+  [`ADR-0002 — Mesh topology, resolution policy and field layout`](../../adrs/ADR-0002-mesh-and-field-layout.md)
 - Milestone: P0 / M0
 
 ## Context

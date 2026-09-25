@@ -1,6 +1,6 @@
 # Planetary Civilization Simulator --- Development Specification
 
-Version: 0.1\
+Version: 0.2 (reconciled with design v0.4)\
 Purpose: implementation contract for Codex / Claude Code\
 Primary target: PC/Linux, C++20 + Godot 4\
 Current phase: P0 --- Living Planet
@@ -173,32 +173,33 @@ implement them during P0 unless required by an explicit task.
 
 Use an icosphere.
 
-Target P0 reference resolution:
+P0 resolution policy:
 
--   subdivision level L6;
--   81,920 triangular surface cells;
+-   development resolution L5 with 10,242 dual surface cells;
+-   shipped/reference resolution L6 with 40,962 dual surface cells;
 -   atmosphere initially designed for 3--5 vertical layers;
 -   lower resolutions must be supported for tests and debugging.
+
+The accepted simulation mesh is the hexagonal--pentagonal dual of the
+subdivided icosahedron. Its cells are centred on primal vertices; exactly
+twelve cells are pentagons and the remainder are hexagons.
 
 For an icosphere:
 
 ``` text
-faces = 20 * 4^L
+primal_faces = 20 * 4^L
+dual_cells = 10 * 4^L + 2
 ```
 
-Each surface cell needs at minimum:
+Each dual surface cell needs at minimum a stable ID, center, area, local
+tangent basis, and a range into immutable edge/topology arrays. Each edge
+stores its neighbour, length, centroid distance, and outward normal in the
+cell's local basis. Neighbour and edge topology use the CSR layout defined by
+ADR-0002.
 
-``` cpp
-CellId id;
-Vec3d center_unit;
-double area_m2;
-std::array<CellId, 3> neighbors;
-std::array<double, 3> edge_length_m;
-```
-
-If the implementation uses a dual mesh or changes neighbor count,
-document the decision in an ADR before propagating the assumption
-through the solver.
+The mesh, resolution policy, field layout, precision, ordering, and
+deterministic block decomposition are governed by accepted
+`adrs/ADR-0002-mesh-and-field-layout.md`.
 
 Geometry/connectivity must be immutable after initialization and
 separate from evolving state.
@@ -297,17 +298,21 @@ Conceptual cadence:
 
 The scheduler must make subsystem cadence explicit.
 
-Reference physics and accelerated game-time physics are separate
-concerns.
+Reference physics and accelerated game-time physics are separate concerns.
+The three explicit modes are:
 
-Reference mode: - conservative; - deterministic; - numerically stable; -
-validation baseline.
+-   reference mode: explicit weather, conservative small timesteps, and the
+    validation/calibration baseline;
+-   climate mode: the normal gameplay path, using long or implicit steps and
+    statistical weather while conserving climate-scale budgets;
+-   weather windows: bounded explicit regional/temporal runs seeded from
+    climate-mode state.
 
-Accelerated mode may: - increase timestep; - reduce weather update
-frequency; - use reduced-order approximations.
-
-It must still preserve climate-scale budgets within documented
-tolerances.
+All modes share physical time, planetary coordinates, units, and diagnostics.
+Starting at M3, climate mode must target at least 20 simulated years per
+wall-clock minute at L5 and 5 at L6; a 250-year headless CI scenario must
+complete in under ten minutes. A regional weather window should run a season
+in real time or faster. See ADR 0001.
 
 ## 9. Required planetary couplings
 
@@ -538,16 +543,25 @@ Godot.
 
 ### M1 --- Orbit, sun, day/night and seasons
 
-Deliver: - rotation axis; - rotation period; - orbital phase; - axial
-tilt; - solar direction; - top-of-atmosphere insolation; - day/night; -
-seasonal variation.
+Deliver: - inertial, body-fixed and local tangent coordinate concepts; -
+rotation axis and sidereal period; - fixed Keplerian orbital elements; -
+numerical Kepler-equation solution; - orbital distance and inverse-square
+stellar flux; - axial tilt; - solar direction; - top-of-atmosphere
+insolation; - day/night; - seasonal variation; - stable local East/North/Up
+bases.
 
 Default Earth-like parameters: - radius \~6,371 km; - day \~24 h; -
-axial tilt \~23.44 deg; - year \~365 days; - solar constant \~1361 W/m2.
+mass \~5.9722e24 kg; - axial tilt \~23.44 deg; - year \~365 days; -
+semi-major axis \~1 AU; - eccentricity \~0.0167; - incident flux near
+1 AU \~1361 W/m2.
 
 Acceptance: - zero night-side insolation; - equinox symmetry; - solstice
-hemisphere asymmetry; - annual global-mean incoming solar approximately
-S0/4 for circular orbit.
+hemisphere asymmetry; - correct day/night progression; - inverse-square
+distance forcing; - annual global-mean incoming solar approximately S0/4
+for circular orbit; - finite orthonormal right-handed local tangent bases.
+
+The implementation conventions, derived-state ownership, numerical
+approximation, and test matrix are defined in `docs/M1_TECHNICAL_SPEC.md`.
 
 ### M2 --- Terrain and ocean mask
 
@@ -829,7 +843,7 @@ For each requested milestone:
 13. Record significant architecture choices in `docs/decisions/`.
 14. Keep commits milestone-sized and understandable.
 
-## 21. First development task
+## 21. First development task (completed)
 
 Start with **M0 only**.
 
@@ -877,6 +891,11 @@ Add tests for L0 through at least L6.
 
 Only after M0 is clean, tested and reviewed should development proceed
 to M1.
+
+The original primal-mesh M0 was completed and reviewed on 2026-09-23.
+ADR-0002 was accepted on 2026-09-25 and supersedes that representation, so
+M0 mesh infrastructure and mesh-dependent M1 work require migration and
+revalidation before M1 is complete. Do not begin M2 as part of this migration.
 
 ## 22. Definition of done for M0
 

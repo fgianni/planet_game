@@ -9,9 +9,10 @@ implementation contract and architecture source of truth.
 
 P0 --- Living Planet.
 
-Current milestone: **M0 --- Icosphere and simulation skeleton**.
+Current milestone: **M1 --- Orbit, sun, day/night and seasons**.
 
-Do not implement later milestones unless explicitly requested.
+M0 is complete. Do not implement M2 or later milestones unless explicitly
+requested.
 
 ## Hard rules
 
