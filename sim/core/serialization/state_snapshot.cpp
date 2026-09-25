@@ -7,8 +7,8 @@ namespace planetsim {
 
 StateSnapshot make_state_snapshot(const PlanetState& state, const SimulationClock& clock) {
     StateSnapshot snapshot;
+    snapshot.simulation_tick = clock.tick();
     snapshot.simulation_time_s = clock.time_s();
-    snapshot.step_count = clock.step_count();
     const auto& forcing = state.forcing();
     snapshot.rotation_angle_rad = forcing.orbit.rotation_angle_rad;
     snapshot.orbital_phase_rad = forcing.orbit.orbital_phase_rad;
@@ -22,8 +22,8 @@ StateSnapshot make_state_snapshot(const PlanetState& state, const SimulationCloc
     snapshot.sun_direction_body_unit = forcing.orbit.sun_direction_body_unit;
     snapshot.top_of_atmosphere_insolation_W_m2.reserve(
         forcing.top_of_atmosphere_insolation_W_m2.size());
-    for (const double value : forcing.top_of_atmosphere_insolation_W_m2.values()) {
-        snapshot.top_of_atmosphere_insolation_W_m2.push_back(static_cast<float>(value));
+    for (const float value : forcing.top_of_atmosphere_insolation_W_m2.values()) {
+        snapshot.top_of_atmosphere_insolation_W_m2.push_back(value);
     }
     return snapshot;
 }

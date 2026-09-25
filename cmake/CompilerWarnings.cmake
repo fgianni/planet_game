@@ -1,6 +1,6 @@
 function(planetsim_set_project_warnings target)
     if(MSVC)
-        target_compile_options(${target} PRIVATE /W4 /permissive-)
+        target_compile_options(${target} PRIVATE /W4 /permissive- /fp:strict)
         if(PLANETSIM_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE /WX)
         endif()
@@ -14,6 +14,7 @@ function(planetsim_set_project_warnings target)
             -Wshadow
             -Wold-style-cast
             -Wnon-virtual-dtor
+            -ffp-contract=off
         )
         if(PLANETSIM_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE -Werror)

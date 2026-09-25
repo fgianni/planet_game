@@ -1,6 +1,9 @@
 #pragma once
 
 #include "sim/core/math/vec3d.hpp"
+#include "sim/core/scheduler/simulation_clock.hpp"
+
+#include <cstddef>
 
 namespace planetsim {
 
@@ -15,6 +18,6 @@ struct PlanetParameters;
                                                        double incident_solar_flux_W_m2) noexcept;
 
 void update_solar_forcing(PlanetState& state, const PlanetParameters& parameters,
-                          double simulation_time_s);
+                          SimulationTick tick, std::size_t worker_count = 1U);
 
 }  // namespace planetsim

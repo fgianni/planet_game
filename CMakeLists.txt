@@ -17,6 +17,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(cmake/CompilerWarnings.cmake)
+find_package(Threads REQUIRED)
 
 add_library(PlanetSim STATIC
     sim/core/serialization/state_snapshot.cpp
@@ -37,6 +38,7 @@ target_include_directories(PlanetSim
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 )
+target_link_libraries(PlanetSim PUBLIC Threads::Threads)
 set_target_properties(PlanetSim PROPERTIES POSITION_INDEPENDENT_CODE ON)
 planetsim_set_project_warnings(PlanetSim)
 planetsim_enable_sanitizers(PlanetSim)
@@ -60,7 +62,7 @@ if(PLANETSIM_BUILD_TESTS)
     )
     set_tests_properties(
         planet_cli_mesh_smoke
-        PROPERTIES PASS_REGULAR_EXPRESSION "cell_count: 20"
+        PROPERTIES PASS_REGULAR_EXPRESSION "cell_count: 12"
     )
     set_tests_properties(
         planet_cli_solar_smoke

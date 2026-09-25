@@ -1,6 +1,8 @@
 #pragma once
 
+#include "sim/core/fields/field_registry.hpp"
 #include "sim/core/math/vec3d.hpp"
+#include "sim/core/scheduler/simulation_clock.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -8,14 +10,12 @@
 namespace planetsim {
 
 class PlanetState;
-class SimulationClock;
-
-inline constexpr std::uint32_t state_snapshot_schema_version = 1;
+inline constexpr std::uint32_t state_snapshot_schema_version = 2;
 
 struct StateSnapshot {
     std::uint32_t schema_version = state_snapshot_schema_version;
+    SimulationTick simulation_tick = 0;
     double simulation_time_s = 0.0;
-    std::uint64_t step_count = 0;
     double rotation_angle_rad = 0.0;
     double orbital_phase_rad = 0.0;
     double eccentric_anomaly_rad = 0.0;
@@ -26,6 +26,7 @@ struct StateSnapshot {
     double incident_solar_flux_W_m2 = 0.0;
     Vec3d sun_direction_inertial_unit{1.0, 0.0, 0.0};
     Vec3d sun_direction_body_unit{1.0, 0.0, 0.0};
+    FieldId top_of_atmosphere_insolation_field_id = FieldId::top_of_atmosphere_insolation_W_m2;
     std::vector<float> top_of_atmosphere_insolation_W_m2;
 };
 

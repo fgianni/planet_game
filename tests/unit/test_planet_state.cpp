@@ -14,19 +14,21 @@ int main() {
 
     auto mesh = std::make_shared<const planetsim::PlanetMesh>(planetsim::make_icosphere(0, 1.0));
     planetsim::PlanetState state(mesh);
-    PLANETSIM_EXPECT(test, state.mesh().cell_count() == 20);
-    PLANETSIM_EXPECT(test, state.forcing().top_of_atmosphere_insolation_W_m2.size() == 20);
+    PLANETSIM_EXPECT(test, state.mesh().cell_count() == 12);
+    PLANETSIM_EXPECT(test, state.forcing().top_of_atmosphere_insolation_W_m2.size() == 12);
     PLANETSIM_EXPECT_NEAR(test, state.forcing().top_of_atmosphere_insolation_W_m2[0], 0.0, 0.0);
 
     planetsim::SimulationClock clock;
-    clock.advance(15.0);
+    clock.advance_ticks(15);
     const auto parameters = planetsim::PlanetParameters::earth_development();
-    planetsim::update_solar_forcing(state, parameters, clock.time_s());
+    planetsim::update_solar_forcing(state, parameters, clock.tick());
     const auto snapshot = planetsim::make_state_snapshot(state, clock);
     PLANETSIM_EXPECT(test, snapshot.schema_version == planetsim::state_snapshot_schema_version);
-    PLANETSIM_EXPECT_NEAR(test, snapshot.simulation_time_s, 15.0, 0.0);
-    PLANETSIM_EXPECT(test, snapshot.step_count == 1);
-    PLANETSIM_EXPECT(test, snapshot.top_of_atmosphere_insolation_W_m2.size() == 20);
+    PLANETSIM_EXPECT(test, snapshot.simulation_tick == 15);
+    PLANETSIM_EXPECT_NEAR(test, snapshot.simulation_time_s, 900.0, 0.0);
+    PLANETSIM_EXPECT(test, snapshot.top_of_atmosphere_insolation_field_id ==
+                               planetsim::FieldId::top_of_atmosphere_insolation_W_m2);
+    PLANETSIM_EXPECT(test, snapshot.top_of_atmosphere_insolation_W_m2.size() == 12);
     PLANETSIM_EXPECT_NEAR(test, snapshot.rotation_angle_rad,
                           state.forcing().orbit.rotation_angle_rad, 0.0);
     PLANETSIM_EXPECT_NEAR(test, snapshot.orbital_phase_rad, state.forcing().orbit.orbital_phase_rad,
@@ -39,7 +41,7 @@ int main() {
                           state.forcing().orbit.sun_direction_body_unit.x, 0.0);
 
     const float copied_insolation = snapshot.top_of_atmosphere_insolation_W_m2[0];
-    state.forcing().top_of_atmosphere_insolation_W_m2[0] = 0.0;
+    state.forcing().top_of_atmosphere_insolation_W_m2[0] = 0.0F;
     PLANETSIM_EXPECT_NEAR(test, snapshot.top_of_atmosphere_insolation_W_m2[0], copied_insolation,
                           0.0);
     PLANETSIM_EXPECT_THROWS(test, std::invalid_argument,

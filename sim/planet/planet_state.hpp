@@ -11,7 +11,7 @@ namespace planetsim {
 struct ForcingState {
     OrbitState orbit;
     double incident_solar_flux_W_m2 = 0.0;
-    Field<double> top_of_atmosphere_insolation_W_m2;
+    Field2D<float> top_of_atmosphere_insolation_W_m2;
 };
 
 class PlanetState {

@@ -6,9 +6,12 @@
 #include "sim/planet/planet_state.hpp"
 #include "tests/test_support.hpp"
 
+#include <array>
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <numbers>
+#include <stdexcept>
 
 int main() {
     planetsim::test::Context test;
@@ -39,13 +42,17 @@ int main() {
     PLANETSIM_EXPECT_NEAR(test, north_equinox_flux, south_equinox_flux, geometry_tolerance);
 
     auto parameters = planetsim::PlanetParameters::earth_development();
-    parameters.mesh_subdivision = 2;
+    // L5 has 41 fixed logical blocks, so the 2/8/16-worker cases below all
+    // exercise genuinely concurrent execution rather than collapsing to one worker.
+    parameters.mesh_subdivision = 5;
     parameters.eccentricity = 0.0;
     auto mesh = std::make_shared<const planetsim::PlanetMesh>(
         planetsim::make_icosphere(parameters.mesh_subdivision, parameters.radius_m));
     planetsim::PlanetState state(mesh);
-    const double northern_solstice_time_s = 0.25 * parameters.orbital_period_s;
-    planetsim::update_solar_forcing(state, parameters, northern_solstice_time_s);
+    const auto northern_solstice_tick = static_cast<planetsim::SimulationTick>(
+        std::llround(0.25 * parameters.orbital_period_s /
+                     static_cast<double>(planetsim::simulation_seconds_per_tick)));
+    planetsim::update_solar_forcing(state, parameters, northern_solstice_tick, 1U);
 
     const auto& sun = state.forcing().orbit.sun_direction_body_unit;
     const double horizontal_length = std::hypot(sun.x, sun.y);
@@ -77,15 +84,42 @@ int main() {
     PLANETSIM_EXPECT(test,
                      diagnostics.max_insolation_W_m2 <= state.forcing().incident_solar_flux_W_m2);
 
-    planetsim::PlanetState repeated_state(mesh);
-    planetsim::update_solar_forcing(repeated_state, parameters, northern_solstice_time_s);
-    PLANETSIM_EXPECT(test, state.forcing().orbit.sun_direction_body_unit.x ==
-                               repeated_state.forcing().orbit.sun_direction_body_unit.x);
-    for (std::size_t index = 0; index < mesh->cell_count(); ++index) {
-        PLANETSIM_EXPECT(test,
-                         state.forcing().top_of_atmosphere_insolation_W_m2[index] ==
-                             repeated_state.forcing().top_of_atmosphere_insolation_W_m2[index]);
+    const auto single_thread_diagnostics = planetsim::analyze_solar_forcing(state, 1U);
+    for (const std::size_t worker_count : std::array<std::size_t, 3>{2U, 8U, 16U}) {
+        planetsim::PlanetState repeated_state(mesh);
+        planetsim::update_solar_forcing(repeated_state, parameters, northern_solstice_tick,
+                                        worker_count);
+        PLANETSIM_EXPECT(test, state.forcing().orbit.sun_direction_body_unit.x ==
+                                   repeated_state.forcing().orbit.sun_direction_body_unit.x);
+        for (std::size_t index = 0; index < mesh->cell_count(); ++index) {
+            PLANETSIM_EXPECT(test,
+                             state.forcing().top_of_atmosphere_insolation_W_m2[index] ==
+                                 repeated_state.forcing().top_of_atmosphere_insolation_W_m2[index]);
+        }
+        const auto threaded_diagnostics =
+            planetsim::analyze_solar_forcing(repeated_state, worker_count);
+        PLANETSIM_EXPECT(test, single_thread_diagnostics.total_incoming_power_W ==
+                                   threaded_diagnostics.total_incoming_power_W);
+        PLANETSIM_EXPECT(test, single_thread_diagnostics.global_mean_insolation_W_m2 ==
+                                   threaded_diagnostics.global_mean_insolation_W_m2);
+        PLANETSIM_EXPECT(test, single_thread_diagnostics.relative_global_mean_error ==
+                                   threaded_diagnostics.relative_global_mean_error);
     }
+
+    planetsim::SimulationClock direct_clock;
+    direct_clock.set_tick(northern_solstice_tick);
+    planetsim::SimulationClock batched_clock;
+    const auto quarter_ticks = northern_solstice_tick / 4;
+    batched_clock.advance_ticks(quarter_ticks);
+    batched_clock.advance_ticks(quarter_ticks);
+    batched_clock.advance_ticks(quarter_ticks);
+    batched_clock.advance_ticks(northern_solstice_tick - 3 * quarter_ticks);
+    PLANETSIM_EXPECT(test, direct_clock.tick() == batched_clock.tick());
+
+    planetsim::PlanetState invalid_worker_state(mesh);
+    PLANETSIM_EXPECT_THROWS(test, std::invalid_argument,
+                            planetsim::update_solar_forcing(invalid_worker_state, parameters,
+                                                            northern_solstice_tick, 0U));
 
     return test.result();
 }

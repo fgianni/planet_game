@@ -27,6 +27,7 @@ struct SolarDiagnostics {
     }
 };
 
-[[nodiscard]] SolarDiagnostics analyze_solar_forcing(const PlanetState& state);
+[[nodiscard]] SolarDiagnostics analyze_solar_forcing(const PlanetState& state,
+                                                     std::size_t worker_count = 1U);
 
 }  // namespace planetsim

@@ -36,12 +36,15 @@ int main() {
 
     const auto mesh = planetsim::make_icosphere(4, 6'371'000.0);
     for (const auto& cell : mesh.cells()) {
-        const auto basis = planetsim::make_local_tangent_basis(cell.center_unit);
-        PLANETSIM_EXPECT(test, planetsim::is_finite(basis.east_unit));
-        PLANETSIM_EXPECT(test, planetsim::is_finite(basis.north_unit));
-        PLANETSIM_EXPECT(test, planetsim::is_finite(basis.up_unit));
-        PLANETSIM_EXPECT_NEAR(test, planetsim::dot(basis.east_unit, basis.north_unit), 0.0,
+        PLANETSIM_EXPECT(test, planetsim::is_finite(cell.east_unit));
+        PLANETSIM_EXPECT(test, planetsim::is_finite(cell.north_unit));
+        PLANETSIM_EXPECT(test, planetsim::is_finite(cell.center_unit));
+        PLANETSIM_EXPECT_NEAR(test, planetsim::dot(cell.east_unit, cell.north_unit), 0.0,
                               tolerance);
+        PLANETSIM_EXPECT_NEAR(
+            test,
+            planetsim::dot(planetsim::cross(cell.east_unit, cell.north_unit), cell.center_unit),
+            1.0, tolerance);
     }
 
     PLANETSIM_EXPECT_THROWS(test, std::invalid_argument,

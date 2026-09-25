@@ -28,7 +28,9 @@ int main() {
     for (std::size_t sample = 0; sample < samples_per_orbit; ++sample) {
         const double time_s = (static_cast<double>(sample) + 0.5) /
                               static_cast<double>(samples_per_orbit) * parameters.orbital_period_s;
-        planetsim::update_solar_forcing(state, parameters, time_s);
+        const auto tick = static_cast<planetsim::SimulationTick>(
+            std::llround(time_s / static_cast<double>(planetsim::simulation_seconds_per_tick)));
+        planetsim::update_solar_forcing(state, parameters, tick);
         const auto diagnostics = planetsim::analyze_solar_forcing(state);
         PLANETSIM_EXPECT(test, diagnostics.forcing_valid());
         PLANETSIM_EXPECT(test, diagnostics.relative_global_mean_error <=
