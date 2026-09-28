@@ -20,7 +20,8 @@
 - G1-M1 is complete: integer ticks, a stable field registry, and keyed random
   streams are implemented and tested.
 - G2-M0 is complete: the dual mesh passes V1/V2 through L6. G2-M2 (finite-
-  volume operators and V3/V4) remains future work.
+  volume operators and V3/V4) was completed on 2026-09-28 as the first M2
+  gate, after amending ADR-0002 to a centroidal Voronoi mesh.
 - G3-M1 is complete: aligned field containers, fixed logical blocks, fixed
   block-index solar reductions, compiler flags, 1/2/8/16-worker bit identity,
   memory gates, and the V7 benchmark are in place. Command replay and
@@ -117,8 +118,8 @@ symmetry, exactly 12 pentagons, every edge shared by two cells). **Status:
 complete through L6.**
 
 **Gate G2-M2:** V3/V4 operator accuracy and conservation, including the
-spherical-harmonic error map as a CI artifact. **Status: future work; do not
-start as part of this migration.**
+spherical-harmonic error map as a CI artifact. **Status: complete
+(2026-09-28), started as the first M2 gate; see ADR-0002 §9.**
 
 ## Phase 3 — Field containers and M1 determinism (complete)
 

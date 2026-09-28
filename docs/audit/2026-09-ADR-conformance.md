@@ -42,12 +42,12 @@ pre-migration audit:
 | A2 | ✅ EVIDENCED | `CellGeometry` stores centre, area, and East/North basis, constructed once with the mesh (`sim/planet/mesh/planet_mesh.hpp:44-55`, `sim/planet/mesh/icosphere.cpp:238-250`). |
 | A3 | ✅ EVIDENCED | CSR cell incidences store neighbour, shared edge ID, and local outward normal; shared edges store length and centre distance (`sim/planet/mesh/planet_mesh.hpp:57-69`, `sim/planet/mesh/icosphere.cpp:281-340`). |
 | A4 | ✅ EVIDENCED | `CellGeometry::is_pentagon()` is queryable and topology tests require exactly 12 pentagons (`sim/planet/mesh/planet_mesh.hpp:54`, `tests/physics/test_icosphere.cpp:35-65`). |
-| A5 | NOT FOUND | Divergence and the finite-volume operator library are not implemented. ADR-0002 assigns them and V3/V4 to M2. |
+| A5 | ✅ EVIDENCED | *Updated 2026-09-28 (G2-M2).* Divergence of edge fluxes, least-squares gradient and two-point Laplacian (`sim/planet/operators/finite_volume.hpp`) on the amended centroidal Voronoi mesh. V3 (`tests/physics/test_operator_accuracy.cpp`) and V4 (`tests/conservation/test_operator_conservation.cpp`) pass; the error map is a CI artifact. |
 | A6 | ✅ EVIDENCED | Area closure and exact topology are tested from L0 through L6 (`tests/conservation/test_mesh_area.cpp`, `tests/physics/test_icosphere.cpp`). |
 
-Pentagons are not yet excluded from operator convergence statistics or scenario
-anchors because neither consuming system exists. Add those protections with
-the M2 operator and later scenario work.
+Pentagons are excluded from operator convergence statistics (G2-M2) and their
+errors are reported separately. Scenario anchors do not exist yet; add that
+protection with the scenario work.
 
 ## B. Field layout and parallelism
 
@@ -100,7 +100,7 @@ necessary with the persistent schema and additional field groups.
 | Phase 0 audit | ✅ EVIDENCED | The audit was committed at `6e91459` and is maintained here as the current evidence trail. |
 | G1-M1 | ✅ EVIDENCED | Integer time, keyed RNG, stable field IDs, uniqueness checks, and worker-independent RNG tests are complete. |
 | G2-M0 | ✅ EVIDENCED | V1/V2 dual-mesh geometry and topology are green through L6. |
-| G2-M2 | NOT FOUND | V3/V4 finite-volume operators and the error-map artifact are correctly deferred to M2. |
+| G2-M2 | ✅ EVIDENCED | *Updated 2026-09-28.* V3/V4 pass L3–L6 with the error map uploaded by CI. Required the ADR-0002 amendment to circumcentre corners and a centroidal Voronoi mesh; see ADR-0002 §9. |
 | G3-M1 | ✅ EVIDENCED | Field layout, fixed blocks, fixed block-index reductions, 1/2/8/16-worker forcing equality, memory gates, and V7 are green. |
 | G3-M3 | NOT FOUND | Full command replay and checkpoint state hashes are correctly deferred to M3. |
 | G4 | NOT FOUND | State partitions, simulation modes, multi-rate scheduling, years-per-minute harness, and state hashes are later work. |

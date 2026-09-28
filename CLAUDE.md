@@ -5,9 +5,8 @@ development specification. The design document is
 `docs/planetary_civilization_simulator_design_v0_4.docx`.
 
 Accepted ADRs in `docs/decisions/` take precedence where they conflict
-with the specification (notably ADR-0002: the mesh is the
-hexagonal--pentagonal dual, not the triangular cells described in the
-spec's section 5). `docs/DEVELOPMENT_SPEC.md` is a superseded
+with the specification (notably ADR-0002 on the mesh: a
+hexagonal--pentagonal centroidal Voronoi tessellation). `docs/DEVELOPMENT_SPEC.md` is a superseded
 reconciliation draft and is not authoritative.
 
 The specification defines the architecture, physical design, P0 roadmap,
@@ -15,15 +14,18 @@ validation strategy, and current implementation task for the Planetary
 Civilization Simulator.
 
 Most recently completed milestone: **P0 / M1 --- Orbit, sun, day/night and
-seasons**.
+seasons**. M2 is in progress: gate G2-M2 (finite-volume operators, ADR-0002
+V3/V4) is complete. Before terrain, present the coastline (binary vs
+fractional land) and drainage (cell mesh vs flow network) decisions from
+ADR-0002 §8.
 
 Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI
 units; - deterministic and testable implementation; - physical
 state/fluxes rather than scripted climate modifiers; - production code
-and tests together; - do not proceed to M2 unless explicitly requested.
+and tests together; - do not proceed to M3 unless explicitly requested.
 
 When starting work, first audit the repository and propose the concrete
-M1 implementation plan against the specification. Then implement in
+implementation plan for the current milestone against the specification. Then implement in
 small, reviewable steps and run the relevant tests after each coherent
 step.

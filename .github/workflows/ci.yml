@@ -55,6 +55,19 @@ jobs:
           ./build/planet_cli mesh --subdivision 6
           ./build/planet_cli solar --subdivision 5 --time-days 91.31055
 
+      - name: Operator validation (ADR-0002 V3/V4)
+        if: matrix.build_type == 'Release'
+        run: >
+          ./build/planet_cli operators --min-subdivision 2 --max-subdivision 6
+          --error-map operator_error_map_L6.csv
+
+      - name: Upload operator error map
+        if: matrix.build_type == 'Release' && matrix.compiler == 'gcc'
+        uses: actions/upload-artifact@v7
+        with:
+          name: operator-error-map
+          path: operator_error_map_L6.csv
+
   sanitizers:
     name: ASan+UBSan
     runs-on: ubuntu-24.04

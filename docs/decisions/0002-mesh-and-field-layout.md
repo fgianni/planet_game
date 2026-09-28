@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-23
 - **Accepted:** 2026-09-25
+- **Amended:** 2026-09-28 — §4.1 cell corners are circumcentres of a centroidal Voronoi tessellation; §4.2 least-squares gradient; §5 V3 for the Laplacian measured on discrete solutions (evidence in §9)
 - **Context document:** Planetary Civilization Simulator — Design Record v0.4, §15.1, §21
 - **Related:** ADR-0001 (time acceleration, simulation modes), ADR-0003 (determinism, snapshot schema, migration)
 - **Supersedes:** [`archive/0002-primal-triangular-icosphere.md`](archive/0002-primal-triangular-icosphere.md)
@@ -38,7 +39,9 @@ The design record specifies an icosphere and "approximately 81,920 surface cells
 
 ### 4.1 Mesh
 
-The simulation mesh is the **hexagonal–pentagonal dual of a subdivided icosahedron** (Goldberg polyhedron). Cells are centred on the vertices of the triangular mesh; triangle centroids become cell corners.
+The simulation mesh is the **hexagonal–pentagonal dual of a subdivided icosahedron** (Goldberg polyhedron). Cells are centred on the vertices of the triangular mesh; triangle **circumcentres** become cell corners, so the mesh is the Voronoi tessellation of its cell centres and every edge is the perpendicular bisector of the segment joining the two cells it separates.
+
+The cell centres form a **spherical centroidal Voronoi tessellation** (SCVT, as in MPAS): after each subdivision level, a fixed 20 Lloyd iterations move every centre to the area centroid of its cell, and the optimised level seeds the next. Topology, cell count and cell ordering are those of the plain subdivision; only positions change. *(Amended 2026-09-28: the accepted text used triangle centroids as corners; §9 records why that fails V3.)*
 
 | Level | Cells (hex + 12 pent) | Mean cell area | Mean spacing | Role |
 |---|---|---|---|---|
@@ -56,8 +59,8 @@ Each cell stores precomputed geometry, built once at load: area, centroid unit v
 Finite volume on the dual mesh:
 
 - **Divergence** from edge fluxes: `div(F)_i = (1/A_i) Σ_e F_e · n_e · l_e`. Mass, energy and tracer conservation is then exact up to rounding, which is what makes the budget checks of ADR-0001 V1 meaningful.
-- **Gradient** by Green–Gauss reconstruction over the cell edges, with a least-squares variant available for cells adjacent to pentagons.
-- **Laplacian** as divergence of gradient, using the two-point edge difference form — cheap, positive-definite, and the form already validated in the prototype.
+- **Gradient** by least-squares fit over the edge neighbours. On the Voronoi mesh the outward edge normal points at the neighbour, so the fit uses only the stored normals and centre distances. It is exact for linear fields on every cell. *(Amended 2026-09-28: Green–Gauss with a least-squares variant near pentagons was replaced by least squares everywhere; §9.)*
+- **Laplacian** as divergence of gradient, using the two-point edge difference form — cheap, conservative, negative semi-definite, and the form already validated in the prototype. Its pointwise truncation error does not vanish on the distorted hexagons next to the pentagons (about 1.2 % of the field's maximum), but discrete solutions computed with it converge at second order (§9).
 - **Tracer advection**: flux-form upwind with a slope limiter in reference mode; semi-Lagrangian with a conservative fixer in climate mode, where the long timestep makes flux-form unusable.
 
 The twelve pentagons are a known, bounded defect: operators there have a slightly different truncation error. They are tagged at build time, excluded from convergence statistics, and never used as scenario anchors (a civilization start site or a validation probe must not sit on one).
@@ -121,7 +124,7 @@ On the ADR-0001 open question — whether the counterfactual planet runs at redu
 |---|---|---|
 | V1 | Geometry closure: Σ cell areas = 4πR² | relative error < 1e-12 |
 | V2 | Topology: neighbour symmetry, edge counts, exactly 12 pentagons, every edge shared by two cells | exact |
-| V3 | Operator accuracy on analytic fields (spherical harmonics): gradient, divergence, Laplacian | error decreases with refinement at ≥ 1.5 order; no axis-aligned pattern in the error map |
+| V3 | Operator accuracy on analytic fields (spherical harmonics): gradient, divergence, Laplacian | area-weighted L2 error decreases with refinement at ≥ 1.5 order, pentagons excluded; maximum error converges; for the Laplacian, measured on the solution of the discrete Poisson problem; no axis-aligned pattern in the error map |
 | V4 | Divergence of a non-divergent field | ≤ rounding |
 | V5 | Conservative remap level 5 ↔ 6, round trip | mass and energy conserved to 1e-12; field RMS change reported |
 | V6 | Determinism: 1, 2, 8, 16 threads, same seed | bit-identical state |
@@ -173,5 +176,70 @@ sweep measured naive-to-ordered time ratios from 1.020 to 1.039 (median
 The recursive order is retained because it also reduces mean neighbor-index
 distance from about 10,388 to 395 at L6 and is the canonical order selected
 by this ADR; it should be reassessed against later bandwidth-bound operators.
-V1, V2, V6, and V8 are covered at M0/M1. Operator validation V3/V4 belongs to
-M2, and conservative remapping V5 belongs to M3.
+V1, V2, V6, and V8 are covered at M0/M1. V3 and V4 were completed at G2-M2
+(below); conservative remapping V5 belongs to M3.
+
+### G2-M2 operator validation (2026-09-28)
+
+With the corners at triangle centroids, as first accepted, V3 failed: the
+centre-to-centre segment is neither perpendicular to nor bisected by its edge.
+The two-point Laplacian's error grew with refinement (relative L2 0.11 at L2 to
+0.68 at L6), and Green–Gauss gradients kept a 14.5 % error at the pentagons,
+matching the predicted 1.146 geometric factor. Circumcentre corners alone fixed
+the pentagons, but the L2 orders fell towards 1 and the maximum Laplacian error
+stalled at 4.5 %, the known behaviour of an unoptimised icosahedral Voronoi
+grid. The SCVT above was adopted instead.
+
+Measured on the adopted mesh with a degree-2/3 harmonic field in a rotated
+frame (`planet_cli operators`, `tests/physics/test_operator_accuracy.cpp`):
+
+| Operator | L6 relative L2 | L5→L6 order, L2 / max | L6→L7 order, L2 / max |
+|---|---|---|---|
+| Least-squares gradient | 3.4e-4 | 1.98 / 1.06 | 1.98 / 1.05 |
+| Divergence of edge fluxes | 1.0e-4 | 2.00 / 1.29 | 2.00 / 1.16 |
+| Laplacian, Poisson solution | 1.5e-4 | 2.00 / 2.00 | 2.00 / 2.00 |
+| Laplacian, pointwise truncation (reported) | 4.9e-4 | 1.30 / 0.03 | 1.13 / 0.01 |
+
+V4: divergence of streamfunction fluxes is below 1e-16 of the flux scale at
+every level, and the global integral of the divergence of arbitrary fluxes is
+below 1e-17 of its gross value. Pentagon errors converge but stay excluded
+from the norms.
+
+The remaining pointwise errors concentrate in the first ring of hexagons
+around each pentagon (Laplacian about 1.2 % of the field's maximum, gradient
+about 2 % with Green–Gauss) and decay with distance from it. The error map
+(`planet_cli operators --error-map`, uploaded by CI) also shows a weaker
+seam along the icosahedron's 30 edges, where the subdivision changes
+orientation. Comparing cells within one spacing of a seam with the interior
+more than three spacings away (both at least eight spacings from any
+pentagon):
+
+| Seam max / interior max | L5 | L6 | L7 |
+|---|---|---|---|
+| Divergence | 1.03 | 1.00 | 1.02 |
+| Poisson solution | 1.01 | 1.00 | 0.99 |
+| Least-squares gradient | 1.04 | 1.15 | 1.30 |
+| Laplacian, pointwise | 1.20 | 1.65 | 3.58 |
+
+The seam is absent from the gated divergence and Poisson measures. It is
+mild in the gradient, whose seam error still converges (1.4e-3, 4.1e-4,
+1.6e-4), and it does not converge in the Laplacian's pointwise truncation
+(1.1e-3, 4.3e-4, 3.4e-4), the same inconsistency as next to the pentagons.
+It is unchanged with 200 Lloyd iterations per level, so it belongs to this
+mesh family rather than to incomplete optimisation.
+`tests/physics/test_operator_accuracy.cpp` asserts the pattern check at L5
+and L6: seam over interior at most 1.25 for divergence and Poisson solutions,
+at most 2 for the gradient, and a bound of 2e-3 on the Laplacian seam error.
+
+Green–Gauss gradients and a cell-to-edge vector reconstruction (mean of both
+cells' normal projections) share the pentagon-ring inconsistency, with
+maximum errors stalling at about 2 %. The gradient was therefore replaced,
+and the reconstruction was not adopted: where vector fields live (cell
+centres or edge normals) is left to the first milestone that transports
+momentum.
+
+Twenty Lloyd iterations per level match 100 iterations to three significant
+figures in the gated L2 errors (gradient, divergence, Poisson solution) at L5
+and L6; the pointwise Laplacian error moves by about 1 %. L6 generation takes
+about 0.5 s in an optimised build. Area closure is 1.2e-16, geometry memory is
+unchanged, and V7 remains 1.004–1.036 (median 1.021) over five L6 runs.

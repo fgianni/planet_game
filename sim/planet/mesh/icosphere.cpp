@@ -18,6 +18,11 @@ namespace {
 
 using PrimalFace = std::array<SourceVertexIndex, 3>;
 
+// Lloyd iterations applied after each subdivision. Each level starts from the
+// optimised parent level, so a small fixed count reaches operator accuracy
+// indistinguishable from a fully converged tessellation (ADR-0002 §9).
+inline constexpr std::uint32_t centroidal_iterations_per_level = 20;
+
 struct OrderedCorner {
     CornerIndex index = 0;
     double angle_rad = 0.0;
@@ -63,6 +68,53 @@ struct EdgeRecord {
         edge_conormal = edge_conormal * -1.0;
     }
     return normalized(edge_conormal - cell_center * dot(edge_conormal, cell_center));
+}
+
+// Circumcentre of a spherical triangle: the dual corner equidistant from its
+// three generators, so each dual edge is the perpendicular bisector of the
+// segment joining two cell centres.
+[[nodiscard]] Vec3d spherical_circumcenter(const Vec3d& first, const Vec3d& second,
+                                           const Vec3d& third) {
+    Vec3d center = normalized(cross(second - first, third - first));
+    if (dot(center, first + second + third) < 0.0) {
+        center = center * -1.0;
+    }
+    return center;
+}
+
+// Lloyd iterations towards a spherical centroidal Voronoi tessellation
+// (ADR-0002 §4.1). Every generator moves to the area-weighted centroid of its
+// Voronoi cell. Each cell is the union of one kite per incident triangle
+// (generator, edge midpoint, circumcentre, edge midpoint), which needs no
+// angular ordering while every triangle contains its circumcentre. Updates are
+// Jacobi-style in fixed face order with a fixed iteration count, so the result
+// is deterministic.
+void optimize_centroidal_voronoi(std::vector<Vec3d>& vertices,
+                                 const std::vector<PrimalFace>& faces,
+                                 std::uint32_t iterations) {
+    std::vector<Vec3d> weighted(vertices.size());
+    for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
+        std::fill(weighted.begin(), weighted.end(), Vec3d{});
+        for (const auto& face : faces) {
+            const Vec3d circumcenter = spherical_circumcenter(
+                vertices[face[0]], vertices[face[1]], vertices[face[2]]);
+            for (std::size_t corner = 0; corner < 3U; ++corner) {
+                const Vec3d& generator = vertices[face[corner]];
+                const Vec3d& next = vertices[face[(corner + 1U) % 3U]];
+                const Vec3d& previous = vertices[face[(corner + 2U) % 3U]];
+                for (const Vec3d* neighbor : {&next, &previous}) {
+                    const Vec3d midpoint = normalized(generator + *neighbor);
+                    const double area =
+                        spherical_triangle_area_unit(generator, midpoint, circumcenter);
+                    weighted[face[corner]] = weighted[face[corner]] +
+                                             normalized(generator + midpoint + circumcenter) * area;
+                }
+            }
+        }
+        for (std::size_t index = 0; index < vertices.size(); ++index) {
+            vertices[index] = normalized(weighted[index]);
+        }
+    }
 }
 
 [[nodiscard]] std::vector<Vec3d> base_vertices() {
@@ -200,6 +252,10 @@ PlanetMesh make_icosphere(std::uint32_t subdivision, double radius_m) {
             subdivided_faces.push_back({edge_01, edge_12, edge_20});
         }
         faces = std::move(subdivided_faces);
+
+        // Optimise each level before it seeds the next, so the finest level
+        // starts close to its centroidal configuration.
+        optimize_centroidal_voronoi(source_vertices, faces, centroidal_iterations_per_level);
     }
 
     if (faces.size() != expected_corners || source_vertices.size() != expected_cells) {
@@ -227,8 +283,8 @@ PlanetMesh make_icosphere(std::uint32_t subdivision, double radius_m) {
     std::vector<std::vector<CornerIndex>> incident_corners(source_vertices.size());
     for (std::size_t face_index = 0; face_index < faces.size(); ++face_index) {
         const auto& face = faces[face_index];
-        corners_unit.push_back(normalized(source_vertices[face[0]] + source_vertices[face[1]] +
-                                          source_vertices[face[2]]));
+        corners_unit.push_back(spherical_circumcenter(
+            source_vertices[face[0]], source_vertices[face[1]], source_vertices[face[2]]));
         const auto corner_index = static_cast<CornerIndex>(face_index);
         for (const auto source_index : face) {
             incident_corners[source_index].push_back(corner_index);

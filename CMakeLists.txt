@@ -26,6 +26,8 @@ add_library(PlanetSim STATIC
     sim/planet/mesh/icosphere.cpp
     sim/planet/mesh/mesh_diagnostics.cpp
     sim/planet/mesh/planet_mesh.cpp
+    sim/planet/operators/finite_volume.cpp
+    sim/planet/operators/operator_validation.cpp
     sim/planet/orbit/orbit_state.cpp
     sim/planet/orbit/solar_diagnostics.cpp
     sim/planet/orbit/solar_forcing.cpp
@@ -63,6 +65,14 @@ if(PLANETSIM_BUILD_TESTS)
     set_tests_properties(
         planet_cli_mesh_smoke
         PROPERTIES PASS_REGULAR_EXPRESSION "cell_count: 12"
+    )
+    add_test(
+        NAME planet_cli_operators_smoke
+        COMMAND planet_cli operators --min-subdivision 1 --max-subdivision 2
+    )
+    set_tests_properties(
+        planet_cli_operators_smoke
+        PROPERTIES PASS_REGULAR_EXPRESSION "poisson_solution_relative_l2"
     )
     set_tests_properties(
         planet_cli_solar_smoke

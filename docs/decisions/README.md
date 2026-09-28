@@ -9,7 +9,7 @@ status, date, consequences, validation plan, and supersession relationships.
 | ID | Decision | Status | Accepted |
 |---|---|---|---|
 | 0001 | [Time acceleration, simulation modes, and performance budget](0001-time-acceleration.md) | Accepted (amended 2026-09-28) | 2026-09-24 |
-| 0002 | [Mesh topology, resolution policy, and field layout](0002-mesh-and-field-layout.md) | Accepted | 2026-09-25 |
+| 0002 | [Mesh topology, resolution policy, and field layout](0002-mesh-and-field-layout.md) | Accepted (amended 2026-09-28) | 2026-09-25 |
 | 0003 | [Determinism, snapshots, history, and migration](0003-determinism-snapshots-migration.md) | Accepted | 2026-09-25 |
 | 0004 | [Keplerian orbit and coordinate frames](0004-keplerian-orbit-and-coordinate-frames.md) | Accepted | 2026-09-24 |
 

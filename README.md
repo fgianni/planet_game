@@ -3,8 +3,9 @@
 The repository has completed **P0 / M1 — Orbit, sun, day/night and
 seasons**, including the ADR-0002/0003 conformance migration. It contains a
 standalone C++20 `PlanetSim` library, headless mesh and solar diagnostics,
-tests, and an optional Godot 4 presentation adapter. M2 geological terrain and
-ocean-basin work has not started.
+tests, and an optional Godot 4 presentation adapter. M2 is in progress: its
+first gate, the finite-volume operators (G2-M2), is complete; geological
+terrain and ocean-basin work has not started.
 
 ## Requirements
 
@@ -47,6 +48,8 @@ randomization, for example `setarch -R ctest --test-dir build-sanitize`.
   run the full `ctest` suite; Release also prints L6 mesh and solstice solar
   diagnostics;
 - Clang with AddressSanitizer and UndefinedBehaviorSanitizer;
+- an L2–L6 operator validation report whose per-cell error map is uploaded as
+  the `operator-error-map` artifact;
 - the ADR-0002 floating-point policy check, which fails if any translation
   unit lacks an effective `-ffp-contract=off` or carries a fast-math flag:
 
@@ -80,8 +83,10 @@ Supported reference test levels are L0 through L6:
 | 6 | 40,962 | 81,920 |
 
 Every level has exactly twelve pentagons; all other cells are hexagons. The
-triangular icosphere remains private construction scaffolding and its face
-centroids become the stored dual corners.
+triangular icosphere remains private construction scaffolding. Its face
+circumcentres become the stored dual corners, and 20 Lloyd iterations per
+subdivision level make the cell centres a spherical centroidal Voronoi
+tessellation (ADR-0002 §4.1).
 
 To run the ADR-0002 V7 ordered-versus-naive neighbor-sweep benchmark in an
 optimized build:
@@ -108,8 +113,27 @@ quadrature error, non-finite values, and night-side leakage.
 
 Insolation is sampled at cell centers. The L5 annual-balance test permits a
 conservative relative quadrature error of `5e-4`; the current 48-sample
-annual result is approximately `6.2e-7`, while individual sampled phases
-remain below approximately `3.1e-5`.
+annual result is approximately `6.0e-7`, while individual sampled phases
+remain below approximately `2.1e-5`.
+
+## Headless operator validation
+
+```bash
+./build/planet_cli operators --min-subdivision 2 --max-subdivision 6 \
+  --error-map operator_error_map.csv
+```
+
+The command validates the finite-volume operators of
+`sim/planet/operators/finite_volume.hpp` (least-squares gradient, divergence of
+edge fluxes, and two-point Laplacian) against analytic spherical-harmonic
+fields at each level. It reports relative L2 and maximum errors with the twelve
+pentagons excluded, convergence orders between levels, pentagon errors, seam
+versus interior maxima along the icosahedron's edges, the ADR-0002 V4
+non-divergent-flux and global-balance residuals, and the solution error of a
+discrete Poisson problem, which is the Laplacian's accuracy measure. The
+optional CSV holds per-cell normalized errors at the finest level for error
+maps. At L5→L6 the gradient, divergence and Poisson solution converge at
+second order in L2; see ADR-0002 §9 for the full record.
 
 ## Optional Godot preview
 
@@ -139,12 +163,15 @@ The visual sphere is unit-scale; authoritative geometry, time, and forcing use
 SI units. The unshaded color ramp is presentation-only—day/night and seasonal
 geometry come from PlanetSim.
 
-## M1 architecture
+## Architecture
 
 - `PlanetSim` has no Godot dependency.
 - `PlanetMesh` owns immutable dual polygon cells, shared edges, CSR adjacency,
   dual corners, local tangent bases, and fixed 256-cell logical blocks. The
   primal triangles exist only while constructing the mesh.
+- Finite-volume operators (divergence of edge fluxes, least-squares
+  gradient, two-point Laplacian) run over the fixed logical blocks and are
+  bit-identical for any worker count.
 - Evolving fields are separate 64-byte-aligned `Field2D<T>`, layer-major
   `Field3D<T>`, or `EdgeField<T>` arrays indexed by strong IDs.
 - `PlanetState` retains a shared immutable mesh handle and owns evolving
@@ -186,6 +213,11 @@ The precise M1 coordinate and validation conventions are in
 
 M1 computes top-of-atmosphere incoming solar only. It does not yet compute
 albedo, absorbed shortwave, surface temperature, atmosphere, terrain,
-orbital precession or perturbations, persistence, or any M2+ system. The
+orbital precession or perturbations, persistence, or any M2+ system beyond
+the finite-volume operators. Tracer advection and the placement of vector
+fields (cell centres or edge normals) are left to the first milestone that
+transports them. The two-point Laplacian's pointwise truncation error does not
+converge next to the pentagons or along the icosahedron's edges, although
+discrete solutions do (ADR-0002 §9). The
 optional Godot adapter must be compiled against an external matching
 `godot-cpp` checkout and is not part of the default headless CI path.

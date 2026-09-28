@@ -186,7 +186,10 @@ P0 resolution policy:
 
 The accepted simulation mesh is the hexagonal--pentagonal dual of the
 subdivided icosahedron. Its cells are centred on primal vertices; exactly
-twelve cells are pentagons and the remainder are hexagons.
+twelve cells are pentagons and the remainder are hexagons. Corners are the
+primal triangles' circumcentres and the cell centres are optimised into a
+spherical centroidal Voronoi tessellation, which the finite-volume operators
+require (ADR-0002 §4.1, §9).
 
 For an icosphere:
 

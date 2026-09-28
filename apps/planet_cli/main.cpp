@@ -1,6 +1,8 @@
 #include "sim/core/scheduler/simulation_clock.hpp"
 #include "sim/planet/mesh/icosphere.hpp"
 #include "sim/planet/mesh/mesh_diagnostics.hpp"
+#include "sim/planet/operators/operator_validation.hpp"
+#include "sim/planet/coordinates/local_tangent_basis.hpp"
 #include "sim/planet/orbit/solar_diagnostics.hpp"
 #include "sim/planet/orbit/solar_forcing.hpp"
 #include "sim/planet/planet_parameters.hpp"
@@ -11,6 +13,7 @@
 #include <cmath>
 #include <cstdint>
 #include <exception>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -31,6 +34,13 @@ struct MeshOptions {
     std::uint32_t benchmark_iterations = 100;
 };
 
+struct OperatorOptions {
+    std::uint32_t min_subdivision = 2;
+    std::uint32_t max_subdivision = 6;
+    double radius_m = 6'371'000.0;
+    std::string error_map_path;
+};
+
 struct SolarOptions {
     std::uint32_t subdivision = 5;
     double radius_m = 6'371'000.0;
@@ -42,7 +52,9 @@ void print_usage(std::ostream& output) {
            << "  planet_cli mesh [--subdivision LEVEL] [--radius METRES]"
               " [--benchmark-layout] [--benchmark-iterations COUNT]\n"
            << "  planet_cli solar [--subdivision LEVEL] [--radius METRES]"
-              " [--time-days DAYS]\n";
+              " [--time-days DAYS]\n"
+           << "  planet_cli operators [--min-subdivision LEVEL] [--max-subdivision LEVEL]"
+              " [--radius METRES] [--error-map CSV]\n";
 }
 
 [[nodiscard]] std::uint32_t parse_subdivision(std::string_view text) {
@@ -211,6 +223,108 @@ struct LayoutKernelResult {
     return options;
 }
 
+[[nodiscard]] OperatorOptions parse_operator_options(int argument_count, char** arguments) {
+    OperatorOptions options;
+    for (int index = 2; index < argument_count; ++index) {
+        const std::string_view argument{arguments[index]};
+        if (++index >= argument_count) {
+            throw std::invalid_argument(std::string(argument) + " requires a value");
+        }
+        const std::string_view value{arguments[index]};
+        if (argument == "--min-subdivision") {
+            options.min_subdivision = parse_subdivision(value);
+        } else if (argument == "--max-subdivision") {
+            options.max_subdivision = parse_subdivision(value);
+        } else if (argument == "--radius") {
+            options.radius_m = parse_double(value, "radius");
+        } else if (argument == "--error-map") {
+            options.error_map_path = std::string(value);
+        } else {
+            throw std::invalid_argument("unknown operators option: " + std::string(argument));
+        }
+    }
+    if (options.min_subdivision > options.max_subdivision) {
+        throw std::invalid_argument("minimum subdivision exceeds maximum subdivision");
+    }
+    return options;
+}
+
+void write_error_map(const std::string& path, const planetsim::PlanetMesh& mesh,
+                     const planetsim::OperatorValidation& validation) {
+    std::ofstream output(path);
+    if (!output) {
+        throw std::runtime_error("cannot open error map: " + path);
+    }
+    const double radians_to_degrees = 180.0 / std::numbers::pi_v<double>;
+    output << std::setprecision(9)
+           << "cell,latitude_deg,longitude_deg,is_pentagon,gradient_error,divergence_error,"
+              "laplacian_error,poisson_solution_error\n";
+    for (const auto& cell : mesh.cells()) {
+        const auto& error = validation.cells[cell.id.to_index()];
+        output << cell.id.value() << ','
+               << planetsim::latitude_rad(cell.center_unit) * radians_to_degrees << ','
+               << planetsim::longitude_rad(cell.center_unit) * radians_to_degrees << ','
+               << (cell.is_pentagon() ? 1 : 0) << ',' << error.gradient << ','
+               << error.divergence << ',' << error.laplacian << ',' << error.poisson_solution
+               << '\n';
+    }
+    if (!output) {
+        throw std::runtime_error("failed to write error map: " + path);
+    }
+}
+
+int run_operators(const OperatorOptions& options) {
+    struct Row {
+        std::string_view name;
+        planetsim::OperatorErrorNorms planetsim::OperatorValidation::*norms;
+    };
+    constexpr Row rows[] = {
+        {"gradient", &planetsim::OperatorValidation::gradient},
+        {"divergence", &planetsim::OperatorValidation::divergence},
+        {"laplacian", &planetsim::OperatorValidation::laplacian},
+        {"poisson_solution", &planetsim::OperatorValidation::poisson_solution},
+    };
+
+    std::cout << std::setprecision(6) << std::scientific;
+    planetsim::OperatorValidation previous;
+    bool has_previous = false;
+    for (std::uint32_t level = options.min_subdivision; level <= options.max_subdivision;
+         ++level) {
+        const auto mesh = planetsim::make_icosphere(level, options.radius_m);
+        auto validation = planetsim::validate_operators(mesh);
+        const auto nondivergent = planetsim::check_nondivergent_flux(mesh);
+        std::cout << "subdivision: " << level << " cells: " << validation.cell_count << '\n'
+                  << "  nondivergent_relative_max_divergence: "
+                  << nondivergent.relative_max_divergence << '\n'
+                  << "  relative_global_imbalance: " << nondivergent.relative_global_imbalance
+                  << '\n'
+                  << "  poisson_iterations: " << validation.poisson_iterations << '\n';
+        for (const auto& row : rows) {
+            const auto& norms = validation.*(row.norms);
+            std::cout << "  " << row.name << "_relative_l2: " << norms.relative_l2
+                      << " relative_max: " << norms.relative_max
+                      << " pentagon_relative_max: " << norms.pentagon_relative_max
+                      << " seam_relative_max: " << norms.seam_relative_max
+                      << " interior_relative_max: " << norms.interior_relative_max;
+            if (has_previous) {
+                const auto& coarse = previous.*(row.norms);
+                std::cout << std::fixed << std::setprecision(3)
+                          << " order_l2: " << std::log2(coarse.relative_l2 / norms.relative_l2)
+                          << " order_max: "
+                          << std::log2(coarse.relative_max / norms.relative_max)
+                          << std::scientific << std::setprecision(6);
+            }
+            std::cout << '\n';
+        }
+        if (level == options.max_subdivision && !options.error_map_path.empty()) {
+            write_error_map(options.error_map_path, mesh, validation);
+        }
+        previous = std::move(validation);
+        has_previous = true;
+    }
+    return 0;
+}
+
 int run_mesh(const MeshOptions& options) {
     const auto start = std::chrono::steady_clock::now();
     const auto mesh = planetsim::make_icosphere(options.subdivision, options.radius_m);
@@ -355,6 +469,9 @@ int main(int argument_count, char** arguments) {
         const std::string_view command{arguments[1]};
         if (command == "mesh") {
             return run_mesh(parse_mesh_options(argument_count, arguments));
+        }
+        if (command == "operators") {
+            return run_operators(parse_operator_options(argument_count, arguments));
         }
         if (command == "solar") {
             return run_solar(parse_solar_options(argument_count, arguments));

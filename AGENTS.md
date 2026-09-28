@@ -8,9 +8,8 @@ architecture source of truth. The design document is
 `docs/planetary_civilization_simulator_design_v0_4.docx`.
 
 Accepted ADRs in `docs/decisions/` take precedence where they conflict
-with the specification (notably ADR-0002: the mesh is the
-hexagonal--pentagonal dual, not the triangular cells described in the
-spec's section 5). `docs/DEVELOPMENT_SPEC.md` is a superseded
+with the specification (notably ADR-0002 on the mesh: a
+hexagonal--pentagonal centroidal Voronoi tessellation). `docs/DEVELOPMENT_SPEC.md` is a superseded
 reconciliation draft and is not authoritative.
 
 ## Current phase
@@ -20,8 +19,9 @@ P0 --- Living Planet.
 Most recently completed milestone: **M1 --- Orbit, sun, day/night and
 seasons**.
 
-M0 and M1 are complete. Do not implement M2 or later milestones unless
-explicitly requested.
+M0 and M1 are complete. M2 is in progress: gate G2-M2 (finite-volume
+operators) is complete; terrain has not started. Do not implement M3 or later
+milestones unless explicitly requested.
 
 ## Hard rules
 
