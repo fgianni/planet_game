@@ -23,6 +23,8 @@ M0 and M1 are complete. M2 is in progress: gate G2-M2 (finite-volume
 operators) and the state-partition/persistent-snapshot foundation are
 complete; terrain and the simulation-mode scheduler have not started.
 
+Current task:
+[`docs/tasks/M2-02-plates-terrain-and-sea-level.md`](docs/tasks/M2-02-plates-terrain-and-sea-level.md).
 Most recently completed task:
 [`docs/tasks/M2-01-state-partition-and-snapshots.md`](docs/tasks/M2-01-state-partition-and-snapshots.md).
 Task documents in `docs/tasks/` state their scope, the decisions already
