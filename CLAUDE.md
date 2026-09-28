@@ -2,13 +2,13 @@
 
 Read `docs/DEVELOPMENT_SPEC_v0_3.md` before making changes. It is the
 development specification. The design document is
-`docs/planetary_civilization_simulator_design_v0_7.docx`.
+`docs/planetary_civilization_simulator_design_v0_8.docx`.
 
 Accepted ADRs in `docs/decisions/` take precedence where they conflict
 with the specification (notably ADR-0002 on the mesh: a
 hexagonal--pentagonal centroidal Voronoi tessellation).
 `docs/DEVELOPMENT_SPEC_v0_2.md` and `docs/DEVELOPMENT_SPEC.md` are superseded
-and not authoritative; design versions v0.3--v0.6 are kept for history.
+and not authoritative; design versions v0.3--v0.7 are kept for history.
 
 The specification defines the architecture, physical design, P0 roadmap,
 validation strategy, and current implementation task for the Planetary

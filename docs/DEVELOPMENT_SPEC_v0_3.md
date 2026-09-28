@@ -6,7 +6,7 @@ Purpose: implementation contract for Codex / Claude Code\
 Primary target: PC/Linux, C++20 + Godot 4\
 Current phase: P0 --- Living Planet (M0 and M1 complete; M2 in progress)
 
-Design document: `docs/planetary_civilization_simulator_design_v0_7.docx`.
+Design document: `docs/planetary_civilization_simulator_design_v0_8.docx`.
 Accepted decision records take precedence over this specification where they
 conflict.
 

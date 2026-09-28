@@ -2,7 +2,7 @@
 
 > **Superseded.** The authoritative development specification is
 > [`DEVELOPMENT_SPEC_v0_3.md`](DEVELOPMENT_SPEC_v0_3.md), and the design
-> document is `planetary_civilization_simulator_design_v0_7.docx`. Accepted
+> document is `planetary_civilization_simulator_design_v0_8.docx`. Accepted
 > ADRs in [`decisions/`](decisions/) take precedence over either where they
 > conflict.
 
