@@ -114,12 +114,17 @@ void fragment() {
             base *= 0.16 + 0.84 * daylight;
         }
     }
+    // Ramps are authored in sRGB. Forward+ and Mobile light in linear space;
+    // the Compatibility renderer lights and outputs in sRGB (OUTPUT_IS_SRGB).
+    if (!OUTPUT_IS_SRGB) {
+        base = srgb_to_linear(base);
+    }
     if (insolation_view) {
         // A data view: self-lit, so the ramp is shown as computed.
         ALBEDO = vec3(0.0);
-        EMISSION = srgb_to_linear(base);
+        EMISSION = base;
     } else {
-        ALBEDO = srgb_to_linear(base);
+        ALBEDO = base;
     }
     ROUGHNESS = 0.9;
 }
