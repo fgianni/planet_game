@@ -20,7 +20,11 @@ Most recently completed milestone: **M1 --- Orbit, sun, day/night and
 seasons**.
 
 M0 and M1 are complete. M2 is in progress: gate G2-M2 (finite-volume
-operators) is complete; terrain has not started. Do not implement M3 or later
+operators) is complete; terrain has not started.
+
+Current task: [`docs/tasks/M2-01-state-partition-and-snapshots.md`](docs/tasks/M2-01-state-partition-and-snapshots.md).
+Task documents in `docs/tasks/` state their scope, the decisions already
+made, acceptance criteria and what to report. Do not implement M3 or later
 milestones unless explicitly requested.
 
 ## Hard rules
