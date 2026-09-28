@@ -221,7 +221,8 @@ godot4 --path godot
 
 The one-time headless editor command imports the project and registers the
 GDExtension. The extension registers `PlanetMeshNode`, which generates a
-planet with PlanetSim (default L5, seed 20260928, `earth_like`), reads the
+planet with PlanetSim (default L6, about 112 km cells; `PgUp` reaches L7 at
+about 56 km; seed 20260928, `earth_like`), reads the
 generated terrain once through a versioned `TerrainSnapshot` and the orbit and
 insolation every update through `StateSnapshot`, and draws the dual cells
 with exaggerated relief (the sea surface is flat at the solved sea level).
@@ -236,8 +237,12 @@ command line, for example `godot4 --path godot -- --seed=42 --subdivision=6
 --view=1`.
 
 The visual sphere is unit-scale; authoritative geometry, time, terrain and
-forcing use SI units. Colour ramps, relief exaggeration and the corner
-averaging that smooths the terrain view are presentation only.
+forcing use SI units. Colour ramps, relief exaggeration, smooth normals and
+the corner averaging that smooths the terrain view are presentation only;
+zooming in shows the model's real resolution, with no invented detail.
+Geometry is built once per planet or view; each update uploads only the
+snapshot's per-cell insolation to a texture the shader reads, which keeps L7
+(2.9 million vertices) at the display refresh rate.
 
 ## Architecture
 

@@ -5,7 +5,12 @@
 #include "sim/planet/terrain/terrain_snapshot.hpp"
 
 #include <godot_cpp/classes/array_mesh.hpp>
+#include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/shader_material.hpp>
+#include <godot_cpp/variant/packed_color_array.hpp>
+#include <godot_cpp/variant/packed_float32_array.hpp>
+#include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 
@@ -27,6 +32,11 @@ namespace planetsim::godot_bridge {
 // Presentation of a PlanetSim planet. PlanetSim owns every value shown here;
 // this node only reads StateSnapshot (per tick) and TerrainSnapshot (once
 // per generated planet) and turns them into colours and exaggerated relief.
+//
+// Geometry and base colours are built once per planet, view or relief change.
+// Each tick only the per-cell insolation from the snapshot is uploaded, as a
+// small float texture the shader looks up (cells first, then corners, one
+// texel each), so large meshes stay cheap to animate.
 class PlanetMeshNode : public godot::MeshInstance3D {
     GDCLASS(PlanetMeshNode, godot::MeshInstance3D)
 
@@ -69,8 +79,11 @@ class PlanetMeshNode : public godot::MeshInstance3D {
 
   private:
     void build_geometry();
+    void build_colors();
+    void upload_mesh();
     void refresh();
-    void render_snapshot(const StateSnapshot& snapshot);
+    void update_insolation(const StateSnapshot& snapshot);
+    void update_shader_flags();
 
     PlanetParameters parameters_ = PlanetParameters::earth_development();
     SimulationClock clock_;
@@ -87,7 +100,14 @@ class PlanetMeshNode : public godot::MeshInstance3D {
 
     godot::PackedVector3Array vertices_;
     godot::PackedVector3Array normals_;
+    godot::PackedVector2Array texels_;   // insolation texel of each vertex
+    godot::PackedColorArray colors_;
+    godot::PackedFloat32Array insolation_texels_;
+    std::int32_t texture_width_ = 0;
+    std::int32_t texture_height_ = 0;
     godot::Ref<godot::ArrayMesh> rendered_mesh_;
+    godot::Ref<godot::ImageTexture> insolation_texture_;
+    godot::Ref<godot::ShaderMaterial> material_;
 };
 
 }  // namespace planetsim::godot_bridge

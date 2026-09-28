@@ -7,14 +7,14 @@
 #include "sim/planet/planet_state.hpp"
 #include "sim/planet/terrain/terrain_generator.hpp"
 
-#include <godot_cpp/classes/base_material3d.hpp>
+#include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/mesh.hpp>
-#include <godot_cpp/classes/standard_material3d.hpp>
+#include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/color.hpp>
-#include <godot_cpp/variant/packed_color_array.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
+#include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
 #include <algorithm>
@@ -72,21 +72,62 @@ struct ColorStop {
     return ramp(stops, std::size(stops), depth_m);
 }
 
-[[nodiscard]] godot::Color insolation_color(float insolation_W_m2, double incident_W_m2) {
-    const float normalized = incident_W_m2 > 0.0
-                                 ? std::clamp(insolation_W_m2 / static_cast<float>(incident_W_m2),
-                                              0.0F, 1.0F)
-                                 : 0.0F;
-    const float daylight = std::sqrt(normalized);
-    return {0.015F + 0.95F * daylight, 0.025F + 0.68F * daylight, 0.08F + 0.28F * normalized, 1.0F};
+// Normalised insolation (0..1) of a cell; the shader turns it into the
+// day/night factor or the insolation ramp.
+[[nodiscard]] float normalized_insolation(float insolation_W_m2, double incident_W_m2) {
+    return incident_W_m2 > 0.0
+               ? std::clamp(insolation_W_m2 / static_cast<float>(incident_W_m2), 0.0F, 1.0F)
+               : 0.0F;
 }
 
-[[nodiscard]] float daylight_factor(float insolation_W_m2, double incident_W_m2) {
-    const float normalized = incident_W_m2 > 0.0
-                                 ? std::clamp(insolation_W_m2 / static_cast<float>(incident_W_m2),
-                                              0.0F, 1.0F)
-                                 : 0.0F;
-    return 0.16F + 0.84F * std::sqrt(normalized);
+constexpr std::int32_t insolation_texture_width = 2048;
+
+// Presentation shader: vertex colours are sRGB; the per-vertex insolation
+// texel comes from PlanetSim's snapshot, uploaded every tick.
+constexpr const char* planet_shader_code = R"(
+shader_type spatial;
+render_mode cull_disabled;
+
+uniform sampler2D insolation_map : filter_nearest;
+uniform bool day_night = true;
+uniform bool insolation_view = false;
+
+varying float insolation;
+
+vec3 srgb_to_linear(vec3 c) {
+    return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+}
+
+void vertex() {
+    insolation = texelFetch(insolation_map, ivec2(UV + 0.5), 0).r;
+}
+
+void fragment() {
+    float x = clamp(insolation, 0.0, 1.0);
+    float daylight = sqrt(x);
+    vec3 base;
+    if (insolation_view) {
+        base = vec3(0.015 + 0.95 * daylight, 0.025 + 0.68 * daylight, 0.08 + 0.28 * x);
+    } else {
+        base = COLOR.rgb;
+        if (day_night) {
+            base *= 0.16 + 0.84 * daylight;
+        }
+    }
+    if (insolation_view) {
+        // A data view: self-lit, so the ramp is shown as computed.
+        ALBEDO = vec3(0.0);
+        EMISSION = srgb_to_linear(base);
+    } else {
+        ALBEDO = srgb_to_linear(base);
+    }
+    ROUGHNESS = 0.9;
+}
+)";
+
+[[nodiscard]] godot::Vector2 texel_of(std::size_t texel) {
+    const auto width = static_cast<std::size_t>(insolation_texture_width);
+    return {static_cast<godot::real_t>(texel % width), static_cast<godot::real_t>(texel / width)};
 }
 
 [[nodiscard]] godot::Color plate_color(std::uint16_t plate, bool continental) {
@@ -213,7 +254,16 @@ void PlanetMeshNode::rebuild(std::int64_t subdivision, double radius_m, std::int
         seed_ = next_seed;
         preset_ = preset;
         clock_.reset();
+        const std::size_t texels = mesh_->cell_count() + mesh_->corner_count();
+        texture_width_ = insolation_texture_width;
+        texture_height_ = static_cast<std::int32_t>(
+            (texels + static_cast<std::size_t>(texture_width_) - 1U) /
+            static_cast<std::size_t>(texture_width_));
+        insolation_texels_.resize(static_cast<std::int64_t>(texture_width_) * texture_height_);
+        insolation_texture_.unref();
         build_geometry();
+        build_colors();
+        upload_mesh();
         refresh();
     } catch (const std::exception& exception) {
         godot::UtilityFunctions::push_error(exception.what());
@@ -257,7 +307,9 @@ void PlanetMeshNode::set_view_mode(std::int64_t mode) {
     }
     view_mode_ = mode;
     if (state_) {
-        refresh();
+        build_colors();
+        upload_mesh();
+        update_shader_flags();
     }
 }
 
@@ -282,7 +334,7 @@ void PlanetMeshNode::set_relief_exaggeration(double exaggeration) {
     relief_exaggeration_ = std::clamp(exaggeration, 0.0, 200.0);
     if (state_) {
         build_geometry();
-        refresh();
+        upload_mesh();
     }
 }
 
@@ -290,9 +342,7 @@ double PlanetMeshNode::get_relief_exaggeration() const noexcept { return relief_
 
 void PlanetMeshNode::set_day_night_shading(bool enabled) {
     day_night_shading_ = enabled;
-    if (state_) {
-        refresh();
-    }
+    update_shader_flags();
 }
 
 bool PlanetMeshNode::get_day_night_shading() const noexcept { return day_night_shading_; }
@@ -308,17 +358,20 @@ std::int64_t PlanetMeshNode::get_plate_count() const noexcept { return terrain_.
 // Relief: each cell is a fan of triangles from its centre to its corners. A
 // vertex stands at sea level over ocean and at its height above sea level
 // over land, multiplied by relief_exaggeration_. Corner values are the mean
-// of the three cells sharing the corner.
+// of the three cells sharing the corner. Normals are smooth: the area-weighted
+// mean of the face normals around each cell centre and each corner.
 void PlanetMeshNode::build_geometry() {
     const std::size_t packed_size = mesh_->directed_edge_count() * 3U;
     if (packed_size > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
         throw std::length_error("PlanetMeshNode preview is too large");
     }
+    const std::size_t cell_count = mesh_->cell_count();
     const double sea_level_m = terrain_.sea_level_m;
     const double scale = relief_exaggeration_ / mesh_->radius_m();
     const auto height_above_sea = [&](double elevation_m, double land_fraction) {
         return land_fraction >= 0.5 ? std::max(0.0, elevation_m - sea_level_m) : 0.0;
     };
+
     std::vector<godot::Vector3> corner_position(mesh_->corner_count());
     for (std::size_t corner = 0; corner < corner_cells_.size(); ++corner) {
         double elevation = 0.0;
@@ -330,134 +383,173 @@ void PlanetMeshNode::build_geometry() {
         const double radius = 1.0 + scale * height_above_sea(elevation / 3.0, land / 3.0);
         corner_position[corner] = to_godot(mesh_->corners_unit()[corner] * radius);
     }
-
-    vertices_.resize(static_cast<std::int64_t>(packed_size));
-    normals_.resize(static_cast<std::int64_t>(packed_size));
-    std::int64_t packed = 0;
+    std::vector<godot::Vector3> center_position(cell_count);
     for (const auto& cell : mesh_->cells()) {
         const std::size_t index = cell.id.to_index();
         const double radius = 1.0 + scale * height_above_sea(terrain_.mean_elevation_m[index],
                                                              terrain_.land_fraction[index]);
-        const godot::Vector3 center = to_godot(cell.center_unit * radius);
+        center_position[index] = to_godot(cell.center_unit * radius);
+    }
+
+    // Smooth normals: accumulate unnormalised face normals (area-weighted).
+    std::vector<godot::Vector3> center_normal(cell_count);
+    std::vector<godot::Vector3> corner_normal(mesh_->corner_count());
+    for (const auto& cell : mesh_->cells()) {
+        const std::size_t index = cell.id.to_index();
         const auto corners = mesh_->cell_corners(cell.id);
         for (std::size_t k = 0; k < corners.size(); ++k) {
-            const godot::Vector3 first = corner_position[corners[k]];
-            const godot::Vector3 second = corner_position[corners[(k + 1U) % corners.size()]];
-            godot::Vector3 normal = (first - center).cross(second - center).normalized();
-            if (normal.dot(center) < 0.0F) {
-                normal = -normal;
+            const CornerIndex first = corners[k];
+            const CornerIndex second = corners[(k + 1U) % corners.size()];
+            godot::Vector3 face = (corner_position[first] - center_position[index])
+                                      .cross(corner_position[second] - center_position[index]);
+            if (face.dot(center_position[index]) < 0.0F) {
+                face = -face;
             }
-            for (const godot::Vector3& point : {center, first, second}) {
-                vertices_.set(packed, point);
-                normals_.set(packed, normal);
-                ++packed;
-            }
+            center_normal[index] += face;
+            corner_normal[first] += face;
+            corner_normal[second] += face;
+        }
+    }
+
+    vertices_.resize(static_cast<std::int64_t>(packed_size));
+    normals_.resize(static_cast<std::int64_t>(packed_size));
+    texels_.resize(static_cast<std::int64_t>(packed_size));
+    std::int64_t packed = 0;
+    for (const auto& cell : mesh_->cells()) {
+        const std::size_t index = cell.id.to_index();
+        const auto corners = mesh_->cell_corners(cell.id);
+        for (std::size_t k = 0; k < corners.size(); ++k) {
+            const CornerIndex first = corners[k];
+            const CornerIndex second = corners[(k + 1U) % corners.size()];
+            vertices_.set(packed, center_position[index]);
+            normals_.set(packed, center_normal[index].normalized());
+            texels_.set(packed++, texel_of(index));
+            vertices_.set(packed, corner_position[first]);
+            normals_.set(packed, corner_normal[first].normalized());
+            texels_.set(packed++, texel_of(cell_count + first));
+            vertices_.set(packed, corner_position[second]);
+            normals_.set(packed, corner_normal[second].normalized());
+            texels_.set(packed++, texel_of(cell_count + second));
         }
     }
 }
 
-void PlanetMeshNode::refresh() {
-    update_solar_forcing(*state_, parameters_, clock_.tick());
-    render_snapshot(make_state_snapshot(*state_, clock_));
+// Base colours of the current view. Terrain interpolates elevation and land
+// fraction to the corners; the categorical views stay flat per cell.
+void PlanetMeshNode::build_colors() {
+    const double sea_level_m = terrain_.sea_level_m;
+    const auto terrain_color = [&](double elevation_m, double land_fraction) {
+        return land_fraction >= 0.5 ? land_color(static_cast<float>(elevation_m - sea_level_m))
+                                    : ocean_color(static_cast<float>(sea_level_m - elevation_m));
+    };
+    const auto cell_color = [&](std::size_t index) {
+        const bool continental = terrain_.crust_type[index] != 0U;
+        switch (view_mode_) {
+        case view_plates:
+            return terrain_.boundary_class[index] != 0U
+                       ? boundary_color(terrain_.boundary_class[index])
+                       : plate_color(terrain_.plate_id[index], continental);
+        case view_crust_age:
+            return age_color(terrain_.crust_age_myr[index], continental);
+        case view_insolation:
+            return godot::Color{1.0F, 1.0F, 1.0F};  // unused: the shader colours this view
+        default:
+            return terrain_color(terrain_.mean_elevation_m[index], terrain_.land_fraction[index]);
+        }
+    };
+    std::vector<godot::Color> corner_color(mesh_->corner_count());
+    for (std::size_t corner = 0; corner < corner_cells_.size(); ++corner) {
+        double elevation = 0.0;
+        double land = 0.0;
+        for (const std::uint32_t cell : corner_cells_[corner]) {
+            elevation += terrain_.mean_elevation_m[cell];
+            land += terrain_.land_fraction[cell];
+        }
+        corner_color[corner] = terrain_color(elevation / 3.0, land / 3.0);
+    }
+    const bool smooth = view_mode_ == view_terrain;
+    colors_.resize(vertices_.size());
+    std::int64_t packed = 0;
+    for (const auto& cell : mesh_->cells()) {
+        const std::size_t index = cell.id.to_index();
+        const godot::Color center = cell_color(index);
+        const auto corners = mesh_->cell_corners(cell.id);
+        for (std::size_t k = 0; k < corners.size(); ++k) {
+            colors_.set(packed++, center);
+            colors_.set(packed++, smooth ? corner_color[corners[k]] : center);
+            colors_.set(packed++, smooth ? corner_color[corners[(k + 1U) % corners.size()]] : center);
+        }
+    }
 }
 
-void PlanetMeshNode::render_snapshot(const StateSnapshot& snapshot) {
+void PlanetMeshNode::upload_mesh() {
+    godot::Array arrays;
+    arrays.resize(godot::Mesh::ARRAY_MAX);
+    arrays[godot::Mesh::ARRAY_VERTEX] = vertices_;
+    arrays[godot::Mesh::ARRAY_NORMAL] = normals_;
+    arrays[godot::Mesh::ARRAY_COLOR] = colors_;
+    arrays[godot::Mesh::ARRAY_TEX_UV] = texels_;
+    if (rendered_mesh_.is_null()) {
+        rendered_mesh_.instantiate();
+        set_mesh(rendered_mesh_);
+    }
+    if (material_.is_null()) {
+        godot::Ref<godot::Shader> shader;
+        shader.instantiate();
+        shader->set_code(planet_shader_code);
+        material_.instantiate();
+        material_->set_shader(shader);
+        set_material_override(material_);
+        update_shader_flags();
+    }
+    rendered_mesh_->clear_surfaces();
+    rendered_mesh_->add_surface_from_arrays(godot::Mesh::PRIMITIVE_TRIANGLES, arrays);
+}
+
+void PlanetMeshNode::update_shader_flags() {
+    if (material_.is_null()) {
+        return;
+    }
+    material_->set_shader_parameter("day_night", day_night_shading_);
+    material_->set_shader_parameter("insolation_view", view_mode_ == view_insolation);
+}
+
+void PlanetMeshNode::refresh() {
+    update_solar_forcing(*state_, parameters_, clock_.tick());
+    update_insolation(make_state_snapshot(*state_, clock_));
+}
+
+// Uploads the snapshot's per-cell insolation (and its corner means) to the
+// texture the shader reads. Nothing else changes per tick.
+void PlanetMeshNode::update_insolation(const StateSnapshot& snapshot) {
     try {
         const std::size_t cell_count = mesh_->cell_count();
-        if (snapshot.top_of_atmosphere_insolation_W_m2.size() != cell_count ||
-            terrain_.mean_elevation_m.size() != cell_count) {
-            throw std::logic_error("snapshot sizes do not match the presentation mesh");
-        }
         const auto& insolation = snapshot.top_of_atmosphere_insolation_W_m2;
+        if (insolation.size() != cell_count) {
+            throw std::logic_error("snapshot insolation size does not match the presentation mesh");
+        }
         const double incident = snapshot.incident_solar_flux_W_m2;
-        const double sea_level_m = terrain_.sea_level_m;
-
-        // Terrain colour from interpolated elevation and land fraction.
-        const auto terrain_color = [&](double elevation_m, double land_fraction) {
-            return land_fraction >= 0.5
-                       ? land_color(static_cast<float>(elevation_m - sea_level_m))
-                       : ocean_color(static_cast<float>(sea_level_m - elevation_m));
-        };
-        // Per-cell colour for the categorical views.
-        const auto cell_color = [&](std::size_t index) {
-            const bool continental = terrain_.crust_type[index] != 0U;
-            switch (view_mode_) {
-            case view_plates:
-                return terrain_.boundary_class[index] != 0U
-                           ? boundary_color(terrain_.boundary_class[index])
-                           : plate_color(terrain_.plate_id[index], continental);
-            case view_crust_age:
-                return age_color(terrain_.crust_age_myr[index], continental);
-            case view_insolation:
-                return insolation_color(insolation[index], incident);
-            default:
-                return terrain_color(terrain_.mean_elevation_m[index], terrain_.land_fraction[index]);
-            }
-        };
-        const bool shade = day_night_shading_ && view_mode_ != view_insolation;
-
-        std::vector<godot::Color> corner_color(mesh_->corner_count());
-        std::vector<float> corner_light(mesh_->corner_count(), 1.0F);
+        for (std::size_t index = 0; index < cell_count; ++index) {
+            insolation_texels_.set(static_cast<std::int64_t>(index),
+                                   normalized_insolation(insolation[index], incident));
+        }
         for (std::size_t corner = 0; corner < corner_cells_.size(); ++corner) {
-            double elevation = 0.0;
-            double land = 0.0;
-            float light = 0.0F;
+            float sum = 0.0F;
             for (const std::uint32_t cell : corner_cells_[corner]) {
-                elevation += terrain_.mean_elevation_m[cell];
-                land += terrain_.land_fraction[cell];
-                light += daylight_factor(insolation[cell], incident);
+                sum += normalized_insolation(insolation[cell], incident);
             }
-            corner_color[corner] = terrain_color(elevation / 3.0, land / 3.0);
-            corner_light[corner] = light / 3.0F;
+            insolation_texels_.set(static_cast<std::int64_t>(cell_count + corner), sum / 3.0F);
         }
-
-        godot::PackedColorArray colors;
-        colors.resize(vertices_.size());
-        std::int64_t packed = 0;
-        for (const auto& cell : mesh_->cells()) {
-            const std::size_t index = cell.id.to_index();
-            const godot::Color center_color = cell_color(index);
-            const float center_light = daylight_factor(insolation[index], incident);
-            const auto corners = mesh_->cell_corners(cell.id);
-            for (std::size_t k = 0; k < corners.size(); ++k) {
-                const CornerIndex first = corners[k];
-                const CornerIndex second = corners[(k + 1U) % corners.size()];
-                const bool smooth = view_mode_ == view_terrain;
-                godot::Color triangle[3] = {center_color,
-                                            smooth ? corner_color[first] : center_color,
-                                            smooth ? corner_color[second] : center_color};
-                const float light[3] = {center_light, corner_light[first], corner_light[second]};
-                for (int vertex = 0; vertex < 3; ++vertex) {
-                    godot::Color color = triangle[vertex];
-                    if (shade) {
-                        color = godot::Color(color.r * light[vertex], color.g * light[vertex],
-                                             color.b * light[vertex], 1.0F);
-                    }
-                    colors.set(packed++, color);
-                }
-            }
+        const godot::Ref<godot::Image> image =
+            godot::Image::create_from_data(texture_width_, texture_height_, false,
+                                           godot::Image::FORMAT_RF,
+                                           insolation_texels_.to_byte_array());
+        if (insolation_texture_.is_null()) {
+            insolation_texture_ = godot::ImageTexture::create_from_image(image);
+            material_->set_shader_parameter("insolation_map", insolation_texture_);
+        } else {
+            insolation_texture_->update(image);
         }
-
-        godot::Array arrays;
-        arrays.resize(godot::Mesh::ARRAY_MAX);
-        arrays[godot::Mesh::ARRAY_VERTEX] = vertices_;
-        arrays[godot::Mesh::ARRAY_NORMAL] = normals_;
-        arrays[godot::Mesh::ARRAY_COLOR] = colors;
-
-        if (rendered_mesh_.is_null()) {
-            rendered_mesh_.instantiate();
-            godot::Ref<godot::StandardMaterial3D> material;
-            material.instantiate();
-            material->set_cull_mode(godot::BaseMaterial3D::CULL_DISABLED);
-            material->set_flag(godot::BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
-            // The ramps above are authored in sRGB.
-            material->set_flag(godot::BaseMaterial3D::FLAG_SRGB_VERTEX_COLOR, true);
-            material->set_roughness(0.9F);
-            set_material_override(material);
-            set_mesh(rendered_mesh_);
-        }
-        rendered_mesh_->clear_surfaces();
-        rendered_mesh_->add_surface_from_arrays(godot::Mesh::PRIMITIVE_TRIANGLES, arrays);
     } catch (const std::exception& exception) {
         godot::UtilityFunctions::push_error(exception.what());
     }

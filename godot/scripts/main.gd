@@ -3,7 +3,7 @@ extends Node3D
 ## Presentation-only controls. PlanetSim owns the planet; this script only
 ## chooses what to generate, how fast simulated time advances and what to show.
 
-@export var subdivision: int = 5
+@export var subdivision: int = 6
 @export var world_seed: int = 20260928
 @export var preset: String = "earth_like"
 @export var simulated_hours_per_second: float = 2.0
