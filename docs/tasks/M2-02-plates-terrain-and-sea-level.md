@@ -100,8 +100,9 @@ Apply these; stop and ask before changing any of them.
    continental region. Store age in seconds (SI).
 8. **Structural elevation** (cell centres, metres) is the sum of:
    - crust base: the age–depth relation for oceanic cells; `+300 m` for
-     continental cells;
-   - passive margins: continental cells within ~150 km of oceanic crust of
+     continental cells (*amended to +800 m, see §10*);
+   - passive margins (*continental width amended to 400 km, see §10*):
+     continental cells within ~150 km of oceanic crust of
      the same plate ramp down to the shelf edge (−130 m); oceanic cells
      within ~100 km of continental crust ramp from the shelf edge to their
      age depth (continental slope);
@@ -257,6 +258,27 @@ in ADR-0005 §9.4 and the audit.
 2. §4.11 / ADR-0005 §4.1: the world ocean is the below-sea component that
    contains the deepest cell. The largest-area rule is not monotone in sea
    level (ADR-0005 §9.2).
+3. §4.8–4.10 starting values: continental base +800 m (was +300), continental
+   roughness 100 m RMS and sub-cell roughness 120 m RMS (were 250 and 300),
+   passive-margin width 400 km (was 150). The Godot terrain view showed
+   continental interiors speckled with sea. With 40 % continental crust and a
+   29 % land target, about 28 % of continental crust is flooded whatever its
+   height (the sea-level solve absorbs any uniform uplift); the old values
+   made interiors as low and rough as margins, so that flooding scattered
+   inland. Measured at L6 over three seeds (land 29 %), share of continental
+   crust more than 400 km from oceanic crust that is majority ocean:
+
+   | Variant | Inland flooded | Within 400 km flooded |
+   |---|---|---|
+   | Old values | 16.6 % | 43.0 % |
+   | Base +800 m only | 12.0 % | 50.1 % |
+   | Median-quantile connectivity instead of lowest (ADR change) | 22.2 % | 55.0 % |
+   | Roughness / 2.5 only | 11.0 % | 52.5 % |
+   | Margin 400 km only | 14.3 % | 47.5 % |
+   | **Adopted: all three value changes** | **3.8 %** | 70.0 % |
+
+   The connectivity rule of ADR-0005 is unchanged: the stricter variant made
+   inland flooding worse. A5, A9 and A10 still pass (ADR-0005 §9.4).
 
 **Interpretations where §4 was silent or ambiguous.**
 
@@ -299,6 +321,10 @@ in ADR-0005 §9.4 and the audit.
   sub-cell weight, so a cell's hypsometric mean blends with its neighbours
   through the corner means (up to 3.6 km from the structural elevation at L3,
   next to trenches and mountain belts).
-- Inland below-sea-level depressions: 2 at L5 and 91 at L6 for seed 20260928.
-  They are dry land until drainage (M2-03) and hydrology (M9).
+- Inland below-sea-level depressions (after amendment 3): 12 at L5 and 159
+  at L6 for seed 20260928. They are dry land until drainage (M2-03) and
+  hydrology (M9).
+- With amendment 3 the ocean shallower than 200 m falls to 4.1–4.5 % of the
+  ocean (from 6.7–8.1 %): A10 still passes, but shelves are narrower than
+  Earth's (about 7 %).
 

@@ -51,9 +51,12 @@ struct GeologyParameters {
     // Structural elevation (§4.8). Profiles are Gaussians in along-mesh
     // distance with the given half-width at half-maximum; cells adjacent to
     // a boundary are at distance zero.
-    double continental_base_elevation_m = 300.0;
+    // Amended 2026-09-28 (task M2-02 §10, amendment 3): base +800 m, calmer
+    // continental roughness and 400 km passive margins put the flooded 28 % of
+    // continental crust on coastal shelves instead of scattered inland.
+    double continental_base_elevation_m = 800.0;
     double shelf_edge_elevation_m = -130.0;
-    double passive_margin_width_m = 150'000.0;       // continental side
+    double passive_margin_width_m = 400'000.0;       // continental side
     double continental_slope_width_m = 100'000.0;    // oceanic side
     double collision_mountain_height_m = 3'500.0;
     double collision_mountain_half_width_m = 250'000.0;
@@ -73,7 +76,7 @@ struct GeologyParameters {
     double boundary_speed_scale_max = 2.0;
 
     // Roughness and diffusive erosion (§4.9).
-    double continental_roughness_amplitude_m = 250.0;
+    double continental_roughness_amplitude_m = 100.0;
     double oceanic_roughness_amplitude_m = 100.0;
     FbmParameters roughness_noise{6.0, 6U, 2.0, 0.5};
     std::uint32_t erosion_step_count = 4;
@@ -82,7 +85,7 @@ struct GeologyParameters {
     // Diffusion length sqrt(2 kappa N dt) = 100 km with the defaults.
 
     // Sub-cell hypsometry (§4.10).
-    double continental_subcell_roughness_amplitude_m = 300.0;
+    double continental_subcell_roughness_amplitude_m = 120.0;
     double oceanic_subcell_roughness_amplitude_m = 100.0;
     FbmParameters subcell_roughness_noise{48.0, 4U, 2.0, 0.5};
 

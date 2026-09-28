@@ -271,19 +271,20 @@ behaviour is defined and tested.
 |---|---|
 | V1 hypsometry finite, non-decreasing (L3--L5, several seeds) | pass, exact |
 | V2 fractions in [0, 1]; land non-increasing from -8,000 to +6,000 m in 250 m steps; no ocean outside the component (L4, L5) | pass, exact |
-| V3 targets 0.10, 0.29, 0.50 (seed 20260928) | L5: error <= 1.2e-16 on all three. L4: 0.10 and 0.29 exact; 0.50 falls in a connectivity jump, reported (land 0.50234 below, 0.49115 above; the ocean component changes) |
+| V3 targets 0.10, 0.29, 0.50 (seed 20260928) | L4 and L5: error <= 1.2e-16 on all three. Before the task M2-02 amendment 3 values, L4's 0.50 fell in a connectivity jump that the solve reported (land 0.50234 below, 0.49115 above; the ocean component changed) |
 | `aqua_planet` / `dead_rock` | land 0 with every cell in the ocean / land 1 with no below-sea component |
 | V8-style determinism of the generated slow state, 1/2/8/16 workers (L4, L5) | bit-identical |
 | Snapshot round trip of a generated planet | bit-identical |
 
-`earth_like`, seed 20260928:
+`earth_like`, seed 20260928, with the starting values of task M2-02
+amendment 3:
 
 | | L5 | L6 |
 |---|---|---|
-| sea level (m) | 11.34 | 20.99 |
-| ocean shallower than 200 m / deeper than 4,000 m | 8.1 % / 52.3 % | 6.7 % / 58.2 % |
-| ocean elevation mean / standard deviation (m) | -3,584 / 2,177 | -3,865 / 2,045 |
-| inland below-sea-level depressions | 2 | 91 |
+| sea level (m) | 346.7 | 451.5 |
+| ocean shallower than 200 m / deeper than 4,000 m | 4.5 % / 57.5 % | 4.1 % / 65.1 % |
+| ocean elevation mean / standard deviation (m) | -3,540 / 2,243 | -3,818 / 2,127 |
+| inland below-sea-level depressions | 12 | 159 |
 
 V4 (a sea-level perturbation) belongs to M3 and V9 to M11, as §7 states. The
 number of inland depressions grows with resolution because finer cells
