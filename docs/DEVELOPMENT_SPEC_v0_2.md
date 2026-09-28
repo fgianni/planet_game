@@ -1,8 +1,8 @@
 # Planetary Civilization Simulator --- Development Specification
 
-> **Superseded** by [`DEVELOPMENT_SPEC_v0_3.md`](DEVELOPMENT_SPEC_v0_3.md)
-> (design document `planetary_civilization_simulator_design_v0_7.docx`).
-> Kept for history; milestone numbering is unchanged in v0.3.
+> **Superseded** by [`DEVELOPMENT_SPEC_v0_4.md`](DEVELOPMENT_SPEC_v0_4.md)
+> (design document `planetary_civilization_simulator_design_v0_9.docx`).
+> Kept for history; the base milestone numbering remains unchanged.
 
 Version: 0.2 (reconciled with accepted ADRs 0001--0004 and design v0.4)\
 Purpose: implementation contract for Codex / Claude Code\

@@ -131,7 +131,7 @@ Rolling autosave every simulated decade and every ten minutes of wall-clock time
 
 ## 6. Milestone mapping
 
-Milestone numbers follow `docs/DEVELOPMENT_SPEC_v0_3.md` §13 (unchanged since v0.2). The rows are
+Milestone numbers follow `docs/DEVELOPMENT_SPEC_v0_4.md` §13 (unchanged since v0.2). The rows are
 infrastructure steps and do not depend on which physical system each milestone
 introduces.
 

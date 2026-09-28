@@ -132,10 +132,11 @@ audits:
 - The stale post-migration re-audit was removed after its useful before/after
   summary was incorporated here.
 
-Versioned specifications remain as source/history artifacts. Design record
-v0.7 is the sole version retained in the tree; v0.3--v0.6 remain available in
-git history, and accepted ADR citations were checked against the matching
-sections in v0.7.
+Development specification v0.4 and design record v0.9 are authoritative.
+Earlier specifications remain as source/history artifacts. Design records
+v0.7 and v0.8 are retained in the tree, while v0.3--v0.6 remain available in
+git history. Accepted ADRs retain their original design-version citations and
+take precedence where a specification conflicts.
 
 ## Validation observed during the migration and M2 infrastructure work
 

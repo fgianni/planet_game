@@ -231,7 +231,7 @@ geometry come from PlanetSim.
   other direction.
 
 The development specification is
-[`docs/DEVELOPMENT_SPEC_v0_3.md`](docs/DEVELOPMENT_SPEC_v0_3.md) and the design
+[`docs/DEVELOPMENT_SPEC_v0_4.md`](docs/DEVELOPMENT_SPEC_v0_4.md) and the design
 document is
 [`docs/planetary_civilization_simulator_design_v0_9.docx`](docs/planetary_civilization_simulator_design_v0_9.docx),
 whose figures are also in [`docs/pngs/`](docs/pngs/).

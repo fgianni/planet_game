@@ -164,7 +164,7 @@ V2 and V3 are the ones that keep this ADR honest: they are what prevents acceler
 
 ## 8. Milestone mapping
 
-Milestone numbers follow the P0 plan in `docs/DEVELOPMENT_SPEC_v0_3.md` §13 (unchanged since v0.2),
+Milestone numbers follow the P0 plan in `docs/DEVELOPMENT_SPEC_v0_4.md` §13 (unchanged since v0.2),
 not the Design Record v0.4 §25 table, which places snow/ice at M9.
 
 | Milestone | What this ADR requires |
