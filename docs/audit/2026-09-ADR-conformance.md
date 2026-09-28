@@ -140,7 +140,7 @@ sections in v0.7.
 ## Validation observed during the migration and M2 infrastructure work
 
 - Normal headless suite: 26/26 tests passed.
-- AddressSanitizer/UndefinedBehaviorSanitizer suite: 22/22 tests passed
+- AddressSanitizer/UndefinedBehaviorSanitizer suite: 26/26 tests passed
   (Clang, 2026-09-28).
 - Godot 4.7.2 extension build and five-frame headless runtime smoke test:
   passed without errors.
