@@ -1,8 +1,6 @@
 #pragma once
 
-#include "sim/core/fields/field.hpp"
-#include "sim/core/fields/field_registry.hpp"
-#include "sim/planet/mesh/planet_mesh.hpp"
+#include "sim/planet/field_factory.hpp"
 #include "sim/planet/orbit/orbit_state.hpp"
 
 #include <cstddef>
@@ -11,8 +9,8 @@
 namespace planetsim {
 
 struct SlowState {
-    Field3D<float> hypsometry_m;
-    double sea_level_m = 0.0;
+    field_container_t<FieldId::hypsometry_m> hypsometry_m;
+    field_container_t<FieldId::sea_level_m> sea_level_m = 0.0;
 };
 
 struct FastState {};
@@ -22,7 +20,8 @@ struct Climatology {};
 struct ForcingState {
     OrbitState orbit;
     double incident_solar_flux_W_m2 = 0.0;
-    Field2D<float> top_of_atmosphere_insolation_W_m2;
+    field_container_t<FieldId::top_of_atmosphere_insolation_W_m2>
+        top_of_atmosphere_insolation_W_m2;
 };
 
 class PlanetState {

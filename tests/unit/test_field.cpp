@@ -1,12 +1,26 @@
 #include "sim/core/fields/field.hpp"
 #include "sim/core/fields/field_registry.hpp"
+#include "sim/planet/field_factory.hpp"
 #include "sim/planet/mesh/cell_id.hpp"
+#include "sim/planet/mesh/icosphere.hpp"
 #include "sim/planet/mesh/planet_mesh.hpp"
 #include "tests/test_support.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
+
+static_assert(std::is_same_v<
+              planetsim::field_container_t<
+                  planetsim::FieldId::top_of_atmosphere_insolation_W_m2>,
+              planetsim::Field2D<float>>);
+static_assert(std::is_same_v<
+              planetsim::field_container_t<planetsim::FieldId::hypsometry_m>,
+              planetsim::Field3D<float>>);
+static_assert(std::is_same_v<
+              planetsim::field_container_t<planetsim::FieldId::sea_level_m>, double>);
 
 int main() {
     planetsim::test::Context test;
@@ -82,6 +96,28 @@ int main() {
         PLANETSIM_EXPECT(test, sea_level->layers == 1U);
         PLANETSIM_EXPECT(test, sea_level->persistent());
     }
+
+    const auto mesh = planetsim::make_icosphere(0U, 1.0);
+    const auto insolation = planetsim::make_field<
+        planetsim::FieldId::top_of_atmosphere_insolation_W_m2>(mesh);
+    PLANETSIM_EXPECT(test, insolation.size() == mesh.cell_count());
+    PLANETSIM_EXPECT(test, std::all_of(insolation.values().begin(), insolation.values().end(),
+                                      [](float value) { return value == 0.0F; }));
+
+    const auto hypsometry_field =
+        planetsim::make_field<planetsim::FieldId::hypsometry_m>(mesh);
+    PLANETSIM_EXPECT(test,
+                     hypsometry_field.layer_count() == planetsim::hypsometry_layer_count);
+    PLANETSIM_EXPECT(test, hypsometry_field.cell_count() == mesh.cell_count());
+    for (std::size_t layer = 0; layer < hypsometry_field.layer_count(); ++layer) {
+        const auto values = hypsometry_field.layer(layer);
+        PLANETSIM_EXPECT(test, std::all_of(values.begin(), values.end(),
+                                          [](float value) { return value == 0.0F; }));
+    }
+
+    const auto sea_level_field =
+        planetsim::make_field<planetsim::FieldId::sea_level_m>(mesh);
+    PLANETSIM_EXPECT_NEAR(test, sea_level_field, 0.0, 0.0);
 
     const planetsim::Field<double> empty;
     PLANETSIM_EXPECT(test, empty.empty());

@@ -9,9 +9,10 @@ PlanetState::PlanetState(std::shared_ptr<const PlanetMesh> mesh) : mesh_(std::mo
     if (!mesh_) {
         throw std::invalid_argument("PlanetState requires an immutable mesh");
     }
-    slow_.hypsometry_m =
-        Field3D<float>(hypsometry_layer_count, mesh_->cell_count(), 0.0F);
-    forcing_.top_of_atmosphere_insolation_W_m2 = Field2D<float>(mesh_->cell_count(), 0.0F);
+    slow_.hypsometry_m = make_field<FieldId::hypsometry_m>(*mesh_);
+    slow_.sea_level_m = make_field<FieldId::sea_level_m>(*mesh_);
+    forcing_.top_of_atmosphere_insolation_W_m2 =
+        make_field<FieldId::top_of_atmosphere_insolation_W_m2>(*mesh_);
 }
 
 FastState& PlanetState::open_fast_state() {
