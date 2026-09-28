@@ -241,5 +241,18 @@ momentum.
 Twenty Lloyd iterations per level match 100 iterations to three significant
 figures in the gated L2 errors (gradient, divergence, Poisson solution) at L5
 and L6; the pointwise Laplacian error moves by about 1 %. L6 generation takes
-about 0.5 s in an optimised build. Area closure is 1.2e-16, geometry memory is
-unchanged, and V7 remains 1.004–1.036 (median 1.021) over five L6 runs.
+about 0.5 s in an optimised build. Geometry memory is unchanged, and V7 remains
+1.004–1.036 (median 1.021) over five L6 runs.
+
+The conservation test records the following measured V1 relative area closure
+at Earth radius; every level remains below its `5e-14` gate:
+
+| Level | Relative area error |
+|---:|---:|
+| 0 | 1.2253352946929809e-16 |
+| 1 | 0 |
+| 2 | 1.2253352946929809e-16 |
+| 3 | 1.2253352946929809e-16 |
+| 4 | 1.2253352946929809e-16 |
+| 5 | 1.2253352946929809e-16 |
+| 6 | 1.2253352946929809e-16 |

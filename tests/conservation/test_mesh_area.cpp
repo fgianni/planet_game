@@ -3,6 +3,8 @@
 #include "tests/test_support.hpp"
 
 #include <cstdint>
+#include <iomanip>
+#include <iostream>
 
 int main() {
     planetsim::test::Context test;
@@ -13,6 +15,8 @@ int main() {
     for (std::uint32_t subdivision = 0; subdivision <= 6; ++subdivision) {
         const auto mesh = planetsim::make_icosphere(subdivision, earth_radius_m);
         const auto diagnostics = planetsim::analyze_mesh(mesh);
+        std::cout << std::setprecision(17) << "area_closure_l" << subdivision << ": "
+                  << diagnostics.relative_area_error << '\n';
         PLANETSIM_EXPECT(test, diagnostics.total_area_m2 > 0.0);
         PLANETSIM_EXPECT(test, diagnostics.min_cell_area_m2 > 0.0);
         PLANETSIM_EXPECT(test,

@@ -83,8 +83,21 @@ Supported reference test levels are L0 through L6:
 | 5 | 10,242 | 20,480 |
 | 6 | 40,962 | 81,920 |
 
-Every level has exactly twelve pentagons; all other cells are hexagons. The
-triangular icosphere remains private construction scaffolding. Its face
+Every level has exactly twelve pentagons; all other cells are hexagons. Measured
+relative area closure at Earth radius is:
+
+| Level | Relative area error |
+|------:|--------------------:|
+| 0 | 1.2253352946929809e-16 |
+| 1 | 0 |
+| 2 | 1.2253352946929809e-16 |
+| 3 | 1.2253352946929809e-16 |
+| 4 | 1.2253352946929809e-16 |
+| 5 | 1.2253352946929809e-16 |
+| 6 | 1.2253352946929809e-16 |
+
+All levels remain below the `5e-14` test gate. The triangular icosphere
+remains private construction scaffolding. Its face
 circumcentres become the stored dual corners, and 20 Lloyd iterations per
 subdivision level make the cell centres a spherical centroidal Voronoi
 tessellation (ADR-0002 §4.1).
