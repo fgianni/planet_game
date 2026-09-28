@@ -34,6 +34,26 @@ cmake --build build-sanitize --parallel
 ctest --test-dir build-sanitize --output-on-failure
 ```
 
+On Linux 6.x kernels with 32-bit mmap randomization, sanitizer binaries built
+by Clang 14–17 can hang at startup. Run them without address-space
+randomization, for example `setarch -R ctest --test-dir build-sanitize`.
+
+## Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push to
+`main` and every pull request:
+
+- GCC and Clang, each in Debug and Release: build with warnings as errors and
+  run the full `ctest` suite; Release also prints L6 mesh and solstice solar
+  diagnostics;
+- Clang with AddressSanitizer and UndefinedBehaviorSanitizer;
+- the ADR-0002 floating-point policy check, which fails if any translation
+  unit lacks an effective `-ffp-contract=off` or carries a fast-math flag:
+
+```bash
+python3 tools/ci/check_fp_flags.py build
+```
+
 ## Headless mesh diagnostics
 
 ```bash

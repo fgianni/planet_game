@@ -59,7 +59,7 @@ the M2 operator and later scenario work.
 | B4 | ✅ EVIDENCED | Cell IDs follow first encounter in the recursively ordered final faces, before fields are allocated (`sim/planet/mesh/icosphere.cpp:173-223`). This achieves the required locality without a separate permutation pass. |
 | B5 | ✅ EVIDENCED | The mesh stores fixed 256-cell logical blocks independent of worker count (`sim/planet/mesh/planet_mesh.hpp:71-76`, `sim/planet/mesh/icosphere.cpp:103-112`). |
 | B6 | ✅ EVIDENCED | Solar reductions compute one partial per fixed logical block and merge partials sequentially in block-index order, with no atomics (`sim/planet/orbit/solar_diagnostics.cpp:80-98`). This matches the accepted ADR-0002. |
-| B7 | ⚠ RUNTIME_ONLY | `/fp:strict` or `-ffp-contract=off` is configured and fast-math is not enabled (`cmake/CompilerWarnings.cmake:1-22`). There is no CI job that detects removed flags or externally enabled fast-math. |
+| B7 | ✅ EVIDENCED | `/fp:strict` or `-ffp-contract=off` is configured and fast-math is not enabled (`cmake/CompilerWarnings.cmake:1-22`). Every CI build job runs `tools/ci/check_fp_flags.py` against `compile_commands.json`, which fails on a missing effective `-ffp-contract=off` or any fast-math flag, including flags injected through `CMAKE_CXX_FLAGS` (`.github/workflows/ci.yml`). MSVC is not covered because CI does not build with it. |
 
 The V7 benchmark exists in `planet_cli`, verifies ordered and naive kernels
 produce identical values, and records timing. ADR-0002 records five optimized
