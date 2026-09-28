@@ -45,6 +45,7 @@ add_library(PlanetSim STATIC
     sim/planet/terrain/surface_fractions.cpp
     sim/planet/terrain/terrain_diagnostics.cpp
     sim/planet/terrain/terrain_generator.cpp
+    sim/planet/terrain/terrain_snapshot.cpp
 )
 add_library(PlanetSim::PlanetSim ALIAS PlanetSim)
 
@@ -157,6 +158,10 @@ if(PLANETSIM_BUILD_GODOT_EXTENSION)
             "PLANETSIM_BUILD_GODOT_EXTENSION requires GODOT_CPP_PATH to point "
             "to a godot-cpp checkout")
     endif()
+    # The adapter reports PlanetSim exceptions to Godot, and godot-cpp's
+    # headers must not be held to PlanetSim's warning set.
+    set(GODOTCPP_DISABLE_EXCEPTIONS OFF)
+    set(GODOTCPP_SYSTEM_HEADERS ON)
     add_subdirectory("${GODOT_CPP_PATH}" "${CMAKE_BINARY_DIR}/godot-cpp")
     add_subdirectory(godot/gdextension)
 endif()

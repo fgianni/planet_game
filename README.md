@@ -204,30 +204,40 @@ starting values, not calibrated physics. The plate and crust structure
 ## Optional Godot preview
 
 The default build does not inspect or require Godot. To build the adapter,
-use a `godot-cpp` checkout compatible with the installed Godot 4 release:
+use a `godot-cpp` checkout and bindings generated from the installed Godot 4
+release (godot-cpp has no branch per 4.x minor release after 4.5):
 
 ```bash
+git clone --depth 1 --recursive https://github.com/godotengine/godot-cpp.git ../godot-cpp
+(cd ../godot-cpp && /path/to/godot4 --headless --dump-extension-api)
 cmake -S . -B build-godot \
-  -DPLANETSIM_BUILD_TESTS=ON \
   -DPLANETSIM_BUILD_GODOT_EXTENSION=ON \
-  -DGODOT_CPP_PATH=/absolute/path/to/godot-cpp
+  -DGODOT_CPP_PATH=$PWD/../godot-cpp \
+  -DGODOTCPP_CUSTOM_API_FILE=$PWD/../godot-cpp/extension_api.json
 cmake --build build-godot --parallel
 godot4 --headless --editor --quit --path godot
 godot4 --path godot
 ```
 
 The one-time headless editor command imports the project and registers the
-GDExtension before the scene is run. The extension registers
-`PlanetMeshNode`. The included scene builds an L4 preview from immutable
-`PlanetMesh` geometry, advances the authoritative integer-tick
-`SimulationClock`, and colors each dual polygon from a read-only, versioned
-`StateSnapshot.top_of_atmosphere_insolation_W_m2` field. The default preview
-advances two simulated hours per wall-clock second and publishes twelve
-snapshots per second; both values are exported in `scripts/main.gd`.
+GDExtension. The extension registers `PlanetMeshNode`, which generates a
+planet with PlanetSim (default L5, seed 20260928, `earth_like`), reads the
+generated terrain once through a versioned `TerrainSnapshot` and the orbit and
+insolation every update through `StateSnapshot`, and draws the dual cells
+with exaggerated relief (the sea surface is flat at the solved sea level).
+Views: `1` terrain (elevation and land/ocean from the ADR-0005 land
+fraction), `2` plates with convergent (red), divergent (blue) and transform
+(green) boundaries, `3` crust age (young ocean red, old blue; continents
+grey), `4` top-of-atmosphere insolation. The simulated day/night is laid over
+views 1--3 (`N` toggles it). Drag to rotate, wheel to zoom, `[`/`]` relief
+exaggeration, `R` new seed, `P` next preset, `PgUp`/`PgDn` resolution, `Space`
+pause, `+`/`-` simulation speed. The same settings can be passed on the
+command line, for example `godot4 --path godot -- --seed=42 --subdivision=6
+--view=1`.
 
-The visual sphere is unit-scale; authoritative geometry, time, and forcing use
-SI units. The unshaded color ramp is presentation-only—day/night and seasonal
-geometry come from PlanetSim.
+The visual sphere is unit-scale; authoritative geometry, time, terrain and
+forcing use SI units. Colour ramps, relief exaggeration and the corner
+averaging that smooths the terrain view are presentation only.
 
 ## Architecture
 
