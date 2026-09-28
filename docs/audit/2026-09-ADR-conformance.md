@@ -158,7 +158,10 @@ take precedence where a specification conflicts.
   units. GCC 11 cannot compile the full `-fsanitize=address,undefined` build:
   its UBSan pointer checks make the existing `static_assert(descriptor !=
   nullptr)` in `sim/planet/field_factory.hpp` non-constant. CI's sanitizer
-  job uses Clang and is unaffected; Clang was not available locally.
+  job uses Clang and is unaffected.
+- M2-02 terrain, Clang 14: Debug and Release 35/35 with warnings as errors,
+  floating-point policy 0 violations; full ASan+UBSan (RelWithDebInfo, as in
+  CI, run under `setarch -R`) 35/35.
 - L6 `earth_like` terrain generation, Release: 220 ms with 24 workers,
   1.35 s with one worker (task M2-02 A13 threshold 10 s).
 - Normal headless suite before M2-02: 26/26 tests passed.
