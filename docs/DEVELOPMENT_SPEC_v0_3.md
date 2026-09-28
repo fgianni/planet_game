@@ -1505,23 +1505,30 @@ ADR-0002 §9), ADR-0005 (fractional coastlines, cell-mesh drainage), the
 slow/fast/climatology state partition and the persistent `PSNAP` snapshot
 format with a golden save (task M2-01, ADR-0003 §8) are complete. CI runs
 GCC and Clang, Debug and Release, ASan+UBSan and the floating-point policy
-check.
+check. The pre-terrain foundation hardening (task M2-01b) is also complete:
+area-closure measurements and RNG outputs are pinned, deterministic reductions
+are reusable, field container types derive from the registry, and CI enforces
+the append-only registry contract.
 
-Outstanding, in order, before M2 terrain work starts (task
+Foundation work completed before M2 terrain starts (task
 `docs/tasks/M2-01b-foundation-hardening.md`):
 
-1.  Record the measured dual area closure per level (L0--L6); the cell-count
-    and pentagon-count assertions of section 5 already exist.
-2.  Add an RNG reproducibility test with a pinned golden vector, so a future
-    change to the mixing function cannot silently invalidate recorded runs.
-3.  Add a `reduce_deterministic_blocks` helper before any kernel needs a global
-    sum; otherwise the first one will invent its own and re-introduce
-    non-determinism.
-4.  Tie `FieldDataType` to the container type (a `make_field<FieldId>()`
-    factory that static-asserts the descriptor's dtype).
-5.  Add the registry append-only CI check against the previous release.
-6.  Reconcile `FieldKind{diagnostic, prognostic, reservoir}` with the
-    SlowState/FastState/Climatology partition of section 6.
+1.  ~~Record the measured dual area closure per level (L0--L6); the cell-count
+    and pentagon-count assertions of section 5 already exist.~~ Done in
+    `0ed83cb`.
+2.  ~~Add an RNG reproducibility test with a pinned golden vector, so a future
+    change to the mixing function cannot silently invalidate recorded runs.~~
+    Done in `c394bee`.
+3.  ~~Add a `reduce_deterministic_blocks` helper before any kernel needs a
+    global sum; otherwise the first one will invent its own and re-introduce
+    non-determinism.~~ Done in `cab2e7d`.
+4.  ~~Tie `FieldDataType` to the container type (a `make_field<FieldId>()`
+    factory that static-asserts the descriptor's dtype).~~ Done in `afde120`.
+5.  ~~Add the registry append-only CI check against the previous release.~~
+    Done in `69d1af5`.
+6.  ~~Reconcile `FieldKind{diagnostic, prognostic, reservoir}` with the
+    SlowState/FastState/Climatology partition of section 6.~~ Done in
+    `03b8843`; `FieldPartition` is the sole classification.
 7.  ~~Consolidate the two decision-record directories and add an index.~~
     Done: `docs/decisions/` with `README.md` and `archive/`.
 

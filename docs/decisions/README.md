@@ -14,6 +14,12 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0004 | [Keplerian orbit and coordinate frames](0004-keplerian-orbit-and-coordinate-frames.md) | Accepted | 2026-09-24 |
 | 0005 | [Fractional coastlines and cell-mesh drainage](0005-coastlines-and-drainage.md) | Accepted | 2026-09-28 |
 
+Records cite the design record by version and section (for example "Design
+Record v0.4, §28"). Only the current design record,
+`docs/planetary_civilization_simulator_design_v0_7.docx`, is kept in the tree;
+earlier versions are in git history. Every section cited by an accepted record
+has the same number and title in v0.7.
+
 ## Historical records
 
 Superseded records remain available under [`archive/`](archive/) to preserve

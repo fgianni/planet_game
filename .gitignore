@@ -4,6 +4,8 @@
 /godot/bin/
 /.godot/
 /godot/.godot/
+# Godot editor caches anywhere, including prototype projects
+.godot/
 compile_commands.json
 
 # Prerequisites

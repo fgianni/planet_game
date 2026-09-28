@@ -44,7 +44,7 @@ pre-migration audit:
 | A3 | ✅ EVIDENCED | CSR cell incidences store neighbour, shared edge ID, and local outward normal; shared edges store length and centre distance (`sim/planet/mesh/planet_mesh.hpp:57-69`, `sim/planet/mesh/icosphere.cpp:281-340`). |
 | A4 | ✅ EVIDENCED | `CellGeometry::is_pentagon()` is queryable and topology tests require exactly 12 pentagons (`sim/planet/mesh/planet_mesh.hpp:54`, `tests/physics/test_icosphere.cpp:35-65`). |
 | A5 | ✅ EVIDENCED | *Updated 2026-09-28 (G2-M2).* Divergence of edge fluxes, least-squares gradient and two-point Laplacian (`sim/planet/operators/finite_volume.hpp`) on the amended centroidal Voronoi mesh. V3 (`tests/physics/test_operator_accuracy.cpp`) and V4 (`tests/conservation/test_operator_conservation.cpp`) pass; the error map is a CI artifact. |
-| A6 | ✅ EVIDENCED | Area closure and exact topology are tested from L0 through L6 (`tests/conservation/test_mesh_area.cpp`, `tests/physics/test_icosphere.cpp`). |
+| A6 | ✅ EVIDENCED | Area closure and exact topology are tested from L0 through L6 (`tests/conservation/test_mesh_area.cpp`, `tests/physics/test_icosphere.cpp`). The test prints every measured closure; the L0--L6 table is recorded in the README and ADR-0002 §9, with a maximum of `1.2253352946929809e-16` against the `5e-14` gate. |
 
 Pentagons are excluded from operator convergence statistics (G2-M2) and their
 errors are reported separately. Scenario anchors do not exist yet; add that
@@ -56,10 +56,10 @@ protection with the scenario work.
 |---|---|---|
 | B1 | ✅ EVIDENCED | Each field uses one contiguous allocation through a 64-byte-aligned allocator (`sim/core/fields/field.hpp:15-101`). |
 | B2 | ✅ EVIDENCED | `Field3D` indexes as `layer * cell_count + cell`, and layer spans are contiguous (`sim/core/fields/field.hpp:105-166`). |
-| B3 | ⚠ RUNTIME_ONLY | The current diagnostic insolation field is `float` and solar/global reductions use `double`. No prognostic fields or slow ocean/carbon reservoirs exist yet, so their precision policy cannot yet be enforced. |
+| B3 | ✅ EVIDENCED | Registry dtype and layout select each owned field's container type at compile time through `field_container_t`; `make_field` derives dimensions from the mesh and descriptor (`sim/planet/field_factory.hpp`, `tests/unit/test_field.cpp`). Current insolation and hypsometry fields are `float`, while the slow global sea-level reservoir is `double`. |
 | B4 | ✅ EVIDENCED | Cell IDs follow first encounter in the recursively ordered final faces, before fields are allocated (`sim/planet/mesh/icosphere.cpp:173-223`). This achieves the required locality without a separate permutation pass. |
 | B5 | ✅ EVIDENCED | The mesh stores fixed 256-cell logical blocks independent of worker count (`sim/planet/mesh/planet_mesh.hpp:71-76`, `sim/planet/mesh/icosphere.cpp:103-112`). |
-| B6 | ✅ EVIDENCED | Solar reductions compute one partial per fixed logical block and merge partials sequentially in block-index order, with no atomics (`sim/planet/orbit/solar_diagnostics.cpp:80-98`). This matches the accepted ADR-0002. |
+| B6 | ✅ EVIDENCED | `reduce_deterministic_blocks` computes one partial per fixed logical block and merges partials sequentially in block-index order, with no atomics (`sim/core/scheduler/deterministic_executor.hpp`). Its order-sensitive float test is bit-identical for 1, 2, 8 and 16 workers and to a serial block-order fold; solar diagnostics use the helper without changing output (`tests/unit/test_deterministic_executor.cpp`, `sim/planet/orbit/solar_diagnostics.cpp`). |
 | B7 | ✅ EVIDENCED | `/fp:strict` or `-ffp-contract=off` is configured and fast-math is not enabled (`cmake/CompilerWarnings.cmake:1-22`). Every CI build job runs `tools/ci/check_fp_flags.py` against `compile_commands.json`, which fails on a missing effective `-ffp-contract=off` or any fast-math flag, including flags injected through `CMAKE_CXX_FLAGS` (`.github/workflows/ci.yml`). MSVC is not covered because CI does not build with it. |
 
 The V7 benchmark exists in `planet_cli`, verifies ordered and naive kernels
@@ -85,15 +85,15 @@ C3 remains a separate future M2 task and does not block M1 acceptance.
 | ID | Status | Evidence and finding |
 |---|---|---|
 | D1 | ✅ EVIDENCED | `SimulationTick` is `std::int64_t`, one tick is 60 seconds, and seconds are derived rather than accumulated (`sim/core/scheduler/simulation_clock.hpp:7-24`). |
-| D2 | ✅ EVIDENCED | Random values are stateless and keyed by seed, stream, tick, cell, and sample index; tests compare 1-worker and 16-worker output (`sim/core/random/counter_rng.hpp`, `tests/unit/test_clock_parameters.cpp:45-74`). No global mutable generator was found. |
-| D3 | ✅ EVIDENCED | The registry contains a stable numeric field ID and a compile-time uniqueness assertion (`sim/core/fields/field_registry.hpp:10-50`). |
+| D2 | ✅ EVIDENCED | Random values are stateless and keyed by seed, stream, tick, cell, and sample index; tests compare 1-worker and 16-worker output (`sim/core/random/counter_rng.hpp`, `tests/unit/test_clock_parameters.cpp:45-74`). Eight exact golden vectors cover every key argument, all streams, negative and positive ticks, and zero/maximum values (`tests/unit/test_counter_rng.cpp`); changing them requires an ADR because it invalidates runs, snapshots, and replay. No global mutable generator was found. |
+| D3 | ✅ EVIDENCED | The registry has stable numeric field IDs with compile-time uniqueness, ordering, persistence, and registered/retired disjointness checks (`sim/core/fields/field_registry.hpp`). `planet_cli registry dump` and `tools/ci/check_field_registry.py` compare it with the committed release baseline in CI; tests cover changed attributes, missing IDs, and explicit retirement. |
 | D4 | ✅ EVIDENCED | Persistent `PSNAP` files order registered slow fields by stable ID and encode each in layer-major/cell-major order. L0/L4/L6 write-read-write tests are byte-identical, and the strict reader rejects metadata, length, checksum, and trailing-data errors before mutating state (`sim/core/serialization/snapshot_file.cpp`, `tests/unit/test_snapshot_file.cpp`). |
 
 The accepted M1 guarantees do not require `SimulationTick` to be a strong
-wrapper type or the small registry to be generated. The registry now records
-partition, layout, scalar type, and layer count for persistent fields.
-Migration initializers and release-to-release append-only enforcement remain
-necessary as schemas evolve.
+wrapper type or the small registry to be generated. The registry records
+partition, layout, scalar type, and layer count, and release-to-release
+append-only enforcement is active. Migration initializers remain necessary as
+schemas evolve.
 
 ## Gate status
 
@@ -115,7 +115,7 @@ necessary as schemas evolve.
 | Migrate before scenarios exist | ✅ EVIDENCED | No scenario data or scenario anchors exist to invalidate. |
 | Avoid hard-coded semantic cell IDs | ✅ EVIDENCED | No scenario or geographic tests depend on fixed cell IDs. Literal IDs remain only in generic field-container indexing tests. |
 | Treat determinism flakes as blockers | ⚠ RUNTIME_ONLY | Exact worker-count equality is tested, but no CI policy or retry detector enforces the process rule. |
-| Prevent field-ID reuse | ⚠ RUNTIME_ONLY | Compile-time uniqueness exists within the current registry, but no release-to-release CI comparison exists. |
+| Prevent field-ID reuse | ✅ EVIDENCED | Compile-time uniqueness and registered/retired disjointness protect the current registry; the committed baseline plus CLI dump and CI checker reject release-to-release ID removal or attribute changes unless an ID is explicitly retired. |
 | Bound benchmark noise/regressions | ⚠ RUNTIME_ONLY | Absolute measurements are recorded, but no greater-than-20-percent regression assertion exists. |
 
 ## Documentation consolidation
@@ -138,7 +138,7 @@ competing current audits or decisions.
 
 ## Validation observed during the migration and M2 infrastructure work
 
-- Normal headless suite: 22/22 tests passed.
+- Normal headless suite: 26/26 tests passed.
 - AddressSanitizer/UndefinedBehaviorSanitizer suite: 22/22 tests passed
   (Clang, 2026-09-28).
 - Godot 4.7.2 extension build and five-frame headless runtime smoke test:

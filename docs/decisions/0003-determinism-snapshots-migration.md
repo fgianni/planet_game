@@ -188,6 +188,21 @@ identity fields were added to schema v1 before any snapshot left the
 development machine, so v1 was amended and its golden file regenerated
 (chunk bytes unchanged) rather than introducing v2.
 
+The M2-01b foundation hardening records `partition` and `layout` in the
+manifest instead of the conceptual §3.4 sketch's `kind`. `partition` is the
+single authoritative classification and determines persistence/ownership;
+`layout` independently tells the reader how to validate and decode field
+storage. Keeping a third `FieldKind` classification would allow those facts to
+conflict. Container scalar type and shape now derive at compile time from the
+registry descriptor, and the registry's stable-ID contract is checked against
+a committed baseline in CI. Counter-RNG outputs are pinned as exact golden
+vectors, and fixed-block reductions use a shared block-order helper.
+
+The v1 golden save is loaded and checked exactly now. V5's additional
+ten-simulated-year step remains deferred until M3 provides physics that can
+advance the persisted state and conservation budgets; adding an artificial
+state mutation here would not test migration compatibility.
+
 Compression remains deferred until M4, after V7 records real size and delta
 ratios. Run manifests, command logs, checkpoint hashes, and replay remain M3;
 delta chains remain M4; and the migration framework remains M5. Starting the
