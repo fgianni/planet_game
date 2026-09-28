@@ -56,7 +56,32 @@ int main() {
     if (descriptor != nullptr) {
         PLANETSIM_EXPECT(test, descriptor->data_type == planetsim::FieldDataType::float32);
         PLANETSIM_EXPECT(test, descriptor->kind == planetsim::FieldKind::diagnostic);
-        PLANETSIM_EXPECT(test, !descriptor->persistent);
+        PLANETSIM_EXPECT(test, descriptor->partition == planetsim::FieldPartition::derived);
+        PLANETSIM_EXPECT(test, descriptor->layout == planetsim::FieldLayout::cell);
+        PLANETSIM_EXPECT(test, descriptor->layers == 1U);
+        PLANETSIM_EXPECT(test, !descriptor->persistent());
+    }
+
+    constexpr auto hypsometry_id = planetsim::FieldId::hypsometry_m;
+    const auto* hypsometry = planetsim::find_field(hypsometry_id);
+    PLANETSIM_EXPECT(test, hypsometry != nullptr);
+    if (hypsometry != nullptr) {
+        PLANETSIM_EXPECT(test, hypsometry->partition == planetsim::FieldPartition::slow);
+        PLANETSIM_EXPECT(test, hypsometry->layout == planetsim::FieldLayout::cell_layers);
+        PLANETSIM_EXPECT(test, hypsometry->data_type == planetsim::FieldDataType::float32);
+        PLANETSIM_EXPECT(test, hypsometry->layers == 9U);
+        PLANETSIM_EXPECT(test, hypsometry->persistent());
+    }
+
+    constexpr auto sea_level_id = planetsim::FieldId::sea_level_m;
+    const auto* sea_level = planetsim::find_field(sea_level_id);
+    PLANETSIM_EXPECT(test, sea_level != nullptr);
+    if (sea_level != nullptr) {
+        PLANETSIM_EXPECT(test, sea_level->partition == planetsim::FieldPartition::slow);
+        PLANETSIM_EXPECT(test, sea_level->layout == planetsim::FieldLayout::global);
+        PLANETSIM_EXPECT(test, sea_level->data_type == planetsim::FieldDataType::float64);
+        PLANETSIM_EXPECT(test, sea_level->layers == 1U);
+        PLANETSIM_EXPECT(test, sea_level->persistent());
     }
 
     const planetsim::Field<double> empty;
