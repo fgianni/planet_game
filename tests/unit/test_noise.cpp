@@ -95,6 +95,20 @@ int main() {
     PLANETSIM_EXPECT(test, maximum_fbm_magnitude <= 1.0);
     PLANETSIM_EXPECT(test, std::abs(mean) < 0.01);
     PLANETSIM_EXPECT(test, variance > 0.01);
+    PLANETSIM_EXPECT(test, std::abs(std::sqrt(variance) / planetsim::gradient_noise_standard_deviation -
+                                    1.0) < 0.05);
+
+    // Normalised fbm has approximately unit RMS.
+    double normalized_square_sum = 0.0;
+    for (std::uint32_t index = 0; index < sample_count; ++index) {
+        const double value = planetsim::normalized_fbm(test_seed, test_salt,
+                                                       random_point(index, 50.0), fbm_parameters);
+        normalized_square_sum += value * value;
+    }
+    const double normalized_rms =
+        std::sqrt(normalized_square_sum / static_cast<double>(sample_count));
+    std::cout << "normalized_fbm_rms: " << normalized_rms << '\n';
+    PLANETSIM_EXPECT(test, std::abs(normalized_rms - 1.0) < 0.1);
 
     // No axis-aligned lattice artefact: the autocorrelation at a fixed lag is
     // the same along the lattice axes and along face and body diagonals.

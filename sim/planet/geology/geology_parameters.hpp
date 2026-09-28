@@ -16,8 +16,9 @@ inline constexpr double seconds_per_million_years = 1.0e6 * seconds_per_julian_y
 // Every value below is a starting value chosen to give plausible plate-scale
 // structure, not calibrated physics. Distances are along-mesh (Dijkstra) path
 // lengths, which exceed the geodesic by up to about 17 % on the cell mesh.
-// Noise amplitudes multiply fbm(), whose sampled standard deviation is about
-// 0.15, not its [-1, 1] bound.
+// Amplitudes named *_amplitude_m multiply normalized_fbm(), so they are RMS
+// values. plate_growth_noise_amplitude and the continental propensity use
+// raw fbm() as §4.3 and §4.6 specify (standard deviation about 0.15).
 struct GeologyParameters {
     // Plates (§4.3, §4.4).
     std::uint32_t plate_count = 12;                  // allowed 2--40
@@ -34,7 +35,7 @@ struct GeologyParameters {
     // Continental crust (§4.6).
     double continental_area_fraction = 0.40;
     FbmParameters continental_noise{1.5, 4U, 2.0, 0.5};
-    double continental_plate_bias_amplitude = 0.25;  // bias uniform in [-A, A]
+    double continental_plate_bias_amplitude = 0.15;  // bias uniform in [-A, A]; ~1 fbm std
 
     // Crust age and ocean depth (§4.7). Parsons & Sclater (1977) below the
     // transition age; above it an exponential approach to the abyssal limit
@@ -72,16 +73,17 @@ struct GeologyParameters {
     double boundary_speed_scale_max = 2.0;
 
     // Roughness and diffusive erosion (§4.9).
-    double continental_roughness_amplitude_m = 1'500.0;
-    double oceanic_roughness_amplitude_m = 500.0;
+    double continental_roughness_amplitude_m = 250.0;
+    double oceanic_roughness_amplitude_m = 100.0;
     FbmParameters roughness_noise{6.0, 6U, 2.0, 0.5};
     std::uint32_t erosion_step_count = 4;
     double erosion_diffusivity_m2_s = 1.0;
-    double erosion_step_s = 2.5e9;  // sub-stepped where the explicit step is unstable
+    double erosion_step_s = 1.25e9;  // sub-stepped where the explicit step is unstable
+    // Diffusion length sqrt(2 kappa N dt) = 100 km with the defaults.
 
     // Sub-cell hypsometry (§4.10).
-    double continental_subcell_roughness_amplitude_m = 1'000.0;
-    double oceanic_subcell_roughness_amplitude_m = 300.0;
+    double continental_subcell_roughness_amplitude_m = 300.0;
+    double oceanic_subcell_roughness_amplitude_m = 100.0;
     FbmParameters subcell_roughness_noise{48.0, 4U, 2.0, 0.5};
 
     // Sea level (§4.11).

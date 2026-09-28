@@ -26,11 +26,24 @@ struct FbmParameters {
     double gain = 0.5;            // amplitude ratio between octaves
 };
 
+// Nominal standard deviation of gradient_noise over uniformly distributed
+// positions (measured 0.1906; pinned within 5 % by tests/unit/test_noise.cpp).
+inline constexpr double gradient_noise_standard_deviation = 0.19;
+
 // Fractal sum of gradient noise, normalised by the sum of octave amplitudes so
 // the result lies in [-1, 1]. Octave k uses salt + k, so octaves are
 // independent lattices. On the planet it is evaluated at unit-sphere positions,
 // so base_frequency is in lattice cells per planetary radius.
 [[nodiscard]] double fbm(std::uint64_t seed, std::uint64_t salt, const Vec3d& position,
                          const FbmParameters& parameters);
+
+// Nominal standard deviation of fbm(): octaves are independent lattices, so
+// sigma = sigma_0 sqrt(sum gain^(2k)) / sum gain^k.
+[[nodiscard]] double fbm_standard_deviation(const FbmParameters& parameters);
+
+// fbm() divided by its nominal standard deviation: unit-RMS noise, so an
+// amplitude multiplying it is a root-mean-square value. Not bounded.
+[[nodiscard]] double normalized_fbm(std::uint64_t seed, std::uint64_t salt, const Vec3d& position,
+                                    const FbmParameters& parameters);
 
 }  // namespace planetsim

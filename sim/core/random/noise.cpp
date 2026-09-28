@@ -91,4 +91,24 @@ double fbm(std::uint64_t seed, std::uint64_t salt, const Vec3d& position,
     return sum / amplitude_sum;
 }
 
+double fbm_standard_deviation(const FbmParameters& parameters) {
+    if (parameters.octaves == 0U || !(parameters.gain > 0.0)) {
+        throw std::invalid_argument("fbm requires positive octaves and gain");
+    }
+    double amplitude = 1.0;
+    double amplitude_sum = 0.0;
+    double square_sum = 0.0;
+    for (std::uint32_t octave = 0; octave < parameters.octaves; ++octave) {
+        amplitude_sum += amplitude;
+        square_sum += amplitude * amplitude;
+        amplitude *= parameters.gain;
+    }
+    return gradient_noise_standard_deviation * std::sqrt(square_sum) / amplitude_sum;
+}
+
+double normalized_fbm(std::uint64_t seed, std::uint64_t salt, const Vec3d& position,
+                      const FbmParameters& parameters) {
+    return fbm(seed, salt, position, parameters) / fbm_standard_deviation(parameters);
+}
+
 }  // namespace planetsim
