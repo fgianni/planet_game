@@ -5,7 +5,7 @@ This repository is the Planetary Civilization Simulator.
 Before changing code, read `docs/DEVELOPMENT_SPEC_v0_3.md` in full. It is
 the development specification: the implementation contract and
 architecture source of truth. The design document is
-`docs/planetary_civilization_simulator_design_v0_8.docx`.
+`docs/planetary_civilization_simulator_design_v0_9.docx`.
 
 Accepted ADRs in `docs/decisions/` take precedence where they conflict
 with the specification (notably ADR-0002 on the mesh: a
