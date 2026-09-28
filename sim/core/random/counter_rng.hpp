@@ -10,6 +10,7 @@ enum class RandomStreamId : std::uint32_t {
     validation = 0x0000'0001U,
     weather = 0x0001'0001U,
     hydrology = 0x0002'0001U,
+    geology = 0x0003'0001U,
 };
 
 [[nodiscard]] constexpr std::uint64_t mix_random_key(std::uint64_t value) noexcept {

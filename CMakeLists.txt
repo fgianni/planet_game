@@ -20,6 +20,7 @@ include(cmake/CompilerWarnings.cmake)
 find_package(Threads REQUIRED)
 
 add_library(PlanetSim STATIC
+    sim/core/random/noise.cpp
     sim/core/serialization/crc32c.cpp
     sim/core/serialization/snapshot_file.cpp
     sim/core/serialization/state_snapshot.cpp
