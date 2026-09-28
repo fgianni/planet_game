@@ -23,6 +23,8 @@ struct SolarPartial {
     double max_insolation_W_m2 = -std::numeric_limits<double>::infinity();
     double total_area_m2 = 0.0;
     double total_incoming_power_W = 0.0;
+    double area_compensation = 0.0;
+    double power_compensation = 0.0;
 };
 
 void compensated_add(double value, double& sum, double& compensation) noexcept {
@@ -40,28 +42,29 @@ SolarDiagnostics analyze_solar_forcing(const PlanetState& state, std::size_t wor
 
     const auto& mesh = state.mesh();
     const auto& forcing = state.forcing();
-    std::vector<SolarPartial> partials(mesh.blocks().size());
-    for_each_deterministic_block(
-        mesh.blocks(), worker_count, [&](std::size_t block_index, const CellBlock& block) {
-            auto& partial = partials[block_index];
-            double area_compensation = 0.0;
-            double power_compensation = 0.0;
+    const auto totals = reduce_deterministic_blocks(
+        mesh.blocks(), worker_count, SolarPartial{},
+        [&](std::size_t, const CellBlock& block) {
+            SolarPartial partial;
             for (std::size_t cell_index = block.begin; cell_index < block.end; ++cell_index) {
                 const auto& cell = mesh.cells()[cell_index];
                 const double insolation =
                     static_cast<double>(forcing.top_of_atmosphere_insolation_W_m2[cell.id]);
                 const double incidence =
                     dot(cell.center_unit, forcing.orbit.sun_direction_body_unit);
-                compensated_add(cell.area_m2, partial.total_area_m2, area_compensation);
+                compensated_add(cell.area_m2, partial.total_area_m2,
+                                partial.area_compensation);
 
                 if (!std::isfinite(insolation)) {
                     ++partial.non_finite_count;
                     continue;
                 }
-                partial.min_insolation_W_m2 = std::min(partial.min_insolation_W_m2, insolation);
-                partial.max_insolation_W_m2 = std::max(partial.max_insolation_W_m2, insolation);
+                partial.min_insolation_W_m2 =
+                    std::min(partial.min_insolation_W_m2, insolation);
+                partial.max_insolation_W_m2 =
+                    std::max(partial.max_insolation_W_m2, insolation);
                 compensated_add(insolation * cell.area_m2, partial.total_incoming_power_W,
-                                power_compensation);
+                                partial.power_compensation);
 
                 if (incidence > 0.0) {
                     ++partial.illuminated_cell_count;
@@ -75,27 +78,35 @@ SolarDiagnostics analyze_solar_forcing(const PlanetState& state, std::size_t wor
                     ++partial.out_of_range_count;
                 }
             }
+            return partial;
+        },
+        [](SolarPartial accumulated, const SolarPartial& partial) {
+            accumulated.illuminated_cell_count += partial.illuminated_cell_count;
+            accumulated.night_cell_count += partial.night_cell_count;
+            accumulated.night_side_nonzero_count += partial.night_side_nonzero_count;
+            accumulated.out_of_range_count += partial.out_of_range_count;
+            accumulated.non_finite_count += partial.non_finite_count;
+            accumulated.min_insolation_W_m2 =
+                std::min(accumulated.min_insolation_W_m2, partial.min_insolation_W_m2);
+            accumulated.max_insolation_W_m2 =
+                std::max(accumulated.max_insolation_W_m2, partial.max_insolation_W_m2);
+            compensated_add(partial.total_area_m2, accumulated.total_area_m2,
+                            accumulated.area_compensation);
+            compensated_add(partial.total_incoming_power_W,
+                            accumulated.total_incoming_power_W,
+                            accumulated.power_compensation);
+            return accumulated;
         });
 
-    result.min_insolation_W_m2 = std::numeric_limits<double>::infinity();
-    result.max_insolation_W_m2 = -std::numeric_limits<double>::infinity();
-    double total_area_m2 = 0.0;
-    double area_compensation = 0.0;
-    double power_compensation = 0.0;
-    for (const auto& partial : partials) {
-        result.illuminated_cell_count += partial.illuminated_cell_count;
-        result.night_cell_count += partial.night_cell_count;
-        result.night_side_nonzero_count += partial.night_side_nonzero_count;
-        result.out_of_range_count += partial.out_of_range_count;
-        result.non_finite_count += partial.non_finite_count;
-        result.min_insolation_W_m2 =
-            std::min(result.min_insolation_W_m2, partial.min_insolation_W_m2);
-        result.max_insolation_W_m2 =
-            std::max(result.max_insolation_W_m2, partial.max_insolation_W_m2);
-        compensated_add(partial.total_area_m2, total_area_m2, area_compensation);
-        compensated_add(partial.total_incoming_power_W, result.total_incoming_power_W,
-                        power_compensation);
-    }
+    result.illuminated_cell_count = totals.illuminated_cell_count;
+    result.night_cell_count = totals.night_cell_count;
+    result.night_side_nonzero_count = totals.night_side_nonzero_count;
+    result.out_of_range_count = totals.out_of_range_count;
+    result.non_finite_count = totals.non_finite_count;
+    result.min_insolation_W_m2 = totals.min_insolation_W_m2;
+    result.max_insolation_W_m2 = totals.max_insolation_W_m2;
+    result.total_incoming_power_W = totals.total_incoming_power_W;
+    const double total_area_m2 = totals.total_area_m2;
 
     if (result.cell_count == 0) {
         result.min_insolation_W_m2 = 0.0;

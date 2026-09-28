@@ -6,6 +6,7 @@
 #include <span>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace planetsim {
@@ -51,6 +52,23 @@ void for_each_deterministic_block(std::span<const Block> blocks, std::size_t wor
             std::rethrow_exception(failure);
         }
     }
+}
+
+template <typename Partial, typename Block, typename BlockFunction, typename CombineFunction>
+[[nodiscard]] Partial reduce_deterministic_blocks(std::span<const Block> blocks,
+                                                  std::size_t worker_count,
+                                                  Partial identity,
+                                                  BlockFunction block_function,
+                                                  CombineFunction combine) {
+    std::vector<Partial> partials(blocks.size(), identity);
+    for_each_deterministic_block(
+        blocks, worker_count, [&](std::size_t block_index, const Block& block) {
+            partials[block_index] = block_function(block_index, block);
+        });
+    for (const auto& partial : partials) {
+        identity = combine(std::move(identity), partial);
+    }
+    return identity;
 }
 
 }  // namespace planetsim
