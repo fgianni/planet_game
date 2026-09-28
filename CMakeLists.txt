@@ -20,6 +20,7 @@ include(cmake/CompilerWarnings.cmake)
 find_package(Threads REQUIRED)
 
 add_library(PlanetSim STATIC
+    sim/core/serialization/crc32c.cpp
     sim/core/serialization/state_snapshot.cpp
     sim/core/scheduler/simulation_clock.cpp
     sim/planet/coordinates/local_tangent_basis.cpp
