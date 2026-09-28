@@ -8,6 +8,7 @@ endfunction()
 
 add_planetsim_test(test_field unit/test_field.cpp)
 add_planetsim_test(test_clock_parameters unit/test_clock_parameters.cpp)
+add_planetsim_test(test_counter_rng unit/test_counter_rng.cpp)
 add_planetsim_test(test_planet_state unit/test_planet_state.cpp)
 add_planetsim_test(test_crc32c unit/test_crc32c.cpp)
 add_planetsim_test(test_snapshot_file unit/test_snapshot_file.cpp)
