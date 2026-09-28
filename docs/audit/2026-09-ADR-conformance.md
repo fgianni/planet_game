@@ -132,9 +132,10 @@ audits:
 - The stale post-migration re-audit was removed after its useful before/after
   summary was incorporated here.
 
-Versioned specifications and design documents were deliberately not renamed or
-deduplicated in this pass; they are source/history artifacts rather than
-competing current audits or decisions.
+Versioned specifications remain as source/history artifacts. Design record
+v0.7 is the sole version retained in the tree; v0.3--v0.6 remain available in
+git history, and accepted ADR citations were checked against the matching
+sections in v0.7.
 
 ## Validation observed during the migration and M2 infrastructure work
 

@@ -11,7 +11,7 @@ Accepted ADRs in `docs/decisions/` take precedence where they conflict
 with the specification (notably ADR-0002 on the mesh: a
 hexagonal--pentagonal centroidal Voronoi tessellation).
 `docs/DEVELOPMENT_SPEC_v0_2.md` and `docs/DEVELOPMENT_SPEC.md` are superseded
-and not authoritative; design versions v0.3--v0.6 are kept for history.
+and not authoritative; design versions v0.3--v0.6 remain available in git history.
 
 ## Current phase
 
