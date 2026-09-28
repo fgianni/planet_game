@@ -13,12 +13,6 @@ enum class FieldId : std::uint32_t {
     sea_level_m = 0x0002'0002U,
 };
 
-enum class FieldKind : std::uint8_t {
-    diagnostic,
-    prognostic,
-    reservoir,
-};
-
 enum class FieldDataType : std::uint8_t {
     float32,
     float64,
@@ -43,7 +37,6 @@ inline constexpr std::uint32_t hypsometry_layer_count = 9U;
 struct FieldDescriptor {
     FieldId id;
     std::string_view name;
-    FieldKind kind;
     FieldPartition partition;
     FieldLayout layout;
     FieldDataType data_type;
@@ -57,11 +50,10 @@ struct FieldDescriptor {
 
 inline constexpr std::array<FieldDescriptor, 3> field_registry{{
     {FieldId::top_of_atmosphere_insolation_W_m2, "top_of_atmosphere_insolation_W_m2",
-     FieldKind::diagnostic, FieldPartition::derived, FieldLayout::cell,
-     FieldDataType::float32, 1U, "W/m2"},
-    {FieldId::hypsometry_m, "hypsometry_m", FieldKind::prognostic, FieldPartition::slow,
+     FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
+    {FieldId::hypsometry_m, "hypsometry_m", FieldPartition::slow,
      FieldLayout::cell_layers, FieldDataType::float32, hypsometry_layer_count, "m"},
-    {FieldId::sea_level_m, "sea_level_m", FieldKind::reservoir, FieldPartition::slow,
+    {FieldId::sea_level_m, "sea_level_m", FieldPartition::slow,
      FieldLayout::global, FieldDataType::float64, 1U, "m"},
 }};
 

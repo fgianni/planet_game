@@ -55,7 +55,6 @@ int main() {
     PLANETSIM_EXPECT(test, descriptor != nullptr);
     if (descriptor != nullptr) {
         PLANETSIM_EXPECT(test, descriptor->data_type == planetsim::FieldDataType::float32);
-        PLANETSIM_EXPECT(test, descriptor->kind == planetsim::FieldKind::diagnostic);
         PLANETSIM_EXPECT(test, descriptor->partition == planetsim::FieldPartition::derived);
         PLANETSIM_EXPECT(test, descriptor->layout == planetsim::FieldLayout::cell);
         PLANETSIM_EXPECT(test, descriptor->layers == 1U);
