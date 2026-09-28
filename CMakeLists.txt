@@ -93,6 +93,26 @@ if(PLANETSIM_BUILD_TESTS)
     )
     set(PLANETSIM_SNAPSHOT_SMOKE_FILE
         "${CMAKE_CURRENT_BINARY_DIR}/planet_cli_snapshot_smoke.psnap")
+    set(PLANETSIM_TERRAIN_SMOKE_DIR "${CMAKE_CURRENT_BINARY_DIR}/planet_cli_terrain_smoke")
+    file(MAKE_DIRECTORY "${PLANETSIM_TERRAIN_SMOKE_DIR}")
+    add_test(
+        NAME planet_cli_terrain_smoke
+        COMMAND planet_cli terrain --subdivision 3 --seed 7 --workers 2
+                --map "${PLANETSIM_TERRAIN_SMOKE_DIR}/terrain.csv"
+                --snapshot "${PLANETSIM_TERRAIN_SMOKE_DIR}/terrain.psnap"
+    )
+    set_tests_properties(
+        planet_cli_terrain_smoke
+        PROPERTIES PASS_REGULAR_EXPRESSION "achieved_land_fraction: 0\\.29[^0-9].*terrain_valid: true"
+    )
+    add_test(
+        NAME planet_cli_terrain_aqua_smoke
+        COMMAND planet_cli terrain --subdivision 2 --preset aqua_planet
+    )
+    set_tests_properties(
+        planet_cli_terrain_aqua_smoke
+        PROPERTIES PASS_REGULAR_EXPRESSION "achieved_land_fraction: 0\n"
+    )
     add_test(
         NAME planet_cli_registry_dump
         COMMAND planet_cli registry dump

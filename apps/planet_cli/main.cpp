@@ -10,6 +10,9 @@
 #include "sim/planet/orbit/solar_forcing.hpp"
 #include "sim/planet/planet_parameters.hpp"
 #include "sim/planet/planet_state.hpp"
+#include "sim/planet/terrain/hypsometry.hpp"
+#include "sim/planet/terrain/terrain_diagnostics.hpp"
+#include "sim/planet/terrain/terrain_generator.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,9 +28,11 @@
 #include <limits>
 #include <memory>
 #include <numbers>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -58,6 +63,17 @@ struct SnapshotWriteOptions {
     std::filesystem::path output_path;
 };
 
+struct TerrainOptions {
+    std::uint32_t subdivision = 5;
+    std::uint64_t seed = 1;
+    planetsim::PlanetPreset preset = planetsim::PlanetPreset::earth_like;
+    std::optional<double> land_fraction;
+    std::optional<std::uint32_t> plate_count;
+    std::size_t worker_count = 0;  // 0: hardware concurrency
+    std::filesystem::path map_path;
+    std::filesystem::path snapshot_path;
+};
+
 constexpr std::uint64_t snapshot_synthetic_seed = 0x9B97'F4A7'C150'0011ULL;
 constexpr planetsim::SimulationTick snapshot_synthetic_tick = 123'456;
 
@@ -68,7 +84,11 @@ void print_usage(std::ostream& output) {
            << "  planet_cli solar [--subdivision LEVEL] [--radius METRES]"
               " [--time-days DAYS]\n"
            << "  planet_cli operators [--min-subdivision LEVEL] [--max-subdivision LEVEL]"
-              " [--radius METRES] [--error-map CSV]\n";
+              " [--radius METRES] [--error-map CSV]\n"
+           << "  planet_cli terrain [--subdivision LEVEL] [--seed N] [--preset NAME]"
+              " [--land-fraction F] [--plates P] [--workers W] [--map FILE.csv]"
+              " [--snapshot FILE.psnap]\n"
+           << "    presets: earth_like (default), aqua_planet, dead_rock\n";
 }
 
 [[nodiscard]] std::uint32_t parse_subdivision(std::string_view text) {
@@ -121,6 +141,201 @@ void print_usage(std::ostream& output) {
         }
     }
     return options;
+}
+
+[[nodiscard]] std::uint64_t parse_unsigned(std::string_view text, std::string_view description) {
+    std::uint64_t parsed = 0;
+    const auto result = std::from_chars(text.data(), text.data() + text.size(), parsed);
+    if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) {
+        throw std::invalid_argument("invalid " + std::string(description) + ": " +
+                                    std::string(text));
+    }
+    return parsed;
+}
+
+[[nodiscard]] TerrainOptions parse_terrain_options(int argument_count, char** arguments) {
+    TerrainOptions options;
+    for (int index = 2; index < argument_count; ++index) {
+        const std::string_view argument{arguments[index]};
+        if (++index >= argument_count) {
+            throw std::invalid_argument(std::string(argument) + " requires a value");
+        }
+        const std::string_view value{arguments[index]};
+        if (argument == "--subdivision") {
+            options.subdivision = parse_subdivision(value);
+        } else if (argument == "--seed") {
+            options.seed = parse_unsigned(value, "seed");
+        } else if (argument == "--preset") {
+            const auto preset = planetsim::parse_planet_preset(value);
+            if (!preset) {
+                throw std::invalid_argument("unknown preset: " + std::string(value));
+            }
+            options.preset = *preset;
+        } else if (argument == "--land-fraction") {
+            options.land_fraction = parse_double(value, "land fraction");
+        } else if (argument == "--plates") {
+            const std::uint64_t plates = parse_unsigned(value, "plate count");
+            if (plates > std::numeric_limits<std::uint32_t>::max()) {
+                throw std::invalid_argument("invalid plate count: " + std::string(value));
+            }
+            options.plate_count = static_cast<std::uint32_t>(plates);
+        } else if (argument == "--workers") {
+            options.worker_count = static_cast<std::size_t>(parse_unsigned(value, "worker count"));
+            if (options.worker_count == 0U) {
+                throw std::invalid_argument("worker count must be positive");
+            }
+        } else if (argument == "--map") {
+            options.map_path = std::filesystem::path(value);
+        } else if (argument == "--snapshot") {
+            options.snapshot_path = std::filesystem::path(value);
+        } else {
+            throw std::invalid_argument("unknown terrain option: " + std::string(argument));
+        }
+    }
+    return options;
+}
+
+[[nodiscard]] std::string_view boundary_class_name(planetsim::BoundaryClass boundary_class) {
+    switch (boundary_class) {
+    case planetsim::BoundaryClass::none:
+        return "none";
+    case planetsim::BoundaryClass::convergent:
+        return "convergent";
+    case planetsim::BoundaryClass::divergent:
+        return "divergent";
+    case planetsim::BoundaryClass::transform:
+        return "transform";
+    }
+    return "unknown";
+}
+
+void write_terrain_map(const std::filesystem::path& path, const planetsim::PlanetState& state,
+                       const planetsim::GeologyState& geology) {
+    const auto& mesh = state.mesh();
+    const auto fractions = planetsim::compute_surface_fractions(
+        mesh, state.slow().hypsometry_m, state.slow().sea_level_m);
+    std::ofstream output(path);
+    if (!output) {
+        throw std::runtime_error("cannot open terrain map: " + path.string());
+    }
+    constexpr double degrees = 180.0 / std::numbers::pi;
+    output << std::setprecision(9)
+           << "cell_id,latitude_deg,longitude_deg,plate_id,crust_type,crust_age_myr,"
+              "nearest_boundary_class,nearest_boundary_distance_km,mean_elevation_m,"
+              "lowest_quantile_m,highest_quantile_m,land_fraction\n";
+    for (const auto& cell : mesh.cells()) {
+        const auto quantiles = planetsim::cell_hypsometry(state.slow().hypsometry_m, cell.id);
+        output << cell.id.value() << ','
+               << planetsim::latitude_rad(cell.center_unit) * degrees << ','
+               << planetsim::longitude_rad(cell.center_unit) * degrees << ','
+               << geology.plate_id[cell.id].value() << ','
+               << (geology.crust_type[cell.id] == planetsim::CrustType::continental
+                       ? "continental"
+                       : "oceanic")
+               << ','
+               << geology.crust_age_s[cell.id] / planetsim::seconds_per_million_years << ','
+               << boundary_class_name(geology.nearest_boundary_class[cell.id]) << ','
+               << geology.nearest_boundary_distance_m[cell.id] / 1'000.0 << ','
+               << planetsim::mean_elevation_m(quantiles) << ',' << quantiles.front() << ','
+               << quantiles.back() << ',' << fractions.land_fraction[cell.id] << '\n';
+    }
+    if (!output) {
+        throw std::runtime_error("failed writing terrain map: " + path.string());
+    }
+}
+
+int run_terrain(const TerrainOptions& options) {
+    auto parameters = planetsim::geology_parameters_for(options.preset);
+    if (options.land_fraction) {
+        parameters.target_land_fraction = *options.land_fraction;
+    }
+    if (options.plate_count) {
+        parameters.plate_count = *options.plate_count;
+    }
+    planetsim::validate_geology_parameters(parameters);
+    const std::size_t worker_count =
+        options.worker_count != 0U ? options.worker_count
+                                   : std::max<std::size_t>(1U, std::thread::hardware_concurrency());
+
+    const auto mesh_start = std::chrono::steady_clock::now();
+    auto mesh = std::make_shared<const planetsim::PlanetMesh>(
+        planetsim::make_icosphere(options.subdivision, 6'371'000.0));
+    const auto generation_start = std::chrono::steady_clock::now();
+    planetsim::PlanetState state(mesh);
+    const auto generation =
+        planetsim::generate_terrain(state, options.seed, parameters, worker_count);
+    const auto generation_finish = std::chrono::steady_clock::now();
+    const auto diagnostics = planetsim::compute_terrain_diagnostics(
+        *mesh, generation.geology, state.slow().hypsometry_m, state.slow().sea_level_m,
+        worker_count);
+
+    const auto milliseconds = [](auto from, auto to) {
+        return std::chrono::duration<double, std::milli>(to - from).count();
+    };
+    const auto& solution = generation.sea_level;
+    std::cout << std::setprecision(6) << "preset: " << planetsim::planet_preset_name(options.preset)
+              << '\n'
+              << "seed: " << options.seed << '\n'
+              << "subdivision: " << options.subdivision << '\n'
+              << "cell_count: " << mesh->cell_count() << '\n'
+              << "worker_count: " << worker_count << '\n'
+              << "plate_count: " << diagnostics.plate_count << '\n'
+              << "plate_area_fractions:";
+    for (const double fraction : diagnostics.plate_area_fractions) {
+        std::cout << ' ' << fraction;
+    }
+    std::cout << '\n';
+    for (const auto boundary_class :
+         {planetsim::BoundaryClass::convergent, planetsim::BoundaryClass::divergent,
+          planetsim::BoundaryClass::transform}) {
+        const auto index = static_cast<std::size_t>(boundary_class);
+        std::cout << "boundary_" << boundary_class_name(boundary_class)
+                  << "_length_km: " << diagnostics.boundary_length_m[index] / 1'000.0
+                  << " (edges: " << diagnostics.boundary_edge_count[index] << ")\n";
+    }
+    std::cout << "continental_area_fraction: " << diagnostics.continental_area_fraction << '\n'
+              << "oceanic_crust_age_myr: " << diagnostics.oceanic_age_min_myr << " -- "
+              << diagnostics.oceanic_age_max_myr << '\n'
+              << "continental_crust_age_myr: " << diagnostics.continental_age_min_myr << " -- "
+              << diagnostics.continental_age_max_myr << '\n'
+              << "mean_elevation_percentiles_m:";
+    for (std::size_t index = 0; index < planetsim::terrain_elevation_percentiles.size(); ++index) {
+        std::cout << " p" << planetsim::terrain_elevation_percentiles[index] << '='
+                  << diagnostics.mean_elevation_percentiles_m[index];
+    }
+    std::cout << '\n'
+              << "target_land_fraction: " << parameters.target_land_fraction << '\n'
+              << "achieved_land_fraction: " << solution.achieved_land_fraction << '\n'
+              << "sea_level_m: " << std::setprecision(9) << solution.sea_level_m
+              << std::setprecision(6) << '\n'
+              << "sea_level_in_connectivity_jump: " << (solution.target_in_jump ? "true" : "false")
+              << '\n';
+    if (solution.target_in_jump) {
+        std::cout << "land_fraction_above_jump: " << solution.land_fraction_above_jump << '\n'
+                  << "jump_changes_ocean_connectivity: "
+                  << (solution.jump_changes_ocean_connectivity ? "true" : "false") << '\n';
+    }
+    std::cout << "inland_depressions: " << diagnostics.inland_depression_count << '\n'
+              << "ocean_area_fraction: " << diagnostics.ocean_area_fraction << '\n'
+              << "ocean_shallower_than_200m_fraction: "
+              << diagnostics.ocean_shallower_than_200m_fraction << '\n'
+              << "ocean_deeper_than_4000m_fraction: " << diagnostics.ocean_deeper_than_4000m_fraction
+              << '\n'
+              << "ocean_elevation_mean_m: " << diagnostics.ocean_elevation_mean_m << '\n'
+              << "ocean_elevation_std_m: " << diagnostics.ocean_elevation_std_m << '\n'
+              << "mesh_time_ms: " << milliseconds(mesh_start, generation_start) << '\n'
+              << "generation_time_ms: " << milliseconds(generation_start, generation_finish) << '\n';
+
+    if (!options.map_path.empty()) {
+        write_terrain_map(options.map_path, state, generation.geology);
+        std::cout << "map_written: " << options.map_path.string() << '\n';
+    }
+    if (!options.snapshot_path.empty()) {
+        planetsim::write_snapshot(options.snapshot_path, state, 0);
+        std::cout << "snapshot_written: " << options.snapshot_path.string() << '\n';
+    }
+    std::cout << "terrain_valid: true\n";
+    return 0;
 }
 
 [[nodiscard]] SnapshotWriteOptions parse_snapshot_write_options(int argument_count,
@@ -594,6 +809,9 @@ int main(int argument_count, char** arguments) {
         }
         if (command == "solar") {
             return run_solar(parse_solar_options(argument_count, arguments));
+        }
+        if (command == "terrain") {
+            return run_terrain(parse_terrain_options(argument_count, arguments));
         }
         if (command == "registry") {
             if (argument_count == 3 && std::string_view{arguments[2]} == "dump") {
