@@ -21,6 +21,7 @@ find_package(Threads REQUIRED)
 
 add_library(PlanetSim STATIC
     sim/core/serialization/crc32c.cpp
+    sim/core/serialization/snapshot_file.cpp
     sim/core/serialization/state_snapshot.cpp
     sim/core/scheduler/simulation_clock.cpp
     sim/planet/coordinates/local_tangent_basis.cpp
@@ -41,6 +42,7 @@ target_include_directories(PlanetSim
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 )
+target_compile_definitions(PlanetSim PRIVATE PLANETSIM_ENGINE_VERSION="${PROJECT_VERSION}")
 target_link_libraries(PlanetSim PUBLIC Threads::Threads)
 set_target_properties(PlanetSim PROPERTIES POSITION_INDEPENDENT_CODE ON)
 planetsim_set_project_warnings(PlanetSim)
