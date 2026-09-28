@@ -18,8 +18,10 @@ Most recently completed milestone: **P0 / M1 --- Orbit, sun, day/night and
 seasons**. M2 is in progress: gate G2-M2 (finite-volume operators, ADR-0002
 V3/V4) is complete, and ADR-0005 (fractional coastlines, cell-mesh
 drainage) is accepted. The state-partition, persistent-snapshot, and
-pre-terrain foundation hardening are complete. The current task is
-`docs/tasks/M2-02-plates-terrain-and-sea-level.md`; the simulation-mode
+pre-terrain foundation hardening are complete, and so is task
+`docs/tasks/M2-02-plates-terrain-and-sea-level.md` (plates, terrain,
+hypsometry and sea level). The next task is M2-03, drainage (ADR-0005 §4.2,
+V5--V8); its task document has not been written yet. The simulation-mode
 scheduler has not started.
 
 Key constraints: - standalone C++20 PlanetSim core; - no Godot

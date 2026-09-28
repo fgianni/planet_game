@@ -12,8 +12,9 @@
 ## Conclusion
 
 The repository satisfies the actual M0 and M1 milestone acceptance criteria.
-M2 remains in progress: the finite-volume operator gate, state partition, and
-base persistent snapshot format are implemented. Geology, terrain generation,
+M2 remains in progress: the finite-volume operator gate, state partition,
+base persistent snapshot format, and plate-scale geology with sub-cell
+hypsometry and sea level (task M2-02) are implemented. Drainage (task M2-03)
 and the simulation-mode scheduler have not started; later persistence work
 remains assigned to M3 through M5.
 
@@ -108,6 +109,17 @@ schemas evolve.
 | G4 | ⚠ RUNTIME_ONLY | The slow/fast/climatology state partition and lazy fast-state lifecycle are implemented. Simulation modes, multi-rate scheduling, the years-per-minute harness, and state hashes remain future work. |
 | G5 | ⚠ RUNTIME_ONLY | The M2 base snapshot writer/reader, canonical ordering, CRC-32C validation, corruption tests, V4 round trips, CLI inspection, and initial golden save are complete. Manifests/replay (M3), delta chains/compression (M4), and migration machinery (M5) are not yet implemented. |
 
+### M2-02 terrain (2026-09-28)
+
+| Requirement | Status | Finding |
+|---|---|---|
+| Keyed randomness only (ADR-0003) | ✅ EVIDENCED | Every geology draw uses `RandomStreamId::geology` with documented keys (`sim/planet/geology/geology_random.hpp`); noise lattices hash through `mix_random_key`. No stateful generator. |
+| Worker-count independence (ADR-0002 §4.6, ADR-0003 L0) | ✅ EVIDENCED | `test_terrain_determinism` compares hypsometry, sea level and every `GeologyState` field bit for bit at 1, 2, 8 and 16 workers on L4 and L5. Global sums, minima and component areas use `reduce_deterministic_blocks`; Dijkstra queues order by `(cost, CellId)`. |
+| ADR-0005 V1--V3 | ✅ EVIDENCED | `test_hypsometry`, `test_sea_level`; measured values in ADR-0005 §9.4. |
+| ADR-0005 §4.1 ocean rule | ⚠ RUNTIME_ONLY | Implemented with the approved deepest-cell anchor (ADR-0005 §9.2) instead of the largest-area component, which is non-monotone; §4.1 carries an amendment note pending formal revision. |
+| No new registered fields | ✅ EVIDENCED | The registry baseline check passes unchanged; `GeologyState` stays in memory (task M2-02 §4.14). |
+| Snapshot of a generated planet | ✅ EVIDENCED | Bit-identical round trip at L4 and L5. |
+
 ## Risk-register audit
 
 | Risk mitigation | Status | Finding |
@@ -140,7 +152,16 @@ take precedence where a specification conflicts.
 
 ## Validation observed during the migration and M2 infrastructure work
 
-- Normal headless suite: 26/26 tests passed.
+- M2-02 terrain (2026-09-28, GCC 11): Release and Debug suites 35/35; GCC
+  AddressSanitizer 35/35 and UndefinedBehaviorSanitizer (pointer checks
+  excluded) 35/35; floating-point policy check 0 violations in 52 translation
+  units. GCC 11 cannot compile the full `-fsanitize=address,undefined` build:
+  its UBSan pointer checks make the existing `static_assert(descriptor !=
+  nullptr)` in `sim/planet/field_factory.hpp` non-constant. CI's sanitizer
+  job uses Clang and is unaffected; Clang was not available locally.
+- L6 `earth_like` terrain generation, Release: 220 ms with 24 workers,
+  1.35 s with one worker (task M2-02 A13 threshold 10 s).
+- Normal headless suite before M2-02: 26/26 tests passed.
 - AddressSanitizer/UndefinedBehaviorSanitizer suite: 26/26 tests passed
   (Clang, 2026-09-28).
 - Godot 4.7.2 extension build and five-frame headless runtime smoke test:

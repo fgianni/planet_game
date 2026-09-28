@@ -93,7 +93,9 @@ sketched in the specification's M2 section.
 - **Ocean connectivity.** Below-sea-level area is ocean only where it is
   connected to the world ocean. The ocean is the connected component, by area
   the largest, of cells whose lowest quantile is below sea level, linked
-  through edge neighbours with the same property. Other such components are
+  through edge neighbours with the same property. *Amended 2026-09-28
+  (§9.2): the ocean is the component containing the deepest cell, which keeps
+  V2's monotonicity; at realistic sea levels it is the same component.* Other such components are
   inland depressions below sea level (Caspian, Dead Sea): their low ground is
   dry land in M2 and becomes lake area only through hydrology (M9).
 - `ocean_fraction = below_fraction(z_sea)` for ocean-connected cells and 0
@@ -216,3 +218,75 @@ can produce parallel channels on smooth slopes.
 - The drainage elevation is the mean of the land part of the hypsometry,
   since water flows only on land. Is that right for coastal and depression
   cells? Revisit if routing near coasts looks wrong.
+
+## 9. Implementation record (M2-02, 2026-09-28)
+
+Task `docs/tasks/M2-02-plates-terrain-and-sea-level.md` implemented §4.1:
+hypsometry generation, the sea-level solve and the land/ocean fractions.
+Drainage (§4.2, V5--V8) is task M2-03.
+
+### 9.1 Where it lives
+
+| Concern | Code |
+|---|---|
+| Sub-cell sampling, quantiles, `below_fraction`, mean elevation | `sim/planet/terrain/hypsometry.{hpp,cpp}` |
+| Ocean component, fractions, sea-level bisection | `sim/planet/terrain/surface_fractions.{hpp,cpp}` |
+| Generator pipeline writing `hypsometry_m`, `sea_level_m` | `sim/planet/terrain/terrain_generator.{hpp,cpp}` |
+| Diagnostics (A10, A11) | `sim/planet/terrain/terrain_diagnostics.{hpp,cpp}` |
+| Plate-scale geology producing the structural elevation | `sim/planet/geology/` |
+
+Nine quantiles come from 36 sub-cell points per hexagon (30 per pentagon):
+six barycentric points in each fan triangle, weighted by a sixth of its
+spherical area, so the weights close on the cell area to rounding. Quantiles
+place each sample at the midpoint of its cumulative weight and interpolate
+linearly; fraction 0 is the minimum and 1 the maximum.
+
+### 9.2 Amendment: the ocean is anchored at the deepest cell
+
+§4.1 chose the largest-area below-sea-level component. That rule is not
+monotone: when two unconnected basins swap rank as the sea rises, the former
+ocean reverts to land and the land fraction increases. Observed at L4, seed
+20260928, sea level -6,500 m (land 0.99313 -> 0.99371, 15 components). It
+breaks V2 and the premise of the bisection.
+
+The implemented rule: the ocean is the component that contains the deepest
+cell (lowest bottom quantile, ties to the lower `CellId`). Components only
+merge as the sea rises, so the anchored ocean only grows and V2 holds by
+construction. On six seeds at L4 and L5 and targets 0.10, 0.29 and 0.50 (36
+cases), the deepest cell was always in the largest component, so realistic
+planets are unaffected. Approved by the project owner on 2026-09-28; this
+section records it pending a formal revision of §4.1.
+
+### 9.3 Clarification: flat quantile stretches
+
+`below_fraction` counts area strictly below the level. Where quantiles
+coincide, that area sits at one elevation and floods at once when the level
+passes it, so "continuous" in §4.1 holds except at such atoms. Generated
+planets have none in practice (sub-cell noise separates the samples), but the
+behaviour is defined and tested.
+
+### 9.4 Validation (Release build, GCC 11, 2026-09-28)
+
+| Check | Result |
+|---|---|
+| V1 hypsometry finite, non-decreasing (L3--L5, several seeds) | pass, exact |
+| V2 fractions in [0, 1]; land non-increasing from -8,000 to +6,000 m in 250 m steps; no ocean outside the component (L4, L5) | pass, exact |
+| V3 targets 0.10, 0.29, 0.50 (seed 20260928) | L5: error <= 1.2e-16 on all three. L4: 0.10 and 0.29 exact; 0.50 falls in a connectivity jump, reported (land 0.50234 below, 0.49115 above; the ocean component changes) |
+| `aqua_planet` / `dead_rock` | land 0 with every cell in the ocean / land 1 with no below-sea component |
+| V8-style determinism of the generated slow state, 1/2/8/16 workers (L4, L5) | bit-identical |
+| Snapshot round trip of a generated planet | bit-identical |
+
+`earth_like`, seed 20260928:
+
+| | L5 | L6 |
+|---|---|---|
+| sea level (m) | 11.34 | 20.99 |
+| ocean shallower than 200 m / deeper than 4,000 m | 8.1 % / 52.3 % | 6.7 % / 58.2 % |
+| ocean elevation mean / standard deviation (m) | -3,584 / 2,177 | -3,865 / 2,045 |
+| inland below-sea-level depressions | 2 | 91 |
+
+V4 (a sea-level perturbation) belongs to M3 and V9 to M11, as §7 states. The
+number of inland depressions grows with resolution because finer cells
+resolve more closed lows; they are dry land in M2 and become lakes or
+endorheic basins through M2-03 and M9.
+

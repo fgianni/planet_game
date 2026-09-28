@@ -169,6 +169,38 @@ uncompressed chunks (`"none"`); compression is deliberately deferred until the
 M4 size/ratio measurements in ADR-0003. This persistent format is distinct
 from the small in-process `StateSnapshot` used by the presentation adapter.
 
+## Procedural terrain
+
+```bash
+./build/planet_cli terrain --subdivision 5 --seed 20260928
+./build/planet_cli terrain --subdivision 6 --seed 20260928 \
+    --map terrain_L6.csv --snapshot terrain_L6.psnap
+./build/planet_cli terrain --subdivision 4 --preset aqua_planet
+```
+
+`terrain` builds a planet from a seed (task M2-02): plates grown from spaced
+seed cells, Euler-pole motion, convergent/divergent/transform boundaries,
+continental and oceanic crust, crust age and an age--depth ocean floor,
+mountain belts, trenches, arcs, rifts and passive margins, roughness and a
+diffusive erosion approximation. The result is the ADR-0005 slow state: nine
+sub-cell elevation quantiles per cell and a global sea level solved for the
+target land fraction, with land and ocean fractions derived from them. The
+world ocean is the below-sea-level region connected to the deepest cell;
+other below-sea-level regions stay dry land until hydrology (M9).
+
+Options: `--preset earth_like|aqua_planet|dead_rock` (default `earth_like`),
+`--land-fraction F` (default 0.29), `--plates P` (2--40, default 12),
+`--workers W` (default: all cores; results are identical for any count),
+`--map FILE.csv` (one row per cell: position, plate, crust type and age,
+nearest boundary class and distance, mean, lowest and highest elevation, land
+fraction) and `--snapshot FILE.psnap` (the slow state). The printed
+diagnostics include plate areas, boundary lengths by class, crust-age ranges,
+elevation percentiles, the achieved land fraction and sea level, shelf and
+abyssal ocean fractions, and the generation time. Generator constants live in
+`GeologyParameters` (`sim/planet/geology/geology_parameters.hpp`); they are
+starting values, not calibrated physics. The plate and crust structure
+(`GeologyState`) is kept in memory and is not yet persisted.
+
 ## Optional Godot preview
 
 The default build does not inspect or require Godot. To build the adapter,
@@ -252,9 +284,12 @@ The precise M1 coordinate and validation conventions are in
 ## Current limitations
 
 M1 computes top-of-atmosphere incoming solar only. M2 now provides the
-finite-volume operators, state partitions, and base persistent snapshots, but
-does not yet compute albedo, absorbed shortwave, surface temperature,
-atmosphere, terrain, orbital precession or perturbations. Simulation-mode
+finite-volume operators, state partitions, base persistent snapshots and
+procedural plate-scale terrain with sea level, but does not yet compute
+drainage (depression filling, routing, basins; task M2-03), albedo, absorbed
+shortwave, surface temperature, atmosphere, orbital precession or
+perturbations. Geology is generated once and is not time-evolving, and
+`GeologyState` is not persisted. Simulation-mode
 scheduling, run manifests and replay, compressed/delta snapshots, autosaves,
 and schema migrations remain assigned to later tasks and milestones. Tracer
 advection and the placement of vector fields (cell centres or edge normals)

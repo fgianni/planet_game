@@ -68,7 +68,9 @@ Apply these; stop and ask before changing any of them.
    frequency. No third-party code.
 3. **Plates by noisy multi-source growth.** Choose `plate_count` seed cells
    (default 12, allowed 2–40) from keyed random points on the sphere, taking
-   the nearest cell and skipping duplicates deterministically. Grow all plates
+   the nearest cell and skipping duplicates deterministically. *Amended
+   2026-09-28 (see §10): seeds closer than 0.5 √(4π/P) rad to an earlier seed
+   are also skipped.* Grow all plates
    at once with a multi-source Dijkstra over cell edges, ordered by
    `(cost, CellId)`. The edge cost is `centroid_distance_m × plate_speed ×
    (1 + a × fbm(edge midpoint))`, where each plate has a keyed growth-speed
@@ -131,7 +133,8 @@ Apply these; stop and ask before changing any of them.
     cells), plus a high-frequency fBm term. The nine stored values are the
     area-weighted quantiles at 0, 1/8, …, 1 (0 is the minimum, 1 the
     maximum), non-decreasing, as `float`.
-11. **Sea level and fractions** exactly as ADR-0005 §4.1: `below_fraction`
+11. **Sea level and fractions** exactly as ADR-0005 §4.1 (*ocean rule amended
+    2026-09-28, ADR-0005 §9.2: anchored at the deepest cell*): `below_fraction`
     by linear interpolation of the quantile curve; the ocean is the
     largest-area connected component of cells whose lowest quantile is below
     sea level; fixed-iteration bisection for the target land fraction
@@ -238,3 +241,64 @@ must pass. Follow the surrounding style: `snake_case`, strong ID types,
 - The CLI diagnostics for `earth_like` at L5 and L6 with one fixed seed.
 - Anything not met, and why; anything in the specification or ADRs that
   turned out to be ambiguous or wrong.
+
+## 10. Completion note (2026-09-28)
+
+Complete on branch `m2-02-terrain`. All of A1–A13 pass; measured values are
+in ADR-0005 §9.4 and the audit.
+
+**Amendments approved by the project owner.**
+
+1. §4.3: plate seeds keep a minimum angular spacing of
+   `plate_seed_min_spacing_factor` × √(4π/P) rad (default 0.5). Without it,
+   A3 failed for some seeds (smallest plate 0.44 % at L4, 0.28 % with 40
+   plates); with it the smallest plate is 2.9–4.2 % (12 plates) and 0.85 %
+   (40 plates).
+2. §4.11 / ADR-0005 §4.1: the world ocean is the below-sea component that
+   contains the deepest cell. The largest-area rule is not monotone in sea
+   level (ADR-0005 §9.2).
+
+**Interpretations where §4 was silent or ambiguous.**
+
+- §4.4: the drawn 1–10 cm/yr speed is the Euler rotation's equatorial surface
+  speed ωR; cells nearer a plate's pole move more slowly.
+- §4.5: relative motion is evaluated for both plates at the edge midpoint,
+  with the geometric normal there. Convergence and the sense of shear are the
+  same from either side; the relative velocity is exactly antisymmetric.
+- §4.7: the age–depth curve joins Parsons & Sclater's √t branch at 70 Myr to
+  an exponential towards 6,400 m that matches its value and slope (τ ≈ 46 Myr),
+  since their two published branches differ by about 78 m there.
+- §4.8: cells adjacent to a boundary (or to a crust change within a plate, for
+  passive margins) are at distance zero, so structures narrower than an L5
+  cell (about 240 km) are carried by the first row of cells. "Half-width" is
+  the half-width at half-maximum. Scaling uses the closing speed
+  (convergent), opening speed (divergent) or shear speed (transform) divided
+  by the class median, clamped to at most 2. The island-arc half-width
+  (100 km) was not specified.
+- §4.8–4.10: roughness amplitudes are RMS values of unit-RMS normalised fBm
+  (`normalized_fbm`). The plate-growth term and the continental propensity use
+  raw fBm as written.
+- §4.9: each erosion step is split into equal explicit sub-steps where the
+  step would exceed half the mesh's stability limit, so the diffusion length
+  √(2κNΔt) (100 km by default) does not depend on resolution.
+- `below_fraction` counts area strictly below the level; quantiles that
+  coincide flood at once (ADR-0005 §9.3).
+
+**Observations, not tuned.**
+
+- Raw fBm has a standard deviation of about 0.15, so `a = 0.5` varies the
+  growth cost by only about ±7 %. Plate boundaries are therefore nearly
+  straight (Voronoi-like). Using `normalized_fbm` there would change §4.3.
+- With random Euler poles, about half of the boundary length classifies as
+  transform (L5, seed 20260928: 90,500 km transform, 52,100 km divergent,
+  42,000 km convergent).
+- Along-mesh path lengths exceed the geodesic by up to about 17 % (measured
+  1.174 at L4), so structure widths are slightly narrower than their nominal
+  values in some directions.
+- The §4.10 barycentric recipe gives the cell centre about 35 % of the
+  sub-cell weight, so a cell's hypsometric mean blends with its neighbours
+  through the corner means (up to 3.6 km from the structural elevation at L3,
+  next to trenches and mountain belts).
+- Inland below-sea-level depressions: 2 at L5 and 91 at L6 for seed 20260928.
+  They are dry land until drainage (M2-03) and hydrology (M9).
+

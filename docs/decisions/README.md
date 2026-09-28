@@ -12,7 +12,7 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0002 | [Mesh topology, resolution policy, and field layout](0002-mesh-and-field-layout.md) | Accepted (amended 2026-09-28) | 2026-09-25 |
 | 0003 | [Determinism, snapshots, history, and migration](0003-determinism-snapshots-migration.md) | Accepted | 2026-09-25 |
 | 0004 | [Keplerian orbit and coordinate frames](0004-keplerian-orbit-and-coordinate-frames.md) | Accepted | 2026-09-24 |
-| 0005 | [Fractional coastlines and cell-mesh drainage](0005-coastlines-and-drainage.md) | Accepted | 2026-09-28 |
+| 0005 | [Fractional coastlines and cell-mesh drainage](0005-coastlines-and-drainage.md) | Accepted (amended 2026-09-28, §9.2) | 2026-09-28 |
 
 Records cite the design record by version and section (for example "Design
 Record v0.4, §28"). The current design record is

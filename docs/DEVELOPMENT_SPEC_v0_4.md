@@ -1974,7 +1974,10 @@ GCC and Clang, Debug and Release, ASan+UBSan and the floating-point policy
 check. The pre-terrain foundation hardening (task M2-01b) is also complete:
 area-closure measurements and RNG outputs are pinned, deterministic reductions
 are reusable, field container types derive from the registry, and CI enforces
-the append-only registry contract.
+the append-only registry contract. Plates, terrain, sub-cell hypsometry and the
+sea-level solve (task M2-02) are complete; drainage (M2-03) is next. M2-02
+amended ADR-0005 §4.1 (the ocean is anchored at the deepest cell; ADR-0005
+§9.2).
 
 Foundation work completed before M2 terrain starts (task
 `docs/tasks/M2-01b-foundation-hardening.md`):

@@ -22,13 +22,14 @@ seasons**.
 
 M0 and M1 are complete. M2 is in progress: gate G2-M2 (finite-volume
 operators) and the state-partition/persistent-snapshot foundation are
-complete, and the pre-terrain foundation hardening is complete; terrain and
-the simulation-mode scheduler have not started.
+complete, the pre-terrain foundation hardening is complete, and plate-scale
+terrain with sub-cell hypsometry and sea level is complete. Drainage and the
+simulation-mode scheduler have not started.
 
-Current task:
-[`docs/tasks/M2-02-plates-terrain-and-sea-level.md`](docs/tasks/M2-02-plates-terrain-and-sea-level.md).
+Next task: M2-03, drainage (ADR-0005 §4.2, V5--V8); its task document has not
+been written yet.
 Most recently completed task:
-[`docs/tasks/M2-01b-foundation-hardening.md`](docs/tasks/M2-01b-foundation-hardening.md).
+[`docs/tasks/M2-02-plates-terrain-and-sea-level.md`](docs/tasks/M2-02-plates-terrain-and-sea-level.md).
 Task documents in `docs/tasks/` state their scope, the decisions already
 made, acceptance criteria and what to report. Do not implement M3 or later
 milestones unless explicitly requested.
