@@ -15,6 +15,27 @@ int main() {
     auto mesh = std::make_shared<const planetsim::PlanetMesh>(planetsim::make_icosphere(0, 1.0));
     planetsim::PlanetState state(mesh);
     PLANETSIM_EXPECT(test, state.mesh().cell_count() == 12);
+    PLANETSIM_EXPECT(test,
+                     state.slow().hypsometry_m.layer_count() ==
+                         planetsim::hypsometry_layer_count);
+    PLANETSIM_EXPECT(test, state.slow().hypsometry_m.cell_count() == 12);
+    for (std::size_t layer = 0; layer < planetsim::hypsometry_layer_count; ++layer) {
+        for (const float value : state.slow().hypsometry_m.layer(layer)) {
+            PLANETSIM_EXPECT_NEAR(test, value, 0.0, 0.0);
+        }
+    }
+    PLANETSIM_EXPECT_NEAR(test, state.slow().sea_level_m, 0.0, 0.0);
+    PLANETSIM_EXPECT(test, !state.has_fast_state());
+    PLANETSIM_EXPECT(test, state.fast_state() == nullptr);
+    auto& first_fast_state = state.open_fast_state();
+    PLANETSIM_EXPECT(test, state.has_fast_state());
+    PLANETSIM_EXPECT(test, state.fast_state() == &first_fast_state);
+    PLANETSIM_EXPECT(test, &state.open_fast_state() == &first_fast_state);
+    state.release_fast_state();
+    PLANETSIM_EXPECT(test, !state.has_fast_state());
+    PLANETSIM_EXPECT(test, state.fast_state() == nullptr);
+    static_cast<void>(state.climatology());
+
     PLANETSIM_EXPECT(test, state.forcing().top_of_atmosphere_insolation_W_m2.size() == 12);
     PLANETSIM_EXPECT_NEAR(test, state.forcing().top_of_atmosphere_insolation_W_m2[0], 0.0, 0.0);
 

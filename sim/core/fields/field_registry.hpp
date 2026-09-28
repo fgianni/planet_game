@@ -38,6 +38,8 @@ enum class FieldLayout : std::uint8_t {
     global,
 };
 
+inline constexpr std::uint32_t hypsometry_layer_count = 9U;
+
 struct FieldDescriptor {
     FieldId id;
     std::string_view name;
@@ -58,7 +60,7 @@ inline constexpr std::array<FieldDescriptor, 3> field_registry{{
      FieldKind::diagnostic, FieldPartition::derived, FieldLayout::cell,
      FieldDataType::float32, 1U, "W/m2"},
     {FieldId::hypsometry_m, "hypsometry_m", FieldKind::reservoir, FieldPartition::slow,
-     FieldLayout::cell_layers, FieldDataType::float32, 9U, "m"},
+     FieldLayout::cell_layers, FieldDataType::float32, hypsometry_layer_count, "m"},
     {FieldId::sea_level_m, "sea_level_m", FieldKind::reservoir, FieldPartition::slow,
      FieldLayout::global, FieldDataType::float64, 1U, "m"},
 }};
