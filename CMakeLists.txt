@@ -26,6 +26,8 @@ add_library(PlanetSim STATIC
     sim/core/serialization/state_snapshot.cpp
     sim/core/scheduler/simulation_clock.cpp
     sim/planet/coordinates/local_tangent_basis.cpp
+    sim/planet/geology/geology_parameters.cpp
+    sim/planet/geology/plates.cpp
     sim/planet/mesh/icosphere.cpp
     sim/planet/mesh/mesh_diagnostics.cpp
     sim/planet/mesh/planet_mesh.cpp

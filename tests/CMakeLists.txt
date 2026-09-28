@@ -22,6 +22,7 @@ add_planetsim_test(test_local_tangent_basis physics/test_local_tangent_basis.cpp
 add_planetsim_test(test_solar_forcing physics/test_solar_forcing.cpp)
 add_planetsim_test(test_icosphere physics/test_icosphere.cpp)
 add_planetsim_test(test_centroidal_voronoi physics/test_centroidal_voronoi.cpp)
+add_planetsim_test(test_plates physics/test_plates.cpp)
 add_planetsim_test(test_operator_accuracy physics/test_operator_accuracy.cpp)
 add_planetsim_test(test_mesh_area conservation/test_mesh_area.cpp)
 add_planetsim_test(test_solar_balance conservation/test_solar_balance.cpp)
