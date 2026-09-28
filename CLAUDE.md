@@ -16,8 +16,9 @@ Civilization Simulator.
 Most recently completed milestone: **P0 / M1 --- Orbit, sun, day/night and
 seasons**. M2 is in progress: gate G2-M2 (finite-volume operators, ADR-0002
 V3/V4) is complete, and ADR-0005 (fractional coastlines, cell-mesh
-drainage) is accepted. Next: the ADR-0001 state partition and ADR-0003
-snapshot writer/reader, then geology.
+drainage) is accepted. The ADR-0001 state-partition and ADR-0003 persistent
+snapshot foundation are complete. Terrain and the simulation-mode scheduler
+have not started.
 
 Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI

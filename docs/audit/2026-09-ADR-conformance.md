@@ -1,10 +1,10 @@
-# ADR conformance audit — M0/M1 migration
+# ADR conformance audit — M0/M1 migration and M2 infrastructure
 
 - **Audit date:** 2026-09-28
-- **Evidence baseline:** commit `6e91459`, plus the documentation consolidation
-  in the current working tree
+- **Evidence baseline:** M0/M1 migration at commit `6e91459`, plus the G2-M2
+  operator and M2 state/snapshot implementation through 2026-09-28
 - **Plan audited:** [M0/M1 ADR migration plan](../M0-M1-ADR-migration-plan.md)
-- **Scope:** completed M0/M1 migration against
+- **Scope:** completed M0/M1 migration and implemented M2 infrastructure against
   [ADR-0001](../decisions/0001-time-acceleration.md),
   [ADR-0002](../decisions/0002-mesh-and-field-layout.md), and
   [ADR-0003](../decisions/0003-determinism-snapshots-migration.md)
@@ -12,9 +12,10 @@
 ## Conclusion
 
 The repository satisfies the actual M0 and M1 milestone acceptance criteria.
-The migration plan now distinguishes the completed M0/M1 subset from work that
-the accepted ADRs assign to M2 through M5. No M2 implementation is required to
-close M0/M1, and none was added by the documentation cleanup.
+M2 remains in progress: the finite-volume operator gate, state partition, and
+base persistent snapshot format are implemented. Geology, terrain generation,
+and the simulation-mode scheduler have not started; later persistence work
+remains assigned to M3 through M5.
 
 The migration cleared the three structural problems found by the historical
 pre-migration audit:
@@ -70,14 +71,14 @@ budgets are enforced by tests.
 
 | ID | Status | Evidence and finding |
 |---|---|---|
-| C1 | NOT FOUND | `SlowState`, `FastState`, and `Climatology` partitions do not exist. ADR-0001 permits this work through M2. |
-| C2 | NOT FOUND | There is no lazy `FastState` allocation because `FastState` does not exist yet. |
+| C1 | ✅ EVIDENCED | `PlanetState` exposes `SlowState`, `FastState`, and `Climatology`; the slow partition owns hypsometry and sea level, while forcing is derived outside it (`sim/planet/planet_state.hpp`, `tests/unit/test_planet_state.cpp`). |
+| C2 | ✅ EVIDENCED | `FastState` is absent by default, allocated only by `open_fast_state()`, and discarded by `release_fast_state()`; lifecycle behavior is tested (`sim/planet/planet_state.cpp`, `tests/unit/test_planet_state.cpp`). |
 | C3 | NOT FOUND | No simulation-mode enum or multi-rate scheduler dispatch exists. |
 | C4 | ✅ EVIDENCED | The simulation core has no wall-clock timing dependency. Timing calls are confined to the CLI benchmark/diagnostics and Godot presentation. |
 
 The development specification defines M1 as orbit, sun, day/night, and
-seasons—not as the completed mode scheduler. Consequently C1–C3 do not block
-M1 acceptance.
+seasons—not as the completed mode scheduler. C1 and C2 are now present for M2;
+C3 remains a separate future M2 task and does not block M1 acceptance.
 
 ## D. Clock, RNG, and identity
 
@@ -86,12 +87,13 @@ M1 acceptance.
 | D1 | ✅ EVIDENCED | `SimulationTick` is `std::int64_t`, one tick is 60 seconds, and seconds are derived rather than accumulated (`sim/core/scheduler/simulation_clock.hpp:7-24`). |
 | D2 | ✅ EVIDENCED | Random values are stateless and keyed by seed, stream, tick, cell, and sample index; tests compare 1-worker and 16-worker output (`sim/core/random/counter_rng.hpp`, `tests/unit/test_clock_parameters.cpp:45-74`). No global mutable generator was found. |
 | D3 | ✅ EVIDENCED | The registry contains a stable numeric field ID and a compile-time uniqueness assertion (`sim/core/fields/field_registry.hpp:10-50`). |
-| D4 | ⚠ RUNTIME_ONLY | The presentation snapshot copies cells in mesh order and includes the field ID (`sim/core/serialization/state_snapshot.cpp:23-27`). A generic persistent serializer that orders multiple fields by ID does not exist; ADR-0003 assigns it to M2. |
+| D4 | ✅ EVIDENCED | Persistent `PSNAP` files order registered slow fields by stable ID and encode each in layer-major/cell-major order. L0/L4/L6 write-read-write tests are byte-identical, and the strict reader rejects metadata, length, checksum, and trailing-data errors before mutating state (`sim/core/serialization/snapshot_file.cpp`, `tests/unit/test_snapshot_file.cpp`). |
 
 The accepted M1 guarantees do not require `SimulationTick` to be a strong
-wrapper type or the small registry to be generated. Field kind, layer count,
-migration initializers, and release-to-release append-only enforcement become
-necessary with the persistent schema and additional field groups.
+wrapper type or the small registry to be generated. The registry now records
+partition, layout, scalar type, and layer count for persistent fields.
+Migration initializers and release-to-release append-only enforcement remain
+necessary as schemas evolve.
 
 ## Gate status
 
@@ -103,8 +105,8 @@ necessary with the persistent schema and additional field groups.
 | G2-M2 | ✅ EVIDENCED | *Updated 2026-09-28.* V3/V4 pass L3–L6 with the error map uploaded by CI. Required the ADR-0002 amendment to circumcentre corners and a centroidal Voronoi mesh; see ADR-0002 §9. |
 | G3-M1 | ✅ EVIDENCED | Field layout, fixed blocks, fixed block-index reductions, 1/2/8/16-worker forcing equality, memory gates, and V7 are green. |
 | G3-M3 | NOT FOUND | Full command replay and checkpoint state hashes are correctly deferred to M3. |
-| G4 | NOT FOUND | State partitions, simulation modes, multi-rate scheduling, years-per-minute harness, and state hashes are later work. |
-| G5 | NOT FOUND | Persistent snapshots, manifests, replay, delta chains, migrations, corruption tests, and golden saves remain assigned to M2–M5. |
+| G4 | ⚠ RUNTIME_ONLY | The slow/fast/climatology state partition and lazy fast-state lifecycle are implemented. Simulation modes, multi-rate scheduling, the years-per-minute harness, and state hashes remain future work. |
+| G5 | ⚠ RUNTIME_ONLY | The M2 base snapshot writer/reader, canonical ordering, CRC-32C validation, corruption tests, V4 round trips, CLI inspection, and initial golden save are complete. Manifests/replay (M3), delta chains/compression (M4), and migration machinery (M5) are not yet implemented. |
 
 ## Risk-register audit
 
@@ -134,16 +136,19 @@ Versioned specifications and design documents were deliberately not renamed or
 deduplicated in this pass; they are source/history artifacts rather than
 competing current audits or decisions.
 
-## Validation observed during the migration
+## Validation observed during the migration and M2 infrastructure work
 
-- Normal headless suite: 12/12 tests passed.
-- AddressSanitizer/UndefinedBehaviorSanitizer suite: 12/12 tests passed.
+- Normal headless suite: 22/22 tests passed.
+- AddressSanitizer/UndefinedBehaviorSanitizer suite: the 12/12 M0/M1 result is
+  retained here; the expanded M2 suite is re-run as part of task acceptance.
 - Godot 4.7.2 extension build and five-frame headless runtime smoke test:
   passed without errors.
 - L6 mesh: 40,962 cells, 12 pentagons, valid topology, zero reported relative
   area error, and 13,764,040 geometry/topology bytes.
 - L5 solstice forcing: zero night-side leakage and relative global-mean
   quadrature error approximately `1.81e-5`.
+- Release L6 persistent snapshot: 1,475,175 bytes and 3.924 ms to write on the
+  development machine; the timing is reported, not gated.
 - `PlanetState` retains a shared immutable mesh handle and owns evolving
   fields.
 - The mesh is body-fixed with geographic north on `+Z`; physical rotation and

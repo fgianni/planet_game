@@ -57,6 +57,14 @@ The planetary state is split by how it is integrated, not by subsystem:
 
 **Rule:** consumers read `S` and `X`. Only the presentation layer and hazard resolution read `F`, and only when a window is open.
 
+*Implementation note (2026-09-28):* `PlanetState` now exposes `SlowState`,
+`FastState`, and `Climatology`. The initial slow partition contains the M2
+hypsometry layers and global sea level; the currently empty fast partition is
+lazily allocated and releasable; forcing remains derived and outside slow
+state. Persistent snapshots serialize only registered slow fields. Physical
+weather/climatology fields and the simulation-mode scheduler remain future M2
+work.
+
 ### 4.2 The three modes
 
 | Mode | Timestep | Purpose | When it runs |

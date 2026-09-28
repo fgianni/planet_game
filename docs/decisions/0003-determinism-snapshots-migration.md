@@ -155,9 +155,27 @@ introduces.
 The M1 portion was implemented on 2026-09-25: the authoritative clock uses
 one-minute integer ticks; random values are counter-keyed by world seed,
 stream, tick, cell, and optional sample index; and the field registry assigns
-a compile-time-checked stable numeric ID to top-of-atmosphere insolation.
-The in-process presentation snapshot is schema version 2 and carries the tick
-and field ID. Thread-count determinism is tested for the current forcing and
-diagnostics with 1, 2, 8, and 16 workers. The persistent chunked snapshot
-format, run manifests, hashes, migrations, and delta chains remain assigned to
-M2–M5 by this ADR and were not pulled into M1.
+compile-time-checked stable numeric IDs. The in-process presentation snapshot
+is schema version 2 and carries the tick and field ID. Thread-count
+determinism is tested for the current forcing and diagnostics with 1, 2, 8,
+and 16 workers.
+
+The M2 base-snapshot portion was implemented on 2026-09-28. Persistent
+`PSNAP` schema v1 is a fixed little-endian file containing a canonical JSON
+manifest followed by slow-state field chunks in ascending field-ID order;
+layer-major/cell-major order is canonical within a field. The initial chunks
+are uncompressed (`"none"`) and carry CRC-32C checksums implemented in-tree and
+checked against the standard vector, so no dependency was added. The strict
+reader validates schema, mesh identity, registry metadata, canonical ranges,
+chunk lengths, checksums, and trailing data before it mutates the target.
+L0/L4/L6 snapshot-load-snapshot tests are byte-identical (V4), corruption is
+tested per field, and an L0 golden save now anchors the format. A Release L6
+write with the two current slow fields was 1,475,175 bytes and 3.924 ms on the
+development machine; this is an implementation measurement, not the future V7
+regression gate.
+
+Compression remains deferred until M4, after V7 records real size and delta
+ratios. Run manifests, command logs, checkpoint hashes, and replay remain M3;
+delta chains remain M4; and the migration framework remains M5. Starting the
+golden corpus at M2 records the first schema early but does not pull the M5
+migration framework forward.

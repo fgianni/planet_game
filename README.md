@@ -3,9 +3,10 @@
 The repository has completed **P0 / M1 — Orbit, sun, day/night and
 seasons**, including the ADR-0002/0003 conformance migration. It contains a
 standalone C++20 `PlanetSim` library, headless mesh and solar diagnostics,
-tests, and an optional Godot 4 presentation adapter. M2 is in progress: its
-first gate, the finite-volume operators (G2-M2), is complete; geological
-terrain and ocean-basin work has not started.
+tests, and an optional Godot 4 presentation adapter. M2 is in progress: the
+finite-volume operators (G2-M2) and the state-partition/persistent-snapshot
+foundation are complete; geological terrain and ocean-basin work has not
+started.
 
 ## Requirements
 
@@ -135,6 +136,22 @@ optional CSV holds per-cell normalized errors at the finest level for error
 maps. At L5→L6 the gradient, divergence and Poisson solution converge at
 second order in L2; see ADR-0002 §9 for the full record.
 
+## Persistent snapshots
+
+```bash
+./build/planet_cli snapshot write --subdivision 0 --out planet.psnap
+./build/planet_cli snapshot inspect planet.psnap
+```
+
+The `PSNAP` schema-v1 format stores only authoritative slow state, in stable
+field-ID order and layer-major/cell-major order within each field. Its fixed
+little-endian representation, canonical manifest, per-field CRC-32C checksums,
+and strict reader make equal states byte-identical and reject corrupt or
+incompatible files before mutating the destination state. M2 currently writes
+uncompressed chunks (`"none"`); compression is deliberately deferred until the
+M4 size/ratio measurements in ADR-0003. This persistent format is distinct
+from the small in-process `StateSnapshot` used by the presentation adapter.
+
 ## Optional Godot preview
 
 The default build does not inspect or require Godot. To build the adapter,
@@ -174,8 +191,10 @@ geometry come from PlanetSim.
   bit-identical for any worker count.
 - Evolving fields are separate 64-byte-aligned `Field2D<T>`, layer-major
   `Field3D<T>`, or `EdgeField<T>` arrays indexed by strong IDs.
-- `PlanetState` retains a shared immutable mesh handle and owns evolving
-  fields.
+- `PlanetState` retains a shared immutable mesh handle. Its authoritative
+  `SlowState` currently owns hypsometry and global sea level; `FastState` is
+  optional and lazily allocated, `Climatology` is derived, and forcing remains
+  outside the persistent partition.
 - The mesh is body-fixed with geographic north on `+Z`; physical rotation and
   a fixed Keplerian orbit are derived from simulation time and planet/star
   parameters.
@@ -189,6 +208,8 @@ geometry come from PlanetSim.
   determinism.
 - `StateSnapshot` has an explicit schema version and stable field ID, and
   copies read-oriented orbital and forcing data across the client boundary.
+- `SnapshotFile` writes and validates the separate persistent `PSNAP` schema,
+  whose current payload is exactly the registered slow-state fields.
 - The Godot target depends on `PlanetSim`; the dependency never points in the
   other direction.
 
@@ -204,20 +225,24 @@ The main decisions are recorded in:
 - [simulation modes and performance](docs/decisions/0001-time-acceleration.md);
 - [mesh topology, resolution, and field layout](docs/decisions/0002-mesh-and-field-layout.md);
 - [determinism, snapshots, and migration](docs/decisions/0003-determinism-snapshots-migration.md);
-- [Keplerian orbit and coordinate frames](docs/decisions/0004-keplerian-orbit-and-coordinate-frames.md).
+- [Keplerian orbit and coordinate frames](docs/decisions/0004-keplerian-orbit-and-coordinate-frames.md);
+- [coastlines and drainage](docs/decisions/0005-coastlines-and-drainage.md).
 
 The precise M1 coordinate and validation conventions are in
 [`docs/M1_TECHNICAL_SPEC.md`](docs/M1_TECHNICAL_SPEC.md).
 
 ## Current limitations
 
-M1 computes top-of-atmosphere incoming solar only. It does not yet compute
-albedo, absorbed shortwave, surface temperature, atmosphere, terrain,
-orbital precession or perturbations, persistence, or any M2+ system beyond
-the finite-volume operators. Tracer advection and the placement of vector
-fields (cell centres or edge normals) are left to the first milestone that
-transports them. The two-point Laplacian's pointwise truncation error does not
-converge next to the pentagons or along the icosahedron's edges, although
-discrete solutions do (ADR-0002 §9). The
+M1 computes top-of-atmosphere incoming solar only. M2 now provides the
+finite-volume operators, state partitions, and base persistent snapshots, but
+does not yet compute albedo, absorbed shortwave, surface temperature,
+atmosphere, terrain, orbital precession or perturbations. Simulation-mode
+scheduling, run manifests and replay, compressed/delta snapshots, autosaves,
+and schema migrations remain assigned to later tasks and milestones. Tracer
+advection and the placement of vector fields (cell centres or edge normals)
+are left to the first milestone that transports them. The two-point
+Laplacian's pointwise truncation error does not converge next to the pentagons
+or along the icosahedron's edges, although discrete solutions do (ADR-0002
+§9). The
 optional Godot adapter must be compiled against an external matching
 `godot-cpp` checkout and is not part of the default headless CI path.
