@@ -3,8 +3,8 @@
 The repository has completed **P0 / M1 — Orbit, sun, day/night and
 seasons**, including the ADR-0002/0003 conformance migration. It contains a
 standalone C++20 `PlanetSim` library, headless mesh and solar diagnostics,
-tests, and an optional Godot 4 presentation adapter. M2 terrain and ocean-mask
-work has not started.
+tests, and an optional Godot 4 presentation adapter. M2 geological terrain and
+ocean-basin work has not started.
 
 ## Requirements
 
@@ -144,6 +144,13 @@ geometry come from PlanetSim.
   copies read-oriented orbital and forcing data across the client boundary.
 - The Godot target depends on `PlanetSim`; the dependency never points in the
   other direction.
+
+The development specification is
+[`docs/DEVELOPMENT_SPEC_v0_2.md`](docs/DEVELOPMENT_SPEC_v0_2.md) and the design
+document is
+[`docs/planetary_civilization_simulator_design_v0_4.docx`](docs/planetary_civilization_simulator_design_v0_4.docx).
+Accepted decision records take precedence over the specification where they
+conflict.
 
 The main decisions are recorded in:
 

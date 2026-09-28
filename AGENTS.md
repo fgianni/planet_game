@@ -2,8 +2,16 @@
 
 This repository is the Planetary Civilization Simulator.
 
-Before changing code, read `docs/DEVELOPMENT_SPEC.md` in full. It is the
-implementation contract and architecture source of truth.
+Before changing code, read `docs/DEVELOPMENT_SPEC_v0_2.md` in full. It is
+the development specification: the implementation contract and
+architecture source of truth. The design document is
+`docs/planetary_civilization_simulator_design_v0_4.docx`.
+
+Accepted ADRs in `docs/decisions/` take precedence where they conflict
+with the specification (notably ADR-0002: the mesh is the
+hexagonal--pentagonal dual, not the triangular cells described in the
+spec's section 5). `docs/DEVELOPMENT_SPEC.md` is a superseded
+reconciliation draft and is not authoritative.
 
 ## Current phase
 
@@ -43,4 +51,4 @@ explicitly requested.
 7.  Report diagnostics and limitations.
 
 For M0 acceptance criteria and the full roadmap, see
-`docs/DEVELOPMENT_SPEC.md`.
+`docs/DEVELOPMENT_SPEC_v0_2.md`.

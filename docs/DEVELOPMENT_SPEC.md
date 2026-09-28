@@ -1,5 +1,11 @@
 # Planetary Civilization Simulator --- Development Specification
 
+> **Superseded.** The authoritative development specification is
+> [`DEVELOPMENT_SPEC_v0_2.md`](DEVELOPMENT_SPEC_v0_2.md), and the design
+> document is `planetary_civilization_simulator_design_v0_4.docx`. Accepted
+> ADRs in [`decisions/`](decisions/) take precedence over either where they
+> conflict.
+
 Version: 0.2 (reconciled with design v0.4)\
 Purpose: implementation contract for Codex / Claude Code\
 Primary target: PC/Linux, C++20 + Godot 4\

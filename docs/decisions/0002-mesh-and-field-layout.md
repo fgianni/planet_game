@@ -144,12 +144,14 @@ V3 is the one that decides whether the mesh is good: an error map that shows the
 
 ## 7. Milestone mapping
 
+Milestone numbers follow `docs/DEVELOPMENT_SPEC_v0_2.md` §13.
+
 | Milestone | What this ADR requires |
 |---|---|
 | M0 | Mesh generator, dual construction, geometry and topology arrays, V1–V2 |
 | M1 | Field containers, ordering, block partitioning, V6–V8 |
-| M2 | Operator library and V3–V4 before any physics is written on top |
-| M3 | Conservative remap and resolution switching, V5 |
+| M2 (geology) | Operator library and V3–V4 before any physics is written on top |
+| M3 (surface energy) | Conservative remap and resolution switching, V5 |
 
 ## 8. Open questions
 

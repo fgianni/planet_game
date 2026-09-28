@@ -1,9 +1,13 @@
 # Planetary Civilization Simulator --- Development Specification
 
-Version: 0.2\
+Version: 0.2 (reconciled with accepted ADRs 0001--0004 and design v0.4)\
 Purpose: implementation contract for Codex / Claude Code\
 Primary target: PC/Linux, C++20 + Godot 4\
 Current phase: P0 --- Living Planet
+
+Design document: `docs/planetary_civilization_simulator_design_v0_4.docx`.
+Accepted decision records in `docs/decisions/` take precedence over this
+specification where they conflict.
 
 ## 1. Mission
 
@@ -173,32 +177,33 @@ implement them during P0 unless required by an explicit task.
 
 Use an icosphere.
 
-Target P0 reference resolution:
+P0 resolution policy:
 
--   subdivision level L6;
--   81,920 triangular surface cells;
+-   development resolution L5 with 10,242 dual surface cells;
+-   shipped/reference resolution L6 with 40,962 dual surface cells;
 -   atmosphere initially designed for 3--5 vertical layers;
 -   lower resolutions must be supported for tests and debugging.
+
+The accepted simulation mesh is the hexagonal--pentagonal dual of the
+subdivided icosahedron. Its cells are centred on primal vertices; exactly
+twelve cells are pentagons and the remainder are hexagons.
 
 For an icosphere:
 
 ``` text
-faces = 20 * 4^L
+primal_faces = 20 * 4^L
+dual_cells = 10 * 4^L + 2
 ```
 
-Each surface cell needs at minimum:
+Each dual surface cell needs at minimum a stable ID, center, area, local
+tangent basis, and a range into immutable edge/topology arrays. Each edge
+stores its neighbour, length, centroid distance, and outward normal in the
+cell's local basis. Neighbour and edge topology use the CSR layout defined by
+ADR-0002.
 
-``` cpp
-CellId id;
-Vec3d center_unit;
-double area_m2;
-std::array<CellId, 3> neighbors;
-std::array<double, 3> edge_length_m;
-```
-
-If the implementation uses a dual mesh or changes neighbor count,
-document the decision in an ADR before propagating the assumption
-through the solver.
+The mesh, resolution policy, field layout, precision, ordering, and
+deterministic block decomposition are governed by accepted
+`docs/decisions/0002-mesh-and-field-layout.md`.
 
 Geometry/connectivity must be immutable after initialization and
 separate from evolving state.
@@ -209,8 +214,9 @@ Initial conceptual types:
 
 ``` cpp
 PlanetMesh
-Field<T>
-LayeredField<T>
+Field2D<T>
+Field3D<T>
+EdgeField<T>
 SimulationClock
 Scheduler
 PlanetParameters
@@ -224,35 +230,39 @@ Representative state:
 
 ``` cpp
 struct SurfaceState {
-    Field<double> elevation_m;
-    Field<double> temperature_K;
-    Field<double> soil_moisture_kg_m2;
-    Field<double> snow_water_equivalent_kg_m2;
-    Field<double> vegetation_fraction;
-    Field<double> albedo;
+    Field2D<float> elevation_m;
+    Field2D<float> temperature_K;
+    Field2D<float> soil_moisture_kg_m2;
+    Field2D<float> snow_water_equivalent_kg_m2;
+    Field2D<float> vegetation_fraction;
+    Field2D<float> albedo;
 };
 
 struct AtmosphereState {
-    LayeredField<double> temperature_K;
-    LayeredField<double> pressure_Pa;
-    LayeredField<double> specific_humidity;
-    LayeredField<Vec3d> wind_m_s;
-    LayeredField<double> cloud_water_kg_m2;
-    Field<double> precipitation_kg_m2_s;
+    Field3D<float> temperature_K;
+    Field3D<float> pressure_Pa;
+    Field3D<float> specific_humidity;
+    Field3D<float> eastward_wind_m_s;
+    Field3D<float> northward_wind_m_s;
+    Field3D<float> cloud_water_kg_m2;
+    Field2D<float> precipitation_kg_m2_s;
 };
 
 struct OceanState {
-    Field<double> surface_temperature_K;
-    Field<double> deep_temperature_K;
-    Field<double> mixed_layer_depth_m;
-    Field<Vec3d> surface_current_m_s;
+    Field2D<float> surface_temperature_K;
+    Field2D<double> deep_temperature_K;
+    Field2D<float> mixed_layer_depth_m;
+    Field2D<float> eastward_surface_current_m_s;
+    Field2D<float> northward_surface_current_m_s;
     // Salinity may begin as a constant/reference field,
     // but the architecture must permit dynamic salinity later.
 };
 ```
 
-These are conceptual, not mandatory exact APIs. Before changing
-semantics, document why.
+These are conceptual, not mandatory exact APIs. Scalar component fields keep
+the layout structure-of-arrays. Prognostic and diagnostic fields default to
+`float`; global accumulators and slow ocean/carbon reservoirs use `double` as
+specified by ADR-0002. Before changing semantics, document why.
 
 ## 7. Authoritative state and presentation
 
@@ -297,17 +307,21 @@ Conceptual cadence:
 
 The scheduler must make subsystem cadence explicit.
 
-Reference physics and accelerated game-time physics are separate
-concerns.
+Reference physics and accelerated game-time physics are separate concerns.
+The three explicit modes are:
 
-Reference mode: - conservative; - deterministic; - numerically stable; -
-validation baseline.
+-   reference mode: explicit weather, conservative small timesteps, and the
+    validation/calibration baseline;
+-   climate mode: the normal gameplay path, using long or implicit steps and
+    statistical weather while conserving climate-scale budgets;
+-   weather windows: bounded explicit regional/temporal runs seeded from
+    climate-mode state.
 
-Accelerated mode may: - increase timestep; - reduce weather update
-frequency; - use reduced-order approximations.
-
-It must still preserve climate-scale budgets within documented
-tolerances.
+All modes share physical time, planetary coordinates, units, and diagnostics.
+Starting at M3, climate mode must target at least 20 simulated years per
+wall-clock minute at L5 and 5 at L6; a 250-year headless CI scenario must
+complete in under ten minutes. A regional weather window should run a season
+in real time or faster. See ADR 0001.
 
 ## 9. Required planetary couplings
 
@@ -529,12 +543,21 @@ feedback are available before atmospheric dynamics. M2 also becomes a
 geological planet generator rather than a simple noise-based terrain
 generator.
 
+This numbering differs from the Design Record v0.4 §25 table: snow/ice
+moves from M9 to M4, and atmosphere through hydrology shift from M4--M8 to
+M5--M9. M0--M3 and M10--M15 are unchanged. Milestone references in
+`docs/decisions/` use this specification's numbering.
+
 ### M0 --- Icosphere and simulation skeleton
 
-Keep the existing M0 implementation contract unchanged. M0 must be
-reviewed and accepted before Codex proceeds to M1.
+Completed. The implementation contract is sections 21--22. The mesh is the
+hexagonal--pentagonal dual defined by ADR-0002, which superseded the
+original primal-triangle M0 representation.
 
 ### M1 --- Orbit, Sun, rotation, day/night and seasons
+
+Completed. Coordinate, orbit and validation conventions are defined in
+`docs/M1_TECHNICAL_SPEC.md` and ADR-0004.
 
 Earth is a default parameter set, not a hard-coded planet.
 
@@ -613,17 +636,20 @@ struct TectonicPlate {
 };
 
 struct GeologyState {
-    Field<PlateId> plate_id;
-    Field<double> crust_age_s;
-    Field<CrustType> crust_type;
-    Field<double> elevation_m;
+    Field2D<PlateId> plate_id;
+    Field2D<float> crust_age_s;
+    Field2D<CrustType> crust_type;
+    Field2D<float> elevation_m;
 
     // Added progressively:
-    Field<double> sediment_depth_m;
-    Field<double> volcanic_activity;
-    Field<double> tectonic_stress;
+    Field2D<float> sediment_depth_m;
+    Field2D<float> volcanic_activity;
+    Field2D<float> tectonic_stress;
 };
 ```
+
+Fields use the `Field2D<T>` layout and `float` default precision of
+ADR-0002.
 
 Generation sequence:
 
@@ -675,9 +701,9 @@ continental shelf
 Plan for:
 
 ``` cpp
-Field<CellId> downstream;
-Field<BasinId> basin_id;
-Field<double> catchment_area_m2;
+Field2D<CellId> downstream;
+Field2D<BasinId> basin_id;
+Field2D<float> catchment_area_m2;
 ```
 
 Depressions must be handled deliberately so they can later form lakes,
@@ -1069,7 +1095,7 @@ For each requested milestone:
 13. Record significant architecture choices in `docs/decisions/`.
 14. Keep commits milestone-sized and understandable.
 
-## 21. First development task
+## 21. First development task (completed)
 
 Start with **M0 only**.
 
@@ -1117,6 +1143,12 @@ Add tests for L0 through at least L6.
 
 Only after M0 is clean, tested and reviewed should development proceed
 to M1.
+
+The original primal-mesh M0 was completed and reviewed on 2026-09-23.
+ADR-0002 was accepted on 2026-09-25 and superseded that representation. The
+dual-mesh M0 infrastructure and mesh-dependent M1 work were migrated and
+revalidated on 2026-09-25. This did not begin M2: finite-volume operators,
+terrain, conservative remapping, and persistent snapshots remain later work.
 
 ## 22. Definition of done for M0
 

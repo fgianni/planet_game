@@ -131,6 +131,10 @@ Rolling autosave every simulated decade and every ten minutes of wall-clock time
 
 ## 6. Milestone mapping
 
+Milestone numbers follow `docs/DEVELOPMENT_SPEC_v0_2.md` §13. The rows are
+infrastructure steps and do not depend on which physical system each milestone
+introduces.
+
 | Milestone | What this ADR requires |
 |---|---|
 | M1 | Integer clock, RNG stream discipline, field registry with stable ids |

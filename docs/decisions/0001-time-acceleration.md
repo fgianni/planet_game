@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-23
 - **Accepted:** 2026-09-24
+- **Amended:** 2026-09-28 — §8 milestone mapping aligned with `docs/DEVELOPMENT_SPEC_v0_2.md` §13
 - **Context document:** Planetary Civilization Simulator — Design Record v0.4, §28
 - **Supersedes / superseded by:** —
 - **Related:** ADR-0002 (mesh topology, resolution policy, field layout), ADR-0003 (determinism scope, snapshot schema, migration)
@@ -155,13 +156,21 @@ V2 and V3 are the ones that keep this ADR honest: they are what prevents acceler
 
 ## 8. Milestone mapping
 
+Milestone numbers follow the P0 plan in `docs/DEVELOPMENT_SPEC_v0_2.md` §13,
+not the Design Record v0.4 §25 table, which places snow/ice at M9.
+
 | Milestone | What this ADR requires |
 |---|---|
-| M0–M2 | State partition in the field layout; scheduler skeleton with mode enum; RNG stream discipline |
-| M3 | First performance measurement; CI gate created even if generous |
-| M4–M6 | Reference mode for the surface and ocean; V1 conservation tests |
-| M7–M9 | Climate-mode parameterisations for moisture and rainfall; first V2 parity tests |
-| M10–M12 | Weather windows; V3 continuity; hazard sampling from `X` |
+| M0–M2 (skeleton, orbit, geology) | State partition in the field layout; scheduler skeleton with mode enum; RNG stream discipline |
+| M3 (surface energy) | First performance measurement; CI gate created even if generous |
+| M4–M6 (snow/ice, atmosphere, wind) | Reference mode for the surface, cryosphere and atmosphere; V1 conservation tests |
+| M7–M9 (humidity, clouds/precipitation, hydrology) | Climate-mode parameterisations for moisture and rainfall; first V2 parity tests |
+| M10–M12 (vegetation, ocean, carbon) | Reference mode for the ocean at M11; weather windows; V3 continuity; hazard sampling from `X` |
+
+*Amendment 2026-09-28:* the original table assigned "reference mode for the
+surface and ocean" to M4–M6, but the ocean is introduced at M11 in both the
+design and specification plans. Ocean reference mode now sits with M11. Rows
+carry their topics so a future renumbering is visible.
 
 ## 9. Open questions
 
