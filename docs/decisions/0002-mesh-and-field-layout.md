@@ -159,8 +159,8 @@ Milestone numbers follow `docs/DEVELOPMENT_SPEC_v0_2.md` §13.
 ## 8. Open questions
 
 - Does the ocean use the same horizontal mesh as the atmosphere, or a coarser one? Same mesh is simpler and keeps coupling trivial; a coarser ocean would save little at these sizes. Current position: same mesh.
-- Are rivers and runoff routed on the cell mesh, or on a separate flow network derived from elevation? A flow network is more faithful but introduces a second topology.
-- Should coastlines be represented sub-cell (fractional land area per cell) rather than binary land/sea? Fractional coverage would improve coastal realism, sea-level rise and the civilization's coastal exposure at no mesh cost, and is probably worth doing from the start.
+- ~~Are rivers and runoff routed on the cell mesh, or on a separate flow network derived from elevation?~~ Resolved by [ADR-0005](0005-coastlines-and-drainage.md): single-downstream routing on the cell mesh.
+- ~~Should coastlines be represented sub-cell (fractional land area per cell) rather than binary land/sea?~~ Resolved by [ADR-0005](0005-coastlines-and-drainage.md): fractional land from sub-cell hypsometry with ocean connectivity.
 
 ## 9. Implementation record
 
