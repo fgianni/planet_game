@@ -41,6 +41,7 @@ add_library(PlanetSim STATIC
     sim/planet/orbit/solar_forcing.cpp
     sim/planet/planet_parameters.cpp
     sim/planet/planet_state.cpp
+    sim/planet/terrain/hypsometry.cpp
 )
 add_library(PlanetSim::PlanetSim ALIAS PlanetSim)
 
