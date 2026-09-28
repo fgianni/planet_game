@@ -2,15 +2,16 @@
 
 This repository is the Planetary Civilization Simulator.
 
-Before changing code, read `docs/DEVELOPMENT_SPEC_v0_2.md` in full. It is
+Before changing code, read `docs/DEVELOPMENT_SPEC_v0_3.md` in full. It is
 the development specification: the implementation contract and
 architecture source of truth. The design document is
-`docs/planetary_civilization_simulator_design_v0_4.docx`.
+`docs/planetary_civilization_simulator_design_v0_7.docx`.
 
 Accepted ADRs in `docs/decisions/` take precedence where they conflict
 with the specification (notably ADR-0002 on the mesh: a
-hexagonal--pentagonal centroidal Voronoi tessellation). `docs/DEVELOPMENT_SPEC.md` is a superseded
-reconciliation draft and is not authoritative.
+hexagonal--pentagonal centroidal Voronoi tessellation).
+`docs/DEVELOPMENT_SPEC_v0_2.md` and `docs/DEVELOPMENT_SPEC.md` are superseded
+and not authoritative; design versions v0.3--v0.6 are kept for history.
 
 ## Current phase
 
@@ -24,7 +25,9 @@ operators) and the state-partition/persistent-snapshot foundation are
 complete; terrain and the simulation-mode scheduler have not started.
 
 Current task:
-[`docs/tasks/M2-02-plates-terrain-and-sea-level.md`](docs/tasks/M2-02-plates-terrain-and-sea-level.md).
+[`docs/tasks/M2-01b-foundation-hardening.md`](docs/tasks/M2-01b-foundation-hardening.md),
+then [`docs/tasks/M2-02-plates-terrain-and-sea-level.md`](docs/tasks/M2-02-plates-terrain-and-sea-level.md),
+which is blocked until M2-01b is complete.
 Most recently completed task:
 [`docs/tasks/M2-01-state-partition-and-snapshots.md`](docs/tasks/M2-01-state-partition-and-snapshots.md).
 Task documents in `docs/tasks/` state their scope, the decisions already
@@ -59,4 +62,4 @@ milestones unless explicitly requested.
 7.  Report diagnostics and limitations.
 
 For M0 acceptance criteria and the full roadmap, see
-`docs/DEVELOPMENT_SPEC_v0_2.md`.
+`docs/DEVELOPMENT_SPEC_v0_3.md`.

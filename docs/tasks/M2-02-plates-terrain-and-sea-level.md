@@ -3,12 +3,13 @@
 - **Milestone:** P0 / M2 (in progress; G2-M2 operators and M2-01 state/snapshots are complete)
 - **Requested:** 2026-09-28
 - **Scope:** procedural plate-scale geology up to the ocean/land split. Drainage is the next task (M2-03).
-- **Governing decisions:** `docs/DEVELOPMENT_SPEC_v0_2.md` §13 M2 and §13.2; ADR-0002 (mesh, operators, field layout); ADR-0003 (determinism, snapshots); ADR-0005 §4.1 and §5 V1–V3
+- **Blocked by:** `docs/tasks/M2-01b-foundation-hardening.md` (specification §26). Start only after it is complete.
+- **Governing decisions:** `docs/DEVELOPMENT_SPEC_v0_3.md` §13 M2 and §13.2; ADR-0002 (mesh, operators, field layout); ADR-0003 (determinism, snapshots); ADR-0005 §4.1 and §5 V1–V3
 
 ## 1. Read first
 
 1. `AGENTS.md`
-2. `docs/DEVELOPMENT_SPEC_v0_2.md` §13 M2, §13.1 (reference experiments A–C), §13.2
+2. `docs/DEVELOPMENT_SPEC_v0_3.md` §13 M2, §13.1 (reference experiments A–C), §13.2
 3. `docs/decisions/0005-coastlines-and-drainage.md` §4.1 (hypsometry, ocean connectivity, sea-level solve), §4.3, §5
 4. `docs/decisions/0002-mesh-and-field-layout.md` §4.2 and §9 (operators and their accuracy)
 5. `docs/decisions/0003-determinism-snapshots-migration.md` §3.1 (L0 determinism)
@@ -142,7 +143,11 @@ Apply these; stop and ask before changing any of them.
     `aqua_planet` (target land fraction 0: sea level above every cell's
     maximum), `dead_rock` (target land fraction 1: sea level below every
     cell's minimum, no ocean).
-13. **Geology is not persisted yet.** `GeologyState` (plate id, crust type,
+13. **Use the M2-01b foundations.** Every global sum or other reduction
+    (areas, land fraction, sea-level bisection, diagnostics) goes through
+    `reduce_deterministic_blocks`; registered fields are allocated with
+    `make_field`; no new registered field is needed.
+14. **Geology is not persisted yet.** `GeologyState` (plate id, crust type,
     crust age, boundary distances, plate list) is returned by the generator
     and kept in memory. Do not register it in the field registry or the
     snapshot: integer fields would need new snapshot data types, and the
@@ -206,7 +211,7 @@ must pass. Follow the surrounding style: `snake_case`, strong ID types,
 
 - Drainage: depression filling, downstream routing, basins, catchments
   (M2-03, ADR-0005 §4.2, V5–V8).
-- Persisting `GeologyState` (see §4.13).
+- Persisting `GeologyState` (see §4.14).
 - Rendering terrain in the Godot preview.
 - Sediment, volcanism and tectonic stress fields, isostasy, erosion beyond the
   diffusive approximation, time-evolving tectonics.

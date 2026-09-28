@@ -147,7 +147,7 @@ V3 is the one that decides whether the mesh is good: an error map that shows the
 
 ## 7. Milestone mapping
 
-Milestone numbers follow `docs/DEVELOPMENT_SPEC_v0_2.md` §13.
+Milestone numbers follow `docs/DEVELOPMENT_SPEC_v0_3.md` §13 (unchanged since v0.2).
 
 | Milestone | What this ADR requires |
 |---|---|

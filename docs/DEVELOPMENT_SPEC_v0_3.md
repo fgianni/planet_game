@@ -1,17 +1,29 @@
 # Planetary Civilization Simulator --- Development Specification
 
-> **Superseded** by [`DEVELOPMENT_SPEC_v0_3.md`](DEVELOPMENT_SPEC_v0_3.md)
-> (design document `planetary_civilization_simulator_design_v0_7.docx`).
-> Kept for history; milestone numbering is unchanged in v0.3.
-
-Version: 0.2 (reconciled with accepted ADRs 0001--0004 and design v0.4)\
+Version: 0.3 (reconciled with design v0.7 and accepted ADRs 0001--0005 in
+`docs/decisions/`)\
 Purpose: implementation contract for Codex / Claude Code\
 Primary target: PC/Linux, C++20 + Godot 4\
-Current phase: P0 --- Living Planet
+Current phase: P0 --- Living Planet (M0 and M1 complete; M2 in progress)
 
-Design document: `docs/planetary_civilization_simulator_design_v0_4.docx`.
-Accepted decision records in `docs/decisions/` take precedence over this
-specification where they conflict.
+Design document: `docs/planetary_civilization_simulator_design_v0_7.docx`.
+Accepted decision records take precedence over this specification where they
+conflict.
+
+Decision records live in one directory, `docs/decisions/`, with an index in
+`docs/decisions/README.md`; superseded records are kept under
+`docs/decisions/archive/`.
+
+What is new in v0.3, relative to v0.2:
+
+- the couplings the design added in v0.5--v0.7: people acting on weather
+  (irrigation, aerosols, land-use albedo, short-lived gases, dust, reservoirs),
+  weather acting on people, and the living biosphere (sections 9.10--9.13);
+- validation acceptance targets and the calibration harness (sections 23--24);
+- the counterfactual "shadow planet" as an engine capability (section 7.1);
+- staged tropical cyclones (section 10);
+- current implementation status and the outstanding migration tasks
+  (section 26).
 
 ## 1. Mission
 
@@ -177,6 +189,29 @@ implement them during P0 unless required by an explicit task.
 -   Every physical module must expose diagnostics sufficient to test its
     conservation behavior.
 
+Determinism, identity and time (ADR-0003):
+
+-   Determinism is scoped: **L0** --- same build, platform, seed and command
+    list gives bit-identical state for any thread count, frame rate, pause
+    pattern or weather-window schedule; **L1** --- across builds, only
+    statistical equivalence within the tolerances of section 23; **L2** ---
+    cross-platform bit-equality is explicitly out of scope.
+-   Simulated time is an integer tick count (`SimulationTick`, 60 s per tick).
+    No accumulated `double` seconds anywhere in the core; SI seconds are
+    derived on demand.
+-   Every persisted or snapshotted field has a stable numeric `FieldId` in the
+    field registry. Ids are append-only: never renumbered, never reused with
+    different meaning or units. A CI check diffs the registry against the
+    previous release.
+-   Randomness is counter-based and keyed by `(world_seed, stream_id, tick,
+    cell, sample_index)`. No global generator, no shared mutable RNG state.
+-   Cells are partitioned into fixed blocks at mesh construction, independent
+    of thread count. Reductions use per-block partials combined in block order;
+    atomics are forbidden in reductions.
+-   Floating point: `-ffp-contract=off` (MSVC `/fp:strict`), no fast-math.
+    FMA or reassociation is opt-in per kernel and only where a test shows the
+    result is unchanged.
+
 ## 5. Planet discretization
 
 Use an icosphere.
@@ -215,6 +250,27 @@ deterministic block decomposition are governed by accepted
 Geometry/connectivity must be immutable after initialization and
 separate from evolving state.
 
+Required mesh acceptance tests (they are what prevent a silent regression to
+primal triangles or a broken dual):
+
+-   cell counts: 2,562 at L4, 10,242 at L5, 40,962 at L6;
+-   exactly twelve pentagons at every level;
+-   spherical area closure within 1e-12 relative (record the measured value
+    per level; the primal implementation reached 5e-14);
+-   every edge shared by exactly two cells, neighbour relation symmetric;
+-   operator error maps on analytic fields show no icosahedral structure and
+    no pentagon signature in the gated measures (divergence and discrete
+    Poisson solutions). The two-point Laplacian's pointwise truncation error
+    and, more weakly, the gradient do show a pentagon-ring and seam signature
+    that is measured and bounded rather than removed (ADR-0002 §9).
+
+Measured spherical area closure on the centroidal Voronoi mesh is about 1e-16
+relative at L5 and L6 (ADR-0002 §9); the test tolerance is 5e-14.
+
+Coastlines are a **fractional land area per cell**, derived from sub-cell
+hypsometry with ocean connectivity, and runoff is routed on the cell mesh with
+one downstream neighbour per land cell (accepted ADR-0005).
+
 ## 6. Core data model
 
 Initial conceptual types:
@@ -224,13 +280,29 @@ PlanetMesh
 Field2D<T>
 Field3D<T>
 EdgeField<T>
-SimulationClock
-Scheduler
+FieldRegistry / FieldId / FieldDescriptor
+SimulationTick / SimulationClock
+SimulationMode
+Scheduler / deterministic block executor
+CounterRng (keyed, stateless)
 PlanetParameters
 PlanetState
 ForcingState
 Diagnostics
 StateSnapshot
+```
+
+State partition (ADR-0001 §4.1). Every registered field belongs to exactly one
+partition, and the registry's `FieldKind` vocabulary must be reconciled with
+these names before the field set grows:
+
+``` text
+SlowState     authoritative, snapshotted, always integrated
+              surface/soil, ocean, ice, vegetation, carbon, composition
+FastState     weather; allocated only in reference mode or a weather window;
+              never required to reconstruct SlowState
+Climatology   derived statistics (monthly means, variances, event rates);
+              regenerated from SlowState and fitted coefficients
 ```
 
 Representative state:
@@ -296,6 +368,32 @@ inspect a cell.
 
 These are climate-lab controls, not necessarily final gameplay controls.
 
+## 7.1 Counterfactual planet (shadow instance)
+
+The engine must support running a second `PlanetSim` instance initialised from
+the same state, receiving the same external forcing but **not** this
+civilization's fluxes, and exposing the difference as a first-class result
+(design v0.7 section 29).
+
+``` text
+PlanetSim (real)      PlanetSim (shadow: civilization fluxes zeroed)
+       |                              |
+       +---------- difference --------+
+                     |
+         local and global attribution
+```
+
+Requirements:
+
+-   no new architecture: it is a history fork with one input set to zero, so
+    it reuses the snapshot and fork machinery;
+-   both instances run at the **same resolution** --- a coarser shadow would
+    inject resolution error into the number the player is asked to trust;
+-   the ADR-0001 performance budget therefore applies to half the available
+    compute;
+-   the difference must be exposed per cell and globally, for temperature,
+    precipitation and any field the observation layer can estimate.
+
 ## 8. Multi-rate simulation
 
 Do not force all systems to use the same timestep.
@@ -329,6 +427,16 @@ Starting at M3, climate mode must target at least 20 simulated years per
 wall-clock minute at L5 and 5 at L6; a 250-year headless CI scenario must
 complete in under ten minutes. A regional weather window should run a season
 in real time or faster. See ADR 0001.
+
+Scheduling rules that follow from determinism:
+
+-   the step sequence is a function of state and ticks only --- never of wall
+    clock, frame rate or thread count;
+-   snapshot cadence is independent of solver cadence; Godot interpolates;
+-   simulation runs on worker threads and the render thread never blocks on
+    it;
+-   while a weather window owns a region, climate mode does not also apply its
+    statistical fluxes there; the difference is recorded as a diagnostic.
 
 ## 9. Required planetary couplings
 
@@ -459,6 +567,91 @@ pollution.
 
 Detailed aerosol physics is not required in the first implementation.
 
+Aerosols are a P1 priority rather than a curiosity: they mask warming, dim
+solar output and weaken monsoons, so cleaning the air improves health and
+solar yield **and** accelerates warming. That trade-off is one of the
+strongest available to the civilization layer.
+
+### 9.10 Land use, albedo and water withdrawal
+
+Clearing land must do more than reduce evapotranspiration:
+
+``` text
+land use change
+ -> surface albedo        (crops/bare soil/cities are usually brighter
+                           than forest; snow over cleared land brighter still)
+ -> evapotranspiration    (less moisture returned to the air)
+ -> roughness/drag        (later)
+ -> local heat            (urban surfaces, industry, waste heat)
+```
+
+In high latitudes the albedo term can cool a region while its carbon release
+warms the planet. That opposition must be representable; do not collapse land
+use into a single "drying" parameter.
+
+Irrigation and water withdrawal are the counterweight:
+
+``` text
+irrigation -> evaporation up -> local cooling and humidity up
+           -> river/groundwater/reservoir stocks down
+```
+
+Water must therefore exist as **stocks** (soil, snowpack, rivers, lakes,
+groundwater, reservoirs), not only as a precipitation flux.
+
+### 9.11 Short-lived climate forcers
+
+Keep separate from CO2, with their own lifetimes:
+
+-   methane and other short-lived gases (livestock, rice, landfill, leaks):
+    potent, short-lived, so mitigation shows results within a player's term;
+-   dust from degraded land: dims sunlight, and deposits on snow;
+-   black carbon on snow and ice: lowers albedo, accelerates melt.
+
+### 9.12 Biosphere carbon, fire and dieback
+
+Vegetation is not only an evapotranspiration coefficient. Required state and
+behaviour:
+
+``` text
+forest biomass carbon   slow to accumulate (decades), fast to release (one season)
+soil carbon             larger than the atmospheric stock; respires faster when warm;
+                        depleted by tillage, rebuilt by cover and rotation
+peat / permafrost carbon  preserved by cold or water; drainage or thaw releases it
+                          irreversibly on gameplay timescales
+```
+
+Required processes:
+
+-   **fire regime**: ignition probability from fuel, dryness and temperature;
+    carbon released; vegetation and soil state reset;
+-   **dieback**: a forest recycles part of its own rainfall, so clearing,
+    heat and drought past a threshold dry the remainder and convert it to
+    savanna. This is the most legible tipping point available to the player
+    because it occurs inside their own territory within a few turns;
+-   **CO2 fertilisation**: a damping feedback, limited by nutrients and heat;
+-   regrowth with realistic asymmetry: clearing is near-irreversible on the
+    scale of a player's term.
+
+### 9.13 Wildlife, pollination and the sea
+
+``` text
+habitat fraction / monoculture share / chemicals
+   -> pollinator abundance -> crop yield multiplier
+temperature and moisture
+   -> pest and disease range and generations per year -> crop and forest loss
+warming / stratification / acidification
+   -> plankton -> biological carbon pump -> ocean uptake
+   -> fisheries distribution and collapse
+   -> coral bleaching -> fisheries and coastal storm protection
+grazing pressure -> grassland degradation -> albedo and dust
+```
+
+Pollinators and pests are P1: they are cheap to model, immediately legible,
+and they are the first mechanic that **rewards** protecting something rather
+than limiting damage. The marine terms are P2, but the carbon and fisheries
+interfaces should exist so they can be filled without a redesign.
+
 ## 10. Tropical cyclones
 
 Do not create hurricanes as arbitrary disaster events.
@@ -496,6 +689,19 @@ P0 does not require operational meteorological hurricane accuracy. It
 requires a physically interpretable reduced model whose storm behavior
 depends on environmental conditions rather than a random event table.
 
+Staged implementation (design v0.7 section 34). Emergent cyclogenesis must not
+block P0 or P1; the consumer interface is identical at every stage:
+
+``` text
+S1  genesis probability from resolved conditions (upper-ocean heat, humidity,
+    rotation, shear proxy); storms are tracked objects steered by resolved winds
+    -> real: where and when they form, tracks, landfall, rainfall, damage
+S2  S1 plus two-way coupling: storms mix the upper ocean, extract heat,
+    modify local humidity and rainfall
+    -> real: self-limitation and track-dependent ocean cooling
+S3  organized convection emerges from the atmospheric solver  (research)
+```
+
 ## 11. Feedback loops to preserve
 
 At minimum, architecture and diagnostics must support:
@@ -512,7 +718,19 @@ At minimum, architecture and diagnostics must support:
 9.  snow accumulation/melt -\> seasonal river discharge;
 10. atmosphere \<-\> ocean carbon exchange;
 11. aerosols \<-\> radiation/clouds;
-12. urban surfaces/waste heat -\> local climate later.
+12. urban surfaces/waste heat -\> local climate later;
+13. land-use albedo -\> absorbed shortwave -\> local temperature (may oppose
+    the carbon effect at high latitudes);
+14. irrigation -\> evaporation -\> local cooling/humidity -\> water stocks;
+15. forest -\> recycled rainfall -\> forest (dieback when broken);
+16. warming -\> fire -\> biomass and soil carbon -\> forcing;
+17. soil carbon \<-\> tillage/cover and soil temperature;
+18. habitat -\> pollinators -\> crop yield;
+19. warming -\> pests and disease -\> crop and forest loss;
+20. warming -\> cooling demand -\> energy use -\> emissions;
+21. meltwater/freshwater -\> overturning circulation -\> regional cooling
+    while the planet warms (bistable; does not recover when forcing is
+    removed).
 
 ## 12. Coupling registry rule
 
@@ -629,6 +847,12 @@ Do not make final terrain simply `elevation = noise(position)`. Begin
 with synthetic plate-scale structure while preserving geological state
 that can later support crust age, sedimentary basins, volcanism and
 resource formation.
+
+Under ADR-0005 the authoritative surface elevation is the sub-cell
+hypsometry (nine quantiles per cell) plus a global sea level, both in the
+slow state; a cell's mean elevation is derived from the hypsometry, so
+`GeologyState` below does not store a separate authoritative `elevation_m`.
+Land and ocean fractions and the drainage fields are derived.
 
 Conceptual state:
 
@@ -822,10 +1046,25 @@ authoritative cloud state.
 Soil moisture, infiltration, runoff, catchments, river discharge,
 depression/lake handling and M4 snowmelt input.
 
-### M10 --- Vegetation
+### M10 --- Vegetation and the living biosphere
 
 Climate suitability, vegetation fraction, evapotranspiration, albedo and
 soil-water coupling.
+
+Extended by design v0.7 section 24.12, in this order:
+
+-   forest biomass carbon as a stock with slow regrowth and fast release;
+-   fire regime driven by fuel, dryness and temperature;
+-   rainfall recycling and the dieback threshold;
+-   soil carbon responding to practice and temperature;
+-   pollinator abundance from habitat and monoculture share, as a yield
+    multiplier;
+-   pest and disease pressure from temperature and moisture.
+
+Acceptance: vegetation and soil carbon budgets close; a controlled clearing
+experiment shows reduced downwind precipitation; a dieback experiment shows a
+threshold rather than a linear response; a habitat-loss experiment shows a
+yield penalty through pollination alone.
 
 ### M11 --- Ocean heat and currents
 
@@ -848,6 +1087,11 @@ temperature/salinity-dependent density.
 Configurable CO2, greenhouse forcing, diagnostics and architecture for
 later carbon reservoirs.
 
+Reservoirs to be wired as they become available: atmosphere, vegetation,
+soil, peat/permafrost, ocean (with the biological pump as a later term).
+Short-lived forcers (section 9.11) keep their own lifetimes and are never
+folded into the CO2 concentration.
+
 ### M13 --- Coupled climate experiments
 
 Include no-atmosphere, doubled-CO2, zero-rotation, high-tilt,
@@ -858,6 +1102,12 @@ deforestation and long-equilibrium runs.
 
 Render authoritative temperature, wind, currents, precipitation, soil
 moisture, vegetation, snow/ice, clouds, SST and energy imbalance.
+
+### M14.1 --- Counterfactual planet and attribution
+
+Run the shadow instance of section 7.1 alongside the main one; expose local
+and global differences; verify that with zero civilization fluxes the two
+instances stay bit-identical (an L0 determinism check in disguise).
 
 ### M15 --- Coupled tropical-storm experiment
 
@@ -1177,3 +1427,117 @@ M0 is complete when:
 
 Do not optimize M0 for GPU execution. Correct topology, numerical
 clarity, tests and clean interfaces are more important.
+
+## 23. Validation acceptance targets
+
+Conservation diagnostics are necessary but not sufficient: a model can conserve
+energy perfectly and behave nothing like a planet. These targets come from the
+validated prototype (design v0.7 section 30) and each one caught a real defect
+during its calibration. They are the definition of "plausible enough" and
+belong in `tests/physics` as a runnable harness.
+
+| Property | Acceptance range |
+|---|---|
+| Preindustrial global mean surface temperature | 13--15 °C |
+| Equilibrium warming for doubled CO2 | 2.5--4 °C |
+| ... across the cloud-feedback uncertainty setting | spans roughly 2--5 °C |
+| Transient warming at doubling / equilibrium warming | 0.5--0.75 |
+| Polar amplification (poles vs tropics) | ×2--4 |
+| Global precipitation response | +2 to +3 %/K |
+| Tropical circulation response | slows, −1 to −2 %/K |
+| Subtropical dry belts | move poleward with warming |
+| Tropical rain belt vs subtropics | wet vs dry by a factor of several |
+| Rain shadows behind terrain | windward clearly wetter |
+| Western boundary currents | poleward and fast on western basin edges |
+| SST, western vs eastern basin edge at equal latitude | western warmer |
+| Overturning under doubled CO2 | weakens 15--40 %, no collapse |
+| Overturning under quadrupled CO2 | collapse possible |
+| After collapse, CO2 returned to preindustrial | stays collapsed (hysteresis) |
+| Brief overshoot of the threshold, quickly reversed | may recover |
+| Historical forcing 1850 → 2025 | ≈ +1.2 °C |
+
+Two calibration lessons are binding, not advisory:
+
+1.  **Calibration is cross-coupled.** Adding explicit ocean heat transport to
+    an atmosphere whose diffusion was tuned to carry *all* poleward transport
+    double-counts it: in the prototype this warmed the planet by 3 °C and
+    destroyed polar amplification. Any new transport process must be
+    accompanied by recalibration of the ones it partially replaces.
+2.  **A plausible calibration can rest on an unphysical parameter.** In the
+    prototype, radiative damping went slightly negative near the poles and no
+    visual check revealed it. Physical parameters need invariant assertions of
+    their own, not only budget checks.
+
+## 24. Calibration harness
+
+-   `tests/physics` holds the acceptance table above as an executable harness.
+-   Calibration constants are versioned together with the values they were
+    fitted against, and with the date and the run that produced them.
+-   Any change to a transport process, a feedback, or the mesh resolution
+    re-runs the harness before merge.
+-   Climate-mode parameterisations are fitted to reference-mode runs
+    (ADR-0001 §4.3); the fit coefficients are data, not magic numbers, and
+    carry the same versioning rule.
+
+## 25. Parallel gameplay track
+
+P0 cannot answer whether the game is worth playing, and none of its milestones
+test it. The Godot/GDScript prototype is kept alive deliberately as the fast
+lane:
+
+| Track | Purpose | Cadence |
+|---|---|---|
+| PlanetSim P0 (C++) | physical correctness, conservation, performance, architecture | milestone-driven |
+| Gameplay prototype (GDScript) | does the loop hold attention? do players perceive causality? what information, when? pacing, onboarding | days |
+
+The prototype is also a **behavioural oracle**: run the C++ core against the
+same scenarios and compare with the recorded prototype results before trusting
+its own calibration. Retire the prototype only at parity, never by merging it.
+
+## 26. Current implementation status and outstanding migration tasks
+
+Status as of this revision (2026-09-28): M0 and M1 complete; the ADR migration
+(integer tick clock, dual mesh, field registry, keyed RNG, aligned SoA fields,
+`Field3D` layer-major layout, deterministic cell blocks, recursive cell
+ordering, `-ffp-contract=off`, presentation snapshot schema 2) is applied.
+Within M2: the finite-volume operators and the centroidal Voronoi mesh (G2-M2,
+ADR-0002 §9), ADR-0005 (fractional coastlines, cell-mesh drainage), the
+slow/fast/climatology state partition and the persistent `PSNAP` snapshot
+format with a golden save (task M2-01, ADR-0003 §8) are complete. CI runs
+GCC and Clang, Debug and Release, ASan+UBSan and the floating-point policy
+check.
+
+Outstanding, in order, before M2 terrain work starts (task
+`docs/tasks/M2-01b-foundation-hardening.md`):
+
+1.  Record the measured dual area closure per level (L0--L6); the cell-count
+    and pentagon-count assertions of section 5 already exist.
+2.  Add an RNG reproducibility test with a pinned golden vector, so a future
+    change to the mixing function cannot silently invalidate recorded runs.
+3.  Add a `reduce_deterministic_blocks` helper before any kernel needs a global
+    sum; otherwise the first one will invent its own and re-introduce
+    non-determinism.
+4.  Tie `FieldDataType` to the container type (a `make_field<FieldId>()`
+    factory that static-asserts the descriptor's dtype).
+5.  Add the registry append-only CI check against the previous release.
+6.  Reconcile `FieldKind{diagnostic, prognostic, reservoir}` with the
+    SlowState/FastState/Climatology partition of section 6.
+7.  ~~Consolidate the two decision-record directories and add an index.~~
+    Done: `docs/decisions/` with `README.md` and `archive/`.
+
+## 27. Open questions
+
+-   Does climate mode resolve the seasonal cycle explicitly (12 steps/year) or
+    carry seasonal statistics? Current position: resolve it --- monsoons,
+    growing seasons and sea-ice seasonality are all gameplay-relevant, and the
+    biosphere depends on them. Design v0.7 treats seasons as a P0 completion
+    item.
+-   Smallest regional subset for a weather window that still behaves
+    physically at its boundaries?
+-   Do storms during accelerated play need tracks, or only strike locations and
+    intensities? Tracks are better for legibility and imply S1 objects.
+-   Same horizontal mesh for ocean and atmosphere? Current position: yes.
+-   ~~Rivers on the cell mesh, or a separate elevation-derived flow network?~~
+    Resolved by ADR-0005: the cell mesh.
+-   Player-facing analytics (charts, newspaper record, measurement archive) in
+    the snapshot, or a sidecar file? Current position: sidecar.
