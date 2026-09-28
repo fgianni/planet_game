@@ -46,6 +46,8 @@ int main() {
     PLANETSIM_EXPECT(test, manifest.mesh_level == 0U);
     PLANETSIM_EXPECT(test, manifest.cell_count == 12U);
     PLANETSIM_EXPECT(test, manifest.fields.size() == 2U);
+    PLANETSIM_EXPECT(test, manifest.mesh_generator_version == 2U);
+    PLANETSIM_EXPECT(test, manifest.mesh_checksum == planetsim::mesh_geometry_checksum(*mesh));
 
     for (std::size_t cell = 0; cell < mesh->cell_count(); ++cell) {
         const auto quantiles = expected_quantiles(static_cast<std::uint32_t>(cell));

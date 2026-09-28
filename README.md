@@ -147,7 +147,11 @@ The `PSNAP` schema-v1 format stores only authoritative slow state, in stable
 field-ID order and layer-major/cell-major order within each field. Its fixed
 little-endian representation, canonical manifest, per-field CRC-32C checksums,
 and strict reader make equal states byte-identical and reject corrupt or
-incompatible files before mutating the destination state. M2 currently writes
+incompatible files before mutating the destination state. The manifest
+records the mesh generator version and a checksum of the cell centres, so a
+snapshot never loads onto different mesh geometry, and writes go through a
+`.partial` file renamed into place. `tests/data/golden/` holds one snapshot
+per schema version. M2 currently writes
 uncompressed chunks (`"none"`); compression is deliberately deferred until the
 M4 size/ratio measurements in ADR-0003. This persistent format is distinct
 from the small in-process `StateSnapshot` used by the presentation adapter.

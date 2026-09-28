@@ -59,7 +59,7 @@ inline constexpr std::array<FieldDescriptor, 3> field_registry{{
     {FieldId::top_of_atmosphere_insolation_W_m2, "top_of_atmosphere_insolation_W_m2",
      FieldKind::diagnostic, FieldPartition::derived, FieldLayout::cell,
      FieldDataType::float32, 1U, "W/m2"},
-    {FieldId::hypsometry_m, "hypsometry_m", FieldKind::reservoir, FieldPartition::slow,
+    {FieldId::hypsometry_m, "hypsometry_m", FieldKind::prognostic, FieldPartition::slow,
      FieldLayout::cell_layers, FieldDataType::float32, hypsometry_layer_count, "m"},
     {FieldId::sea_level_m, "sea_level_m", FieldKind::reservoir, FieldPartition::slow,
      FieldLayout::global, FieldDataType::float64, 1U, "m"},

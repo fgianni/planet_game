@@ -168,8 +168,12 @@ void expect_states_equal(planetsim::test::Context& test,
 int main() {
     planetsim::test::Context test;
 
+    // Unique per run, so concurrent test runs from different build trees
+    // cannot interfere.
     const auto temporary_directory =
-        std::filesystem::temp_directory_path() / "planetsim_snapshot_file_test";
+        std::filesystem::temp_directory_path() /
+        ("planetsim_snapshot_file_test_" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::filesystem::remove_all(temporary_directory);
     std::filesystem::create_directories(temporary_directory);
 
@@ -192,7 +196,12 @@ int main() {
     PLANETSIM_EXPECT(test, inspected.format == "PSNAPv1");
     PLANETSIM_EXPECT(test,
                      inspected.schema_version == planetsim::persistent_snapshot_schema_version);
-    PLANETSIM_EXPECT(test, inspected.engine_version == "0.1.0");
+    PLANETSIM_EXPECT(test, !inspected.engine_version.empty());
+    PLANETSIM_EXPECT(test, inspected.engine_version == planetsim::snapshot_engine_version());
+    PLANETSIM_EXPECT(test, inspected.mesh_generator_version == planetsim::mesh_generator_version);
+    PLANETSIM_EXPECT(test,
+                     inspected.mesh_checksum == planetsim::mesh_geometry_checksum(*level_zero_mesh));
+    PLANETSIM_EXPECT(test, !std::filesystem::exists(first_path.string() + ".partial"));
     PLANETSIM_EXPECT(test, inspected.tick == synthetic_tick);
     PLANETSIM_EXPECT(test, inspected.mesh_level == 0U);
     PLANETSIM_EXPECT(test, inspected.cell_count == 12U);
@@ -345,6 +354,43 @@ int main() {
 
     write_file(invalid_path, canonical_bytes);
     expect_read_failure(test, invalid_path, make_mesh(1U), "mesh_level");
+
+    // Mesh identity: a snapshot written against different mesh geometry at the
+    // same level and cell count must not load.
+    write_file(invalid_path,
+               replace_manifest_once(
+                   canonical_bytes,
+                   "\"mesh_generator_version\":" +
+                       std::to_string(planetsim::mesh_generator_version),
+                   "\"mesh_generator_version\":" +
+                       std::to_string(planetsim::mesh_generator_version + 1U)));
+    expect_read_failure(test, invalid_path, level_zero_mesh, "mesh_generator_version");
+
+    write_file(invalid_path,
+               replace_manifest_once(
+                   canonical_bytes, "\"mesh_checksum\":" + std::to_string(inspected.mesh_checksum),
+                   "\"mesh_checksum\":" + std::to_string(inspected.mesh_checksum ^ 1U)));
+    expect_read_failure(test, invalid_path, level_zero_mesh, "mesh_checksum");
+
+    // The writer rejects a slow state that does not match the mesh, and a
+    // failed write leaves an existing snapshot and no partial file behind.
+    {
+        planetsim::PlanetState malformed(level_zero_mesh);
+        malformed.slow().hypsometry_m =
+            planetsim::Field3D<float>(planetsim::hypsometry_layer_count, 11U, 0.0F);
+        bool rejected = false;
+        try {
+            planetsim::write_snapshot(first_path, malformed, synthetic_tick);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        } catch (const std::runtime_error& exception) {
+            rejected = std::string_view{exception.what()}.find("field_id 131073") !=
+                       std::string_view::npos;
+        }
+        PLANETSIM_EXPECT(test, rejected);
+        PLANETSIM_EXPECT(test, read_file(first_path) == canonical_bytes);
+        PLANETSIM_EXPECT(test, !std::filesystem::exists(first_path.string() + ".partial"));
+    }
 
     std::filesystem::remove_all(temporary_directory);
     return test.result();

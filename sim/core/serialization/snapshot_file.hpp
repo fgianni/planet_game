@@ -6,10 +6,12 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace planetsim {
 
+class PlanetMesh;
 class PlanetState;
 
 inline constexpr std::uint32_t persistent_snapshot_schema_version = 1U;
@@ -34,10 +36,21 @@ struct SnapshotManifest {
     SimulationTick tick = 0;
     std::uint32_t mesh_level = 0;
     std::uint64_t cell_count = 0;
+    std::uint32_t mesh_generator_version = 0;
+    std::uint32_t mesh_checksum = 0;
     std::string parent_snapshot_id;
     std::vector<SnapshotFieldInfo> fields;
 };
 
+// Engine version recorded in every snapshot manifest (the CMake project version).
+[[nodiscard]] std::string_view snapshot_engine_version() noexcept;
+
+// CRC-32C over the cell centres in mesh order, as little-endian IEEE-754
+// doubles. Identifies the mesh geometry a snapshot was written against.
+[[nodiscard]] std::uint32_t mesh_geometry_checksum(const PlanetMesh& mesh);
+
+// Writes to a temporary file beside `path` and renames it into place, so an
+// interrupted write never replaces an existing snapshot with a partial one.
 void write_snapshot(const std::filesystem::path& path,
                     const PlanetState& state,
                     SimulationTick tick,

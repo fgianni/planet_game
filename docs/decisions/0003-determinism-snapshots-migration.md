@@ -165,14 +165,28 @@ The M2 base-snapshot portion was implemented on 2026-09-28. Persistent
 manifest followed by slow-state field chunks in ascending field-ID order;
 layer-major/cell-major order is canonical within a field. The initial chunks
 are uncompressed (`"none"`) and carry CRC-32C checksums implemented in-tree and
-checked against the standard vector, so no dependency was added. The strict
-reader validates schema, mesh identity, registry metadata, canonical ranges,
-chunk lengths, checksums, and trailing data before it mutates the target.
+checked against the standard vector, so no dependency was added. The
+manifest records the mesh identity as well as its level and cell count: a
+`mesh_generator_version` (incremented whenever mesh generation changes cell
+geometry or order; currently 2, the centroidal Voronoi mesh of ADR-0002) and a
+`mesh_checksum` (CRC-32C of the cell centres in mesh order). A snapshot
+written against different geometry at the same level therefore fails to load
+instead of attaching its fields to moved cells. The strict reader validates
+schema, mesh identity, registry metadata, canonical ranges, chunk lengths,
+checksums, and trailing data, and decodes through a switch over every
+`FieldId` into a staged copy, so a registered field without a decoder fails
+to compile and a failed read leaves the target untouched. The writer rejects a
+slow state that does not match the mesh and writes to a `.partial` file that
+is renamed into place, so an interrupted write never replaces an existing
+snapshot.
 L0/L4/L6 snapshot-load-snapshot tests are byte-identical (V4), corruption is
 tested per field, and an L0 golden save now anchors the format. A Release L6
-write with the two current slow fields was 1,475,175 bytes and 3.924 ms on the
-development machine; this is an implementation measurement, not the future V7
-regression gate.
+write with the two current slow fields was 1,475,228 bytes and about 6 ms on
+the development machine, including the mesh checksum and the rename; this is
+an implementation measurement, not the future V7 regression gate. The mesh
+identity fields were added to schema v1 before any snapshot left the
+development machine, so v1 was amended and its golden file regenerated
+(chunk bytes unchanged) rather than introducing v2.
 
 Compression remains deferred until M4, after V7 records real size and delta
 ratios. Run manifests, command logs, checkpoint hashes, and replay remain M3;

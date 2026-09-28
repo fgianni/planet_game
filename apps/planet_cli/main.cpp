@@ -514,11 +514,11 @@ int run_solar(const SolarOptions& options) {
 }
 
 int run_snapshot_write(const SnapshotWriteOptions& options) {
-    const auto start = std::chrono::steady_clock::now();
     auto mesh = std::make_shared<const planetsim::PlanetMesh>(
         planetsim::make_icosphere(options.subdivision, 6'371'000.0));
     planetsim::PlanetState state(mesh);
     populate_snapshot_synthetic_state(state);
+    const auto start = std::chrono::steady_clock::now();
     planetsim::write_snapshot(options.output_path, state, snapshot_synthetic_tick);
     const auto finish = std::chrono::steady_clock::now();
 
@@ -541,6 +541,8 @@ int run_snapshot_inspect(const std::filesystem::path& path) {
               << "tick: " << manifest.tick << '\n'
               << "mesh_level: " << manifest.mesh_level << '\n'
               << "cell_count: " << manifest.cell_count << '\n'
+              << "mesh_generator_version: " << manifest.mesh_generator_version << '\n'
+              << "mesh_checksum: " << manifest.mesh_checksum << '\n'
               << "parent_snapshot_id: " << manifest.parent_snapshot_id << '\n'
               << "field_count: " << manifest.fields.size() << '\n';
     for (const auto& field : manifest.fields) {

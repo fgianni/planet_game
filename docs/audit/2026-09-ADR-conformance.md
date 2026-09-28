@@ -139,18 +139,19 @@ competing current audits or decisions.
 ## Validation observed during the migration and M2 infrastructure work
 
 - Normal headless suite: 22/22 tests passed.
-- AddressSanitizer/UndefinedBehaviorSanitizer suite: the 12/12 M0/M1 result is
-  retained here; the expanded M2 suite is re-run as part of task acceptance.
+- AddressSanitizer/UndefinedBehaviorSanitizer suite: 22/22 tests passed
+  (Clang, 2026-09-28).
 - Godot 4.7.2 extension build and five-frame headless runtime smoke test:
   passed without errors.
 - L6 mesh: 40,962 cells, 12 pentagons, valid topology, zero reported relative
   area error, and 13,764,040 geometry/topology bytes.
 - L5 solstice forcing: zero night-side leakage and relative global-mean
   quadrature error approximately `1.81e-5`.
-- Release L6 persistent snapshot: 1,475,175 bytes and 3.924 ms to write on the
-  development machine; the timing is reported, not gated.
-- `PlanetState` retains a shared immutable mesh handle and owns evolving
-  fields.
+- Release L6 persistent snapshot: 1,475,228 bytes and about 6 ms to write on
+  the development machine, including the mesh checksum; the timing is
+  reported, not gated.
+- `PlanetState` retains a shared immutable mesh handle and owns the slow,
+  fast (lazy) and climatology partitions plus derived forcing.
 - The mesh is body-fixed with geographic north on `+Z`; physical rotation and
   a fixed Keplerian orbit are derived from simulation time and planet/star
   parameters.

@@ -75,6 +75,12 @@ struct CellBlock {
 
 inline constexpr std::size_t deterministic_cell_block_size = 256U;
 
+// Version of the mesh construction algorithm, recorded in persistent
+// snapshots. Increment whenever generation changes cell geometry or order.
+// 1: dual corners at triangle centroids (2026-09-25).
+// 2: circumcentre corners, centroidal Voronoi optimisation (ADR-0002, 2026-09-28).
+inline constexpr std::uint32_t mesh_generator_version = 2U;
+
 class PlanetMesh {
   public:
     PlanetMesh(const PlanetMesh&) = default;

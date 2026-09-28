@@ -1,6 +1,7 @@
 #include "sim/core/serialization/snapshot_file.hpp"
 
 #include "sim/core/serialization/crc32c.hpp"
+#include "sim/planet/mesh/planet_mesh.hpp"
 #include "sim/planet/planet_state.hpp"
 
 #include <array>
@@ -190,6 +191,10 @@ void append_json_string(std::string& output, std::string_view value) {
     manifest += std::to_string(state.mesh().subdivision());
     manifest += ",\"cell_count\":";
     manifest += std::to_string(state.mesh().cell_count());
+    manifest += ",\"mesh_generator_version\":";
+    manifest += std::to_string(mesh_generator_version);
+    manifest += ",\"mesh_checksum\":";
+    manifest += std::to_string(mesh_geometry_checksum(state.mesh()));
     manifest += ",\"parent_snapshot_id\":";
     append_json_string(manifest, parent_snapshot_id);
     manifest += ",\"fields\":[";
@@ -299,6 +304,10 @@ class ManifestParser {
         manifest.mesh_level = parse_u32("mesh_level");
         expect_next_key("cell_count");
         manifest.cell_count = parse_u64();
+        expect_next_key("mesh_generator_version");
+        manifest.mesh_generator_version = parse_u32("mesh_generator_version");
+        expect_next_key("mesh_checksum");
+        manifest.mesh_checksum = parse_u32("mesh_checksum");
         expect_next_key("parent_snapshot_id");
         manifest.parent_snapshot_id = parse_string();
         expect_next_key("fields");
@@ -648,6 +657,47 @@ void validate_manifest_and_chunks(const SnapshotManifest& manifest,
     field_error(raw_id, "required slow field is missing");
 }
 
+// Rejects a slow state whose containers do not match the registry and mesh,
+// so the writer never produces a file its own reader would refuse.
+void validate_slow_state(const PlanetState& state) {
+    const auto& hypsometry = state.slow().hypsometry_m;
+    if (hypsometry.layer_count() != hypsometry_layer_count ||
+        hypsometry.cell_count() != state.mesh().cell_count()) {
+        field_error(static_cast<std::uint32_t>(FieldId::hypsometry_m),
+                    "slow-state dimensions do not match the registry and mesh");
+    }
+}
+
+// Decodes one validated chunk into the staged slow state. The switch covers
+// every FieldId, so registering a field without a decoder fails to compile.
+void decode_chunk(const FieldDescriptor& descriptor,
+                  std::span<const std::byte> bytes,
+                  std::size_t cell_count,
+                  SlowState& staged) {
+    switch (descriptor.id) {
+    case FieldId::hypsometry_m: {
+        Field3D<float> values(hypsometry_layer_count, cell_count, 0.0F);
+        std::size_t offset = 0;
+        for (std::size_t layer = 0; layer < values.layer_count(); ++layer) {
+            for (float& value : values.layer(layer)) {
+                value = std::bit_cast<float>(
+                    read_little_endian<std::uint32_t>(bytes, offset, "hypsometry value"));
+                offset += sizeof(std::uint32_t);
+            }
+        }
+        staged.hypsometry_m = std::move(values);
+        return;
+    }
+    case FieldId::sea_level_m:
+        staged.sea_level_m = std::bit_cast<double>(
+            read_little_endian<std::uint64_t>(bytes, 0U, "sea level value"));
+        return;
+    case FieldId::top_of_atmosphere_insolation_W_m2:
+        break;
+    }
+    field_error(static_cast<std::uint32_t>(descriptor.id), "field has no persistent decoder");
+}
+
 [[nodiscard]] std::span<const std::byte> field_chunk(const ParsedSnapshot& parsed,
                                                      const SnapshotFieldInfo& field) {
     return {parsed.file_bytes.data() + parsed.chunk_area_offset +
@@ -657,6 +707,19 @@ void validate_manifest_and_chunks(const SnapshotManifest& manifest,
 
 }  // namespace
 
+std::string_view snapshot_engine_version() noexcept { return PLANETSIM_ENGINE_VERSION; }
+
+std::uint32_t mesh_geometry_checksum(const PlanetMesh& mesh) {
+    std::vector<std::byte> bytes;
+    bytes.reserve(mesh.cell_count() * 3U * sizeof(double));
+    for (const auto& cell : mesh.cells()) {
+        append_float64(bytes, cell.center_unit.x);
+        append_float64(bytes, cell.center_unit.y);
+        append_float64(bytes, cell.center_unit.z);
+    }
+    return crc32c({bytes.data(), bytes.size()});
+}
+
 void write_snapshot(const std::filesystem::path& path,
                     const PlanetState& state,
                     SimulationTick tick,
@@ -664,6 +727,7 @@ void write_snapshot(const std::filesystem::path& path,
     if (tick < 0) {
         throw std::invalid_argument("snapshot tick must be non-negative");
     }
+    validate_slow_state(state);
 
     const auto chunks = encode_slow_state(state);
     const auto manifest = build_manifest(state, tick, parent_snapshot_id, chunks);
@@ -674,17 +738,31 @@ void write_snapshot(const std::filesystem::path& path,
     std::vector<std::byte> header(snapshot_magic.begin(), snapshot_magic.end());
     append_little_endian(header, static_cast<std::uint64_t>(manifest.size()));
 
-    std::ofstream output(path, std::ios::binary | std::ios::trunc);
-    if (!output) {
-        throw std::runtime_error("cannot open snapshot for writing: " + path.string());
-    }
-    write_bytes(output, header);
-    output.write(manifest.data(), static_cast<std::streamsize>(manifest.size()));
-    for (const auto& chunk : chunks) {
-        write_bytes(output, chunk.bytes);
-    }
-    if (!output) {
-        throw std::runtime_error("failed while writing snapshot: " + path.string());
+    auto partial_path = path;
+    partial_path += ".partial";
+    try {
+        {
+            std::ofstream output(partial_path, std::ios::binary | std::ios::trunc);
+            if (!output) {
+                throw std::runtime_error("cannot open snapshot for writing: " +
+                                         partial_path.string());
+            }
+            write_bytes(output, header);
+            output.write(manifest.data(), static_cast<std::streamsize>(manifest.size()));
+            for (const auto& chunk : chunks) {
+                write_bytes(output, chunk.bytes);
+            }
+            output.close();
+            if (!output) {
+                throw std::runtime_error("failed while writing snapshot: " +
+                                         partial_path.string());
+            }
+        }
+        std::filesystem::rename(partial_path, path);
+    } catch (...) {
+        std::error_code ignored;
+        std::filesystem::remove(partial_path, ignored);
+        throw;
     }
 }
 
@@ -708,30 +786,28 @@ SnapshotManifest read_snapshot(const std::filesystem::path& path, PlanetState& t
                                  std::to_string(target_state.mesh().cell_count()));
     }
 
-    const auto& hypsometry_info =
-        require_field(parsed.manifest, FieldId::hypsometry_m);
-    const auto hypsometry_bytes = field_chunk(parsed, hypsometry_info);
-    Field3D<float> loaded_hypsometry(hypsometry_layer_count,
-                                     target_state.mesh().cell_count(), 0.0F);
-    std::size_t byte_offset = 0;
-    for (std::size_t layer = 0; layer < loaded_hypsometry.layer_count(); ++layer) {
-        auto values = loaded_hypsometry.layer(layer);
-        for (float& value : values) {
-            const auto bits = read_little_endian<std::uint32_t>(
-                hypsometry_bytes, byte_offset, "hypsometry value");
-            value = std::bit_cast<float>(bits);
-            byte_offset += sizeof(std::uint32_t);
-        }
+    if (parsed.manifest.mesh_generator_version != mesh_generator_version) {
+        throw std::runtime_error("snapshot mesh_generator_version " +
+                                 std::to_string(parsed.manifest.mesh_generator_version) +
+                                 " does not match this build's mesh generator version " +
+                                 std::to_string(mesh_generator_version));
+    }
+    if (parsed.manifest.mesh_checksum != mesh_geometry_checksum(target_state.mesh())) {
+        throw std::runtime_error(
+            "snapshot mesh_checksum does not match the target mesh geometry");
     }
 
-    const auto& sea_level_info = require_field(parsed.manifest, FieldId::sea_level_m);
-    const auto sea_level_bytes = field_chunk(parsed, sea_level_info);
-    const auto sea_level_bits =
-        read_little_endian<std::uint64_t>(sea_level_bytes, 0U, "sea level value");
-    const double loaded_sea_level_m = std::bit_cast<double>(sea_level_bits);
-
-    target_state.slow().hypsometry_m = std::move(loaded_hypsometry);
-    target_state.slow().sea_level_m = loaded_sea_level_m;
+    // Decode into a staged copy so a failure leaves the target untouched.
+    SlowState staged = target_state.slow();
+    for (const auto& descriptor : field_registry) {
+        if (!descriptor.persistent()) {
+            continue;
+        }
+        const auto& info = require_field(parsed.manifest, descriptor.id);
+        decode_chunk(descriptor, field_chunk(parsed, info), target_state.mesh().cell_count(),
+                     staged);
+    }
+    target_state.slow() = std::move(staged);
     return std::move(parsed.manifest);
 }
 
