@@ -81,6 +81,27 @@ if(PLANETSIM_BUILD_TESTS)
         planet_cli_solar_smoke
         PROPERTIES PASS_REGULAR_EXPRESSION "solar_forcing_valid: true"
     )
+    set(PLANETSIM_SNAPSHOT_SMOKE_FILE
+        "${CMAKE_CURRENT_BINARY_DIR}/planet_cli_snapshot_smoke.psnap")
+    add_test(
+        NAME planet_cli_snapshot_write_smoke
+        COMMAND planet_cli snapshot write --subdivision 0
+                --out "${PLANETSIM_SNAPSHOT_SMOKE_FILE}"
+    )
+    set_tests_properties(
+        planet_cli_snapshot_write_smoke
+        PROPERTIES PASS_REGULAR_EXPRESSION "snapshot_written:"
+    )
+    add_test(
+        NAME planet_cli_snapshot_inspect_smoke
+        COMMAND planet_cli snapshot inspect "${PLANETSIM_SNAPSHOT_SMOKE_FILE}"
+    )
+    set_tests_properties(
+        planet_cli_snapshot_inspect_smoke
+        PROPERTIES
+            DEPENDS planet_cli_snapshot_write_smoke
+            PASS_REGULAR_EXPRESSION "checksums_valid: true"
+    )
 endif()
 
 if(PLANETSIM_BUILD_GODOT_EXTENSION)

@@ -1,4 +1,6 @@
+#include "sim/core/random/counter_rng.hpp"
 #include "sim/core/scheduler/simulation_clock.hpp"
+#include "sim/core/serialization/snapshot_file.hpp"
 #include "sim/planet/mesh/icosphere.hpp"
 #include "sim/planet/mesh/mesh_diagnostics.hpp"
 #include "sim/planet/operators/operator_validation.hpp"
@@ -8,11 +10,14 @@
 #include "sim/planet/planet_parameters.hpp"
 #include "sim/planet/planet_state.hpp"
 
+#include <algorithm>
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -46,6 +51,14 @@ struct SolarOptions {
     double radius_m = 6'371'000.0;
     double time_days = 0.0;
 };
+
+struct SnapshotWriteOptions {
+    std::uint32_t subdivision = 5;
+    std::filesystem::path output_path;
+};
+
+constexpr std::uint64_t snapshot_synthetic_seed = 0x9B97'F4A7'C150'0011ULL;
+constexpr planetsim::SimulationTick snapshot_synthetic_tick = 123'456;
 
 void print_usage(std::ostream& output) {
     output << "Usage:\n"
@@ -107,6 +120,52 @@ void print_usage(std::ostream& output) {
         }
     }
     return options;
+}
+
+[[nodiscard]] SnapshotWriteOptions parse_snapshot_write_options(int argument_count,
+                                                                char** arguments) {
+    SnapshotWriteOptions options;
+    for (int index = 3; index < argument_count; ++index) {
+        const std::string_view argument{arguments[index]};
+        if (++index >= argument_count) {
+            throw std::invalid_argument(std::string(argument) + " requires a value");
+        }
+        const std::string_view value{arguments[index]};
+        if (argument == "--subdivision") {
+            options.subdivision = parse_subdivision(value);
+        } else if (argument == "--out") {
+            options.output_path = std::filesystem::path(value);
+        } else {
+            throw std::invalid_argument("unknown snapshot write option: " +
+                                        std::string(argument));
+        }
+    }
+    if (options.output_path.empty()) {
+        throw std::invalid_argument("snapshot write requires --out FILE");
+    }
+    return options;
+}
+
+void populate_snapshot_synthetic_state(planetsim::PlanetState& state) {
+    for (std::size_t cell = 0; cell < state.mesh().cell_count(); ++cell) {
+        std::array<float, planetsim::hypsometry_layer_count> quantiles{};
+        for (std::size_t layer = 0; layer < quantiles.size(); ++layer) {
+            const double unit = planetsim::keyed_random_unit_double(
+                snapshot_synthetic_seed, planetsim::RandomStreamId::validation,
+                snapshot_synthetic_tick, static_cast<std::uint32_t>(cell),
+                static_cast<std::uint32_t>(layer));
+            quantiles[layer] = static_cast<float>(-8'000.0 + unit * 16'000.0);
+        }
+        std::sort(quantiles.begin(), quantiles.end());
+        for (std::size_t layer = 0; layer < quantiles.size(); ++layer) {
+            state.slow().hypsometry_m.at(
+                layer, planetsim::CellId{static_cast<std::uint32_t>(cell)}) = quantiles[layer];
+        }
+    }
+    const double sea_unit = planetsim::keyed_random_unit_double(
+        snapshot_synthetic_seed, planetsim::RandomStreamId::validation,
+        snapshot_synthetic_tick, 0U, 99U);
+    state.slow().sea_level_m = -200.0 + sea_unit * 400.0;
 }
 
 struct LayoutBenchmarkResult {
@@ -454,6 +513,49 @@ int run_solar(const SolarOptions& options) {
     return diagnostics.forcing_valid() ? 0 : 2;
 }
 
+int run_snapshot_write(const SnapshotWriteOptions& options) {
+    const auto start = std::chrono::steady_clock::now();
+    auto mesh = std::make_shared<const planetsim::PlanetMesh>(
+        planetsim::make_icosphere(options.subdivision, 6'371'000.0));
+    planetsim::PlanetState state(mesh);
+    populate_snapshot_synthetic_state(state);
+    planetsim::write_snapshot(options.output_path, state, snapshot_synthetic_tick);
+    const auto finish = std::chrono::steady_clock::now();
+
+    std::cout << std::setprecision(17)
+              << "snapshot_written: " << options.output_path.string() << '\n'
+              << "subdivision: " << options.subdivision << '\n'
+              << "cell_count: " << mesh->cell_count() << '\n'
+              << "simulation_tick: " << snapshot_synthetic_tick << '\n'
+              << "size_bytes: " << std::filesystem::file_size(options.output_path) << '\n'
+              << "write_time_ms: "
+              << std::chrono::duration<double, std::milli>(finish - start).count() << '\n';
+    return 0;
+}
+
+int run_snapshot_inspect(const std::filesystem::path& path) {
+    const auto manifest = planetsim::inspect_snapshot(path);
+    std::cout << "format: " << manifest.format << '\n'
+              << "schema_version: " << manifest.schema_version << '\n'
+              << "engine_version: " << manifest.engine_version << '\n'
+              << "tick: " << manifest.tick << '\n'
+              << "mesh_level: " << manifest.mesh_level << '\n'
+              << "cell_count: " << manifest.cell_count << '\n'
+              << "parent_snapshot_id: " << manifest.parent_snapshot_id << '\n'
+              << "field_count: " << manifest.fields.size() << '\n';
+    for (const auto& field : manifest.fields) {
+        std::cout << "field_id: " << field.field_id << " name: " << field.name
+                  << " partition: " << field.partition << " layout: " << field.layout
+                  << " dtype: " << field.dtype << " layers: " << field.layers
+                  << " compression: " << field.compression
+                  << " byte_offset: " << field.byte_offset
+                  << " byte_length: " << field.byte_length
+                  << " checksum: " << field.checksum << '\n';
+    }
+    std::cout << "checksums_valid: true\n";
+    return 0;
+}
+
 }  // namespace
 
 int main(int argument_count, char** arguments) {
@@ -475,6 +577,24 @@ int main(int argument_count, char** arguments) {
         }
         if (command == "solar") {
             return run_solar(parse_solar_options(argument_count, arguments));
+        }
+        if (command == "snapshot") {
+            if (argument_count < 3) {
+                throw std::invalid_argument("snapshot requires write or inspect");
+            }
+            const std::string_view snapshot_command{arguments[2]};
+            if (snapshot_command == "write") {
+                return run_snapshot_write(
+                    parse_snapshot_write_options(argument_count, arguments));
+            }
+            if (snapshot_command == "inspect") {
+                if (argument_count != 4) {
+                    throw std::invalid_argument("snapshot inspect requires exactly one file");
+                }
+                return run_snapshot_inspect(arguments[3]);
+            }
+            throw std::invalid_argument("unknown snapshot command: " +
+                                        std::string(snapshot_command));
         }
         print_usage(std::cerr);
         return 1;
