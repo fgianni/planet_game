@@ -5,7 +5,7 @@
 - **Accepted:** 2026-09-25
 - **Context document:** Planetary Civilization Simulator — Design Record v0.4, §15.1, §21
 - **Related:** ADR-0001 (time acceleration, simulation modes), ADR-0003 (determinism, snapshot schema, migration)
-- **Supersedes:** [`docs/decisions/0002-primal-triangular-icosphere.md`](../docs/decisions/0002-primal-triangular-icosphere.md)
+- **Supersedes:** [`archive/0002-primal-triangular-icosphere.md`](archive/0002-primal-triangular-icosphere.md)
 
 ## 1. Context
 

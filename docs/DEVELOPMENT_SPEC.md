@@ -199,7 +199,7 @@ ADR-0002.
 
 The mesh, resolution policy, field layout, precision, ordering, and
 deterministic block decomposition are governed by accepted
-`adrs/ADR-0002-mesh-and-field-layout.md`.
+`docs/decisions/0002-mesh-and-field-layout.md`.
 
 Geometry/connectivity must be immutable after initialization and
 separate from evolving state.

@@ -3,7 +3,7 @@
 - Status: Superseded
 - Date: 2026-09-23
 - Superseded: 2026-09-25 by
-  [`ADR-0002 — Mesh topology, resolution policy and field layout`](../../adrs/ADR-0002-mesh-and-field-layout.md)
+  [`ADR-0002 — Mesh topology, resolution policy and field layout`](../0002-mesh-and-field-layout.md)
 - Milestone: P0 / M0
 
 ## Context

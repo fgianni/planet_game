@@ -3,7 +3,7 @@
 - Status: Superseded
 - Date: 2026-09-24
 - Superseded: 2026-09-25 by
-  [`ADR-0003 — Determinism scope, snapshot schema, history forks and migration`](../../adrs/ADR-0003-determinism-snapshots-migration.md)
+  [`ADR-0003 — Determinism scope, snapshot schema, history forks and migration`](../0003-determinism-snapshots-migration.md)
 - Milestone: P0 / M1 architecture
 
 ## Context

@@ -147,9 +147,9 @@ geometry come from PlanetSim.
 
 The main decisions are recorded in:
 
-- [simulation modes and performance](docs/decisions/0001-simulation-modes-and-performance.md);
-- [mesh topology, resolution, and field layout](adrs/ADR-0002-mesh-and-field-layout.md);
-- [determinism, snapshots, and migration](adrs/ADR-0003-determinism-snapshots-migration.md);
+- [simulation modes and performance](docs/decisions/0001-time-acceleration.md);
+- [mesh topology, resolution, and field layout](docs/decisions/0002-mesh-and-field-layout.md);
+- [determinism, snapshots, and migration](docs/decisions/0003-determinism-snapshots-migration.md);
 - [Keplerian orbit and coordinate frames](docs/decisions/0004-keplerian-orbit-and-coordinate-frames.md).
 
 The precise M1 coordinate and validation conventions are in

@@ -1,0 +1,26 @@
+# Architecture decision records
+
+This directory is the single source of truth for PlanetSim architecture
+decisions. New decisions use the next unused number and must record their
+status, date, consequences, validation plan, and supersession relationships.
+
+## Active decisions
+
+| ID | Decision | Status | Accepted |
+|---|---|---|---|
+| 0001 | [Time acceleration, simulation modes, and performance budget](0001-time-acceleration.md) | Accepted | 2026-09-24 |
+| 0002 | [Mesh topology, resolution policy, and field layout](0002-mesh-and-field-layout.md) | Accepted | 2026-09-25 |
+| 0003 | [Determinism, snapshots, history, and migration](0003-determinism-snapshots-migration.md) | Accepted | 2026-09-25 |
+| 0004 | [Keplerian orbit and coordinate frames](0004-keplerian-orbit-and-coordinate-frames.md) | Accepted | 2026-09-24 |
+
+## Historical records
+
+Superseded records remain available under [`archive/`](archive/) to preserve
+the reasoning and implementation history. The archived 0002 and 0003 records
+retain their original identifiers, but links to those identifiers without an
+explicit archive path always mean the active decisions above.
+
+| Historical decision | Status | Superseded by |
+|---|---|---|
+| [Primal triangular icosphere cells](archive/0002-primal-triangular-icosphere.md) | Superseded | [0002](0002-mesh-and-field-layout.md) |
+| [Initial determinism, snapshots, and replay scope](archive/0003-determinism-snapshots-and-replay.md) | Superseded | [0003](0003-determinism-snapshots-migration.md) |

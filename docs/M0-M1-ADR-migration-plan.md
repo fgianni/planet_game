@@ -1,36 +1,44 @@
 # M0/M1 → ADR-0001/0002/0003 conformance migration
 
-- **Status:** M0/M1 scope implemented and validated; later-milestone items deferred
+- **Status:** M0/M1 subset complete; overall plan in progress
 - **Date:** 2026-09-23
-- **Applies to:** PlanetSim core after milestones M0 (mesh) and M1 (field containers / scheduler skeleton)
-- **Governing records:** ADR-0001 (time acceleration, modes, budget), ADR-0002 (mesh, resolution, field layout), ADR-0003 (determinism, snapshots, migration)
-- **Method:** read-only audit first, then phased migration with hard gates between phases. No phase starts until the previous gate is green.
+- **Updated:** 2026-09-28
+- **Applies to:** the M0 dual mesh, the M1 orbit/sun/day-night/seasons work,
+  and the ADR prerequisites assigned to those milestones
+- **Governing records:** [ADR-0001](decisions/0001-time-acceleration.md),
+  [ADR-0002](decisions/0002-mesh-and-field-layout.md), and
+  [ADR-0003](decisions/0003-determinism-snapshots-migration.md)
+- **Method:** read-only audit first, then milestone-scoped implementation and
+  validation gates. Future-milestone gates do not block completion of M0/M1.
 
-> **Why now:** no player histories exist yet, so cell definition, field identity and clock representation can still change for free. Every one of these becomes expensive after the first save format ships.
+> **Why now:** no player histories exist yet, so cell definition, field identity
+> and clock representation can still change for free. Every one of these becomes
+> expensive after the first persistent save format ships.
 
-## Execution status (2026-09-25)
+## Execution status (2026-09-28)
 
-- G1 is complete: integer ticks, a stable field registry, and keyed random
+- G1-M1 is complete: integer ticks, a stable field registry, and keyed random
   streams are implemented and tested.
-- The M0 portion of G2 is complete: the dual mesh passes V1/V2 through L6.
-  Operator implementation and V3 belong to M2 under ADR-0002 and were not
-  pulled forward.
-- G3 is complete for the M1 state: aligned field containers, fixed logical
-  blocks, fixed-order solar reductions, compiler flags, 1/2/8/16-worker
-  bit-identity, memory gates, and the V7 benchmark are in place.
+- G2-M0 is complete: the dual mesh passes V1/V2 through L6. G2-M2 (finite-
+  volume operators and V3/V4) remains future work.
+- G3-M1 is complete: aligned field containers, fixed logical blocks, fixed
+  block-index solar reductions, compiler flags, 1/2/8/16-worker bit identity,
+  memory gates, and the V7 benchmark are in place. Command replay and
+  checkpoint hashes remain assigned to M3 by ADR-0003.
 - G4 state partitions/mode scheduling and G5 persistent snapshots are later
-  milestone work. They were deliberately not started because the active task
-  stops before M2.
+  milestone work. They were deliberately not pulled into M1.
 
 ---
 
-## Phase 0 — Read-only conformance audit (no code changes)
+## Phase 0 — Read-only conformance audit (complete)
 
-Produce `docs/audit/2026-09-ADR-conformance.md`. Every line gets one marker:
+The current evidence trail is
+[docs/audit/2026-09-ADR-conformance.md](audit/2026-09-ADR-conformance.md).
+Every finding uses one of these markers:
 
 | Marker | Meaning |
 |---|---|
-| ✅ EVIDENCED | Requirement met, with file:line evidence |
+| ✅ EVIDENCED | Requirement met, with file evidence |
 | ⚠ RUNTIME_ONLY | Behaviour looks right but is not enforced by a test or type |
 | ❌ VIOLATION | Requirement contradicted by current code |
 | NOT FOUND | Requirement not implemented at all |
@@ -55,7 +63,7 @@ Produce `docs/audit/2026-09-ADR-conformance.md`. Every line gets one marker:
 | B3 | `float32` for prognostic fields, `float64` for accumulators and slow reservoirs | field declarations |
 | B4 | Cells ordered by a space-filling order derived from parent triangles, not construction order | ordering pass |
 | B5 | Fixed block partitioning independent of thread count | partition code |
-| B6 | No atomics in reductions; fixed-order reduction tree | reduction helpers |
+| B6 | No atomics in reductions; partials merged in fixed block-index order | reduction helpers |
 | B7 | Build flags: `-ffp-contract=off`, no fast-math | CMake |
 
 ### C. State partition and modes (ADR-0001 §4.1–4.2)
@@ -65,93 +73,126 @@ Produce `docs/audit/2026-09-ADR-conformance.md`. Every line gets one marker:
 | C1 | Fields grouped into `SlowState` / `FastState` / `Climatology` | type or registry grouping |
 | C2 | `FastState` allocated only when a reference run or weather window is active | allocation site |
 | C3 | Mode enum exists and the scheduler dispatches on it | scheduler |
-| C4 | No wall-clock input to the solver (no frame time in stepping decisions) | grep for timing APIs in core |
+| C4 | No wall-clock input to the solver (no frame time in stepping decisions) | timing API search in core |
 
 ### D. Clock, RNG, identity (ADR-0003 §3.2–3.4)
 
 | # | Requirement | Evidence to find |
 |---|---|---|
 | D1 | Simulated time is `int64` ticks (1 tick = 1 minute); no accumulated `double` seconds | clock type |
-| D2 | RNG streams keyed by `(seed, stream, tick, cell)`; no global generator | RNG code; grep for `rand`, `mt19937` singletons |
-| D3 | Field **registry** with stable numeric ids, compile-time uniqueness check | registry file |
-| D4 | Canonical iteration order defined (cells in mesh order, fields by id) | serializer or documented invariant |
+| D2 | RNG streams keyed by `(seed, stream, tick, cell)`; no global generator | RNG code; search for shared generators |
+| D3 | Field **registry** with stable numeric IDs and compile-time uniqueness check | registry file |
+| D4 | Canonical iteration order defined (cells in mesh order, fields by ID) | serializer or documented invariant |
 
----
+## Phase 1 — Identity and time (M1, complete)
 
-## Phase 1 — Identity and time (blocking, do first)
+These define the meaning of downstream state and therefore precede physics.
 
-These change the meaning of everything downstream, so they come before any physics work.
+1. **Integer clock.** Use signed 64-bit `SimulationTick` values with explicit
+   conversion to physical seconds. Do not accumulate simulated time in a
+   floating-point seconds counter.
+2. **Field registry.** Maintain stable numeric field IDs and enforce uniqueness
+   at compile time. Add field kind, dtype, layer count, and migration metadata
+   when their consuming systems are introduced.
+3. **RNG discipline.** Use a stateless counter-based generator keyed by seed,
+   stream, tick, cell, and sample. Do not introduce a shared mutable generator.
 
-1. **Integer clock.** `struct Tick { int64_t value; }` with explicit conversions; simulated durations in ticks. Remove every `double seconds` accumulator from the core. Mark call sites `// [ADR3-CLOCK]`.
-2. **Field registry.** Single generated header: `field_id`, name, kind (slow/fast/derived), dtype, layers, initialiser for migration. Compile-time uniqueness assertion. Mark `// [ADR3-REGISTRY]`.
-3. **RNG discipline.** One counter-based generator (Philox or similar), keyed as above, one stream id per subsystem. Delete any shared mutable generator. Mark `// [ADR3-RNG]`.
+**Gate G1-M1:** integer ticks are authoritative; field IDs are unique and
+stable; a test draws the same random sequence for a given key regardless of
+call order and worker count. **Status: complete.**
 
-**Gate G1:** `tick` type used throughout the core; registry generates without duplicate ids; a test draws the same random sequence for a given `(seed, stream, tick, cell)` regardless of call order and thread count.
+## Phase 2 — Mesh conformance (M0 complete; M2 operators deferred)
 
-## Phase 2 — Mesh conformance
-
-1. If A1 is ❌ (cells are triangles), build the **dual** and switch cell identity: cell = vertex of the triangular mesh; corners = triangle centroids. Keep the triangular mesh only as construction scaffolding.
+1. Build the **dual**: cell = vertex of the triangular mesh; corners = triangle
+   centroids. Keep the triangular mesh only as construction scaffolding.
 2. Precompute and store geometry (A2, A3); forbid recomputation inside kernels.
-3. Tag pentagons; add `is_pentagon(cell)`; exclude them from convergence statistics and forbid scenario anchors on them.
-4. Apply the space-filling cell ordering (B4) as a permutation pass after construction, before any field is allocated.
+3. Tag pentagons and expose `is_pentagon(cell)`. Exclude them from convergence
+   statistics and scenario anchors when those M2+ consumers are implemented.
+4. Establish space-filling locality before fields are allocated. The accepted
+   implementation derives cell order from recursively ordered final faces;
+   it does not require a separate permutation pass.
 
-**Gate G2:** V1 (area closure < 1e-12 relative), V2 (neighbour symmetry, exactly 12 pentagons, every edge shared by two cells), V3 operator accuracy on spherical harmonics with no visible icosahedral structure in the error map. Publish the error map as a CI artefact — this is the test that decides whether the mesh is good.
+**Gate G2-M0:** V1 (area closure below `1e-12` relative) and V2 (neighbour
+symmetry, exactly 12 pentagons, every edge shared by two cells). **Status:
+complete through L6.**
 
-## Phase 3 — Field containers and determinism
+**Gate G2-M2:** V3/V4 operator accuracy and conservation, including the
+spherical-harmonic error map as a CI artifact. **Status: future work; do not
+start as part of this migration.**
 
-1. Convert containers to SoA, aligned, layer-major (B1–B3).
-2. Introduce block partitioning fixed at load (B5) and the fixed-order reduction tree (B6).
-3. Pin build flags (B7); add a CI job that fails if fast-math or FP contraction is enabled.
-4. Add the **determinism test** (ADR-0003 V1): same seed and command list under 1, 2, 8, 16 threads → bit-identical state hash at every checkpoint.
+## Phase 3 — Field containers and M1 determinism (complete)
 
-**Gate G3:** determinism test green; V7 bandwidth micro-benchmark recorded (ordered vs naive cell order), with the measured gain written into the ADR-0002 record.
+1. Use SoA, aligned, layer-major containers (B1–B3).
+2. Use fixed logical blocks (B5) and merge block partials sequentially in fixed
+   block-index order (B6), independent of worker count.
+3. Pin build flags (B7). Add CI enforcement when the CI configuration is
+   introduced; until then, keep direct build/test evidence in the audit.
+4. Test M1 forcing, diagnostics, and keyed RNG under 1, 2, 8, and 16 workers
+   for bit-identical results. Full command replay and checkpoint state hashes
+   remain M3 work under ADR-0003.
 
-## Phase 4 — State partition and scheduler skeleton
+**Gate G3-M1:** worker-count identity is green for implemented M1 operations;
+the V7 ordered-versus-naive benchmark and memory gates are recorded in
+ADR-0002. **Status: complete.**
 
-1. Group fields per C1 using the registry's `kind`; make `FastState` allocation lazy (C2).
-2. Scheduler: mode enum, multi-rate stepping, snapshot cadence decoupled from solver cadence, all stepping decisions a function of state and ticks only (C4).
-3. Add the performance harness now, even with placeholder physics: simulated years per minute, printed per run and asserted loosely in CI (ADR-0001 §5). An early loose gate catches regressions before they compound.
+## Phase 4 — State partition and scheduler skeleton (M2/M3, deferred)
 
-**Gate G4:** a headless run advances N simulated years with no physics, reports years/minute, and produces identical hashes across thread counts.
+1. Group fields per C1 using the registry's `kind`; make `FastState`
+   allocation lazy (C2).
+2. Add the mode enum, multi-rate scheduler, and snapshot cadence decoupled from
+   solver cadence. All stepping decisions must be functions of state and ticks.
+3. At M3, add the performance harness: simulated years per minute, printed per
+   run and asserted loosely in CI (ADR-0001 §5).
 
-## Phase 5 — Snapshot and manifest skeleton
+**Gate G4:** a headless run advances N simulated years with no physics, reports
+years/minute, and produces identical hashes across worker counts.
 
-1. Snapshot writer/reader per ADR-0003 §3.4: JSON manifest + zstd chunks, ids not names, per-chunk checksums, canonical order.
-2. Run manifest with command log and per-year `state_hash`.
-3. `schema_version = 1`; migration framework present but empty; golden-save corpus started with the first v1 save.
+## Phase 5 — Persistence, replay, and migration (M2–M5, deferred)
 
-**Gate G5:** V4 (snapshot → load → snapshot byte-identical), V2 of ADR-0003 (replay from manifest matches hashes), V8 (bit-flip detected per chunk, no crash).
+1. **M2:** persistent snapshot writer/reader per ADR-0003 §3.4: JSON metadata
+   plus zstd chunks, IDs rather than names, per-chunk checksums, and canonical
+   order. Its schema version is independent of the in-process presentation
+   snapshot version.
+2. **M3:** run manifest, command log, checkpoint hashes, replay V1/V2.
+3. **M4:** delta chains and fork storage; measure compression and timing.
+4. **M5:** migration framework and first persistent-format golden saves.
+
+**Gate G5:** apply the ADR-0003 validation assigned to each milestone: V4 and
+V8 at M2, V1/V2 at M3, V6/V7 at M4, and V5 at M5.
 
 ---
 
 ## What NOT to do in this migration
 
-- No physics changes. Radiation, moisture and ocean work resumes after G4.
-- No delta chains or forks yet (ADR-0003 §3.5) — they belong at M4, once snapshots are stable.
-- No resolution promotion to level 6. Development stays at level 5 until the performance harness exists.
-- No ML surrogate, no variable resolution, no cross-platform determinism.
+- No physics changes.
+- No delta chains or forks before M4.
+- No promotion of L6 to the normal simulation resolution. L5 remains the
+  development default; L6 remains available for validation and reference
+  measurements.
+- No ML surrogate, variable resolution, or cross-platform determinism.
 
-## Suggested task framing for Codex
+## Suggested task framing for the next applicable phase
 
-Give it one phase at a time, with the gate as the acceptance criterion:
+Give Codex one milestone-scoped gate at a time. For example, when M2 is
+explicitly authorized:
 
-```
-Read docs/adr/ADR-0002 §4.1–4.2 and docs/audit/2026-09-ADR-conformance.md section A.
-Task: Phase 2, steps 1–3 only. Do not modify field containers or physics.
-Mark every changed or added site with // [ADR2-MESH].
-Acceptance: tests V1, V2, V3 pass; V3 publishes an error map artefact;
-level 5 reports exactly 10,242 cells and 12 pentagons.
+```text
+Read docs/decisions/0002-mesh-and-field-layout.md §4.2 and
+docs/audit/2026-09-ADR-conformance.md section A.
+Task: G2-M2 finite-volume operators only. Do not implement terrain or later physics.
+Acceptance: V3 and V4 pass; V3 publishes an error-map artifact.
 Report: files touched, tests added, any requirement you could not meet and why.
 ```
 
-Keep the audit file updated as each ❌ or NOT FOUND is cleared, with the commit that cleared it. It becomes the evidence trail for the P0 review.
+Keep the current audit updated as each finding is cleared, with the commit that
+cleared it. It remains the evidence trail for the P0 review.
 
 ## Risk register for this migration
 
 | Risk | Mitigation |
 |---|---|
-| Dual-mesh switch invalidates any early scenario data | Do it now, before scenarios are authored; regenerate from source elevation data |
-| Space-filling reorder breaks hard-coded cell indices in tests | Forbid literal cell indices in tests; address cells by coordinates and resolve at runtime |
-| Determinism test is flaky rather than failing | Treat any flake as a blocker, not a retry: it means an unkeyed RNG or an unordered reduction remains |
-| Registry ids get renumbered during review | Ids are append-only from the first commit of the registry; a CI test diffs against the previous release |
-| Performance harness gives noisy numbers on a laptop | Assert only large regressions (> 20 %); record absolute numbers on one reference machine |
+| Dual-mesh switch invalidates any early scenario data | Do it before scenarios are authored; regenerate from source elevation data |
+| Space-filling reorder breaks hard-coded cell indices in tests | Forbid literal semantic cell IDs in tests; address geographic cells by coordinates and resolve at runtime |
+| Determinism test is flaky rather than failing | Treat any flake as a blocker, not a retry: it means an unkeyed RNG or unordered reduction remains |
+| Registry IDs get renumbered during review | IDs are append-only from the first registry commit; add release-to-release CI enforcement with the persistent schema |
+| Performance harness gives noisy numbers on a laptop | Assert only large regressions (> 20%); record absolute numbers on one reference machine |

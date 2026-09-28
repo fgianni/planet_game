@@ -1,7 +1,8 @@
 # ADR-0001 — Time acceleration, simulation modes and the performance budget
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-09-23
+- **Accepted:** 2026-09-24
 - **Context document:** Planetary Civilization Simulator — Design Record v0.4, §28
 - **Supersedes / superseded by:** —
 - **Related:** ADR-0002 (mesh topology, resolution policy, field layout), ADR-0003 (determinism scope, snapshot schema, migration)
@@ -64,6 +65,12 @@ The planetary state is split by how it is integrated, not by subsystem:
 | **Weather window** | as reference, over a bounded region and period (hours to one season) | hazards as they happen, zoom-in, in-game forecasts | on demand: player zoom, hazard trigger, forecast request |
 
 Climate mode integrates `S` with long implicit steps and derives `X` from the resolved circulation, moisture and energy budgets. Weather appears to the player as statistics and as discrete events sampled from `X` — a storm track, a drought, a heat spell — rather than as resolved fields.
+
+All modes use the same physical clock, planetary and orbital coordinates,
+units, and conservation diagnostics. M1 orbit and solar geometry are analytic
+functions of physical time and do not vary by mode. M1 establishes these
+mode-independent inputs; it does not implement the future mode scheduler,
+reference solver, climate solver, or weather-window path.
 
 ### 4.3 Coupling contract between modes
 

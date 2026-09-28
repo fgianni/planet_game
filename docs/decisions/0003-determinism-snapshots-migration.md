@@ -5,7 +5,7 @@
 - **Accepted:** 2026-09-25
 - **Context document:** Planetary Civilization Simulator — Design Record v0.4, §13, §14.2, §33
 - **Related:** ADR-0001 (time acceleration, simulation modes), ADR-0002 (mesh topology, field layout)
-- **Supersedes:** [`docs/decisions/0003-determinism-snapshots-and-replay.md`](../docs/decisions/0003-determinism-snapshots-and-replay.md)
+- **Supersedes:** [`archive/0003-determinism-snapshots-and-replay.md`](archive/0003-determinism-snapshots-and-replay.md)
 
 ## 1. Context
 
