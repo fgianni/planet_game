@@ -1,3 +1,4 @@
+#include "sim/core/fields/field_registry.hpp"
 #include "sim/core/random/counter_rng.hpp"
 #include "sim/core/scheduler/simulation_clock.hpp"
 #include "sim/core/serialization/snapshot_file.hpp"
@@ -513,6 +514,20 @@ int run_solar(const SolarOptions& options) {
     return diagnostics.forcing_valid() ? 0 : 2;
 }
 
+int run_registry_dump() {
+    for (const auto& descriptor : planetsim::field_registry) {
+        std::cout << static_cast<std::uint32_t>(descriptor.id) << '\t' << descriptor.name << '\t'
+                  << planetsim::field_partition_name(descriptor.partition) << '\t'
+                  << planetsim::field_layout_name(descriptor.layout) << '\t'
+                  << planetsim::field_data_type_name(descriptor.data_type) << '\t'
+                  << descriptor.layers << '\t' << descriptor.units << '\n';
+    }
+    for (const auto retired_id : planetsim::retired_field_ids) {
+        std::cout << "# retired_field_id\t" << static_cast<std::uint32_t>(retired_id) << '\n';
+    }
+    return 0;
+}
+
 int run_snapshot_write(const SnapshotWriteOptions& options) {
     auto mesh = std::make_shared<const planetsim::PlanetMesh>(
         planetsim::make_icosphere(options.subdivision, 6'371'000.0));
@@ -579,6 +594,12 @@ int main(int argument_count, char** arguments) {
         }
         if (command == "solar") {
             return run_solar(parse_solar_options(argument_count, arguments));
+        }
+        if (command == "registry") {
+            if (argument_count == 3 && std::string_view{arguments[2]} == "dump") {
+                return run_registry_dump();
+            }
+            throw std::invalid_argument("registry requires dump");
         }
         if (command == "snapshot") {
             if (argument_count < 3) {

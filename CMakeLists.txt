@@ -84,6 +84,22 @@ if(PLANETSIM_BUILD_TESTS)
     set(PLANETSIM_SNAPSHOT_SMOKE_FILE
         "${CMAKE_CURRENT_BINARY_DIR}/planet_cli_snapshot_smoke.psnap")
     add_test(
+        NAME planet_cli_registry_dump
+        COMMAND planet_cli registry dump
+    )
+    set_tests_properties(
+        planet_cli_registry_dump
+        PROPERTIES PASS_REGULAR_EXPRESSION "131074\tsea_level_m\tslow\tglobal\tfloat64\t1\tm"
+    )
+    add_test(
+        NAME test_field_registry_check
+        COMMAND python3
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/test_field_registry_check.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/ci/check_field_registry.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/ci/field_registry_baseline.tsv"
+                "$<TARGET_FILE:planet_cli>"
+    )
+    add_test(
         NAME planet_cli_snapshot_write_smoke
         COMMAND planet_cli snapshot write --subdivision 0
                 --out "${PLANETSIM_SNAPSHOT_SMOKE_FILE}"

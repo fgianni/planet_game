@@ -46,6 +46,12 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
+      - name: Field registry append-only policy
+        run: |
+          ./build/planet_cli registry dump > build/field_registry_current.tsv
+          python3 tools/ci/check_field_registry.py \
+            tools/ci/field_registry_baseline.tsv build/field_registry_current.tsv
+
       - name: Test
         run: ctest --test-dir build --output-on-failure --parallel 4
 
@@ -95,6 +101,12 @@ jobs:
 
       - name: Build
         run: cmake --build build --parallel
+
+      - name: Field registry append-only policy
+        run: |
+          ./build/planet_cli registry dump > build/field_registry_current.tsv
+          python3 tools/ci/check_field_registry.py \
+            tools/ci/field_registry_baseline.tsv build/field_registry_current.tsv
 
       - name: Test
         run: ctest --test-dir build --output-on-failure --parallel 4

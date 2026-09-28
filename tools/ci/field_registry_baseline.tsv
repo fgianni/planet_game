@@ -1,0 +1,3 @@
+65537	top_of_atmosphere_insolation_W_m2	derived	cell	float32	1	W/m2
+131073	hypsometry_m	slow	cell_layers	float32	9	m
+131074	sea_level_m	slow	global	float64	1	m

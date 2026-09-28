@@ -48,6 +48,46 @@ struct FieldDescriptor {
     }
 };
 
+[[nodiscard]] constexpr std::string_view field_partition_name(
+    FieldPartition partition) noexcept {
+    switch (partition) {
+    case FieldPartition::slow:
+        return "slow";
+    case FieldPartition::fast:
+        return "fast";
+    case FieldPartition::climatology:
+        return "climatology";
+    case FieldPartition::derived:
+        return "derived";
+    }
+    return {};
+}
+
+[[nodiscard]] constexpr std::string_view field_layout_name(FieldLayout layout) noexcept {
+    switch (layout) {
+    case FieldLayout::cell:
+        return "cell";
+    case FieldLayout::cell_layers:
+        return "cell_layers";
+    case FieldLayout::edge:
+        return "edge";
+    case FieldLayout::global:
+        return "global";
+    }
+    return {};
+}
+
+[[nodiscard]] constexpr std::string_view field_data_type_name(
+    FieldDataType data_type) noexcept {
+    switch (data_type) {
+    case FieldDataType::float32:
+        return "float32";
+    case FieldDataType::float64:
+        return "float64";
+    }
+    return {};
+}
+
 inline constexpr std::array<FieldDescriptor, 3> field_registry{{
     {FieldId::top_of_atmosphere_insolation_W_m2, "top_of_atmosphere_insolation_W_m2",
      FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
@@ -56,6 +96,8 @@ inline constexpr std::array<FieldDescriptor, 3> field_registry{{
     {FieldId::sea_level_m, "sea_level_m", FieldPartition::slow,
      FieldLayout::global, FieldDataType::float64, 1U, "m"},
 }};
+
+inline constexpr std::array<FieldId, 0> retired_field_ids{};
 
 consteval bool field_registry_ids_are_unique() {
     for (std::size_t first = 0; first < field_registry.size(); ++first) {
@@ -89,8 +131,21 @@ consteval bool field_registry_persistence_matches_partition() {
 
 static_assert(field_registry_ids_are_unique(), "field registry IDs must be unique");
 static_assert(field_registry_ids_are_sorted(), "field registry IDs must be sorted");
+consteval bool registered_field_ids_are_not_retired() {
+    for (const auto retired_id : retired_field_ids) {
+        for (const auto& descriptor : field_registry) {
+            if (retired_id == descriptor.id) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 static_assert(field_registry_persistence_matches_partition(),
               "only slow-state fields may be persistent");
+static_assert(registered_field_ids_are_not_retired(),
+              "a registered field ID cannot also be retired");
 
 [[nodiscard]] constexpr const FieldDescriptor* find_field(FieldId id) noexcept {
     for (const auto& descriptor : field_registry) {
