@@ -147,6 +147,19 @@ static_assert(field_registry_persistence_matches_partition(),
 static_assert(registered_field_ids_are_not_retired(),
               "a registered field ID cannot also be retired");
 
+// Compile-time registration checks must use this rather than comparing
+// find_field() with nullptr: GCC does not treat an object's address as
+// non-null in constant evaluation under -fsanitize=null, nonnull-attribute,
+// returns-nonnull-attribute or -fno-delete-null-pointer-checks.
+[[nodiscard]] constexpr bool is_field_registered(FieldId id) noexcept {
+    for (const auto& descriptor : field_registry) {
+        if (descriptor.id == id) {
+            return true;
+        }
+    }
+    return false;
+}
+
 [[nodiscard]] constexpr const FieldDescriptor* find_field(FieldId id) noexcept {
     for (const auto& descriptor : field_registry) {
         if (descriptor.id == id) {

@@ -30,9 +30,8 @@ template <typename Value> struct FieldContainer<FieldLayout::global, Value> {
 };
 
 template <FieldId Id> consteval FieldDescriptor registered_field_descriptor() {
-    constexpr const FieldDescriptor* descriptor = find_field(Id);
-    static_assert(descriptor != nullptr, "field_container_t requires a registered FieldId");
-    return *descriptor;
+    static_assert(is_field_registered(Id), "field_container_t requires a registered FieldId");
+    return *find_field(Id);
 }
 
 }  // namespace detail

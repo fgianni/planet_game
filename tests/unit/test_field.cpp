@@ -65,6 +65,10 @@ int main() {
                                0U);
 
     constexpr auto insolation_id = planetsim::FieldId::top_of_atmosphere_insolation_W_m2;
+    static_assert(planetsim::is_field_registered(insolation_id));
+    static_assert(planetsim::is_field_registered(planetsim::FieldId::hypsometry_m));
+    static_assert(planetsim::is_field_registered(planetsim::FieldId::sea_level_m));
+    static_assert(!planetsim::is_field_registered(static_cast<planetsim::FieldId>(0xFFFF'FFFFU)));
     const auto* descriptor = planetsim::find_field(insolation_id);
     PLANETSIM_EXPECT(test, descriptor != nullptr);
     if (descriptor != nullptr) {

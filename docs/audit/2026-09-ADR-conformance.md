@@ -155,10 +155,13 @@ take precedence where a specification conflicts.
 - M2-02 terrain (2026-09-28, GCC 11): Release and Debug suites 35/35; GCC
   AddressSanitizer 35/35 and UndefinedBehaviorSanitizer (pointer checks
   excluded) 35/35; floating-point policy check 0 violations in 52 translation
-  units. GCC 11 cannot compile the full `-fsanitize=address,undefined` build:
-  its UBSan pointer checks make the existing `static_assert(descriptor !=
-  nullptr)` in `sim/planet/field_factory.hpp` non-constant. CI's sanitizer
-  job uses Clang and is unaffected.
+  units. GCC 10--12 could not compile the full `-fsanitize=address,undefined`
+  build: the `null`, `nonnull-attribute` and `returns-nonnull-attribute`
+  checks (like `-fno-delete-null-pointer-checks` alone) stop GCC treating an
+  object's address as non-null in constant evaluation, so
+  `static_assert(find_field(Id) != nullptr)` in `field_factory.hpp` was not a
+  constant expression. Fixed by `is_field_registered()`, a by-value check;
+  full ASan+UBSan now passes 35/35 on GCC 11, GCC 12 and Clang 14.
 - M2-02 terrain, Clang 14: Debug and Release 35/35 with warnings as errors,
   floating-point policy 0 violations; full ASan+UBSan (RelWithDebInfo, as in
   CI, run under `setarch -R`) 35/35.
