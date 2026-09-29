@@ -9,6 +9,7 @@
 #include "sim/planet/orbit/climate_calendar.hpp"
 #include "sim/planet/orbit/solar_diagnostics.hpp"
 #include "sim/planet/orbit/solar_forcing.hpp"
+#include "sim/planet/orbit/substep_forcing.hpp"
 #include "sim/planet/planet_parameters.hpp"
 #include "sim/planet/planet_state.hpp"
 #include "sim/planet/terrain/hypsometry.hpp"
@@ -57,6 +58,7 @@ struct SolarOptions {
     std::uint32_t subdivision = 5;
     double radius_m = 6'371'000.0;
     double time_days = 0.0;
+    std::optional<std::int64_t> substep;   // climate sub-step mean instead of an instant
 };
 
 struct SnapshotWriteOptions {
@@ -83,7 +85,7 @@ void print_usage(std::ostream& output) {
            << "  planet_cli mesh [--subdivision LEVEL] [--radius METRES]"
               " [--benchmark-layout] [--benchmark-iterations COUNT]\n"
            << "  planet_cli solar [--subdivision LEVEL] [--radius METRES]"
-              " [--time-days DAYS]\n"
+              " [--time-days DAYS | --substep K]\n"
            << "  planet_cli operators [--min-subdivision LEVEL] [--max-subdivision LEVEL]"
               " [--radius METRES] [--error-map CSV]\n"
            << "  planet_cli terrain [--subdivision LEVEL] [--seed N] [--preset NAME]"
@@ -544,6 +546,11 @@ struct LayoutKernelResult {
                 throw std::invalid_argument("--time-days requires a value");
             }
             options.time_days = parse_double(arguments[index], "time in days");
+        } else if (argument == "--substep") {
+            if (++index >= argument_count) {
+                throw std::invalid_argument("--substep requires a value");
+            }
+            options.substep = parse_int64(arguments[index], "sub-step index");
         } else {
             throw std::invalid_argument("unknown solar option: " + std::string(argument));
         }
@@ -715,11 +722,71 @@ int run_mesh(const MeshOptions& options) {
                                                                                                : 2;
 }
 
+// The climate-mode forcing of one sub-step (ADR-0006 §4.3): its span and the
+// global, zonal and extreme sub-step mean insolation.
+int run_solar_substep(const planetsim::PlanetParameters& parameters, std::int64_t index) {
+    auto mesh = std::make_shared<const planetsim::PlanetMesh>(
+        planetsim::make_icosphere(parameters.mesh_subdivision, parameters.radius_m));
+    planetsim::PlanetState state(mesh);
+    const auto substep = planetsim::climate_substep(index, parameters);
+    const auto start = std::chrono::steady_clock::now();
+    planetsim::update_substep_mean_insolation(state, parameters, substep);
+    const auto finish = std::chrono::steady_clock::now();
+
+    const auto& field = state.forcing().substep_mean_insolation_W_m2;
+    constexpr int band_count = 18;
+    std::array<double, band_count> band_power{};
+    std::array<double, band_count> band_area{};
+    double total_power = 0.0;
+    double total_area = 0.0;
+    double minimum = std::numeric_limits<double>::infinity();
+    double maximum = -std::numeric_limits<double>::infinity();
+    bool valid = true;
+    for (const auto& cell : mesh->cells()) {
+        const double value = field[cell.id];
+        valid = valid && std::isfinite(value) && value >= 0.0;
+        const double latitude_deg =
+            planetsim::latitude_rad(cell.center_unit) * 180.0 / std::numbers::pi_v<double>;
+        const int band = std::clamp(static_cast<int>((latitude_deg + 90.0) / 10.0), 0,
+                                    band_count - 1);
+        band_power[static_cast<std::size_t>(band)] += cell.area_m2 * value;
+        band_area[static_cast<std::size_t>(band)] += cell.area_m2;
+        total_power += cell.area_m2 * value;
+        total_area += cell.area_m2;
+        minimum = std::min(minimum, value);
+        maximum = std::max(maximum, value);
+    }
+
+    std::cout << std::setprecision(9) << "subdivision: " << parameters.mesh_subdivision << '\n'
+              << "substep_index: " << substep.index << '\n'
+              << "substep_month: " << substep.month << '\n'
+              << "substep_begin_tick: " << substep.begin_tick << '\n'
+              << "substep_end_tick: " << substep.end_tick << '\n'
+              << "substep_length_ticks: " << substep.length_ticks() << '\n'
+              << "quadrature_nodes: " << planetsim::substep_forcing_quadrature_nodes << '\n'
+              << "global_mean_insolation_W_m2: " << total_power / total_area << '\n'
+              << "min_insolation_W_m2: " << minimum << '\n'
+              << "max_insolation_W_m2: " << maximum << '\n';
+    for (int band = 0; band < band_count; ++band) {
+        std::cout << "zonal_mean_" << (-90 + 10 * band) << "_" << (-80 + 10 * band)
+                  << "_W_m2: " << band_power[static_cast<std::size_t>(band)] /
+                                      band_area[static_cast<std::size_t>(band)]
+                  << '\n';
+    }
+    std::cout << "substep_forcing_valid: " << (valid ? "true" : "false") << '\n'
+              << "evaluation_time_ms: "
+              << std::chrono::duration<double, std::milli>(finish - start).count() << '\n';
+    return valid ? 0 : 2;
+}
+
 int run_solar(const SolarOptions& options) {
     auto parameters = planetsim::PlanetParameters::earth_development();
     parameters.mesh_subdivision = options.subdivision;
     parameters.radius_m = options.radius_m;
     parameters.validate();
+    if (options.substep) {
+        return run_solar_substep(parameters, *options.substep);
+    }
     if (!std::isfinite(options.time_days) || options.time_days < 0.0) {
         throw std::invalid_argument("time in days must be finite and non-negative");
     }

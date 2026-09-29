@@ -121,6 +121,14 @@ if(PLANETSIM_BUILD_TESTS)
         PROPERTIES PASS_REGULAR_EXPRESSION "achieved_land_fraction: 0\n"
     )
     add_test(
+        NAME planet_cli_solar_substep_smoke
+        COMMAND planet_cli solar --subdivision 2 --substep 3
+    )
+    set_tests_properties(
+        planet_cli_solar_substep_smoke
+        PROPERTIES PASS_REGULAR_EXPRESSION "substep_forcing_valid: true"
+    )
+    add_test(
         NAME planet_cli_calendar_smoke
         COMMAND planet_cli calendar --year 0
     )
