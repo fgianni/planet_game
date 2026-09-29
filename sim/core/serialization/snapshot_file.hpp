@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -13,8 +14,22 @@ namespace planetsim {
 
 class PlanetMesh;
 class PlanetState;
+struct SlowState;
 
-inline constexpr std::uint32_t persistent_snapshot_schema_version = 1U;
+// Initialisers for slow fields that an older schema lacks (ADR-0003 §3.6:
+// missing data is never silently zero). Core code stays domain-agnostic: the
+// planet layer supplies the functions. Each receives the target mesh and the
+// staged slow state with every field the file did contain already decoded.
+struct SnapshotMigration {
+    // Schema 1 -> 2: the four surface-energy temperatures.
+    std::function<void(const PlanetMesh&, SlowState&)> initialise_schema_2_fields;
+};
+
+// Schema 1 (M2): hypsometry and sea level. Schema 2 (M3, ADR-0007 §4.6) adds
+// the four surface-energy temperatures. Older schemas load through
+// SnapshotMigration.
+inline constexpr std::uint32_t persistent_snapshot_schema_version = 2U;
+inline constexpr std::uint32_t oldest_readable_snapshot_schema_version = 1U;
 
 struct SnapshotFieldInfo {
     std::uint32_t field_id = 0;
@@ -57,7 +72,11 @@ void write_snapshot(const std::filesystem::path& path,
                     std::string parent_snapshot_id = {});
 
 [[nodiscard]] SnapshotManifest inspect_snapshot(const std::filesystem::path& path);
+// Reads any schema from oldest_readable_snapshot_schema_version to the
+// current one. An older file is migrated in the staged copy; reading one
+// without the initialiser it needs throws, and the target is left untouched.
 [[nodiscard]] SnapshotManifest read_snapshot(const std::filesystem::path& path,
-                                             PlanetState& target_state);
+                                             PlanetState& target_state,
+                                             const SnapshotMigration& migration = {});
 
 }  // namespace planetsim

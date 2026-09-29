@@ -12,6 +12,10 @@ enum class FieldId : std::uint32_t {
     substep_mean_insolation_W_m2 = 0x0001'0002U,
     hypsometry_m = 0x0002'0001U,
     sea_level_m = 0x0002'0002U,
+    land_surface_temperature_K = 0x0003'0001U,
+    land_ground_temperature_K = 0x0003'0002U,
+    ocean_mixed_layer_temperature_K = 0x0003'0003U,
+    ocean_deep_temperature_K = 0x0003'0004U,
 };
 
 enum class FieldDataType : std::uint8_t {
@@ -89,7 +93,7 @@ struct FieldDescriptor {
     return {};
 }
 
-inline constexpr std::array<FieldDescriptor, 4> field_registry{{
+inline constexpr std::array<FieldDescriptor, 8> field_registry{{
     {FieldId::top_of_atmosphere_insolation_W_m2, "top_of_atmosphere_insolation_W_m2",
      FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
     {FieldId::substep_mean_insolation_W_m2, "substep_mean_insolation_W_m2",
@@ -98,6 +102,15 @@ inline constexpr std::array<FieldDescriptor, 4> field_registry{{
      FieldLayout::cell_layers, FieldDataType::float32, hypsometry_layer_count, "m"},
     {FieldId::sea_level_m, "sea_level_m", FieldPartition::slow,
      FieldLayout::global, FieldDataType::float64, 1U, "m"},
+    // Surface energy columns (ADR-0007 §4.1): both tiles of every cell.
+    {FieldId::land_surface_temperature_K, "land_surface_temperature_K", FieldPartition::slow,
+     FieldLayout::cell, FieldDataType::float32, 1U, "K"},
+    {FieldId::land_ground_temperature_K, "land_ground_temperature_K", FieldPartition::slow,
+     FieldLayout::cell, FieldDataType::float32, 1U, "K"},
+    {FieldId::ocean_mixed_layer_temperature_K, "ocean_mixed_layer_temperature_K",
+     FieldPartition::slow, FieldLayout::cell, FieldDataType::float32, 1U, "K"},
+    {FieldId::ocean_deep_temperature_K, "ocean_deep_temperature_K", FieldPartition::slow,
+     FieldLayout::cell, FieldDataType::float64, 1U, "K"},
 }};
 
 inline constexpr std::array<FieldId, 0> retired_field_ids{};

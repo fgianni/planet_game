@@ -2,3 +2,7 @@
 65538	substep_mean_insolation_W_m2	derived	cell	float32	1	W/m2
 131073	hypsometry_m	slow	cell_layers	float32	9	m
 131074	sea_level_m	slow	global	float64	1	m
+196609	land_surface_temperature_K	slow	cell	float32	1	K
+196610	land_ground_temperature_K	slow	cell	float32	1	K
+196611	ocean_mixed_layer_temperature_K	slow	cell	float32	1	K
+196612	ocean_deep_temperature_K	slow	cell	float64	1	K

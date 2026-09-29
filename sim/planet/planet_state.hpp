@@ -11,6 +11,12 @@ namespace planetsim {
 struct SlowState {
     field_container_t<FieldId::hypsometry_m> hypsometry_m;
     field_container_t<FieldId::sea_level_m> sea_level_m = 0.0;
+    // Surface energy columns (ADR-0007 §4.1). Zero until initialised, which
+    // the column solver rejects.
+    field_container_t<FieldId::land_surface_temperature_K> land_surface_temperature_K;
+    field_container_t<FieldId::land_ground_temperature_K> land_ground_temperature_K;
+    field_container_t<FieldId::ocean_mixed_layer_temperature_K> ocean_mixed_layer_temperature_K;
+    field_container_t<FieldId::ocean_deep_temperature_K> ocean_deep_temperature_K;
 };
 
 struct FastState {};

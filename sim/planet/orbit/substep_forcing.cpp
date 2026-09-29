@@ -99,11 +99,13 @@ substep_forcing_nodes(const PlanetParameters& parameters, const ClimateSubstep& 
     return nodes;
 }
 
-void update_substep_mean_insolation(PlanetState& state, const PlanetParameters& parameters,
-                                    const ClimateSubstep& substep, std::size_t worker_count) {
+void compute_substep_mean_insolation(const PlanetMesh& mesh, const PlanetParameters& parameters,
+                                     const ClimateSubstep& substep, Field2D<float>& field,
+                                     std::size_t worker_count) {
+    if (field.size() != mesh.cell_count()) {
+        throw std::invalid_argument("sub-step insolation field does not match the mesh");
+    }
     const auto nodes = substep_forcing_nodes(parameters, substep);
-    const PlanetMesh& mesh = state.mesh();
-    auto& field = state.forcing().substep_mean_insolation_W_m2;
     for_each_deterministic_block(
         mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
             for (std::size_t index = block.begin; index < block.end; ++index) {
@@ -122,6 +124,12 @@ void update_substep_mean_insolation(PlanetState& state, const PlanetParameters& 
                 field[cell.id] = static_cast<float>(mean);
             }
         });
+}
+
+void update_substep_mean_insolation(PlanetState& state, const PlanetParameters& parameters,
+                                    const ClimateSubstep& substep, std::size_t worker_count) {
+    compute_substep_mean_insolation(state.mesh(), parameters, substep,
+                                    state.forcing().substep_mean_insolation_W_m2, worker_count);
 }
 
 }  // namespace planetsim

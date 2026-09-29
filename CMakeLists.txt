@@ -44,6 +44,7 @@ add_library(PlanetSim STATIC
     sim/planet/orbit/solar_forcing.cpp
     sim/planet/orbit/substep_forcing.cpp
     sim/planet/surface/column_step.cpp
+    sim/planet/surface/surface_energy.cpp
     sim/planet/surface/surface_materials.cpp
     sim/planet/planet_parameters.cpp
     sim/planet/planet_state.cpp

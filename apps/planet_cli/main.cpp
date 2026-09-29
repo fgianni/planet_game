@@ -437,6 +437,20 @@ void populate_snapshot_synthetic_state(planetsim::PlanetState& state) {
         snapshot_synthetic_seed, planetsim::RandomStreamId::validation,
         snapshot_synthetic_tick, 0U, 99U);
     state.slow().sea_level_m = -200.0 + sea_unit * 400.0;
+    // Schema 2 surface-energy temperatures, 220-320 K.
+    const auto temperature = [&](std::size_t cell, std::uint32_t sample) {
+        return 220.0 + 100.0 * planetsim::keyed_random_unit_double(
+                                   snapshot_synthetic_seed, planetsim::RandomStreamId::validation,
+                                   snapshot_synthetic_tick, static_cast<std::uint32_t>(cell),
+                                   sample);
+    };
+    for (std::size_t cell = 0; cell < state.mesh().cell_count(); ++cell) {
+        auto& slow = state.slow();
+        slow.land_surface_temperature_K[cell] = static_cast<float>(temperature(cell, 20U));
+        slow.land_ground_temperature_K[cell] = static_cast<float>(temperature(cell, 21U));
+        slow.ocean_mixed_layer_temperature_K[cell] = static_cast<float>(temperature(cell, 22U));
+        slow.ocean_deep_temperature_K[cell] = temperature(cell, 23U);
+    }
 }
 
 struct LayoutBenchmarkResult {

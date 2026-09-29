@@ -130,6 +130,40 @@ void append_json_string(std::string& output, std::string_view value) {
     output.push_back('"');
 }
 
+// The schema version that introduced each persistent field; 0 for fields
+// that are never persisted. The switch covers every FieldId, so a new field
+// must declare its version to compile.
+[[nodiscard]] std::uint32_t first_schema_version(FieldId id) noexcept {
+    switch (id) {
+    case FieldId::hypsometry_m:
+    case FieldId::sea_level_m:
+        return 1U;
+    case FieldId::land_surface_temperature_K:
+    case FieldId::land_ground_temperature_K:
+    case FieldId::ocean_mixed_layer_temperature_K:
+    case FieldId::ocean_deep_temperature_K:
+        return 2U;
+    case FieldId::top_of_atmosphere_insolation_W_m2:
+    case FieldId::substep_mean_insolation_W_m2:
+        return 0U;
+    }
+    return 0U;
+}
+
+void append_cell_field(std::vector<std::byte>& output, const Field2D<float>& field) {
+    output.reserve(field.size() * sizeof(float));
+    for (const float value : field.values()) {
+        append_float32(output, value);
+    }
+}
+
+void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& field) {
+    output.reserve(field.size() * sizeof(double));
+    for (const double value : field.values()) {
+        append_float64(output, value);
+    }
+}
+
 [[nodiscard]] EncodedChunk encode_chunk(const FieldDescriptor& descriptor,
                                         const PlanetState& state,
                                         std::uint64_t offset) {
@@ -149,6 +183,18 @@ void append_json_string(std::string& output, std::string_view value) {
     case FieldId::sea_level_m:
         chunk.bytes.reserve(sizeof(double));
         append_float64(chunk.bytes, state.slow().sea_level_m);
+        break;
+    case FieldId::land_surface_temperature_K:
+        append_cell_field(chunk.bytes, state.slow().land_surface_temperature_K);
+        break;
+    case FieldId::land_ground_temperature_K:
+        append_cell_field(chunk.bytes, state.slow().land_ground_temperature_K);
+        break;
+    case FieldId::ocean_mixed_layer_temperature_K:
+        append_cell_field(chunk.bytes, state.slow().ocean_mixed_layer_temperature_K);
+        break;
+    case FieldId::ocean_deep_temperature_K:
+        append_cell_field(chunk.bytes, state.slow().ocean_deep_temperature_K);
         break;
     case FieldId::top_of_atmosphere_insolation_W_m2:
     case FieldId::substep_mean_insolation_W_m2:
@@ -532,7 +578,8 @@ void validate_manifest_and_chunks(const SnapshotManifest& manifest,
     if (manifest.format != "PSNAPv1") {
         throw std::runtime_error("unsupported snapshot format: " + manifest.format);
     }
-    if (manifest.schema_version != persistent_snapshot_schema_version) {
+    if (manifest.schema_version < oldest_readable_snapshot_schema_version ||
+        manifest.schema_version > persistent_snapshot_schema_version) {
         throw std::runtime_error("unsupported snapshot schema_version " +
                                  std::to_string(manifest.schema_version));
     }
@@ -563,6 +610,10 @@ void validate_manifest_and_chunks(const SnapshotManifest& manifest,
         if (!descriptor->persistent()) {
             field_error(field.field_id, "field is not slow state");
         }
+        if (first_schema_version(descriptor->id) > manifest.schema_version) {
+            field_error(field.field_id, "field does not exist in snapshot schema_version " +
+                                            std::to_string(manifest.schema_version));
+        }
         if (field.partition != partition_name(descriptor->partition)) {
             field_error(field.field_id, "partition does not match registry");
         }
@@ -587,7 +638,8 @@ void validate_manifest_and_chunks(const SnapshotManifest& manifest,
     }
 
     for (std::size_t index = 0; index < field_registry.size(); ++index) {
-        if (field_registry[index].persistent() && !seen[index]) {
+        if (field_registry[index].persistent() && !seen[index] &&
+            first_schema_version(field_registry[index].id) <= manifest.schema_version) {
             field_error(static_cast<std::uint32_t>(field_registry[index].id),
                         "required slow field is missing");
         }
@@ -667,6 +719,40 @@ void validate_slow_state(const PlanetState& state) {
         field_error(static_cast<std::uint32_t>(FieldId::hypsometry_m),
                     "slow-state dimensions do not match the registry and mesh");
     }
+    const std::size_t cells = state.mesh().cell_count();
+    const auto check_cells = [cells](std::size_t size, FieldId id) {
+        if (size != cells) {
+            field_error(static_cast<std::uint32_t>(id),
+                        "slow-state dimensions do not match the registry and mesh");
+        }
+    };
+    check_cells(state.slow().land_surface_temperature_K.size(),
+                FieldId::land_surface_temperature_K);
+    check_cells(state.slow().land_ground_temperature_K.size(),
+                FieldId::land_ground_temperature_K);
+    check_cells(state.slow().ocean_mixed_layer_temperature_K.size(),
+                FieldId::ocean_mixed_layer_temperature_K);
+    check_cells(state.slow().ocean_deep_temperature_K.size(), FieldId::ocean_deep_temperature_K);
+}
+
+[[nodiscard]] Field2D<float> decode_float_cells(std::span<const std::byte> bytes,
+                                                std::size_t cell_count) {
+    Field2D<float> values(cell_count, 0.0F);
+    for (std::size_t index = 0; index < cell_count; ++index) {
+        values[index] = std::bit_cast<float>(read_little_endian<std::uint32_t>(
+            bytes, index * sizeof(std::uint32_t), "cell value"));
+    }
+    return values;
+}
+
+[[nodiscard]] Field2D<double> decode_double_cells(std::span<const std::byte> bytes,
+                                                  std::size_t cell_count) {
+    Field2D<double> values(cell_count, 0.0);
+    for (std::size_t index = 0; index < cell_count; ++index) {
+        values[index] = std::bit_cast<double>(read_little_endian<std::uint64_t>(
+            bytes, index * sizeof(std::uint64_t), "cell value"));
+    }
+    return values;
 }
 
 // Decodes one validated chunk into the staged slow state. The switch covers
@@ -692,6 +778,18 @@ void decode_chunk(const FieldDescriptor& descriptor,
     case FieldId::sea_level_m:
         staged.sea_level_m = std::bit_cast<double>(
             read_little_endian<std::uint64_t>(bytes, 0U, "sea level value"));
+        return;
+    case FieldId::land_surface_temperature_K:
+        staged.land_surface_temperature_K = decode_float_cells(bytes, cell_count);
+        return;
+    case FieldId::land_ground_temperature_K:
+        staged.land_ground_temperature_K = decode_float_cells(bytes, cell_count);
+        return;
+    case FieldId::ocean_mixed_layer_temperature_K:
+        staged.ocean_mixed_layer_temperature_K = decode_float_cells(bytes, cell_count);
+        return;
+    case FieldId::ocean_deep_temperature_K:
+        staged.ocean_deep_temperature_K = decode_double_cells(bytes, cell_count);
         return;
     case FieldId::top_of_atmosphere_insolation_W_m2:
     case FieldId::substep_mean_insolation_W_m2:
@@ -773,7 +871,8 @@ SnapshotManifest inspect_snapshot(const std::filesystem::path& path) {
     return std::move(parsed.manifest);
 }
 
-SnapshotManifest read_snapshot(const std::filesystem::path& path, PlanetState& target_state) {
+SnapshotManifest read_snapshot(const std::filesystem::path& path, PlanetState& target_state,
+                               const SnapshotMigration& migration) {
     auto parsed = parse_snapshot(path);
     if (parsed.manifest.mesh_level != target_state.mesh().subdivision()) {
         throw std::runtime_error("snapshot mesh_level " +
@@ -801,13 +900,23 @@ SnapshotManifest read_snapshot(const std::filesystem::path& path, PlanetState& t
 
     // Decode into a staged copy so a failure leaves the target untouched.
     SlowState staged = target_state.slow();
+    const std::uint32_t file_schema = parsed.manifest.schema_version;
     for (const auto& descriptor : field_registry) {
-        if (!descriptor.persistent()) {
+        if (!descriptor.persistent() || first_schema_version(descriptor.id) > file_schema) {
             continue;
         }
         const auto& info = require_field(parsed.manifest, descriptor.id);
         decode_chunk(descriptor, field_chunk(parsed, info), target_state.mesh().cell_count(),
                      staged);
+    }
+    if (file_schema < 2U) {
+        if (!migration.initialise_schema_2_fields) {
+            throw std::runtime_error(
+                "snapshot schema_version " + std::to_string(file_schema) +
+                " lacks the surface-energy fields and needs the schema 1 -> 2 migration "
+                "initialiser (ADR-0007 §4.6)");
+        }
+        migration.initialise_schema_2_fields(target_state.mesh(), staged);
     }
     target_state.slow() = std::move(staged);
     return std::move(parsed.manifest);

@@ -7,8 +7,10 @@
 
 namespace planetsim {
 
+class PlanetMesh;
 class PlanetState;
 struct PlanetParameters;
+template <typename T> class Field2D;
 
 // Climate-mode forcing of ADR-0006 §4.3: the time mean of top-of-atmosphere
 // insolation over one orbital sub-step. The diurnal cycle is averaged
@@ -48,6 +50,12 @@ struct SubstepForcingNode {
 // §6), where the analytic diurnal mean does not apply.
 [[nodiscard]] std::array<SubstepForcingNode, substep_forcing_quadrature_nodes>
 substep_forcing_nodes(const PlanetParameters& parameters, const ClimateSubstep& substep);
+
+// Writes the sub-step mean insolation of every cell of `mesh` into `field`
+// (sized to the mesh), accumulating in double.
+void compute_substep_mean_insolation(const PlanetMesh& mesh, const PlanetParameters& parameters,
+                                     const ClimateSubstep& substep, Field2D<float>& field,
+                                     std::size_t worker_count = 1U);
 
 // Fills forcing().substep_mean_insolation_W_m2 for the given sub-step,
 // accumulating in double and storing float. Bit-identical for any worker
