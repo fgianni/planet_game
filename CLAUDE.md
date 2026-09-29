@@ -15,14 +15,13 @@ The specification defines the architecture, physical design, P0 roadmap,
 validation strategy, and current implementation task for the Planetary
 Civilization Simulator.
 
-Most recently completed milestone: **P0 / M2 --- Geological planet, terrain
-and ocean basins**: gate G2-M2, state partitioning, persistent snapshots,
-foundation hardening, plate-scale terrain, sub-cell hypsometry, sea level,
-static cell-mesh drainage, and the simulation modes, scheduler skeleton and
-sub-step calendar (`docs/tasks/M2-04-scheduler-and-calendar.md`). The pre-M3
-seasonal decision record is accepted (ADR-0006). M3-01
-(sub-step mean insolation) and M3-02 (surface energy columns, ADR-0007) are
-complete.
+Most recently completed milestone: **P0 / M3 --- Surface energy and first
+thermal planet**: sub-step mean insolation (M3-01, ADR-0006), surface energy
+columns with experiments A and B (M3-02, ADR-0007), and M3-03
+(`docs/tasks/M3-03-replay-gates-and-close.md`): the ocean mixed layer in
+`double` (ADR-0007 §10, PSNAP schema 3), run manifests, state hashes and
+replay (ADR-0003 V1, V2, V5), and the ADR-0001 performance gate in CI.
+M0--M2 (mesh, orbit, terrain, drainage, scheduler and calendar) are complete.
 
 Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI

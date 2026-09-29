@@ -193,3 +193,19 @@ carry their topics so a future renumbering is visible.
 - What is the smallest regional subset for a weather window that still behaves physically at its boundaries?
 - Do storms during accelerated play need tracks, or only strike locations and intensities? Tracks are better for legibility, and imply object-based storms (Design Record §34, stage S1).
 - Is the counterfactual planet run at reduced resolution to halve its cost, and if so, does that break the comparison's credibility?
+
+## 10. Implementation record: the M3 performance gate (2026-09-29)
+
+§8 asks M3 for the first performance measurement and a CI gate "even if
+generous". `planet_cli run` reports the stepping rate in simulated years per
+wall-clock minute and the total wall time including terrain generation and
+spin-up, and exits non-zero if `--min-years-per-minute` or `--max-seconds` is
+missed. CI's Release jobs run the §5 scenario, 250 climate-mode years, at L5
+(≥ 20 years/min, ≤ 240 s) and L6 (≥ 5 years/min, ≤ 600 s), and replay the
+L5 run (ADR-0003 V2). Measured with Clang 14 Release (task M3-03), the only
+physics being ADR-0007's surface columns: L5 2,981 years/min on 4 workers
+(250 years in 5.3 s), L6 774 years/min on 4 workers (20.2 s). The gates are
+therefore the budget itself, with a margin of two orders of magnitude.
+V4's regression comparison (> 20 %) needs a stable runner baseline and is
+deferred to the first milestone whose cost approaches the budget; the
+measured rates above are its first data points.
