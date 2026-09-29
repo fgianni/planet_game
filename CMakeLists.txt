@@ -120,6 +120,14 @@ if(PLANETSIM_BUILD_TESTS)
         PROPERTIES PASS_REGULAR_EXPRESSION "achieved_land_fraction: 0\n"
     )
     add_test(
+        NAME planet_cli_calendar_smoke
+        COMMAND planet_cli calendar --year 0
+    )
+    set_tests_properties(
+        planet_cli_calendar_smoke
+        PROPERTIES PASS_REGULAR_EXPRESSION "\n11 11 482120 525949 43829 "
+    )
+    add_test(
         NAME planet_cli_registry_dump
         COMMAND planet_cli registry dump
     )

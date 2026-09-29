@@ -6,6 +6,7 @@
 #include "sim/planet/mesh/mesh_diagnostics.hpp"
 #include "sim/planet/operators/operator_validation.hpp"
 #include "sim/planet/coordinates/local_tangent_basis.hpp"
+#include "sim/planet/orbit/climate_calendar.hpp"
 #include "sim/planet/orbit/solar_diagnostics.hpp"
 #include "sim/planet/orbit/solar_forcing.hpp"
 #include "sim/planet/planet_parameters.hpp"
@@ -88,7 +89,8 @@ void print_usage(std::ostream& output) {
            << "  planet_cli terrain [--subdivision LEVEL] [--seed N] [--preset NAME]"
               " [--land-fraction F] [--plates P] [--workers W] [--map FILE.csv]"
               " [--snapshot FILE.psnap]\n"
-           << "    presets: earth_like (default), aqua_planet, dead_rock\n";
+           << "    presets: earth_like (default), aqua_planet, dead_rock\n"
+           << "  planet_cli calendar [--year N | --from-tick T]\n";
 }
 
 [[nodiscard]] std::uint32_t parse_subdivision(std::string_view text) {
@@ -99,6 +101,16 @@ void print_usage(std::ostream& output) {
         throw std::invalid_argument("invalid subdivision level: " + std::string(text));
     }
     return static_cast<std::uint32_t>(parsed);
+}
+
+[[nodiscard]] std::int64_t parse_int64(std::string_view text, std::string_view description) {
+    std::int64_t parsed = 0;
+    const auto result = std::from_chars(text.data(), text.data() + text.size(), parsed);
+    if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) {
+        throw std::invalid_argument("invalid " + std::string(description) + ": " +
+                                    std::string(text));
+    }
+    return parsed;
 }
 
 [[nodiscard]] double parse_double(std::string_view text, std::string_view description) {
@@ -829,6 +841,55 @@ int run_snapshot_inspect(const std::filesystem::path& path) {
     return 0;
 }
 
+// Prints twelve consecutive climate sub-steps of the ADR-0006 calendar for
+// the default Earth: those of orbital year N, or those starting with the
+// sub-step that contains tick T.
+int run_calendar(int argument_count, char** arguments) {
+    std::int64_t first_index = 0;
+    for (int index = 2; index < argument_count; ++index) {
+        const std::string_view argument{arguments[index]};
+        if (++index >= argument_count) {
+            throw std::invalid_argument(std::string(argument) + " requires a value");
+        }
+        const std::string_view value{arguments[index]};
+        if (argument == "--year") {
+            const std::int64_t year = parse_int64(value, "year");
+            if (year > std::numeric_limits<std::int64_t>::max() / 12 ||
+                year < std::numeric_limits<std::int64_t>::min() / 12) {
+                throw std::invalid_argument("year is out of range");
+            }
+            first_index = year * planetsim::climate_substeps_per_year;
+        } else if (argument == "--from-tick") {
+            const auto parameters = planetsim::PlanetParameters::earth_development();
+            first_index =
+                planetsim::climate_substep_containing(parse_int64(value, "tick"), parameters).index;
+        } else {
+            throw std::invalid_argument("unknown calendar option: " + std::string(argument));
+        }
+    }
+
+    const auto parameters = planetsim::PlanetParameters::earth_development();
+    const auto calendar = planetsim::make_orbital_calendar(parameters);
+    std::cout << std::setprecision(12)
+              << "orbital_period_s: " << calendar.orbital_period_s << '\n'
+              << "orbital_period_ticks: "
+              << calendar.orbital_period_s /
+                     static_cast<double>(planetsim::simulation_seconds_per_tick)
+              << '\n'
+              << "initial_orbital_phase_rad: " << calendar.initial_orbital_phase_rad << '\n'
+              << "index month begin_tick end_tick length_ticks begin_day\n";
+    for (std::int64_t offset = 0; offset < planetsim::climate_substeps_per_year; ++offset) {
+        const auto substep = planetsim::climate_substep(calendar, first_index + offset);
+        std::cout << substep.index << ' ' << substep.month << ' ' << substep.begin_tick << ' '
+                  << substep.end_tick << ' ' << substep.length_ticks() << ' ' << std::fixed
+                  << std::setprecision(4)
+                  << static_cast<double>(substep.begin_tick) /
+                         static_cast<double>(24 * 60)
+                  << std::defaultfloat << std::setprecision(12) << '\n';
+    }
+    return 0;
+}
+
 }  // namespace
 
 int main(int argument_count, char** arguments) {
@@ -853,6 +914,9 @@ int main(int argument_count, char** arguments) {
         }
         if (command == "terrain") {
             return run_terrain(parse_terrain_options(argument_count, arguments));
+        }
+        if (command == "calendar") {
+            return run_calendar(argument_count, arguments);
         }
         if (command == "registry") {
             if (argument_count == 3 && std::string_view{arguments[2]} == "dump") {
