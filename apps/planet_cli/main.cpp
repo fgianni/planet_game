@@ -276,6 +276,10 @@ int run_terrain(const TerrainOptions& options) {
     const auto diagnostics = planetsim::compute_terrain_diagnostics(
         *mesh, generation.geology, state.slow().hypsometry_m, state.slow().sea_level_m,
         worker_count);
+    const auto drainage_start = std::chrono::steady_clock::now();
+    const auto timed_drainage = planetsim::generate_drainage(
+        *mesh, state.slow().hypsometry_m, state.slow().sea_level_m, worker_count);
+    const auto drainage_finish = std::chrono::steady_clock::now();
 
     const auto milliseconds = [](auto from, auto to) {
         return std::chrono::duration<double, std::milli>(to - from).count();
@@ -331,7 +335,8 @@ int run_terrain(const TerrainOptions& options) {
               << '\n'
               << "ocean_elevation_mean_m: " << diagnostics.ocean_elevation_mean_m << '\n'
               << "ocean_elevation_std_m: " << diagnostics.ocean_elevation_std_m << '\n';
-    const auto& drainage = generation.drainage;
+    const auto& drainage = timed_drainage;
+    const double drainage_time_ms = milliseconds(drainage_start, drainage_finish);
     std::cout << "drainage_outlet_count: " << drainage.surface.outlet_count << '\n'
               << "drainage_basin_count: " << drainage.diagnostics.basin_count << '\n'
               << "drainage_depression_count: " << drainage.surface.depressions.size() << '\n'
@@ -350,7 +355,7 @@ int run_terrain(const TerrainOptions& options) {
               << "drainage_cycle_count: " << drainage.diagnostics.cycle_count << '\n'
               << "drainage_unreachable_cell_count: "
               << drainage.diagnostics.unreachable_cell_count << '\n'
-              << "drainage_time_ms: " << generation.drainage_generation_time_ms
+              << "drainage_time_ms: " << drainage_time_ms
               << '\n'
               << "mesh_time_ms: " << milliseconds(mesh_start, generation_start) << '\n'
               << "generation_time_ms: " << milliseconds(generation_start, generation_finish) << '\n';
