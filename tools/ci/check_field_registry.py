@@ -55,10 +55,14 @@ def read_registry(path: Path) -> tuple[dict[int, tuple[str, ...]], set[int]]:
 
 
 def check_registry(baseline_path: Path, current_path: Path) -> int:
-    baseline, _ = read_registry(baseline_path)
-    current, retired = read_registry(current_path)
+    baseline, baseline_retired = read_registry(baseline_path)
+    current, current_retired = read_registry(current_path)
+    retired = baseline_retired | current_retired
     errors: list[str] = []
 
+    # A retired ID stays retired forever and is never registered again.
+    for field_id in sorted(baseline_retired - current_retired):
+        errors.append(f"retired field ID {field_id} is no longer declared retired")
     for field_id in sorted(retired & current.keys()):
         errors.append(f"field ID {field_id} is both registered and retired")
 
@@ -80,8 +84,12 @@ def check_registry(baseline_path: Path, current_path: Path) -> int:
             ]
             errors.append(f"field ID {field_id} changed ({'; '.join(differences)})")
 
+    # New fields must be added to the baseline in the commit that registers them.
     for field_id in sorted(current.keys() - baseline.keys()):
-        print(f"new field ID {field_id}: {current[field_id][0]}")
+        errors.append(
+            f"field ID {field_id} ({current[field_id][0]}) is not in the baseline; "
+            f"add its line to {baseline_path}"
+        )
 
     if errors:
         for error in errors:

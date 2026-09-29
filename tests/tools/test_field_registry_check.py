@@ -57,6 +57,30 @@ def main() -> int:
         )
         run(base_command + [str(current_path)], True)
 
+        # A new field must be in the baseline.
+        current_path.write_text(
+            baseline_text + "999999\tnew_field_m\tslow\tcell\tfloat32\t1\tm\n",
+            encoding="utf-8",
+        )
+        run(base_command + [str(current_path)], False)
+
+        # Once the baseline records a retirement, the ID can neither return nor
+        # silently stop being retired.
+        retired_baseline = Path(directory) / "retired_baseline.tsv"
+        retired_baseline.write_text(
+            baseline_text + f"# retired_field_id\t{retired_id}\n", encoding="utf-8"
+        )
+        retired_command = [sys.executable, str(arguments.checker), str(retired_baseline)]
+        current_path.write_text(
+            "\n".join(lines[1:]) + f"\n# retired_field_id\t{retired_id}\n",
+            encoding="utf-8",
+        )
+        run(retired_command + [str(current_path)], True)
+        current_path.write_text("\n".join(lines[1:]) + "\n", encoding="utf-8")
+        run(retired_command + [str(current_path)], False)
+        current_path.write_text(baseline_text, encoding="utf-8")
+        run(retired_command + [str(current_path)], False)
+
     print("field registry checker expectations passed")
     return 0
 
