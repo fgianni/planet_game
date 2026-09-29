@@ -14,6 +14,7 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0004 | [Keplerian orbit and coordinate frames](0004-keplerian-orbit-and-coordinate-frames.md) | Accepted | 2026-09-24 |
 | 0005 | [Fractional coastlines and cell-mesh drainage](0005-coastlines-and-drainage.md) | Accepted (amended 2026-09-28, §9.2) | 2026-09-28 |
 | 0006 | [Seasonal climate-mode steps on the integer clock](0006-seasonal-climate-steps.md) | Accepted | 2026-09-29 |
+| 0007 | [Surface energy columns for the first thermal planet](0007-surface-energy-columns.md) | Accepted | 2026-09-29 |
 
 Records cite the design record by version and section (for example "Design
 Record v0.4, §28"). The current design record is

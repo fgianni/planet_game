@@ -11,7 +11,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [M2-03](M2-03-drainage.md) | Drainage | Complete |
 | [M2-04](M2-04-scheduler-and-calendar.md) | Simulation modes, scheduler skeleton and sub-step calendar (ADR-0001 §8, ADR-0006) | Complete |
 | [M3-01](M3-01-substep-mean-insolation.md) | Sub-step mean insolation (ADR-0006 §4.3) | Ready |
-| M3-02 | Surface energy columns, experiments A and B (ADR-0007) | Waits on ADR-0007 |
+| M3-02 | Surface energy columns, experiments A and B (ADR-0007) | Task to be written |
 
 Completed tasks are records: they keep the specification and design versions
 they were written against, even after those files have left the tree. Read
