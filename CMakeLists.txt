@@ -24,6 +24,8 @@ add_library(PlanetSim STATIC
     sim/core/serialization/crc32c.cpp
     sim/core/serialization/snapshot_file.cpp
     sim/core/serialization/state_snapshot.cpp
+    sim/core/serialization/xxh3.cpp
+    sim/core/serialization/run_manifest.cpp
     sim/core/scheduler/orbital_calendar.cpp
     sim/core/scheduler/scheduler.cpp
     sim/core/scheduler/simulation_clock.cpp

@@ -1,6 +1,7 @@
 #include "sim/core/serialization/snapshot_file.hpp"
 
 #include "sim/core/serialization/crc32c.hpp"
+#include "sim/core/serialization/xxh3.hpp"
 #include "sim/planet/mesh/planet_mesh.hpp"
 #include "sim/planet/planet_state.hpp"
 
@@ -925,6 +926,17 @@ void write_snapshot(const std::filesystem::path& path,
         std::filesystem::remove(partial_path, ignored);
         throw;
     }
+}
+
+std::uint64_t slow_state_hash(const PlanetState& state) {
+    validate_slow_state(state);
+    std::vector<std::byte> canonical;
+    for (const auto& chunk : encode_slow_state(state)) {
+        append_little_endian(canonical, static_cast<std::uint32_t>(chunk.descriptor->id));
+        append_little_endian(canonical, static_cast<std::uint64_t>(chunk.bytes.size()));
+        canonical.insert(canonical.end(), chunk.bytes.begin(), chunk.bytes.end());
+    }
+    return xxh3_64({canonical.data(), canonical.size()});
 }
 
 SnapshotManifest inspect_snapshot(const std::filesystem::path& path) {

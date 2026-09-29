@@ -74,6 +74,12 @@ void write_snapshot(const std::filesystem::path& path,
                     SimulationTick tick,
                     std::string parent_snapshot_id = {});
 
+// ADR-0003 §3.3 state_hash: XXH3-64 over the slow state in canonical order,
+// the same field chunks a snapshot stores, each preceded by its field ID
+// (little-endian u32) and byte length (little-endian u64). Equal slow states
+// hash equal; the tick, manifest and mesh are not part of it.
+[[nodiscard]] std::uint64_t slow_state_hash(const PlanetState& state);
+
 [[nodiscard]] SnapshotManifest inspect_snapshot(const std::filesystem::path& path);
 // Reads any schema from oldest_readable_snapshot_schema_version to the
 // current one. An older file is migrated in the staged copy; reading one
