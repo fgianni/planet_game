@@ -25,6 +25,7 @@ add_library(PlanetSim STATIC
     sim/core/serialization/snapshot_file.cpp
     sim/core/serialization/state_snapshot.cpp
     sim/core/scheduler/orbital_calendar.cpp
+    sim/core/scheduler/scheduler.cpp
     sim/core/scheduler/simulation_clock.cpp
     sim/planet/coordinates/local_tangent_basis.cpp
     sim/planet/geology/crust.cpp
