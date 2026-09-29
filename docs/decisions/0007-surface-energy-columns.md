@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-29
 - **Accepted:** 2026-09-29
+- **Amended:** 2026-09-29 — §4.1 the ocean mixed layer is stored as `double` (evidence in §9.1)
 - **Milestone:** P0 / M3 (surface energy and first thermal planet)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §9.1, §13 M3, §13.1 (experiments A–C), §23, §24; `docs/prototype-oracle.md`; Planetary Civilization Simulator — Design Record v0.9, §5.3, §28
 - **Related:** ADR-0001 (modes, budget), ADR-0002 (precision), ADR-0003 (snapshots, migration), ADR-0005 (land and ocean tiles), ADR-0006 (sub-steps and their forcing)
@@ -128,8 +129,11 @@ migration chain forward, deliberately and minimally.
 |---|---|---|---|
 | `land_surface_temperature_K` | land, surface layer | `float` | slow |
 | `land_ground_temperature_K` | land, ground layer | `float` | slow |
-| `ocean_mixed_layer_temperature_K` | ocean, mixed layer | `float` | slow |
+| `ocean_mixed_layer_temperature_K` | ocean, mixed layer | `double` (ADR-0002: slow ocean reservoir) | slow |
 | `ocean_deep_temperature_K` | ocean, deep layer | `double` (ADR-0002: slow ocean reservoir) | slow |
+
+*(Amended 2026-09-29: the accepted text stored the mixed layer as `float`;
+§9.1 records why ten-minute steps need `double`.)*
 
 Every cell carries both tiles' temperatures, including a tile with zero area,
 so that a later change of sea level exposes land or floods it with a defined
@@ -304,11 +308,19 @@ Validation (L4, seed 20260929, 60 spin-up years unless stated):
 The suite passes 46/46 in GCC 11 Release and Debug, Clang 14 Release and
 Clang ASan+UBSan, with the floating-point and field-registry checks.
 
-**Open finding (not changed here).** §4.1 stores the ocean mixed layer as
-`float`. In reference mode a ten-minute step moves it by 1e-4 K, a few
-`float` ulps at 295 K, and rounding the stored value each step biases the
-result: over 30 days of ten-minute steps the error reaches 0.01–0.04 K,
-comparable to the whole diurnal range (0.07 K), and the response to a
-3 W/m² imbalance is off by a factor of about 3. Climate mode is unaffected.
-ADR-0002 §4.4 keeps slow ocean reservoirs in `float64` for this reason;
-storing the mixed layer as `double` would resolve it.
+### 9.1 Amendment: the mixed layer in `double` (2026-09-29)
+
+The accepted §4.1 stored the ocean mixed layer as `float`. In reference mode
+a ten-minute step moves it by about 1e-4 K, a few `float` ulps at 295 K, and
+rounding the stored value every step biased the result: over 30 days of
+ten-minute steps the error reached 0.01–0.04 K, comparable to the whole
+diurnal range (0.07 K), and the 30-day response to a 3 W/m² imbalance was
+about three times too large. Climate mode was unaffected. ADR-0002 §4.4
+keeps slow ocean reservoirs in `float64` for this reason, so the mixed layer
+now is one: field 0x0003'0003 is `float64` in the registry baseline and in
+PSNAP schema v2. Neither had been released, so the v2 golden save was
+regenerated rather than migrated. `check_mixed_layer_precision` in
+`tests/physics/test_surface_energy.cpp` requires a day of ten-minute mesh
+steps to equal the same steps chained on one `double` column, bit for bit.
+The land layers stay `float`: their ten-minute changes are hundreds to
+thousands of ulps. The calibrated `g` is unchanged (288.0 K).

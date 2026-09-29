@@ -107,8 +107,10 @@ inline constexpr std::array<FieldDescriptor, 8> field_registry{{
      FieldLayout::cell, FieldDataType::float32, 1U, "K"},
     {FieldId::land_ground_temperature_K, "land_ground_temperature_K", FieldPartition::slow,
      FieldLayout::cell, FieldDataType::float32, 1U, "K"},
+    // float64: a ten-minute step moves the mixed layer by a few float ulps
+    // (ADR-0007 §9.1).
     {FieldId::ocean_mixed_layer_temperature_K, "ocean_mixed_layer_temperature_K",
-     FieldPartition::slow, FieldLayout::cell, FieldDataType::float32, 1U, "K"},
+     FieldPartition::slow, FieldLayout::cell, FieldDataType::float64, 1U, "K"},
     {FieldId::ocean_deep_temperature_K, "ocean_deep_temperature_K", FieldPartition::slow,
      FieldLayout::cell, FieldDataType::float64, 1U, "K"},
 }};

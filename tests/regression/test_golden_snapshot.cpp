@@ -105,7 +105,7 @@ int main() {
                        state.slow().ocean_deep_temperature_K[cell] ==
                            expected.ocean_deep_temperature_K[cell] &&
                        state.slow().land_surface_temperature_K[cell] > 150.0F &&
-                       state.slow().ocean_mixed_layer_temperature_K[cell] > 150.0F;
+                       state.slow().ocean_mixed_layer_temperature_K[cell] > 150.0;
         }
         PLANETSIM_EXPECT(test, migrated);
         PLANETSIM_EXPECT(test, !state.has_fast_state());
@@ -127,8 +127,9 @@ int main() {
                         static_cast<float>(expected_temperature(cell, 20U)) &&
                     state.slow().land_ground_temperature_K[cell] ==
                         static_cast<float>(expected_temperature(cell, 21U)) &&
-                    state.slow().ocean_mixed_layer_temperature_K[cell] ==
-                        static_cast<float>(expected_temperature(cell, 22U)) &&
+                    std::bit_cast<std::uint64_t>(
+                        state.slow().ocean_mixed_layer_temperature_K[cell]) ==
+                        std::bit_cast<std::uint64_t>(expected_temperature(cell, 22U)) &&
                     std::bit_cast<std::uint64_t>(state.slow().ocean_deep_temperature_K[cell]) ==
                         std::bit_cast<std::uint64_t>(expected_temperature(cell, 23U));
         }

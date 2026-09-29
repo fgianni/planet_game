@@ -52,7 +52,7 @@ void populate_synthetic_state(planetsim::PlanetState& state) {
         auto& slow = state.slow();
         slow.land_surface_temperature_K[cell] = static_cast<float>(temperature(cell, 20U));
         slow.land_ground_temperature_K[cell] = static_cast<float>(temperature(cell, 21U));
-        slow.ocean_mixed_layer_temperature_K[cell] = static_cast<float>(temperature(cell, 22U));
+        slow.ocean_mixed_layer_temperature_K[cell] = temperature(cell, 22U);
         slow.ocean_deep_temperature_K[cell] = temperature(cell, 23U);
     }
 }
@@ -185,17 +185,18 @@ void expect_states_equal(planetsim::test::Context& test,
                                       second.slow().land_surface_temperature_K));
     PLANETSIM_EXPECT(test, same_float(first.slow().land_ground_temperature_K,
                                       second.slow().land_ground_temperature_K));
-    PLANETSIM_EXPECT(test, same_float(first.slow().ocean_mixed_layer_temperature_K,
-                                      second.slow().ocean_mixed_layer_temperature_K));
-    const auto& first_deep = first.slow().ocean_deep_temperature_K;
-    const auto& second_deep = second.slow().ocean_deep_temperature_K;
-    PLANETSIM_EXPECT(test, first_deep.size() == second_deep.size() &&
-                               std::equal(first_deep.values().begin(), first_deep.values().end(),
-                                          second_deep.values().begin(),
-                                          [](double x, double y) {
-                                              return std::bit_cast<std::uint64_t>(x) ==
-                                                     std::bit_cast<std::uint64_t>(y);
-                                          }));
+    const auto same_double = [](const auto& a, const auto& b) {
+        return a.size() == b.size() &&
+               std::equal(a.values().begin(), a.values().end(), b.values().begin(),
+                          [](double x, double y) {
+                              return std::bit_cast<std::uint64_t>(x) ==
+                                     std::bit_cast<std::uint64_t>(y);
+                          });
+    };
+    PLANETSIM_EXPECT(test, same_double(first.slow().ocean_mixed_layer_temperature_K,
+                                       second.slow().ocean_mixed_layer_temperature_K));
+    PLANETSIM_EXPECT(test, same_double(first.slow().ocean_deep_temperature_K,
+                                       second.slow().ocean_deep_temperature_K));
 }
 
 }  // namespace

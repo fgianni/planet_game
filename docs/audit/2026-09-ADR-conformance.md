@@ -144,7 +144,7 @@ schemas evolve.
 | ADR-0007 V9, PSNAP schema v2 | ✅ EVIDENCED | Four new slow fields in the registry baseline; v1 golden loads through the declared migration; v2 golden round trip exact (`tests/regression/test_golden_snapshot.cpp`). |
 | ADR-0007 V10 | ✅ EVIDENCED | 1.1 ms (L5) and 4.0 ms (L6) per climate sub-step at 8 workers, against 250 ms and 1 s (`planet_cli thermal`). |
 | Calibration constants recorded (specification §24) | ✅ EVIDENCED | `earth_like_grey_emissivity = 0.4964` carries its fit target, run and sensitivity (`sim/planet/surface/surface_energy.hpp`, ADR-0007 §9). |
-| Reference-mode precision (ADR-0002 §4.4) | ⚠ RUNTIME_ONLY | The `float` ocean mixed layer loses ten-minute increments to rounding; see the open finding in ADR-0007 §9. |
+| Reference-mode precision (ADR-0002 §4.4) | ✅ EVIDENCED | The ocean mixed layer is `float64` (ADR-0007 §9.1 amendment); a day of ten-minute mesh steps equals the `double` column bit for bit (`tests/physics/test_surface_energy.cpp`). |
 
 ## Risk-register audit
 

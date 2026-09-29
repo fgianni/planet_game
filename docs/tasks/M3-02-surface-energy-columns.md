@@ -43,7 +43,8 @@ Apply these; stop and ask before changing any of them.
    `x₀ = min(b/a, (b/βεσ)^¼)`, which lies at or above the root, so the
    iteration decreases monotonically. A fixed 10 iterations; the residual is
    reported. Solve and budget in `double`; the stored surface and ground
-   temperatures are `float`, the deep ocean `double` (ADR-0007 §4.1).
+   temperatures are `float`, the deep ocean `double` (ADR-0007 §4.1; the
+   mixed layer became `double` by the ADR-0007 §9.1 amendment).
    Budget closure (V2) is evaluated on the `double` solution; the `float`
    storage rounding is reported separately.
 4. **Forcing.** Climate mode uses `substep_mean_insolation_W_m2`; reference
@@ -57,7 +58,8 @@ Apply these; stop and ask before changing any of them.
    load through the hook; a v2 golden file is added.
 6. **Field IDs:** `land_surface_temperature_K` 0x0003'0001,
    `land_ground_temperature_K` 0x0003'0002,
-   `ocean_mixed_layer_temperature_K` 0x0003'0003 (all `float`, cell),
+   `ocean_mixed_layer_temperature_K` 0x0003'0003 (all `float`, cell;
+   the mixed layer is `double` since ADR-0007 §9.1),
    `ocean_deep_temperature_K` 0x0003'0004 (`double`, cell); all slow.
 
 ## 2. Steps

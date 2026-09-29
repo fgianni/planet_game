@@ -4,5 +4,5 @@
 131074	sea_level_m	slow	global	float64	1	m
 196609	land_surface_temperature_K	slow	cell	float32	1	K
 196610	land_ground_temperature_K	slow	cell	float32	1	K
-196611	ocean_mixed_layer_temperature_K	slow	cell	float32	1	K
+196611	ocean_mixed_layer_temperature_K	slow	cell	float64	1	K
 196612	ocean_deep_temperature_K	slow	cell	float64	1	K

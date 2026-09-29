@@ -6,6 +6,7 @@
 #include "sim/planet/orbit/substep_forcing.hpp"
 #include "sim/planet/planet_parameters.hpp"
 #include "sim/planet/planet_state.hpp"
+#include "sim/planet/surface/column_step.hpp"
 #include "sim/planet/surface/surface_energy.hpp"
 #include "sim/planet/terrain/surface_fractions.hpp"
 #include "sim/planet/terrain/terrain_generator.hpp"
@@ -311,6 +312,34 @@ void check_experiments(planetsim::test::Context& test,
     }
 }
 
+// ADR-0007 §9.1: the stored mixed layer carries the double solution, so a
+// day of ten-minute steps through the mesh equals the same steps chained on
+// one column, bit for bit (a float field would round every step).
+void check_mixed_layer_precision(planetsim::test::Context& test,
+                                 const std::shared_ptr<const planetsim::PlanetMesh>& mesh) {
+    const auto surface = planetsim::surface_energy_parameters_for(PlanetPreset::earth_like);
+    Planet planet(mesh, PlanetPreset::earth_like, surface);
+    const std::size_t equator = cell_near(*mesh, 0.0);
+    const auto ocean =
+        planetsim::column_properties(planetsim::SurfaceMaterial::ocean, planet.parameters);
+    planetsim::ColumnState column{planet.state.slow().ocean_mixed_layer_temperature_K[equator],
+                                  planet.state.slow().ocean_deep_temperature_K[equator]};
+    for (std::int64_t step = 0; step < 144; ++step) {
+        planetsim::update_solar_forcing(planet.state, planet.parameters, 10 * step + 5, 4U);
+        const double insolation =
+            planet.state.forcing().top_of_atmosphere_insolation_W_m2[equator];
+        static_cast<void>(planetsim::step_surface_energy(
+            planet.state, planet.parameters, surface, planet.fractions,
+            planet.state.forcing().top_of_atmosphere_insolation_W_m2, 600.0, 4U));
+        column = planetsim::step_column(ocean, column, insolation, surface.grey_emissivity, 600.0)
+                     .state;
+    }
+    PLANETSIM_EXPECT(test, planet.state.slow().ocean_mixed_layer_temperature_K[equator] ==
+                               column.surface_K);
+    PLANETSIM_EXPECT(test,
+                     planet.state.slow().ocean_deep_temperature_K[equator] == column.lower_K);
+}
+
 }  // namespace
 
 int main() {
@@ -318,6 +347,7 @@ int main() {
     const auto mesh = mesh_at(test_level);
     check_closure_and_workers(test, mesh);
     check_scheduler_chunking(test, mesh);
+    check_mixed_layer_precision(test, mesh);
     check_thermal_inertia(test, mesh);
     check_experiments(test, mesh);
     return test.result();

@@ -786,7 +786,7 @@ void decode_chunk(const FieldDescriptor& descriptor,
         staged.land_ground_temperature_K = decode_float_cells(bytes, cell_count);
         return;
     case FieldId::ocean_mixed_layer_temperature_K:
-        staged.ocean_mixed_layer_temperature_K = decode_float_cells(bytes, cell_count);
+        staged.ocean_mixed_layer_temperature_K = decode_double_cells(bytes, cell_count);
         return;
     case FieldId::ocean_deep_temperature_K:
         staged.ocean_deep_temperature_K = decode_double_cells(bytes, cell_count);
