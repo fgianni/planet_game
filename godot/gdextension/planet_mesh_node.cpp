@@ -91,6 +91,7 @@ render_mode cull_disabled;
 uniform sampler2D insolation_map : filter_nearest;
 uniform bool day_night = true;
 uniform bool insolation_view = false;
+uniform bool data_view = false;
 
 varying float insolation;
 
@@ -110,7 +111,7 @@ void fragment() {
         base = vec3(0.015 + 0.95 * daylight, 0.025 + 0.68 * daylight, 0.08 + 0.28 * x);
     } else {
         base = COLOR.rgb;
-        if (day_night) {
+        if (day_night && !data_view) {
             base *= 0.16 + 0.84 * daylight;
         }
     }
@@ -119,7 +120,7 @@ void fragment() {
     if (!OUTPUT_IS_SRGB) {
         base = srgb_to_linear(base);
     }
-    if (insolation_view) {
+    if (data_view) {
         // A data view: self-lit, so the ramp is shown as computed.
         ALBEDO = vec3(0.0);
         EMISSION = base;
@@ -161,6 +162,29 @@ void fragment() {
     }
     const float t = std::clamp(age_myr / 180.0F, 0.0F, 1.0F);
     return godot::Color::from_hsv(0.66F * t, 0.75F, 0.85F);
+}
+
+[[nodiscard]] float drainage_weight(float catchment_area_m2, double largest_catchment_area_m2) {
+    if (!(catchment_area_m2 > 0.0F) || !(largest_catchment_area_m2 > 0.0)) {
+        return 0.0F;
+    }
+    const double fraction =
+        std::clamp(static_cast<double>(catchment_area_m2) / largest_catchment_area_m2, 0.0, 1.0);
+    return static_cast<float>(std::log1p(99.0 * fraction) / std::log(100.0));
+}
+
+[[nodiscard]] godot::Color drainage_color(float land_fraction, std::uint32_t downstream,
+                                           std::uint32_t depression_id, float weight) {
+    if (!(land_fraction > 0.0F)) {
+        return {0.015F, 0.065F, 0.14F};
+    }
+    if (depression_id != no_depression) {
+        return godot::Color{0.42F, 0.12F, 0.52F}.lerp({0.92F, 0.36F, 0.88F}, weight);
+    }
+    const godot::Color accumulated =
+        godot::Color{0.13F, 0.16F, 0.12F}.lerp({0.08F, 0.82F, 0.95F}, weight);
+    return downstream == no_downstream ? accumulated.lerp({0.72F, 1.0F, 1.0F}, 0.55F)
+                                       : accumulated;
 }
 
 [[nodiscard]] godot::Vector3 to_godot(const Vec3d& vector) {
@@ -207,6 +231,12 @@ void PlanetMeshNode::_bind_methods() {
                                 &PlanetMeshNode::get_land_fraction);
     godot::ClassDB::bind_method(godot::D_METHOD("get_plate_count"),
                                 &PlanetMeshNode::get_plate_count);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_drainage_outlet_count"),
+                                &PlanetMeshNode::get_drainage_outlet_count);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_drainage_basin_count"),
+                                &PlanetMeshNode::get_drainage_basin_count);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_drainage_depression_count"),
+                                &PlanetMeshNode::get_drainage_depression_count);
 }
 
 void PlanetMeshNode::rebuild(std::int64_t subdivision, double radius_m, std::int64_t seed,
@@ -307,7 +337,7 @@ double PlanetMeshNode::get_simulation_time() const noexcept { return clock_.time
 
 void PlanetMeshNode::set_view_mode(std::int64_t mode) {
     if (mode < 0 || mode >= view_mode_count) {
-        godot::UtilityFunctions::push_error("PlanetMeshNode: view mode must be 0..3");
+        godot::UtilityFunctions::push_error("PlanetMeshNode: view mode must be 0..4");
         return;
     }
     view_mode_ = mode;
@@ -330,6 +360,8 @@ godot::String PlanetMeshNode::get_view_mode_name() const {
         return "crust age";
     case view_insolation:
         return "top-of-atmosphere insolation";
+    case view_drainage:
+        return "drainage and catchment area";
     default:
         return "unknown";
     }
@@ -359,6 +391,15 @@ godot::String PlanetMeshNode::get_preset() const { return preset_; }
 double PlanetMeshNode::get_sea_level() const noexcept { return terrain_.sea_level_m; }
 double PlanetMeshNode::get_land_fraction() const noexcept { return terrain_.land_area_fraction; }
 std::int64_t PlanetMeshNode::get_plate_count() const noexcept { return terrain_.plate_count; }
+std::int64_t PlanetMeshNode::get_drainage_outlet_count() const noexcept {
+    return terrain_.drainage_outlet_count;
+}
+std::int64_t PlanetMeshNode::get_drainage_basin_count() const noexcept {
+    return terrain_.drainage_basin_count;
+}
+std::int64_t PlanetMeshNode::get_drainage_depression_count() const noexcept {
+    return terrain_.drainage_depression_count;
+}
 
 // Relief: each cell is a fan of triangles from its centre to its corners. A
 // vertex stands at sea level over ocean and at its height above sea level
@@ -437,6 +478,50 @@ void PlanetMeshNode::build_geometry() {
             texels_.set(packed++, texel_of(cell_count + second));
         }
     }
+
+    constexpr std::size_t route_segments = 8U;
+    constexpr double overlay_lift = 1.003;
+    std::size_t route_count = 0U;
+    for (const std::uint32_t downstream : terrain_.downstream) {
+        route_count += downstream != no_downstream ? 1U : 0U;
+    }
+    const std::size_t route_vertex_count = route_count * route_segments * 2U;
+    if (route_vertex_count > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
+        throw std::length_error("PlanetMeshNode drainage preview is too large");
+    }
+    drainage_vertices_.resize(static_cast<std::int64_t>(route_vertex_count));
+    drainage_texels_.resize(static_cast<std::int64_t>(route_vertex_count));
+    drainage_colors_.resize(static_cast<std::int64_t>(route_vertex_count));
+    std::int64_t route_vertex = 0;
+    for (const auto& cell : mesh_->cells()) {
+        const std::size_t index = cell.id.to_index();
+        const std::uint32_t downstream = terrain_.downstream[index];
+        if (downstream == no_downstream) {
+            continue;
+        }
+        if (downstream >= cell_count) {
+            throw std::logic_error("terrain snapshot has an invalid downstream cell");
+        }
+        const Vec3d first = cell.center_unit;
+        const Vec3d second = mesh_->cells()[downstream].center_unit;
+        const double first_radius = center_position[index].length() * overlay_lift;
+        const double second_radius = center_position[downstream].length() * overlay_lift;
+        const float weight = drainage_weight(terrain_.catchment_area_m2[index],
+                                              terrain_.largest_catchment_area_m2);
+        const godot::Color color =
+            godot::Color{0.06F, 0.28F, 0.34F}.lerp({0.72F, 1.0F, 1.0F}, weight);
+        for (std::size_t segment = 0; segment < route_segments; ++segment) {
+            for (std::size_t endpoint = 0; endpoint < 2U; ++endpoint) {
+                const double t =
+                    static_cast<double>(segment + endpoint) / static_cast<double>(route_segments);
+                const Vec3d direction = normalized(first * (1.0 - t) + second * t);
+                const double radius = first_radius * (1.0 - t) + second_radius * t;
+                drainage_vertices_.set(route_vertex, to_godot(direction * radius));
+                drainage_texels_.set(route_vertex, texel_of(index));
+                drainage_colors_.set(route_vertex++, color);
+            }
+        }
+    }
 }
 
 // Base colours of the current view. Terrain interpolates elevation and land
@@ -458,6 +543,12 @@ void PlanetMeshNode::build_colors() {
             return age_color(terrain_.crust_age_myr[index], continental);
         case view_insolation:
             return godot::Color{1.0F, 1.0F, 1.0F};  // unused: the shader colours this view
+        case view_drainage:
+            return drainage_color(
+                terrain_.land_fraction[index], terrain_.downstream[index],
+                terrain_.depression_id[index],
+                drainage_weight(terrain_.catchment_area_m2[index],
+                                 terrain_.largest_catchment_area_m2));
         default:
             return terrain_color(terrain_.mean_elevation_m[index], terrain_.land_fraction[index]);
         }
@@ -509,6 +600,14 @@ void PlanetMeshNode::upload_mesh() {
     }
     rendered_mesh_->clear_surfaces();
     rendered_mesh_->add_surface_from_arrays(godot::Mesh::PRIMITIVE_TRIANGLES, arrays);
+    if (view_mode_ == view_drainage) {
+        godot::Array drainage_arrays;
+        drainage_arrays.resize(godot::Mesh::ARRAY_MAX);
+        drainage_arrays[godot::Mesh::ARRAY_VERTEX] = drainage_vertices_;
+        drainage_arrays[godot::Mesh::ARRAY_COLOR] = drainage_colors_;
+        drainage_arrays[godot::Mesh::ARRAY_TEX_UV] = drainage_texels_;
+        rendered_mesh_->add_surface_from_arrays(godot::Mesh::PRIMITIVE_LINES, drainage_arrays);
+    }
 }
 
 void PlanetMeshNode::update_shader_flags() {
@@ -517,6 +616,8 @@ void PlanetMeshNode::update_shader_flags() {
     }
     material_->set_shader_parameter("day_night", day_night_shading_);
     material_->set_shader_parameter("insolation_view", view_mode_ == view_insolation);
+    material_->set_shader_parameter(
+        "data_view", view_mode_ == view_insolation || view_mode_ == view_drainage);
 }
 
 void PlanetMeshNode::refresh() {

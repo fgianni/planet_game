@@ -49,7 +49,8 @@ class PlanetMeshNode : public godot::MeshInstance3D {
         view_plates = 1,
         view_crust_age = 2,
         view_insolation = 3,
-        view_mode_count = 4,
+        view_drainage = 4,
+        view_mode_count = 5,
     };
 
     PlanetMeshNode();
@@ -76,6 +77,9 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     [[nodiscard]] double get_sea_level() const noexcept;
     [[nodiscard]] double get_land_fraction() const noexcept;
     [[nodiscard]] std::int64_t get_plate_count() const noexcept;
+    [[nodiscard]] std::int64_t get_drainage_outlet_count() const noexcept;
+    [[nodiscard]] std::int64_t get_drainage_basin_count() const noexcept;
+    [[nodiscard]] std::int64_t get_drainage_depression_count() const noexcept;
 
   private:
     void build_geometry();
@@ -102,6 +106,9 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     godot::PackedVector3Array normals_;
     godot::PackedVector2Array texels_;   // insolation texel of each vertex
     godot::PackedColorArray colors_;
+    godot::PackedVector3Array drainage_vertices_;
+    godot::PackedVector2Array drainage_texels_;
+    godot::PackedColorArray drainage_colors_;
     godot::PackedFloat32Array insolation_texels_;
     std::int32_t texture_width_ = 0;
     std::int32_t texture_height_ = 0;

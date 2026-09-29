@@ -80,7 +80,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_update_camera()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
-			KEY_1, KEY_2, KEY_3, KEY_4:
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
 				_planet.set_view_mode(event.keycode - KEY_1)
 			KEY_N:
 				_planet.set_day_night_shading(not _planet.get_day_night_shading())
@@ -115,6 +115,8 @@ func _update_camera() -> void:
 
 func _update_hud() -> void:
 	var days: float = _planet.get_simulation_time() / 86400.0
+	var legend := "cyan: catchment/path   magenta: filled depression   pale cyan: coastal outlet" \
+		if _planet.get_view_mode() == 4 else ""
 	_hud.text = "\n".join([
 		"PlanetSim  L%d  seed %d  preset %s" % [_planet.get_subdivision(), _planet.get_seed(), _planet.get_preset()],
 		"view: %s   day/night: %s   relief x%.0f" % [
@@ -124,7 +126,10 @@ func _update_hud() -> void:
 		"plates %d   land %.1f %%   sea level %.0f m" % [
 			_planet.get_plate_count(), 100.0 * _planet.get_land_fraction(), _planet.get_sea_level()],
 		"day %.2f   %.2f sim h/s%s" % [days, simulated_hours_per_second, "  (paused)" if _paused else ""],
-		"",
-		"drag: rotate  wheel: zoom  1-4: view  N: day/night  [ ]: relief",
+		"drainage: %d outlets   %d basins   %d depressions" % [
+			_planet.get_drainage_outlet_count(), _planet.get_drainage_basin_count(),
+			_planet.get_drainage_depression_count()],
+		legend,
+		"drag: rotate  wheel: zoom  1-5: view  N: day/night  [ ]: relief",
 		"R: new seed  P: preset  PgUp/PgDn: resolution  Space: pause  +/-: speed",
 	])

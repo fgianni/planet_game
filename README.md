@@ -233,12 +233,17 @@ with exaggerated relief (the sea surface is flat at the solved sea level).
 Views: `1` terrain (elevation and land/ocean from the ADR-0005 land
 fraction), `2` plates with convergent (red), divergent (blue) and transform
 (green) boundaries, `3` crust age (young ocean red, old blue; continents
-grey), `4` top-of-atmosphere insolation. The simulated day/night is laid over
-views 1--3 (`N` toggles it). Drag to rotate, wheel to zoom, `[`/`]` relief
-exaggeration, `R` new seed, `P` next preset, `PgUp`/`PgDn` resolution, `Space`
-pause, `+`/`-` simulation speed. The same settings can be passed on the
-command line, for example `godot4 --path godot -- --seed=42 --subdivision=6
---view=1`.
+grey), `4` top-of-atmosphere insolation, and `5` static drainage. The drainage
+view colours land by logarithmically scaled upstream catchment area, marks
+filled depressions in magenta, shows coastal outlets in pale cyan, and draws
+each downstream edge above the surface. These are potential routing paths,
+not simulated rivers. The simulated day/night is laid over views 1--3
+(`N` toggles it); data views 4--5 are self-lit. Drag to rotate, wheel to zoom,
+`[`/`]` relief exaggeration, `R` new seed, `P` next preset,
+`PgUp`/`PgDn` resolution, `Space` pause, `+`/`-` simulation speed. The same
+settings can be passed on the command line with zero-based view indices, for
+example `godot4 --path godot -- --seed=42 --subdivision=6 --view=4` opens the
+drainage view.
 
 The visual sphere is unit-scale; authoritative geometry, time, terrain and
 forcing use SI units. Colour ramps, relief exaggeration, smooth normals and
@@ -247,6 +252,11 @@ zooming in shows the model's real resolution, with no invented detail.
 Geometry is built once per planet or view; each update uploads only the
 snapshot's per-cell insolation to a texture the shader reads, which keeps L7
 (2.9 million vertices) at the display refresh rate.
+
+The versioned terrain snapshot also carries derived downstream, basin,
+depression and catchment values for the drainage view. It remains an
+in-process presentation object: these values are not registered fields and do
+not alter persistent `PSNAP` files.
 
 ## Architecture
 
