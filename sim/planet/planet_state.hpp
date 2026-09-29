@@ -22,6 +22,9 @@ struct ForcingState {
     double incident_solar_flux_W_m2 = 0.0;
     field_container_t<FieldId::top_of_atmosphere_insolation_W_m2>
         top_of_atmosphere_insolation_W_m2;
+    // Climate-mode forcing: the time mean over one orbital sub-step (ADR-0006
+    // §4.3), written by update_substep_mean_insolation.
+    field_container_t<FieldId::substep_mean_insolation_W_m2> substep_mean_insolation_W_m2;
 };
 
 class PlanetState {

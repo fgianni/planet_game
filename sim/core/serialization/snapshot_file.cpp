@@ -151,6 +151,7 @@ void append_json_string(std::string& output, std::string_view value) {
         append_float64(chunk.bytes, state.slow().sea_level_m);
         break;
     case FieldId::top_of_atmosphere_insolation_W_m2:
+    case FieldId::substep_mean_insolation_W_m2:
         throw std::logic_error("derived forcing field cannot be persisted");
     }
 
@@ -693,6 +694,7 @@ void decode_chunk(const FieldDescriptor& descriptor,
             read_little_endian<std::uint64_t>(bytes, 0U, "sea level value"));
         return;
     case FieldId::top_of_atmosphere_insolation_W_m2:
+    case FieldId::substep_mean_insolation_W_m2:
         break;
     }
     field_error(static_cast<std::uint32_t>(descriptor.id), "field has no persistent decoder");

@@ -9,6 +9,7 @@ namespace planetsim {
 
 enum class FieldId : std::uint32_t {
     top_of_atmosphere_insolation_W_m2 = 0x0001'0001U,
+    substep_mean_insolation_W_m2 = 0x0001'0002U,
     hypsometry_m = 0x0002'0001U,
     sea_level_m = 0x0002'0002U,
 };
@@ -88,8 +89,10 @@ struct FieldDescriptor {
     return {};
 }
 
-inline constexpr std::array<FieldDescriptor, 3> field_registry{{
+inline constexpr std::array<FieldDescriptor, 4> field_registry{{
     {FieldId::top_of_atmosphere_insolation_W_m2, "top_of_atmosphere_insolation_W_m2",
+     FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
+    {FieldId::substep_mean_insolation_W_m2, "substep_mean_insolation_W_m2",
      FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
     {FieldId::hypsometry_m, "hypsometry_m", FieldPartition::slow,
      FieldLayout::cell_layers, FieldDataType::float32, hypsometry_layer_count, "m"},

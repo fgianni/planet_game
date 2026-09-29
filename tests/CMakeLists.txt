@@ -25,6 +25,7 @@ set_tests_properties(test_golden_snapshot PROPERTIES WORKING_DIRECTORY "${PROJEC
 add_planetsim_test(test_orbit physics/test_orbit.cpp)
 add_planetsim_test(test_local_tangent_basis physics/test_local_tangent_basis.cpp)
 add_planetsim_test(test_solar_forcing physics/test_solar_forcing.cpp)
+add_planetsim_test(test_substep_forcing physics/test_substep_forcing.cpp)
 add_planetsim_test(test_icosphere physics/test_icosphere.cpp)
 add_planetsim_test(test_centroidal_voronoi physics/test_centroidal_voronoi.cpp)
 add_planetsim_test(test_plates physics/test_plates.cpp)
