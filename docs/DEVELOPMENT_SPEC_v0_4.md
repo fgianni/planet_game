@@ -588,8 +588,10 @@ at twelve sub-steps per year, for three reasons:
     fitting seasonal statistics that would themselves need calibrating
     against reference mode.
 
-This needs a decision record before M3 (section 26.1), because it fixes the
-climate-mode step and therefore the fit targets of section 24.
+Decided by `docs/decisions/0006-seasonal-climate-steps.md` (accepted
+2026-09-29): twelve sub-steps per orbital year, bounded at fixed mean-anomaly
+phases and rounded to ticks, forced by the sub-step mean insolation, with no
+adaptive coarsening.
 
 ## 9. Required planetary couplings
 
@@ -2017,7 +2019,8 @@ Foundation work completed before M2 terrain starts (task
 
 None of these blocks M2 terrain. All of them block the milestone named.
 
-1.  **Seasonal resolution in climate mode** (section 8). Fixes the
+1.  ~~**Seasonal resolution in climate mode** (section 8).~~ Done:
+    ADR-0006, accepted 2026-09-29. Fixes the
     climate-mode step at twelve sub-steps per year and therefore the fit
     targets of section 24. It must also say how the sub-steps stay aligned
     with the orbit: the default orbital period is 525,948.7536 one-minute ticks,
@@ -2056,8 +2059,7 @@ None of these blocks M2 terrain. All of them block the milestone named.
 
 -   ~~Does climate mode resolve the seasonal cycle explicitly (12 steps/year)
     or carry seasonal statistics?~~ Position taken in section 8: resolve it
-    explicitly, at twelve sub-steps per year. Needs the decision record of
-    section 26.1 item 1 to close.
+    explicitly, at twelve sub-steps per year. Closed by ADR-0006.
 -   Smallest regional subset for a weather window that still behaves
     physically at its boundaries?
 -   Do storms during accelerated play need tracks, or only strike locations and

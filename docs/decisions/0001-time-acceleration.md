@@ -4,6 +4,7 @@
 - **Date:** 2026-09-23
 - **Accepted:** 2026-09-24
 - **Amended:** 2026-09-28 — §8 milestone mapping aligned with `docs/DEVELOPMENT_SPEC_v0_2.md` §13
+- **Amended:** 2026-09-29 — §4.2 climate-mode step fixed by [ADR-0006](0006-seasonal-climate-steps.md): twelve orbital sub-steps per year, no adaptive coarsening
 - **Context document:** Planetary Civilization Simulator — Design Record v0.4, §28
 - **Supersedes / superseded by:** —
 - **Related:** ADR-0002 (mesh topology, resolution policy, field layout), ADR-0003 (determinism scope, snapshot schema, migration)
@@ -70,7 +71,7 @@ work.
 | Mode | Timestep | Purpose | When it runs |
 |---|---|---|---|
 | **Reference** | atmosphere 10 min (CFL-bound), ocean 1–6 h, land 1 h | ground truth for calibration, conservation tests, CI | offline, headless, short runs (days to a few years) |
-| **Climate** | 1 month, seasonal cycle resolved; adaptive to 3 months when the state is quiescent | the normal mode of play: decades to centuries | whenever the player is not inside a weather window |
+| **Climate** | one orbital sub-step, twelve per orbital year, seasonal cycle resolved; no adaptive coarsening (*amended 2026-09-29, ADR-0006*; was: 1 month, adaptive to 3 months when quiescent) | the normal mode of play: decades to centuries | whenever the player is not inside a weather window |
 | **Weather window** | as reference, over a bounded region and period (hours to one season) | hazards as they happen, zoom-in, in-game forecasts | on demand: player zoom, hazard trigger, forecast request |
 
 Climate mode integrates `S` with long implicit steps and derives `X` from the resolved circulation, moisture and energy budgets. Weather appears to the player as statistics and as discrete events sampled from `X` — a storm track, a drought, a heat spell — rather than as resolved fields.
@@ -182,7 +183,7 @@ carry their topics so a future renumbering is visible.
 
 ## 9. Open questions
 
-- Does climate mode resolve the seasonal cycle explicitly (12 steps/year) or carry seasonal statistics? Current position: resolve it, because monsoons, growing seasons and sea-ice seasonality are gameplay-relevant.
+- ~~Does climate mode resolve the seasonal cycle explicitly (12 steps/year) or carry seasonal statistics?~~ Resolved by ADR-0006: explicitly, at twelve orbital sub-steps per year.
 - What is the smallest regional subset for a weather window that still behaves physically at its boundaries?
 - Do storms during accelerated play need tracks, or only strike locations and intensities? Tracks are better for legibility, and imply object-based storms (Design Record §34, stage S1).
 - Is the counterfactual planet run at reduced resolution to halve its cost, and if so, does that break the comparison's credibility?
