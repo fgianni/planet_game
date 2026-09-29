@@ -17,19 +17,17 @@ authoritative. Design versions v0.7 and v0.8 are retained for history.
 
 P0 --- Living Planet.
 
-Most recently completed milestone: **M1 --- Orbit, sun, day/night and
-seasons**.
+Most recently completed milestone: **M2 --- Geological planet, terrain and
+ocean basins**.
 
-M0 and M1 are complete. M2 is in progress: gate G2-M2 (finite-volume
-operators) and the state-partition/persistent-snapshot foundation are
-complete, the pre-terrain foundation hardening is complete, and plate-scale
-terrain with sub-cell hypsometry and sea level is complete. Drainage and the
-simulation-mode scheduler have not started.
+M0 through M2 are complete. M2 includes gate G2-M2 (finite-volume
+operators), the state-partition/persistent-snapshot foundation, foundation
+hardening, plate-scale terrain with sub-cell hypsometry and sea level, and
+static cell-mesh drainage. The simulation-mode scheduler and the pre-M3
+seasonal-resolution ADR have not started.
 
-Next task: M2-03, drainage (ADR-0005 §4.2, V5--V8); its task document has not
-been written yet.
 Most recently completed task:
-[`docs/tasks/M2-02-plates-terrain-and-sea-level.md`](docs/tasks/M2-02-plates-terrain-and-sea-level.md).
+[`docs/tasks/M2-03-drainage.md`](docs/tasks/M2-03-drainage.md).
 Task documents in `docs/tasks/` state their scope, the decisions already
 made, acceptance criteria and what to report. Do not implement M3 or later
 milestones unless explicitly requested.

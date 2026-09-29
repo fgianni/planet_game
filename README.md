@@ -1,12 +1,9 @@
 # Planetary Civilization Simulator
 
-The repository has completed **P0 / M1 — Orbit, sun, day/night and
-seasons**, including the ADR-0002/0003 conformance migration. It contains a
-standalone C++20 `PlanetSim` library, headless mesh and solar diagnostics,
-tests, and an optional Godot 4 presentation adapter. M2 is in progress: the
-finite-volume operators (G2-M2) and the state-partition/persistent-snapshot
-foundation are complete; geological terrain and ocean-basin work has not
-started.
+The repository has completed **P0 / M2 — Geological planet, terrain and
+ocean basins**, including the ADR-0002/0003 conformance migration. It contains
+a standalone C++20 `PlanetSim` library, headless mesh, solar, terrain and
+drainage diagnostics, tests, and an optional Godot 4 presentation adapter.
 
 ## Requirements
 
@@ -178,25 +175,32 @@ from the small in-process `StateSnapshot` used by the presentation adapter.
 ./build/planet_cli terrain --subdivision 4 --preset aqua_planet
 ```
 
-`terrain` builds a planet from a seed (task M2-02): plates grown from spaced
-seed cells, Euler-pole motion, convergent/divergent/transform boundaries,
-continental and oceanic crust, crust age and an age--depth ocean floor,
-mountain belts, trenches, arcs, rifts and passive margins, roughness and a
-diffusive erosion approximation. The result is the ADR-0005 slow state: nine
-sub-cell elevation quantiles per cell and a global sea level solved for the
-target land fraction, with land and ocean fractions derived from them. The
-world ocean is the below-sea-level region connected to the deepest cell;
-other below-sea-level regions stay dry land until hydrology (M9).
+`terrain` builds a planet from a seed (tasks M2-02 and M2-03): plates grown
+from spaced seed cells, Euler-pole motion, convergent/divergent/transform
+boundaries, continental and oceanic crust, crust age and an age--depth ocean
+floor, mountain belts, trenches, arcs, rifts and passive margins, roughness
+and a diffusive erosion approximation. The result is the ADR-0005 slow state:
+nine sub-cell elevation quantiles per cell and a global sea level solved for
+the target land fraction, with land and ocean fractions derived from them.
+The world ocean is the below-sea-level region connected to the deepest cell;
+other below-sea-level regions stay dry land until hydrology (M9). It then
+derives a deterministic static drainage graph by priority-filling depressions,
+routing slopes and flats, assigning terminal basins, and accumulating land
+area into catchments. This topology does not yet simulate water flow.
 
 Options: `--preset earth_like|aqua_planet|dead_rock` (default `earth_like`),
 `--land-fraction F` (default 0.29), `--plates P` (2--40, default 12),
 `--workers W` (default: all cores; results are identical for any count),
 `--map FILE.csv` (one row per cell: position, plate, crust type and age,
-nearest boundary class and distance, mean, lowest and highest elevation, land
-fraction) and `--snapshot FILE.psnap` (the slow state). The printed
+nearest boundary class and distance, mean, lowest, highest and drainage
+elevation, filled elevation, land fraction, downstream cell, basin,
+depression and catchment area) and `--snapshot FILE.psnap` (the slow state).
+The printed
 diagnostics include plate areas, boundary lengths by class, crust-age ranges,
 elevation percentiles, the achieved land fraction and sea level, shelf and
-abyssal ocean fractions, and the generation time. Generator constants live in
+abyssal ocean fractions, drainage outlets, basins and depressions, catchment
+closure, maximum fill depth, graph validity, and generation timings.
+Generator constants live in
 `GeologyParameters` (`sim/planet/geology/geology_parameters.hpp`); they are
 starting values, not calibrated physics. The plate and crust structure
 (`GeologyState`) is kept in memory and is not yet persisted.
@@ -299,12 +303,12 @@ The precise M1 coordinate and validation conventions are in
 ## Current limitations
 
 M1 computes top-of-atmosphere incoming solar only. M2 now provides the
-finite-volume operators, state partitions, base persistent snapshots and
-procedural plate-scale terrain with sea level, but does not yet compute
-drainage (depression filling, routing, basins; task M2-03), albedo, absorbed
-shortwave, surface temperature, atmosphere, orbital precession or
-perturbations. Geology is generated once and is not time-evolving, and
-`GeologyState` is not persisted. Simulation-mode
+finite-volume operators, state partitions, base persistent snapshots,
+procedural plate-scale terrain with sea level, and static drainage topology,
+but does not yet compute dynamic runoff, discharge, lake water balance,
+albedo, absorbed shortwave, surface temperature, atmosphere, orbital
+precession or perturbations. Geology and drainage are generated once and are
+not time-evolving, and `GeologyState` is not persisted. Simulation-mode
 scheduling, run manifests and replay, compressed/delta snapshots, autosaves,
 and schema migrations remain assigned to later tasks and milestones. Tracer
 advection and the placement of vector fields (cell centres or edge normals)

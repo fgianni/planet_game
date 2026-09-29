@@ -291,3 +291,63 @@ number of inland depressions grows with resolution because finer cells
 resolve more closed lows; they are dry land in M2 and become lakes or
 endorheic basins through M2-03 and M9.
 
+## 10. Implementation record (M2-03, 2026-09-29)
+
+Task `docs/tasks/M2-03-drainage.md` implemented §4.2 and validation gates
+V5--V8. M2 now supplies the static topology that M9 will use; it does not
+simulate runoff, discharge, lakes or evaporation.
+
+### 10.1 Where it lives
+
+| Concern | Code |
+|---|---|
+| Conditional land-part hypsometric mean | `sim/planet/terrain/hypsometry.{hpp,cpp}` |
+| Priority-flood, depression records, flat/slope routing, basins and catchments | `sim/planet/terrain/drainage.{hpp,cpp}` |
+| Pipeline and CLI/CSV diagnostics | `sim/planet/terrain/terrain_generator.{hpp,cpp}`, `apps/planet_cli/main.cpp` |
+| Unit, physics/conservation and worker-count tests | `tests/unit/test_drainage_fill.cpp`, `tests/physics/test_drainage.cpp`, `tests/regression/test_terrain_determinism.cpp` |
+
+`DrainageState` is derived and unregistered. It is rebuilt from mesh,
+`hypsometry_m` and `sea_level_m` after generation or snapshot load, so PSNAP
+bytes and the append-only registry are unchanged.
+
+### 10.2 Deterministic definitions
+
+- Every cell with positive ocean fraction is a terminal outlet. On a no-ocean
+  planet the lowest drainage elevation, ties by `CellId`, is the one sink.
+- Priority-flood queue order is `(filled elevation, CellId)`. A depression is
+  an edge-connected set of cells raised to one exactly propagated spill level.
+  IDs follow minimum `CellId`; one adjacent external spill is chosen
+  deterministically.
+- Raised flats use breadth-first edge distance to that spill. Other flats use
+  breadth-first distance to a strict descent or terminal. Slopes select the
+  greatest filled-surface drop per centroid metre; exact ties use `CellId`.
+- Coastal outlet land area remains physical land and initializes that outlet's
+  catchment. Catchments accumulate in double in a fixed topological order and
+  convert once to the required float field. V6 is evaluated on the double
+  totals.
+- A wholly submerged cell's land-part mean has zero measure. Its highest
+  quantile is the finite limiting drainage elevation and is used only for
+  outlet diagnostics.
+
+### 10.3 Validation
+
+Release, `earth_like`, seed 20260928, four workers:
+
+| Check | L5 | L6 |
+|---|---:|---:|
+| outlets / basins | 7,904 / 7,904 | 30,762 / 30,762 |
+| filled depressions | 69 | 470 |
+| routed land area (m²) | 1.47919e14 | 1.47923e14 |
+| V6 relative closure error | 6.33794e-16 | 4.22518e-16 |
+| largest catchment (m²) | 7.60820e12 | 6.24869e12 |
+| maximum fill depth (m) | 693.266 | 436.678 |
+| invalid / cyclic / unreachable | 0 / 0 / 0 | 0 / 0 / 0 |
+| drainage regeneration time (ms) | 2.788 | 13.552 |
+| total terrain generation time (ms) | 154.329 | 594.988 |
+
+V5 and V7 pass exactly on generated and controlled terrains. V8 compares
+every derived field, depression record and diagnostic bit for bit at 1, 2, 8
+and 16 workers on L4 and L5. `dead_rock` has one sink/basin;
+`aqua_planet` has zero routed land. Release and Clang 14 ASan+UBSan suites
+pass 38/38; the strict floating-point policy checks 57 translation units with
+zero violations.

@@ -1,22 +1,24 @@
-# ADR conformance audit — M0/M1 migration and M2 infrastructure
+# ADR conformance audit — M0/M1 migration and M2
 
-- **Audit date:** 2026-09-28
+- **Audit date:** 2026-09-29
 - **Evidence baseline:** M0/M1 migration at commit `6e91459`, plus the G2-M2
-  operator and M2 state/snapshot implementation through 2026-09-28
+  operator, state/snapshot, terrain and drainage implementation through
+  2026-09-29
 - **Plan audited:** [M0/M1 ADR migration plan](../M0-M1-ADR-migration-plan.md)
-- **Scope:** completed M0/M1 migration and implemented M2 infrastructure against
+- **Scope:** completed M0/M1 migration and M2 implementation against
   [ADR-0001](../decisions/0001-time-acceleration.md),
   [ADR-0002](../decisions/0002-mesh-and-field-layout.md), and
-  [ADR-0003](../decisions/0003-determinism-snapshots-migration.md)
+  [ADR-0003](../decisions/0003-determinism-snapshots-migration.md), plus
+  [ADR-0005](../decisions/0005-coastlines-and-drainage.md)
 
 ## Conclusion
 
 The repository satisfies the actual M0 and M1 milestone acceptance criteria.
-M2 remains in progress: the finite-volume operator gate, state partition,
-base persistent snapshot format, and plate-scale geology with sub-cell
-hypsometry and sea level (task M2-02) are implemented. Drainage (task M2-03)
-and the simulation-mode scheduler have not started; later persistence work
-remains assigned to M3 through M5.
+M2 is complete: the finite-volume operator gate, state partition, base
+persistent snapshot format, plate-scale geology with sub-cell hypsometry and
+sea level, and deterministic static drainage topology are implemented. The
+simulation-mode scheduler and pre-M3 seasonal-resolution ADR have not started;
+later persistence work remains assigned to M3 through M5.
 
 The migration cleared the three structural problems found by the historical
 pre-migration audit:
@@ -78,15 +80,15 @@ budgets are enforced by tests.
 | C4 | ✅ EVIDENCED | The simulation core has no wall-clock timing dependency. Timing calls are confined to the CLI benchmark/diagnostics and Godot presentation. |
 
 The development specification defines M1 as orbit, sun, day/night, and
-seasons—not as the completed mode scheduler. C1 and C2 are now present for M2;
-C3 remains a separate future M2 task and does not block M1 acceptance.
+seasons—not as the completed mode scheduler. C1 and C2 are present; C3 remains
+separate foundation work and does not block the geological M2 criteria.
 
 ## D. Clock, RNG, and identity
 
 | ID | Status | Evidence and finding |
 |---|---|---|
 | D1 | ✅ EVIDENCED | `SimulationTick` is `std::int64_t`, one tick is 60 seconds, and seconds are derived rather than accumulated (`sim/core/scheduler/simulation_clock.hpp:7-24`). |
-| D2 | ✅ EVIDENCED | Random values are stateless and keyed by seed, stream, tick, cell, and sample index; tests compare 1-worker and 16-worker output (`sim/core/random/counter_rng.hpp`, `tests/unit/test_clock_parameters.cpp:45-74`). Eight exact golden vectors cover every key argument, all streams, negative and positive ticks, and zero/maximum values (`tests/unit/test_counter_rng.cpp`); changing them requires an ADR because it invalidates runs, snapshots, and replay. No global mutable generator was found. |
+| D2 | ✅ EVIDENCED | Random values are stateless and keyed by seed, stream, tick, cell, and sample index; tests compare 1-worker and 16-worker output (`sim/core/random/counter_rng.hpp`, `tests/unit/test_clock_parameters.cpp:45-74`). Nine exact golden vectors cover every key argument and stream, including geology, negative and positive ticks, and zero/maximum values (`tests/unit/test_counter_rng.cpp`); changing them requires an ADR because it invalidates runs, snapshots, and replay. No global mutable generator was found. |
 | D3 | ✅ EVIDENCED | The registry has stable numeric field IDs with compile-time uniqueness, ordering, persistence, and registered/retired disjointness checks (`sim/core/fields/field_registry.hpp`). `planet_cli registry dump` and `tools/ci/check_field_registry.py` compare it with the committed release baseline in CI; tests cover changed attributes, missing IDs, and explicit retirement. |
 | D4 | ✅ EVIDENCED | Persistent `PSNAP` files order registered slow fields by stable ID and encode each in layer-major/cell-major order. L0/L4/L6 write-read-write tests are byte-identical, and the strict reader rejects metadata, length, checksum, and trailing-data errors before mutating state (`sim/core/serialization/snapshot_file.cpp`, `tests/unit/test_snapshot_file.cpp`). |
 
@@ -120,6 +122,19 @@ schemas evolve.
 | No new registered fields | ✅ EVIDENCED | The registry baseline check passes unchanged; `GeologyState` stays in memory (task M2-02 §4.14). |
 | Snapshot of a generated planet | ✅ EVIDENCED | Bit-identical round trip at L4 and L5. |
 
+### M2-03 drainage (2026-09-29)
+
+| Requirement | Status | Finding |
+|---|---|---|
+| Conditional land elevation | ✅ EVIDENCED | Exact piecewise-linear integration covers full, partial and zero-measure land portions (`sim/planet/terrain/hypsometry.cpp`, `tests/unit/test_hypsometry.cpp`). |
+| ADR-0005 V5 | ✅ EVIDENCED | Every downstream reference is an edge neighbour or sentinel; controlled and generated graphs are acyclic and terminate at an outlet or the one no-ocean sink (`tests/physics/test_drainage.cpp`). |
+| ADR-0005 V6 | ✅ EVIDENCED | Fixed-order double accumulation closes outlet catchments to routed land area: relative error `6.33794e-16` at L5 and `4.22518e-16` at L6. |
+| ADR-0005 V7 | ✅ EVIDENCED | Filled elevations never decrease; every connected raised component has one deterministic ID, spill level and canonical spill cell. |
+| ADR-0005 V8 | ✅ EVIDENCED | L4/L5 drainage fields, records and diagnostics are bit-identical at 1, 2, 8 and 16 workers, including regeneration after snapshot load (`tests/regression/test_terrain_determinism.cpp`). |
+| Edge presets | ✅ EVIDENCED | `dead_rock` has one sink/basin; `aqua_planet` has zero routed land and exact zero closure residual. |
+| Derived-state boundary | ✅ EVIDENCED | `DrainageState` is unregistered and regenerated from mesh, hypsometry and sea level; persistent snapshot bytes and registry remain unchanged. |
+| Diagnostics | ✅ EVIDENCED | The terrain CLI and CSV expose the required graph, basin, depression, catchment, closure, fill and timing values. |
+
 ## Risk-register audit
 
 | Risk mitigation | Status | Finding |
@@ -150,8 +165,15 @@ v0.7 and v0.8 are retained in the tree, while v0.3--v0.6 remain available in
 git history. Accepted ADRs retain their original design-version citations and
 take precedence where a specification conflicts.
 
-## Validation observed during the migration and M2 infrastructure work
+## Validation observed during the migration and M2 work
 
+- M2-03 drainage (2026-09-29): Release 38/38; Clang 14
+  ASan+UBSan RelWithDebInfo 38/38 under `setarch -R`; floating-point policy
+  0 violations in 57 translation units.
+- M2-03 Release `earth_like`, seed 20260928, four workers: L5 drainage
+  regeneration 2.788 ms and total terrain generation 154.329 ms; L6 drainage
+  regeneration 13.552 ms and total terrain generation 594.988 ms. Both graphs
+  report zero invalid, cyclic or unreachable cells.
 - M2-02 terrain (2026-09-28, GCC 11): Release and Debug suites 35/35; GCC
   AddressSanitizer 35/35 and UndefinedBehaviorSanitizer (pointer checks
   excluded) 35/35; floating-point policy check 0 violations in 52 translation

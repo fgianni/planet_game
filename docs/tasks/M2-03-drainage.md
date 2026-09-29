@@ -202,3 +202,54 @@ rounded `Field2D<float>` values mandated by ADR-0005 §4.3.
 - Anything not met and why.
 - Any ambiguity or incorrect assumption found in the specification or ADRs.
 
+## 10. Completion note (2026-09-29)
+
+Complete on `main`. No dependency, registered field or snapshot-schema change
+was required, and no existing test was weakened.
+
+| Check | Result |
+|---|---|
+| D1 | Pass. Piecewise-linear full/partial/zero-measure land means match analytic linear, stepped and flat cases to <= 1e-12. |
+| D2 | Pass, exact. Every tested filled elevation is finite and >= its original drainage elevation. |
+| D3 | Pass, exact. Raised components have one ID and canonical spill; every member's downstream chain passes through that spill. |
+| D4 / ADR-0005 V5 | Pass, exact. All non-terminal references are edge neighbours, the graph is acyclic, and every cell reaches an outlet or the no-ocean sink. |
+| D5 / ADR-0005 V6 | Pass. Catchment closure error is 6.34e-16 at L5 and 4.23e-16 at L6. |
+| D6 | Pass. Catchments are finite/non-negative; basin IDs equal the reached terminal; double accumulation is rounded once to float storage. |
+| D7 / ADR-0005 V7 | Pass, exact. Every depression has one spill cell/level; maximum fill depth is 693.3 m at L5 and 436.7 m at L6. |
+| D8 / ADR-0005 V8 | Pass, bit-identical. L4/L5 drainage surfaces, records, routing fields, catchments and diagnostics match for 1, 2, 8 and 16 workers; regeneration after snapshot load also matches. |
+| D9 | Pass, exact. `dead_rock` has one sink/basin; `aqua_planet` has zero routed land and zero closure residual. |
+| D10 | Pass. CLI reports every requested count, area, closure, fill and validity diagnostic; CSV appends all drainage fields. |
+| D11 | Pass. Four-worker Release measurements are below; L6 total terrain generation is 0.595 s, below the 10 s flag threshold. |
+| D12 | Pass. Registry and snapshot schema are unchanged; Release and Clang ASan+UBSan are 38/38; floating-point policy is 57 translation units, 0 violations. |
+
+`earth_like`, seed 20260928:
+
+| Diagnostic | L5 | L6 |
+|---|---:|---:|
+| cells | 10,242 | 40,962 |
+| ocean outlets / basins | 7,904 / 7,904 | 30,762 / 30,762 |
+| filled drainage depressions | 69 | 470 |
+| total routed land area (m²) | 1.47919e14 | 1.47923e14 |
+| catchment closure relative error | 6.33794e-16 | 4.22518e-16 |
+| largest catchment (m²) | 7.60820e12 | 6.24869e12 |
+| maximum fill depth (m) | 693.266 | 436.678 |
+| invalid / cyclic / unreachable | 0 / 0 / 0 | 0 / 0 / 0 |
+| drainage regeneration time, 4 workers (ms) | 2.788 | 13.552 |
+| total terrain generation time, 4 workers (ms) | 154.329 | 594.988 |
+
+Interpretations required where ADR-0005 was not fully explicit:
+
+- A completely submerged outlet has zero land measure, so its drainage
+  elevation uses the highest quantile: the limit as land fraction tends to
+  zero.
+- A depression is a connected set of raised cells at one exact propagated
+  spill level. The canonical spill is the selected adjacent cell outside that
+  component.
+- Coastal outlets contribute their remaining land area to their own
+  catchment. Otherwise V6 would omit real land area.
+- V6's 1e-12 gate applies to the required double accumulator. It cannot
+  sensibly be applied after ADR-0005's required conversion to float storage.
+
+These are deterministic definitions of terms already chosen by ADR-0005, not
+changes to its decision. Dynamic lake occupancy and endorheic/spill behaviour
+remain deferred to M9.

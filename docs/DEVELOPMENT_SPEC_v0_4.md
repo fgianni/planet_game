@@ -4,7 +4,7 @@ Version: 0.4 (reconciled with design v0.9 and accepted ADRs 0001--0005 in
 `docs/decisions/`)\
 Purpose: implementation contract for Codex / Claude Code\
 Primary target: PC/Linux, C++20 + Godot 4\
-Current phase: P0 --- Living Planet (M0 and M1 complete; M2 in progress)
+Current phase: P0 --- Living Planet (M0 through M2 complete)
 
 Design document: `docs/planetary_civilization_simulator_design_v0_9.docx`.
 Accepted decision records take precedence over this specification where they
@@ -1962,8 +1962,8 @@ question is cheap there and expensive in C++:
 
 ## 26. Current implementation status and outstanding migration tasks
 
-Status as of this revision (2026-09-28): M0 and M1 complete; the ADR migration
-(integer tick clock, dual mesh, field registry, keyed RNG, aligned SoA fields,
+Status as of this revision (2026-09-29): M0 through M2 complete; the ADR
+migration (integer tick clock, dual mesh, field registry, keyed RNG, aligned SoA fields,
 `Field3D` layer-major layout, deterministic cell blocks, recursive cell
 ordering, `-ffp-contract=off`, presentation snapshot schema 2) is applied.
 Within M2: the finite-volume operators and the centroidal Voronoi mesh (G2-M2,
@@ -1975,9 +1975,11 @@ check. The pre-terrain foundation hardening (task M2-01b) is also complete:
 area-closure measurements and RNG outputs are pinned, deterministic reductions
 are reusable, field container types derive from the registry, and CI enforces
 the append-only registry contract. Plates, terrain, sub-cell hypsometry and the
-sea-level solve (task M2-02) are complete; drainage (M2-03) is next. M2-02
-amended ADR-0005 §4.1 (the ocean is anchored at the deepest cell; ADR-0005
-§9.2).
+sea-level solve (task M2-02) and deterministic static drainage topology
+(task M2-03, ADR-0005 V5--V8) are complete. M2-02 amended ADR-0005 §4.1
+(the ocean is anchored at the deepest cell; ADR-0005 §9.2). No M3 work has
+started. The simulation-mode scheduler remains foundation work, and the
+seasonal-resolution ADR required by §26.1 must precede M3.
 
 Foundation work completed before M2 terrain starts (task
 `docs/tasks/M2-01b-foundation-hardening.md`):
