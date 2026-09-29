@@ -52,7 +52,7 @@ void populate_synthetic_state(planetsim::PlanetState& state) {
         auto& slow = state.slow();
         slow.land_surface_temperature_K[cell] = static_cast<float>(temperature(cell, 20U));
         slow.land_ground_temperature_K[cell] = static_cast<float>(temperature(cell, 21U));
-        slow.ocean_mixed_layer_temperature_K[cell] = static_cast<float>(temperature(cell, 22U));
+        slow.ocean_mixed_layer_temperature_K[cell] = temperature(cell, 22U);
         slow.ocean_deep_temperature_K[cell] = temperature(cell, 23U);
     }
 }
@@ -185,17 +185,18 @@ void expect_states_equal(planetsim::test::Context& test,
                                       second.slow().land_surface_temperature_K));
     PLANETSIM_EXPECT(test, same_float(first.slow().land_ground_temperature_K,
                                       second.slow().land_ground_temperature_K));
-    PLANETSIM_EXPECT(test, same_float(first.slow().ocean_mixed_layer_temperature_K,
-                                      second.slow().ocean_mixed_layer_temperature_K));
-    const auto& first_deep = first.slow().ocean_deep_temperature_K;
-    const auto& second_deep = second.slow().ocean_deep_temperature_K;
-    PLANETSIM_EXPECT(test, first_deep.size() == second_deep.size() &&
-                               std::equal(first_deep.values().begin(), first_deep.values().end(),
-                                          second_deep.values().begin(),
-                                          [](double x, double y) {
-                                              return std::bit_cast<std::uint64_t>(x) ==
-                                                     std::bit_cast<std::uint64_t>(y);
-                                          }));
+    const auto same_double = [](const auto& a, const auto& b) {
+        return a.size() == b.size() &&
+               std::equal(a.values().begin(), a.values().end(), b.values().begin(),
+                          [](double x, double y) {
+                              return std::bit_cast<std::uint64_t>(x) ==
+                                     std::bit_cast<std::uint64_t>(y);
+                          });
+    };
+    PLANETSIM_EXPECT(test, same_double(first.slow().ocean_mixed_layer_temperature_K,
+                                       second.slow().ocean_mixed_layer_temperature_K));
+    PLANETSIM_EXPECT(test, same_double(first.slow().ocean_deep_temperature_K,
+                                       second.slow().ocean_deep_temperature_K));
 }
 
 }  // namespace
@@ -247,9 +248,13 @@ int main() {
                                    static_cast<std::uint32_t>(planetsim::FieldId::hypsometry_m));
         PLANETSIM_EXPECT(test, inspected.fields[1].field_id ==
                                    static_cast<std::uint32_t>(planetsim::FieldId::sea_level_m));
-        PLANETSIM_EXPECT(test, inspected.fields[5].field_id ==
+        PLANETSIM_EXPECT(test, inspected.fields[4].field_id ==
                                    static_cast<std::uint32_t>(
                                        planetsim::FieldId::ocean_deep_temperature_K));
+        PLANETSIM_EXPECT(test, inspected.fields[5].field_id ==
+                                   static_cast<std::uint32_t>(
+                                       planetsim::FieldId::ocean_mixed_layer_temperature_K));
+        PLANETSIM_EXPECT(test, inspected.fields[5].dtype == "float64");
     }
 
     for (const std::uint32_t level : {0U, 4U, 6U}) {
@@ -319,23 +324,30 @@ int main() {
     auto truncated = canonical_bytes;
     truncated.pop_back();
     write_file(invalid_path, truncated);
-    expect_read_failure(test, invalid_path, level_zero_mesh, "field_id 196612");
+    expect_read_failure(test, invalid_path, level_zero_mesh, "field_id 196613");
 
     write_file(invalid_path,
                replace_manifest_once(canonical_bytes, "\"format\"", "\"xormat\""));
     expect_read_failure(test, invalid_path, level_zero_mesh, "expected key format");
 
     write_file(invalid_path,
-               replace_manifest_once(canonical_bytes, "\"schema_version\":2",
+               replace_manifest_once(canonical_bytes, "\"schema_version\":3",
                                      "\"schema_version\":9"));
     expect_read_failure(test, invalid_path, level_zero_mesh, "schema_version");
 
     // A file that claims schema 1 may not carry fields introduced in schema 2.
     write_file(invalid_path,
-               replace_manifest_once(canonical_bytes, "\"schema_version\":2",
+               replace_manifest_once(canonical_bytes, "\"schema_version\":3",
                                      "\"schema_version\":1"));
     expect_read_failure(test, invalid_path, level_zero_mesh,
                         "does not exist in snapshot schema_version 1");
+
+    // Nor may a schema 2 file carry the float64 mixed layer of schema 3.
+    write_file(invalid_path,
+               replace_manifest_once(canonical_bytes, "\"schema_version\":3",
+                                     "\"schema_version\":2"));
+    expect_read_failure(test, invalid_path, level_zero_mesh,
+                        "field_id 196613: field does not exist in snapshot schema_version 2");
 
     write_file(invalid_path,
                replace_manifest_once(canonical_bytes, "\"mesh_level\":0",

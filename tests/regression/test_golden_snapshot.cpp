@@ -1,12 +1,18 @@
 #include "sim/core/random/counter_rng.hpp"
+#include "sim/core/scheduler/scheduler.hpp"
 #include "sim/core/serialization/snapshot_file.hpp"
 #include "sim/planet/mesh/icosphere.hpp"
+#include "sim/planet/orbit/climate_calendar.hpp"
 #include "sim/planet/planet_parameters.hpp"
 #include "sim/planet/planet_state.hpp"
 #include "sim/planet/surface/surface_energy.hpp"
+#include "sim/planet/terrain/surface_fractions.hpp"
 #include "tests/test_support.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <iostream>
+#include <limits>
 #include <array>
 #include <bit>
 #include <cstdint>
@@ -33,7 +39,7 @@ expected_quantiles(std::uint32_t cell) {
     return quantiles;
 }
 
-// Hypsometry and sea level shared by the v1 and v2 golden files.
+// Hypsometry and sea level shared by every golden file.
 void check_schema_1_fields(planetsim::test::Context& test, const planetsim::PlanetState& state) {
     for (std::size_t cell = 0; cell < state.mesh().cell_count(); ++cell) {
         const auto quantiles = expected_quantiles(static_cast<std::uint32_t>(cell));
@@ -105,19 +111,50 @@ int main() {
                        state.slow().ocean_deep_temperature_K[cell] ==
                            expected.ocean_deep_temperature_K[cell] &&
                        state.slow().land_surface_temperature_K[cell] > 150.0F &&
-                       state.slow().ocean_mixed_layer_temperature_K[cell] > 150.0F;
+                       state.slow().ocean_mixed_layer_temperature_K[cell] > 150.0;
         }
         PLANETSIM_EXPECT(test, migrated);
         PLANETSIM_EXPECT(test, !state.has_fast_state());
         PLANETSIM_EXPECT_NEAR(test, state.forcing().incident_solar_flux_W_m2, 0.0, 0.0);
     }
 
-    // Schema 2 (M3): every field stored, no migration needed.
+    // Schema 2 (M3-02): the mixed layer is stored as float32 under the retired
+    // ID 0x0003'0003; the schema 2 -> 3 step widens it exactly, with no
+    // initialiser (ADR-0007 §10).
     {
         planetsim::PlanetState state(mesh);
         const auto manifest = planetsim::read_snapshot(
             std::filesystem::path("tests/data/golden/psnap-v2-l0.psnap"), state);
         PLANETSIM_EXPECT(test, manifest.schema_version == 2U);
+        PLANETSIM_EXPECT(test, manifest.fields.size() == 6U);
+        PLANETSIM_EXPECT(test, manifest.fields.size() == 6U &&
+                                   manifest.fields[4].field_id == 0x0003'0003U &&
+                                   manifest.fields[4].dtype == "float32");
+        check_schema_1_fields(test, state);
+        bool exact = true;
+        for (std::size_t cell = 0; cell < mesh->cell_count(); ++cell) {
+            const double widened =
+                static_cast<double>(static_cast<float>(expected_temperature(cell, 22U)));
+            exact = exact &&
+                    state.slow().land_surface_temperature_K[cell] ==
+                        static_cast<float>(expected_temperature(cell, 20U)) &&
+                    state.slow().land_ground_temperature_K[cell] ==
+                        static_cast<float>(expected_temperature(cell, 21U)) &&
+                    std::bit_cast<std::uint64_t>(
+                        state.slow().ocean_mixed_layer_temperature_K[cell]) ==
+                        std::bit_cast<std::uint64_t>(widened) &&
+                    std::bit_cast<std::uint64_t>(state.slow().ocean_deep_temperature_K[cell]) ==
+                        std::bit_cast<std::uint64_t>(expected_temperature(cell, 23U));
+        }
+        PLANETSIM_EXPECT(test, exact);
+    }
+
+    // Schema 3 (M3 close): the mixed layer is float64; every field stored.
+    {
+        planetsim::PlanetState state(mesh);
+        const auto manifest = planetsim::read_snapshot(
+            std::filesystem::path("tests/data/golden/psnap-v3-l0.psnap"), state);
+        PLANETSIM_EXPECT(test, manifest.schema_version == 3U);
         PLANETSIM_EXPECT(test, manifest.fields.size() == 6U);
         check_schema_1_fields(test, state);
         bool exact = true;
@@ -127,8 +164,9 @@ int main() {
                         static_cast<float>(expected_temperature(cell, 20U)) &&
                     state.slow().land_ground_temperature_K[cell] ==
                         static_cast<float>(expected_temperature(cell, 21U)) &&
-                    state.slow().ocean_mixed_layer_temperature_K[cell] ==
-                        static_cast<float>(expected_temperature(cell, 22U)) &&
+                    std::bit_cast<std::uint64_t>(
+                        state.slow().ocean_mixed_layer_temperature_K[cell]) ==
+                        std::bit_cast<std::uint64_t>(expected_temperature(cell, 22U)) &&
                     std::bit_cast<std::uint64_t>(state.slow().ocean_deep_temperature_K[cell]) ==
                         std::bit_cast<std::uint64_t>(expected_temperature(cell, 23U));
         }
