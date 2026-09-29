@@ -67,7 +67,9 @@ Apply these; stop and ask before changing any of them.
    sea level). For a fully land cell, including an ocean-disconnected
    below-sea-level depression, use the mean of the complete quantile curve.
    Ocean outlets retain this value for diagnostics even though they have no
-   downstream neighbour.
+   downstream neighbour. If a cell is completely submerged, use its highest
+   quantile: this is the finite limiting conditional mean as its land fraction
+   approaches zero.
 3. **Outlets and terminal sink.** Every cell with `ocean_fraction > 0` is an
    ocean outlet. If there are no outlets, the single terminal sink is the cell
    with lowest drainage elevation, ties to lower `CellId`. Outlets and the

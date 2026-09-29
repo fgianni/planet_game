@@ -70,6 +70,16 @@ int main() {
         PLANETSIM_EXPECT(test, planetsim::below_fraction(linear, 80.0) == 1.0);
         PLANETSIM_EXPECT(test, planetsim::below_fraction(linear, 1e9) == 1.0);
         PLANETSIM_EXPECT_NEAR(test, planetsim::mean_elevation_m(linear), 40.0, 1e-12);
+        PLANETSIM_EXPECT_NEAR(test, planetsim::mean_elevation_above_m(linear, -1.0), 40.0,
+                              1e-12);
+        PLANETSIM_EXPECT_NEAR(test, planetsim::mean_elevation_above_m(linear, 20.0), 50.0,
+                              1e-12);
+        PLANETSIM_EXPECT_NEAR(test, planetsim::mean_elevation_above_m(linear, 25.0), 52.5,
+                              1e-12);
+        PLANETSIM_EXPECT_NEAR(test, planetsim::mean_elevation_above_m(linear, 80.0), 80.0,
+                              1e-12);
+        PLANETSIM_EXPECT_NEAR(test, planetsim::mean_elevation_above_m(linear, 1e9), 80.0,
+                              1e-12);
 
         // Flat segments (a plateau and a flat floor) stay continuous and monotone.
         const HypsometryQuantiles stepped{-100.0F, -100.0F, -100.0F, 0.0F, 0.0F,
@@ -96,6 +106,17 @@ int main() {
         PLANETSIM_EXPECT(test, planetsim::below_fraction(linear, 80.0) == 1.0);
         PLANETSIM_EXPECT_NEAR(test, planetsim::below_fraction(stepped, 1.0), 6.0 / 8.0 + 1.0 / 400.0,
                               1e-15);
+        PLANETSIM_EXPECT_NEAR(test, planetsim::mean_elevation_above_m(stepped, -50.0),
+                              125.0 / 11.0, 1e-12);
+        PLANETSIM_EXPECT_NEAR(test, planetsim::mean_elevation_above_m(stepped, 0.0), 15.0,
+                              1e-12);
+
+        const HypsometryQuantiles flat{-42.0F, -42.0F, -42.0F, -42.0F, -42.0F,
+                                       -42.0F, -42.0F, -42.0F, -42.0F};
+        PLANETSIM_EXPECT_NEAR(test, planetsim::mean_elevation_above_m(flat, -42.0), -42.0,
+                              1e-12);
+        PLANETSIM_EXPECT_NEAR(test, planetsim::mean_elevation_above_m(flat, -41.0), -42.0,
+                              1e-12);
     }
 
     // Sampling on a mesh: the fan-triangle weights close on each cell's area;

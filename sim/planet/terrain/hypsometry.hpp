@@ -47,6 +47,14 @@ struct ElevationSample {
 [[nodiscard]] double mean_elevation_m(
     std::span<const float, hypsometry_quantile_count> quantiles) noexcept;
 
+// Conditional mean of the piecewise-linear quantile curve over the portion
+// at or above `level_m`. At or below the lowest quantile this is the complete
+// mean. At or above the highest quantile the remaining measure is zero, so
+// the highest quantile is returned as the finite limiting value.
+[[nodiscard]] double mean_elevation_above_m(
+    std::span<const float, hypsometry_quantile_count> quantiles,
+    double level_m) noexcept;
+
 // The quantiles of one cell gathered from the layer-major field.
 [[nodiscard]] HypsometryQuantiles cell_hypsometry(const Field3D<float>& hypsometry_m, CellId cell);
 

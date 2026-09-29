@@ -128,6 +128,40 @@ double mean_elevation_m(std::span<const float, hypsometry_quantile_count> quanti
     return sum / static_cast<double>(segments);
 }
 
+double mean_elevation_above_m(
+    std::span<const float, hypsometry_quantile_count> quantiles,
+    double level_m) noexcept {
+    constexpr std::size_t segments = hypsometry_quantile_count - 1U;
+    constexpr double segment_width = 1.0 / static_cast<double>(segments);
+
+    const double start_fraction = below_fraction(quantiles, level_m);
+    if (start_fraction <= 0.0) {
+        return mean_elevation_m(quantiles);
+    }
+    if (start_fraction >= 1.0) {
+        return static_cast<double>(quantiles.back());
+    }
+
+    double integral = 0.0;
+    for (std::size_t segment = 0; segment < segments; ++segment) {
+        const double segment_start = static_cast<double>(segment) * segment_width;
+        const double segment_end = segment_start + segment_width;
+        const double integration_start = std::max(start_fraction, segment_start);
+        if (integration_start >= segment_end) {
+            continue;
+        }
+
+        const double within = (integration_start - segment_start) / segment_width;
+        const double value_at_start =
+            static_cast<double>(quantiles[segment]) +
+            within * (static_cast<double>(quantiles[segment + 1U]) -
+                      static_cast<double>(quantiles[segment]));
+        integral += 0.5 * (value_at_start + static_cast<double>(quantiles[segment + 1U])) *
+                    (segment_end - integration_start);
+    }
+    return integral / (1.0 - start_fraction);
+}
+
 HypsometryQuantiles cell_hypsometry(const Field3D<float>& hypsometry_m, CellId cell) {
     HypsometryQuantiles quantiles{};
     for (std::size_t level = 0; level < hypsometry_quantile_count; ++level) {
