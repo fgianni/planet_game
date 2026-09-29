@@ -259,3 +259,42 @@ Year 0 of the default orbit: sub-step 0 is 43,830 ticks and sub-steps 1–11
 are 43,829 ticks each, 525,949 ticks in all (the orbital year is 525,948.7536
 ticks); sub-step 3 begins on day 91.31, near the June solstice.
 
+### 9.1 Sub-step mean forcing (task M3-01, 2026-09-29)
+
+§4.3 is implemented in `sim/planet/orbit/substep_forcing.{hpp,cpp}` and fills
+the derived field `substep_mean_insolation_W_m2` (0x0001'0002). Validation in
+`tests/physics/test_substep_forcing.cpp`:
+
+| Check | Result | Gate |
+|---|---|---|
+| Daily-mean formula integrates to S/4 over the sphere at any declination | 4e-9 relative (latitude quadrature limited) | 1e-8 |
+| V3: twelve sub-steps of a year against `L / (16π a² √(1 − e²))`, on the exact latitude function | 1.6e-8 relative | 1e-6 |
+| V3, mesh: L5 area-weighted, length-weighted annual mean | 2.4e-8 relative | 1e-4 |
+| V4a: analytic daily mean against instantaneous forcing over one apparent solar day, 65 date–latitude cases | 0.014 W/m² | 0.034 W/m² |
+| V4b: 16-node sub-step mean against an hourly time mean, every cell at L4 | 0.012 W/m² | 0.034 W/m² |
+| V6 (forcing part): 1, 2, 8 and 16 workers | bit-identical | exact |
+
+Findings and refinements, recorded rather than changing §4.3:
+
+- **Sixteen quadrature nodes, not eight.** With eight, the worst sub-step
+  error was 0.048 W/m², at 83–86° latitude in the sub-steps where a cell
+  crosses between polar night and day: the integrand has a kink in time
+  there, so Gauss–Legendre converges only algebraically (12 nodes: 0.020,
+  16: 0.012, 24: 0.003 W/m²). Sixteen cost about 3 ms per sub-step at L5.
+- **V3 is measured on the latitude function, not the mesh.** The time
+  quadrature is what V3 validates; the mesh adds its own sampling error, and
+  is reported and gated separately.
+- **V4a compares with the apparent solar day.** The analytic daily mean is
+  the mean rate over one noon-to-noon day, which is up to 26 s longer or
+  shorter than the mean synodic day through the year (the equation of time).
+  Comparing with a fixed 1,440-tick window showed errors up to 0.13 W/m²
+  that are an artefact of the window, and a window not centred on local noon
+  showed up to 0.8 W/m² from the declination's drift through the day. Both
+  average out over a month.
+- **Limit of the constant-declination day.** At the polar-day edge
+  (|tan φ tan δ| near 1, where the sun barely sets) the night's length is so
+  sensitive to declination that holding it fixed for the day errs by up to
+  about 0.1 W/m² (4e-4 of the local value; 80°S at δ = −9.9°). V4a excludes
+  |tan φ tan δ| > 0.95; the effect is local, small against the month's mean,
+  and accepted.
+

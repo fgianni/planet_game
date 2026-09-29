@@ -26,12 +26,14 @@ operators), the state-partition/persistent-snapshot foundation, foundation
 hardening, plate-scale terrain with sub-cell hypsometry and sea level, static
 cell-mesh drainage, and the simulation modes, scheduler skeleton and sub-step
 calendar (task M2-04). The pre-M3 seasonal decision record is accepted
-(ADR-0006); M3 has not started.
+(ADR-0006).
 
-There is no current task. Most recently completed task:
-[`docs/tasks/M2-04-scheduler-and-calendar.md`](docs/tasks/M2-04-scheduler-and-calendar.md).
+M3 has started: task M3-01 (sub-step mean insolation) is complete; M3-02
+(surface energy columns, ADR-0007) is next and its task is not yet written.
+Most recently completed task:
+[`docs/tasks/M3-01-substep-mean-insolation.md`](docs/tasks/M3-01-substep-mean-insolation.md).
 Task documents in `docs/tasks/` state their scope, the decisions already
-made, acceptance criteria and what to report. Do not implement M3 or later
+made, acceptance criteria and what to report. Do not implement M4 or later
 milestones unless explicitly requested.
 
 ## Hard rules

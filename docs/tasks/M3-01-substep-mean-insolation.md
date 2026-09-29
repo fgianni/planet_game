@@ -145,3 +145,16 @@ Small, reviewable commits; build and run `ctest` after each.
   final Gauss–Legendre node count.
 - `planet_cli solar --substep 3` output at L5.
 - Anything not met, and why; any ambiguity found.
+
+## 9. Completion note (2026-09-29)
+
+Implemented directly, in commits `3427ef2` (forcing, registry field, tests)
+and `0111274` (`planet_cli solar --substep`). E1–E10 pass. The node count is
+16, not 8, because V4b failed at 8 (0.048 W/m²); E2 is measured on the
+latitude function with 512 Gauss–Legendre points in each of three latitude
+segments split at the polar circles (1,536 in all, fewer than the ≥ 2,000
+unsplit points §5 asked for, but exact to 4e-9 because the kinks sit on
+segment ends); E3 is centred on local
+noon, normalised by the apparent solar day, and excludes the polar-day edge.
+Measured values and the reasons are in ADR-0006 §9.1.
+

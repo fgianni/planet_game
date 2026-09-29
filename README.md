@@ -128,6 +128,19 @@ conservative relative quadrature error of `5e-4`; the current 48-sample
 annual result is approximately `6.0e-7`, while individual sampled phases
 remain below approximately `2.1e-5`.
 
+Climate mode is forced by the **sub-step mean** instead (ADR-0006 §4.3):
+
+```bash
+./build/planet_cli solar --subdivision 5 --substep 3
+```
+
+prints the sub-step's span and its global, zonal (10° bands) and extreme mean
+insolation. The diurnal cycle is averaged analytically (daily-mean insolation
+from the sunrise hour angle) and the month's motion along the orbit by
+16-point Gauss-Legendre quadrature in time. Over a year the twelve sub-steps
+carry the analytic annual mean energy to 1.6e-8 relative; the L5 mesh
+reproduces it to 2.4e-8.
+
 ## Headless operator validation
 
 ```bash
