@@ -250,3 +250,65 @@ longwave; that change will need recalibration (specification §23, lesson 1).
   material from its diffusivity.
 - Is `g` global, or does it vary with latitude to stand in for water vapour?
   Current position: global and constant in M3; anything more is atmosphere.
+
+## 9. Implementation record (task M3-02, 2026-09-29)
+
+§4.1–4.6 are implemented.
+
+| Concern | Code |
+|---|---|
+| Materials and derived layers (§4.2) | `sim/planet/surface/surface_materials.{hpp,cpp}` |
+| Column step and closed-form equilibrium (§4.3) | `sim/planet/surface/column_step.{hpp,cpp}` |
+| Mesh step, budget, scheduler processes, spin-up, initial state, migration (§4.4–4.6) | `sim/planet/surface/surface_energy.{hpp,cpp}` |
+| Fields and PSNAP schema v2 (§4.1, §4.6) | `sim/core/fields/field_registry.hpp`, `sim/planet/planet_state.{hpp,cpp}`, `sim/core/serialization/snapshot_file.{hpp,cpp}` |
+| Tests | `tests/unit/test_surface_column.cpp`, `tests/physics/test_surface_energy.cpp`, `tests/unit/test_snapshot_file.cpp`, `tests/regression/test_golden_snapshot.cpp` |
+| `planet_cli thermal` | `apps/planet_cli/main.cpp` |
+
+Refinements, recorded here rather than changing the decision:
+
+- **V2 gate.** The storage change `C (T' − T)` cannot be computed more
+  accurately than the rounding of that difference, about `4ε · C T`. A
+  ten-minute ocean step changes the mixed layer by about 5e-5 K, so a pure
+  relative gate of 1e-9 is unreachable there. The gate is 1e-9 of the flux
+  scale (`Δt (absorbed + emitted) + |storage|`) plus that rounding floor, per
+  tile and summed globally.
+- **The value of `g`.** §3.2's "near 0.39" came from a globally uniform
+  temperature. Without transport the equator is hot and the poles cold, and
+  `T⁴` is convex, so the same global emission needs a lower mean: the fit
+  is `g = 0.4964` (`earth_like_grey_emissivity`, with its record). Fit:
+  bisection to 288 K over the last of 60 spin-up years, earth_like preset,
+  L5, seed 1 (`planet_cli thermal --calibrate 288`). Seeds 2, 3 and 7 give
+  288.1, 287.7 and 287.5 K; L6 288.0 K; a 200-year spin-up 288.0 K. Land
+  mean 270.9 K, ocean 295.0 K.
+- **Experiment A has no axial tilt** (specification §13.1): the test and
+  `planet_cli thermal --preset dead_rock` set it to zero.
+- **Reference-mode forcing** is the instantaneous insolation at the step's
+  midpoint tick; climate-mode forcing is the sub-step mean (ADR-0006 §4.3).
+- **Spin-up** runs whole orbital years of climate sub-steps from the §4.5
+  initial state; 60 years leaves relative imbalances of order 1e-5 (the
+  ocean's deep layer is the slowest reservoir).
+
+Validation (L4, seed 20260929, 60 spin-up years unless stated):
+
+| ID | Result |
+|---|---|
+| V1, V3, V4 | exact; equilibrium within 1e-6 K |
+| V2 | worst ratio to the gate 0.03, per tile and globally; Newton residual ≤ 1.5e-8 W/m² |
+| V5 | seasonal range at 45° N, land 77.0 K vs ocean 6.0 K (ratio 12.8); diurnal range at the equator, land 115.6 K vs ocean 0.073 K (ratio about 1,600); dry soil, `g = 0` |
+| V6 | equator day/night 262.1–301.4 K (range 39.3 K); global mean 259.3 K; imbalance 4e-9 |
+| V7 | largest seasonal range 9.2 K; global mean 274.8 K; imbalance −2.2e-5 |
+| V8 | bit-identical for 1/2/8/16 workers and for chunked vs single `run_until` across a climate-to-reference switch |
+| V9 | v2 round trip bit-identical; v1 golden loads through the migration and equals the §4.5 state |
+| V10 | per climate sub-step, 1 / 8 workers: L5 5.5 / 1.1 ms, L6 22 / 4.0 ms, against 250 ms and 1 s |
+
+The suite passes 46/46 in GCC 11 Release and Debug, Clang 14 Release and
+Clang ASan+UBSan, with the floating-point and field-registry checks.
+
+**Open finding (not changed here).** §4.1 stores the ocean mixed layer as
+`float`. In reference mode a ten-minute step moves it by 1e-4 K, a few
+`float` ulps at 295 K, and rounding the stored value each step biases the
+result: over 30 days of ten-minute steps the error reaches 0.01–0.04 K,
+comparable to the whole diurnal range (0.07 K), and the response to a
+3 W/m² imbalance is off by a factor of about 3. Climate mode is unaffected.
+ADR-0002 §4.4 keeps slow ocean reservoirs in `float64` for this reason;
+storing the mixed layer as `double` would resolve it.

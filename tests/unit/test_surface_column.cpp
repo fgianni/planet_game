@@ -3,6 +3,7 @@
 #include "sim/planet/surface/surface_materials.hpp"
 #include "tests/test_support.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>

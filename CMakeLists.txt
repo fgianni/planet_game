@@ -140,6 +140,14 @@ if(PLANETSIM_BUILD_TESTS)
         PROPERTIES PASS_REGULAR_EXPRESSION "\n11 11 482120 525949 43829 "
     )
     add_test(
+        NAME planet_cli_thermal_smoke
+        COMMAND planet_cli thermal --preset dead_rock --subdivision 2 --years 3 --workers 2
+    )
+    set_tests_properties(
+        planet_cli_thermal_smoke
+        PROPERTIES PASS_REGULAR_EXPRESSION "g=0 mean_K=25[0-9]"
+    )
+    add_test(
         NAME planet_cli_registry_dump
         COMMAND planet_cli registry dump
     )

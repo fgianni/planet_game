@@ -167,7 +167,9 @@ second order in L2; see ADR-0002 §9 for the full record.
 ./build/planet_cli snapshot inspect planet.psnap
 ```
 
-The `PSNAP` schema-v1 format stores only authoritative slow state, in stable
+The `PSNAP` format (schema v2 since M3 added the surface temperatures; v1
+files load through a declared migration, ADR-0007 §4.6) stores only
+authoritative slow state, in stable
 field-ID order and layer-major/cell-major order within each field. Its fixed
 little-endian representation, canonical manifest, per-field CRC-32C checksums,
 and strict reader make equal states byte-identical and reject corrupt or
@@ -242,6 +244,29 @@ registration order, only in their mode, reference processes at a fixed
 cadence. Mode changes are requested, take effect at the next step and are
 logged; `run_until` never splits a step, so pacing cannot change the tick
 sequence. Weather windows are not implemented yet (ADR-0001 §8).
+
+## Surface energy
+
+```bash
+./build/planet_cli thermal --preset earth_like
+./build/planet_cli thermal --preset dead_rock --years 20
+./build/planet_cli thermal --calibrate 288
+```
+
+Every cell has a land tile and an ocean tile, each a two-layer column
+(surface and ground, or mixed layer and deep ocean) that absorbs `(1 − α) Q`
+and radiates `(1 − g/2) ε σ T⁴` to space through an optional grey layer of
+emissivity `g` (ADR-0007). Each step is backward Euler, stable for a whole
+climate sub-step, and its budget closes to rounding. The surface is the first
+scheduler process: climate steps use the sub-step mean insolation, reference
+steps the instantaneous insolation. There is no horizontal transport yet, so
+the equator is too hot and the poles too cold. The command spins a generated
+planet up from radiative equilibrium and prints the last year's global,
+land and ocean mean temperature, energy balance and the cost per sub-step.
+Dead rock (no tilt, `g = 0`) and the aqua planet are experiments A and B of
+the specification; the Earth-like `g = 0.4964` is a calibration constant
+fitted to a 288 K global mean (`--calibrate`), to be refitted when the
+atmosphere and clouds arrive.
 
 ## Optional Godot preview
 
@@ -350,16 +375,13 @@ The precise M1 coordinate and validation conventions are in
 
 ## Current limitations
 
-M1 computes top-of-atmosphere incoming solar only. M2 now provides the
-finite-volume operators, state partitions, base persistent snapshots,
-procedural plate-scale terrain with sea level, and static drainage topology,
-but does not yet compute dynamic runoff, discharge, lake water balance,
-albedo, absorbed shortwave, surface temperature, atmosphere, orbital
-precession or perturbations. Geology and drainage are generated once and are
-not time-evolving, and `GeologyState` is not persisted. The scheduler has no
-physics processes yet; the sub-step mean forcing of ADR-0006 §4.3 arrives with
-M3. Run manifests and replay, compressed/delta snapshots, autosaves, and
-schema migrations remain assigned to later tasks and milestones. Tracer
+M2 provides the finite-volume operators, state partitions, base persistent
+snapshots, procedural plate-scale terrain with sea level, and static drainage
+topology; M3 adds surface temperatures from radiative columns without
+horizontal transport. Dynamic runoff, discharge, lake water balance, snow and
+ice, the atmosphere, clouds, orbital precession and perturbations are not yet
+computed. Geology and drainage are generated once and are
+not time-evolving, and `GeologyState` is not persisted. Run manifests and replay, compressed/delta snapshots and autosaves remain assigned to later tasks and milestones. Tracer
 advection and the placement of vector fields (cell centres or edge normals)
 are left to the first milestone that transports them. The two-point
 Laplacian's pointwise truncation error does not converge next to the pentagons

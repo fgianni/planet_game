@@ -12,6 +12,8 @@
 #include "sim/planet/orbit/substep_forcing.hpp"
 #include "sim/planet/planet_parameters.hpp"
 #include "sim/planet/planet_state.hpp"
+#include "sim/planet/surface/surface_energy.hpp"
+#include "sim/planet/terrain/surface_fractions.hpp"
 #include "sim/planet/terrain/hypsometry.hpp"
 #include "sim/planet/terrain/terrain_diagnostics.hpp"
 #include "sim/planet/terrain/terrain_generator.hpp"
@@ -77,6 +79,16 @@ struct TerrainOptions {
     std::filesystem::path snapshot_path;
 };
 
+struct ThermalOptions {
+    std::uint32_t subdivision = 5;
+    std::uint64_t seed = 1;
+    planetsim::PlanetPreset preset = planetsim::PlanetPreset::earth_like;
+    int years = 60;
+    std::optional<double> grey_emissivity;
+    std::optional<double> calibrate_K;   // fit g so the last spin-up year has this mean
+    std::size_t worker_count = 0;        // 0: hardware concurrency
+};
+
 constexpr std::uint64_t snapshot_synthetic_seed = 0x9B97'F4A7'C150'0011ULL;
 constexpr planetsim::SimulationTick snapshot_synthetic_tick = 123'456;
 
@@ -92,7 +104,9 @@ void print_usage(std::ostream& output) {
               " [--land-fraction F] [--plates P] [--workers W] [--map FILE.csv]"
               " [--snapshot FILE.psnap]\n"
            << "    presets: earth_like (default), aqua_planet, dead_rock\n"
-           << "  planet_cli calendar [--year N | --from-tick T]\n";
+           << "  planet_cli calendar [--year N | --from-tick T]\n"
+           << "  planet_cli thermal [--subdivision LEVEL] [--seed N] [--preset NAME]"
+              " [--years N] [--grey G | --calibrate KELVIN] [--workers W]\n";
 }
 
 [[nodiscard]] std::uint32_t parse_subdivision(std::string_view text) {
@@ -205,6 +219,49 @@ void print_usage(std::ostream& output) {
         } else {
             throw std::invalid_argument("unknown terrain option: " + std::string(argument));
         }
+    }
+    return options;
+}
+
+[[nodiscard]] ThermalOptions parse_thermal_options(int argument_count, char** arguments) {
+    ThermalOptions options;
+    for (int index = 2; index < argument_count; ++index) {
+        const std::string_view argument{arguments[index]};
+        if (++index >= argument_count) {
+            throw std::invalid_argument(std::string(argument) + " requires a value");
+        }
+        const std::string_view value{arguments[index]};
+        if (argument == "--subdivision") {
+            options.subdivision = parse_subdivision(value);
+        } else if (argument == "--seed") {
+            options.seed = parse_unsigned(value, "seed");
+        } else if (argument == "--preset") {
+            const auto preset = planetsim::parse_planet_preset(value);
+            if (!preset) {
+                throw std::invalid_argument("unknown preset: " + std::string(value));
+            }
+            options.preset = *preset;
+        } else if (argument == "--years") {
+            const std::int64_t years = parse_int64(value, "year count");
+            if (years <= 0 || years > 100'000) {
+                throw std::invalid_argument("invalid year count: " + std::string(value));
+            }
+            options.years = static_cast<int>(years);
+        } else if (argument == "--grey") {
+            options.grey_emissivity = parse_double(value, "grey emissivity");
+        } else if (argument == "--calibrate") {
+            options.calibrate_K = parse_double(value, "calibration target");
+        } else if (argument == "--workers") {
+            options.worker_count = static_cast<std::size_t>(parse_unsigned(value, "worker count"));
+            if (options.worker_count == 0U) {
+                throw std::invalid_argument("worker count must be positive");
+            }
+        } else {
+            throw std::invalid_argument("unknown thermal option: " + std::string(argument));
+        }
+    }
+    if (options.grey_emissivity && options.calibrate_K) {
+        throw std::invalid_argument("--grey and --calibrate are exclusive");
     }
     return options;
 }
@@ -973,6 +1030,76 @@ int run_calendar(int argument_count, char** arguments) {
 
 }  // namespace
 
+// The surface energy columns of ADR-0007 on a generated planet: spin-up from
+// the equilibrium initial state, the last year's budget, per-sub-step cost
+// (V10) and, with --calibrate, the bisection fit of g (specification §24).
+int run_thermal(const ThermalOptions& options) {
+    const std::size_t worker_count =
+        options.worker_count != 0U ? options.worker_count
+                                   : std::max<std::size_t>(1U, std::thread::hardware_concurrency());
+    auto parameters = planetsim::PlanetParameters::earth_development();
+    if (options.preset == planetsim::PlanetPreset::dead_rock) {
+        parameters.axial_tilt_rad = 0.0;   // experiment A (specification §13.1)
+    }
+    auto mesh = std::make_shared<const planetsim::PlanetMesh>(
+        planetsim::make_icosphere(options.subdivision, 6'371'000.0));
+    // Every spin-up starts by reinitialising the temperatures, so one state
+    // serves the calibration and the final run.
+    planetsim::PlanetState state(mesh);
+    static_cast<void>(planetsim::generate_terrain(
+        state, options.seed, planetsim::geology_parameters_for(options.preset), worker_count));
+    const auto fractions = planetsim::compute_surface_fractions(
+        *mesh, state.slow().hypsometry_m, state.slow().sea_level_m, worker_count);
+
+    auto surface = planetsim::surface_energy_parameters_for(options.preset);
+    if (options.grey_emissivity) {
+        surface.grey_emissivity = *options.grey_emissivity;
+    }
+    const auto spin_up = [&](const planetsim::SurfaceEnergyParameters& candidate) {
+        planetsim::initialise_surface_temperatures(*mesh, state.slow(), parameters, candidate,
+                                                   worker_count);
+        return planetsim::spin_up_surface_energy(state, parameters, candidate, fractions,
+                                                 options.years, worker_count);
+    };
+
+    std::cout << std::setprecision(9) << "preset=" << planetsim::planet_preset_name(options.preset)
+              << " subdivision=" << options.subdivision << " cells=" << mesh->cell_count()
+              << " seed=" << options.seed << " years=" << options.years
+              << " axial_tilt_deg=" << parameters.axial_tilt_rad * 180.0 / std::numbers::pi
+              << " land_area_fraction=" << fractions.land_area_fraction << '\n';
+    if (options.calibrate_K) {
+        double low = 0.0;
+        double high = 0.95;
+        for (int iteration = 0; iteration < 40; ++iteration) {
+            auto candidate = surface;
+            candidate.grey_emissivity = 0.5 * (low + high);
+            const auto year = spin_up(candidate);
+            (year.mean_surface_temperature_K < *options.calibrate_K ? low : high) =
+                candidate.grey_emissivity;
+            std::cout << "calibrate iteration=" << iteration << " g=" << candidate.grey_emissivity
+                      << " mean_K=" << year.mean_surface_temperature_K << '\n';
+        }
+        surface.grey_emissivity = 0.5 * (low + high);
+        std::cout << "calibrated g=" << std::setprecision(6) << surface.grey_emissivity
+                  << std::setprecision(9) << '\n';
+    }
+
+    const auto spin_start = std::chrono::steady_clock::now();
+    const auto year = spin_up(surface);
+    const auto spin_finish = std::chrono::steady_clock::now();
+    const double substep_ms =
+        std::chrono::duration<double, std::milli>(spin_finish - spin_start).count() /
+        static_cast<double>(options.years * planetsim::climate_substeps_per_year);
+    std::cout << "g=" << surface.grey_emissivity
+              << " mean_K=" << year.mean_surface_temperature_K
+              << " land_mean_K=" << year.land_mean_surface_temperature_K
+              << " ocean_mean_K=" << year.ocean_mean_surface_temperature_K
+              << " absorbed_W=" << year.absorbed_W << " emitted_W=" << year.emitted_W
+              << " relative_imbalance=" << year.relative_imbalance() << '\n'
+              << "timing workers=" << worker_count << " ms_per_substep=" << substep_ms << '\n';
+    return 0;
+}
+
 int main(int argument_count, char** arguments) {
     try {
         if (argument_count == 2 && std::string_view{arguments[1]} == "--help") {
@@ -995,6 +1122,9 @@ int main(int argument_count, char** arguments) {
         }
         if (command == "terrain") {
             return run_terrain(parse_terrain_options(argument_count, arguments));
+        }
+        if (command == "thermal") {
+            return run_thermal(parse_thermal_options(argument_count, arguments));
         }
         if (command == "calendar") {
             return run_calendar(argument_count, arguments);

@@ -28,10 +28,10 @@ cell-mesh drainage, and the simulation modes, scheduler skeleton and sub-step
 calendar (task M2-04). The pre-M3 seasonal decision record is accepted
 (ADR-0006).
 
-M3 has started: task M3-01 (sub-step mean insolation) is complete; M3-02
-(surface energy columns, ADR-0007) is next and its task is not yet written.
-Most recently completed task:
-[`docs/tasks/M3-01-substep-mean-insolation.md`](docs/tasks/M3-01-substep-mean-insolation.md).
+M3 tasks M3-01 (sub-step mean insolation) and M3-02 (surface energy
+columns, experiments A and B, ADR-0007) are complete. Most recently
+completed task:
+[`docs/tasks/M3-02-surface-energy-columns.md`](docs/tasks/M3-02-surface-energy-columns.md).
 Task documents in `docs/tasks/` state their scope, the decisions already
 made, acceptance criteria and what to report. Do not implement M4 or later
 milestones unless explicitly requested.

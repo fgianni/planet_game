@@ -109,7 +109,7 @@ schemas evolve.
 | G3-M1 | ✅ EVIDENCED | Field layout, fixed blocks, fixed block-index reductions, 1/2/8/16-worker forcing equality, memory gates, and V7 are green. |
 | G3-M3 | NOT FOUND | Full command replay and checkpoint state hashes are correctly deferred to M3. |
 | G4 | ⚠ RUNTIME_ONLY | The slow/fast/climatology state partition, lazy fast-state lifecycle, simulation modes and the multi-rate scheduler skeleton (task M2-04) are implemented. The years-per-minute harness and state hashes remain M3 work. |
-| G5 | ⚠ RUNTIME_ONLY | The M2 base snapshot writer/reader, canonical ordering, CRC-32C validation, corruption tests, V4 round trips, CLI inspection, and initial golden save are complete. Manifests/replay (M3), delta chains/compression (M4), and migration machinery (M5) are not yet implemented. |
+| G5 | ⚠ RUNTIME_ONLY | The M2 base snapshot writer/reader, canonical ordering, CRC-32C validation, corruption tests, V4 round trips, CLI inspection, and initial golden save are complete. *Updated 2026-09-29 (task M3-02):* schema v2 with a declared v1 → v2 migration hook is implemented. Manifests/replay (M3), delta chains/compression (M4), and general migration machinery (M5) are not yet implemented. |
 
 ### M2-02 terrain (2026-09-28)
 
@@ -134,6 +134,17 @@ schemas evolve.
 | Edge presets | ✅ EVIDENCED | `dead_rock` has one sink/basin; `aqua_planet` has zero routed land and exact zero closure residual. |
 | Derived-state boundary | ✅ EVIDENCED | `DrainageState` is unregistered and regenerated from mesh, hypsometry and sea level; persistent snapshot bytes and registry remain unchanged. |
 | Diagnostics | ✅ EVIDENCED | The terrain CLI and CSV expose the required graph, basin, depression, catchment, closure, fill and timing values. |
+
+### M3-02 surface energy columns (2026-09-29)
+
+| Requirement | Status | Finding |
+|---|---|---|
+| ADR-0007 V1–V4 | ✅ EVIDENCED | Backward-Euler column stable to 1e12 s steps; closure within 1e-9 of the flux scale plus the rounding floor; signs; closed-form equilibrium within 1e-6 K (`tests/unit/test_surface_column.cpp`). |
+| ADR-0007 V2 globally, V5–V8 | ✅ EVIDENCED | `tests/physics/test_surface_energy.cpp`; measured values in ADR-0007 §9. Bit-identical at 1, 2, 8 and 16 workers and for chunked scheduler runs across a mode switch. |
+| ADR-0007 V9, PSNAP schema v2 | ✅ EVIDENCED | Four new slow fields in the registry baseline; v1 golden loads through the declared migration; v2 golden round trip exact (`tests/regression/test_golden_snapshot.cpp`). |
+| ADR-0007 V10 | ✅ EVIDENCED | 1.1 ms (L5) and 4.0 ms (L6) per climate sub-step at 8 workers, against 250 ms and 1 s (`planet_cli thermal`). |
+| Calibration constants recorded (specification §24) | ✅ EVIDENCED | `earth_like_grey_emissivity = 0.4964` carries its fit target, run and sensitivity (`sim/planet/surface/surface_energy.hpp`, ADR-0007 §9). |
+| Reference-mode precision (ADR-0002 §4.4) | ⚠ RUNTIME_ONLY | The `float` ocean mixed layer loses ten-minute increments to rounding; see the open finding in ADR-0007 §9. |
 
 ## Risk-register audit
 
