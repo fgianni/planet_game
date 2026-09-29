@@ -350,6 +350,8 @@ int run_terrain(const TerrainOptions& options) {
               << "drainage_cycle_count: " << drainage.diagnostics.cycle_count << '\n'
               << "drainage_unreachable_cell_count: "
               << drainage.diagnostics.unreachable_cell_count << '\n'
+              << "drainage_time_ms: " << generation.drainage_generation_time_ms
+              << '\n'
               << "mesh_time_ms: " << milliseconds(mesh_start, generation_start) << '\n'
               << "generation_time_ms: " << milliseconds(generation_start, generation_finish) << '\n';
 

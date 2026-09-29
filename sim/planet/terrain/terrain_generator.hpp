@@ -15,6 +15,7 @@ struct TerrainGeneration {
     GeologyState geology;  // in memory only (task M2-02 §4.14)
     SeaLevelSolution sea_level;
     DrainageState drainage;  // derived; regenerated after load
+    double drainage_generation_time_ms = 0.0;  // diagnostic only; never state
 };
 
 // Generates geology, sub-cell hypsometry, sea level and the static drainage
