@@ -1948,6 +1948,11 @@ The prototype is also a **behavioural oracle**: run the C++ core against the
 same scenarios and compare with the recorded prototype results before trusting
 its own calibration. Retire the prototype only at parity, never by merging it.
 
+The oracle is distilled in `docs/prototype-oracle.md`: the prototype's
+validation recipes with their recorded results, the constants worth starting
+from, and the shortcuts PlanetSim must not copy. Use it instead of reading the
+GDScript; the prototype itself is `prototype/climate_planet_0.5/`.
+
 Design v0.9 gives the prototype a specific queue, in this order, because each
 question is cheap there and expensive in C++:
 
