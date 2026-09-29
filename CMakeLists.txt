@@ -24,6 +24,7 @@ add_library(PlanetSim STATIC
     sim/core/serialization/crc32c.cpp
     sim/core/serialization/snapshot_file.cpp
     sim/core/serialization/state_snapshot.cpp
+    sim/core/scheduler/orbital_calendar.cpp
     sim/core/scheduler/simulation_clock.cpp
     sim/planet/coordinates/local_tangent_basis.cpp
     sim/planet/geology/crust.cpp
@@ -36,6 +37,7 @@ add_library(PlanetSim STATIC
     sim/planet/mesh/planet_mesh.cpp
     sim/planet/operators/finite_volume.cpp
     sim/planet/operators/operator_validation.cpp
+    sim/planet/orbit/climate_calendar.cpp
     sim/planet/orbit/orbit_state.cpp
     sim/planet/orbit/solar_diagnostics.cpp
     sim/planet/orbit/solar_forcing.cpp
