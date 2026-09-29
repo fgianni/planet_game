@@ -21,18 +21,15 @@ P0 --- Living Planet.
 Most recently completed milestone: **M2 --- Geological planet, terrain and
 ocean basins**.
 
-M0 and M1 are complete. M2's terrain work is complete: gate G2-M2
-(finite-volume operators), the state-partition/persistent-snapshot
-foundation, foundation hardening, plate-scale terrain with sub-cell
-hypsometry and sea level, and static cell-mesh drainage. M2 closes with task
-M2-04 (simulation modes, scheduler skeleton, sub-step calendar). The pre-M3
-seasonal decision record is accepted (ADR-0006).
+M0 through M2 are complete. M2 includes gate G2-M2 (finite-volume
+operators), the state-partition/persistent-snapshot foundation, foundation
+hardening, plate-scale terrain with sub-cell hypsometry and sea level, static
+cell-mesh drainage, and the simulation modes, scheduler skeleton and sub-step
+calendar (task M2-04). The pre-M3 seasonal decision record is accepted
+(ADR-0006); M3 has not started.
 
-Current task:
-[`docs/tasks/M2-04-scheduler-and-calendar.md`](docs/tasks/M2-04-scheduler-and-calendar.md),
-which closes the ADR-0001 §8 M0–M2 row (scheduler skeleton and mode enum).
-Most recently completed task:
-[`docs/tasks/M2-03-drainage.md`](docs/tasks/M2-03-drainage.md).
+There is no current task. Most recently completed task:
+[`docs/tasks/M2-04-scheduler-and-calendar.md`](docs/tasks/M2-04-scheduler-and-calendar.md).
 Task documents in `docs/tasks/` state their scope, the decisions already
 made, acceptance criteria and what to report. Do not implement M3 or later
 milestones unless explicitly requested.

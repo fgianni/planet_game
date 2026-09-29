@@ -214,3 +214,48 @@ budget must be met at twelve steps per year.
 - Does a weather window start and end on sub-step boundaries? Current
   position: no, it runs on its own reference-mode ticks and hands back
   accumulated fluxes for the sub-step it overlaps (ADR-0001 §4.3).
+
+## 9. Implementation record (task M2-04, 2026-09-29)
+
+§4.1 and §4.4 are implemented; §4.3 (sub-step mean forcing, V3, V4) and the
+remainder of V6 belong to M3.
+
+| Concern | Code |
+|---|---|
+| Calendar (`OrbitalCalendar`, `ClimateSubstep`, `climate_substep`, `climate_substep_containing`) | `sim/core/scheduler/orbital_calendar.{hpp,cpp}` |
+| §4.4 signatures on `PlanetParameters` | `sim/planet/orbit/climate_calendar.{hpp,cpp}` |
+| Modes and scheduler | `sim/core/scheduler/simulation_mode.hpp`, `sim/core/scheduler/scheduler.{hpp,cpp}` |
+| Tests | `tests/unit/test_orbital_calendar.cpp`, `tests/unit/test_scheduler.cpp` |
+| `planet_cli calendar` | `apps/planet_cli/main.cpp` |
+
+Refinements of §4.4, recorded here rather than changing the decision:
+
+- The calendar takes a plain `OrbitalCalendar` (orbital period and initial
+  mean anomaly) because core code may not depend on the planet module
+  (specification §2). The `PlanetParameters` functions of §4.4 forward to it.
+- `climate_substep_containing` estimates the index from the inverse formula
+  and then corrects it against the exact boundaries, so a tick on a boundary
+  is never assigned by a floating-point division.
+- The calendar requires a period of at least twelve ticks, so that every
+  sub-step is at least one tick long.
+- Reference-mode steps are bounded at multiples of the ten-tick reference
+  step, as climate steps are bounded at sub-step boundaries: after a switch
+  from climate mode, the first reference step is the partial step up to the
+  grid (for example 43,829 to 43,830). Without this, a process with an hourly
+  cadence would never run after a switch that lands off the grid.
+
+Validation (Release, GCC 11; the same suite passes in GCC Debug, Clang
+Release and Clang ASan+UBSan, 41/41 tests):
+
+| Check | Result |
+|---|---|
+| V1: lengths for k in [−10⁵, 10⁵] | all 43,829 or 43,830 ticks, strictly increasing |
+| V2: drift over 10,000 years | at most 1 tick |
+| V5: `climate_substep_containing` vs `climate_substep`, every tick of year 0 and of the year around tick 0 | exact |
+| V7: a run started at tick 12,345 | first step is the remainder of sub-step 0; every later boundary equals the tick-0 run |
+| V6 (pacing part): `run_until` in one call and in seven chunks, across two mode changes, about four orbital years | identical step sequences and final tick |
+
+Year 0 of the default orbit: sub-step 0 is 43,830 ticks and sub-steps 1–11
+are 43,829 ticks each, 525,949 ticks in all (the orbital year is 525,948.7536
+ticks); sub-step 3 begins on day 91.31, near the June solstice.
+

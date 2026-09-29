@@ -63,8 +63,14 @@ The planetary state is split by how it is integrated, not by subsystem:
 hypsometry layers and global sea level; the currently empty fast partition is
 lazily allocated and releasable; forcing remains derived and outside slow
 state. Persistent snapshots serialize only registered slow fields. Physical
-weather/climatology fields and the simulation-mode scheduler remain future M2
-work.
+weather/climatology fields remain future work.
+
+*Implementation note (2026-09-29, task M2-04):* `SimulationMode` (reference,
+climate, weather window) and a serial, deterministic `Scheduler` complete the
+M0–M2 row of §8 together with the partition above. Climate steps are the
+ADR-0006 sub-steps; reference steps are ten ticks on a fixed grid; mode
+changes are requested, take effect at the next step and are logged; weather
+windows throw until M10–M12. See ADR-0006 §9.
 
 ### 4.2 The three modes
 

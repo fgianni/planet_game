@@ -76,12 +76,12 @@ budgets are enforced by tests.
 |---|---|---|
 | C1 | ✅ EVIDENCED | `PlanetState` exposes `SlowState`, `FastState`, and `Climatology`; the slow partition owns hypsometry and sea level, while forcing is derived outside it (`sim/planet/planet_state.hpp`, `tests/unit/test_planet_state.cpp`). |
 | C2 | ✅ EVIDENCED | `FastState` is absent by default, allocated only by `open_fast_state()`, and discarded by `release_fast_state()`; lifecycle behavior is tested (`sim/planet/planet_state.cpp`, `tests/unit/test_planet_state.cpp`). |
-| C3 | NOT FOUND | No simulation-mode enum or multi-rate scheduler dispatch exists. |
+| C3 | ✅ EVIDENCED | *Updated 2026-09-29 (task M2-04).* `SimulationMode` and a serial `Scheduler` dispatch registered processes by mode, with reference-mode cadence, on the ADR-0006 sub-step calendar; mode changes are logged and pacing cannot change the step sequence (`sim/core/scheduler/scheduler.{hpp,cpp}`, `tests/unit/test_scheduler.cpp`). |
 | C4 | ✅ EVIDENCED | The simulation core has no wall-clock timing dependency. Timing calls are confined to the CLI benchmark/diagnostics and Godot presentation. |
 
 The development specification defines M1 as orbit, sun, day/night, and
-seasons—not as the completed mode scheduler. C1 and C2 are present; C3 remains
-separate foundation work and does not block the geological M2 criteria.
+seasons—not as the completed mode scheduler. C1, C2 and C3 are now present;
+C3 closed M2 with task M2-04.
 
 ## D. Clock, RNG, and identity
 
@@ -108,7 +108,7 @@ schemas evolve.
 | G2-M2 | ✅ EVIDENCED | *Updated 2026-09-28.* V3/V4 pass L3–L6 with the error map uploaded by CI. Required the ADR-0002 amendment to circumcentre corners and a centroidal Voronoi mesh; see ADR-0002 §9. |
 | G3-M1 | ✅ EVIDENCED | Field layout, fixed blocks, fixed block-index reductions, 1/2/8/16-worker forcing equality, memory gates, and V7 are green. |
 | G3-M3 | NOT FOUND | Full command replay and checkpoint state hashes are correctly deferred to M3. |
-| G4 | ⚠ RUNTIME_ONLY | The slow/fast/climatology state partition and lazy fast-state lifecycle are implemented. Simulation modes, multi-rate scheduling, the years-per-minute harness, and state hashes remain future work. |
+| G4 | ⚠ RUNTIME_ONLY | The slow/fast/climatology state partition, lazy fast-state lifecycle, simulation modes and the multi-rate scheduler skeleton (task M2-04) are implemented. The years-per-minute harness and state hashes remain M3 work. |
 | G5 | ⚠ RUNTIME_ONLY | The M2 base snapshot writer/reader, canonical ordering, CRC-32C validation, corruption tests, V4 round trips, CLI inspection, and initial golden save are complete. Manifests/replay (M3), delta chains/compression (M4), and migration machinery (M5) are not yet implemented. |
 
 ### M2-02 terrain (2026-09-28)
@@ -188,6 +188,9 @@ take precedence where a specification conflicts.
   CI, run under `setarch -R`) 35/35.
 - L6 `earth_like` terrain generation, Release: 220 ms with 24 workers,
   1.35 s with one worker (task M2-02 A13 threshold 10 s).
+- M2-04 scheduler and calendar (2026-09-29): GCC Debug and Release, Clang
+  Release and Clang ASan+UBSan (under `setarch -R`) 41/41; floating-point
+  policy 0 violations in 62 translation units; registry check passed.
 - Normal headless suite before M2-02: 26/26 tests passed.
 - AddressSanitizer/UndefinedBehaviorSanitizer suite: 26/26 tests passed
   (Clang, 2026-09-28).

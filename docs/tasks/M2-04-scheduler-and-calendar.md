@@ -153,3 +153,11 @@ Small, reviewable commits; build and run `ctest` after each.
   output for year 0.
 - Anything not met, and why; any ambiguity found in ADR-0001, ADR-0006 or the
   specification.
+
+## 9. Completion note (2026-09-29)
+
+Implemented directly rather than by Codex, in commits `11c08d9` (calendar),
+`2100b86` (modes and scheduler) and the `planet_cli calendar` commit. C1–C10
+pass; results and the two refinements (reference steps on a fixed grid, the
+core `OrbitalCalendar` type) are recorded in ADR-0006 §9.
+

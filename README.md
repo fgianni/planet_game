@@ -1,9 +1,10 @@
 # Planetary Civilization Simulator
 
 The repository has completed **P0 / M2 — Geological planet, terrain and
-ocean basins**, including the ADR-0002/0003 conformance migration. It contains
-a standalone C++20 `PlanetSim` library, headless mesh, solar, terrain and
-drainage diagnostics, tests, and an optional Godot 4 presentation adapter.
+ocean basins**, including the ADR-0002/0003 conformance migration and the
+simulation-mode scheduler. It contains a standalone C++20 `PlanetSim` library,
+headless mesh, solar, terrain, drainage and calendar diagnostics, tests, and
+an optional Godot 4 presentation adapter.
 
 ## Requirements
 
@@ -207,6 +208,28 @@ Generator constants live in
 starting values, not calibrated physics. The plate and crust structure
 (`GeologyState`) is kept in memory and is not yet persisted.
 
+## Simulation modes and the climate calendar
+
+```bash
+./build/planet_cli calendar --year 0
+./build/planet_cli calendar --from-tick 500000
+```
+
+Climate mode, the normal mode of play, steps twelve times per orbital year
+(ADR-0006). Sub-step *k* begins at the first one-minute tick at or after the
+orbit reaches mean anomaly 2πk/12 from periapsis, so steps are 43,829 or
+43,830 ticks long for the default Earth, never drift, and mean the same part
+of the orbit in every scenario. The command prints twelve sub-steps: index,
+month, begin and end tick, length and begin day.
+
+`Scheduler` (`sim/core/scheduler/scheduler.hpp`) advances the clock one step
+at a time in the current `SimulationMode`: to the next sub-step boundary in
+climate mode, or by the ten-tick reference step. Registered processes run in
+registration order, only in their mode, reference processes at a fixed
+cadence. Mode changes are requested, take effect at the next step and are
+logged; `run_until` never splits a step, so pacing cannot change the tick
+sequence. Weather windows are not implemented yet (ADR-0001 §8).
+
 ## Optional Godot preview
 
 The default build does not inspect or require Godot. To build the adapter,
@@ -320,9 +343,10 @@ procedural plate-scale terrain with sea level, and static drainage topology,
 but does not yet compute dynamic runoff, discharge, lake water balance,
 albedo, absorbed shortwave, surface temperature, atmosphere, orbital
 precession or perturbations. Geology and drainage are generated once and are
-not time-evolving, and `GeologyState` is not persisted. Simulation-mode
-scheduling, run manifests and replay, compressed/delta snapshots, autosaves,
-and schema migrations remain assigned to later tasks and milestones. Tracer
+not time-evolving, and `GeologyState` is not persisted. The scheduler has no
+physics processes yet; the sub-step mean forcing of ADR-0006 §4.3 arrives with
+M3. Run manifests and replay, compressed/delta snapshots, autosaves, and
+schema migrations remain assigned to later tasks and milestones. Tracer
 advection and the placement of vector fields (cell centres or edge normals)
 are left to the first milestone that transports them. The two-point
 Laplacian's pointwise truncation error does not converge next to the pentagons
