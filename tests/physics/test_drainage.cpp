@@ -158,6 +158,9 @@ int main() {
     PLANETSIM_EXPECT(
         test, earth.diagnostics.basin_count ==
                   earth.surface.outlet_count);
+    PLANETSIM_EXPECT(test, earth.diagnostics.land_basin_count > 0U);
+    PLANETSIM_EXPECT(test, earth.diagnostics.land_basin_count <
+                               earth.diagnostics.basin_count);
     for (std::size_t index = 0; index < mesh->cell_count(); ++index) {
         PLANETSIM_EXPECT(
             test, std::isfinite(earth.catchment_area_m2[index]));
@@ -172,6 +175,7 @@ int main() {
     PLANETSIM_EXPECT(test, rock.surface.outlet_count == 0U);
     PLANETSIM_EXPECT(test, rock.surface.terminal_sink.is_valid());
     PLANETSIM_EXPECT(test, rock.diagnostics.basin_count == 1U);
+    PLANETSIM_EXPECT(test, rock.diagnostics.land_basin_count == 1U);
     PLANETSIM_EXPECT(
         test, rock.diagnostics.catchment_closure_relative_error <=
                   1e-12);
@@ -188,6 +192,7 @@ int main() {
         test, aqua.diagnostics.total_routed_land_area_m2 == 0.0);
     PLANETSIM_EXPECT(
         test, aqua.diagnostics.terminal_catchment_area_m2 == 0.0);
+    PLANETSIM_EXPECT(test, aqua.diagnostics.land_basin_count == 0U);
     PLANETSIM_EXPECT(
         test, aqua.diagnostics.catchment_closure_relative_error == 0.0);
     for (const std::uint32_t downstream : aqua.downstream.values()) {

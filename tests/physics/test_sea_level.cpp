@@ -91,6 +91,12 @@ int main() {
             earth, test_seed, planetsim::geology_parameters_for(planetsim::PlanetPreset::earth_like),
             4U);
         PLANETSIM_EXPECT(test, earth.slow().sea_level_m == generation.sea_level.sea_level_m);
+        // Re-datum: the generated sea level is 0 m and elevations are heights
+        // above it, so re-solving on the stored terrain lands back at 0 m.
+        PLANETSIM_EXPECT(test, earth.slow().sea_level_m == 0.0);
+        PLANETSIM_EXPECT(test, generation.sea_level.datum_shift_m != 0.0);
+        const auto resolved = planetsim::solve_sea_level(*mesh, earth.slow().hypsometry_m, 0.29, 4U);
+        PLANETSIM_EXPECT(test, std::abs(resolved.sea_level_m) <= 0.5);
         check_hypsometry(test, earth);
         check_fractions(test, earth);
         check_solve(test, earth);

@@ -182,6 +182,8 @@ floor, mountain belts, trenches, arcs, rifts and passive margins, roughness
 and a diffusive erosion approximation. The result is the ADR-0005 slow state:
 nine sub-cell elevation quantiles per cell and a global sea level solved for
 the target land fraction, with land and ocean fractions derived from them.
+Elevations are then re-datumed so that the generated sea level is 0 m and
+every stored elevation is a height above sea level.
 The world ocean is the below-sea-level region connected to the deepest cell;
 other below-sea-level regions stay dry land until hydrology (M9). It then
 derives a deterministic static drainage graph by priority-filling depressions,

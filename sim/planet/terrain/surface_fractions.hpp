@@ -53,6 +53,11 @@ struct SeaLevelSolution {
     bool target_in_jump = false;
     bool jump_changes_ocean_connectivity = false;
     double land_fraction_above_jump = 0.0;
+    // Set by generate_terrain: the solved level relative to the generator's
+    // original reference, removed from every elevation so that the stored sea
+    // level is 0 m and elevations are heights above sea level. Zero from
+    // solve_sea_level itself.
+    double datum_shift_m = 0.0;
 };
 
 // Sea level for a target land fraction by fixed-iteration bisection

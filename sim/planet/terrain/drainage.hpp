@@ -45,7 +45,12 @@ struct DrainageSurface {
 };
 
 struct DrainageDiagnostics {
+    // Every terminal (each ocean outlet, or the no-ocean sink) is a basin,
+    // including open-ocean cells whose catchment has no land.
     std::uint32_t basin_count = 0U;
+    // Basins whose catchment contains land: the drainage basins in the usual
+    // sense.
+    std::uint32_t land_basin_count = 0U;
     std::uint32_t invalid_downstream_count = 0U;
     std::uint32_t cycle_count = 0U;
     std::uint32_t unreachable_cell_count = 0U;

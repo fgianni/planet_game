@@ -281,15 +281,39 @@ amendment 3:
 
 | | L5 | L6 |
 |---|---|---|
-| sea level (m) | 346.7 | 451.5 |
+| solved sea level before re-datum (m, §9.5) | 346.7 | 451.5 |
 | ocean shallower than 200 m / deeper than 4,000 m | 4.5 % / 57.5 % | 4.1 % / 65.1 % |
-| ocean elevation mean / standard deviation (m) | -3,540 / 2,243 | -3,818 / 2,127 |
+| ocean elevation mean / standard deviation, relative to sea level (m) | -3,886 / 2,243 | -4,270 / 2,127 |
 | inland below-sea-level depressions | 12 | 159 |
+
+The mean ocean elevation was first reported relative to the generator's
+reference radius (-3,540 / -3,818 m); §9.5 makes every elevation relative to
+sea level, which corrects it.
 
 V4 (a sea-level perturbation) belongs to M3 and V9 to M11, as §7 states. The
 number of inland depressions grows with resolution because finer cells
 resolve more closed lows; they are dry land in M2 and become lakes or
 endorheic basins through M2-03 and M9.
+
+### 9.5 Elevations are heights above the generated sea level (2026-09-29)
+
+§4.1 measures hypsometry and sea level from the planet's reference radius
+and leaves the datum free. With the task M2-02 amendment 3 starting values
+the solve settled 347 m (L5) to 451 m (L6) above it, so a stored elevation was
+not a height above sea level, and one diagnostic already mixed the two.
+Later systems (surface energy, pressure, lapse rate, sea walls) will read
+heights above sea level.
+
+`generate_terrain` therefore re-datums after the solve: it subtracts the
+solved level from every hypsometry quantile and from the geology's
+structural elevation, stores `sea_level_m = 0`, and reports the removed
+amount as `SeaLevelSolution::datum_shift_m`. The shift is uniform, so land
+and ocean fractions, ocean connectivity and the drainage graph are unchanged
+(verified: identical outlet, depression and catchment diagnostics at L5).
+The land fraction is re-evaluated at 0 m because shifting re-rounds the float
+quantiles; re-solving on the stored terrain returns a sea level within 0.5 m
+of 0 (`tests/physics/test_sea_level.cpp`). Sea level remains a state
+variable: later sea-level change moves it away from 0.
 
 ## 10. Implementation record (M2-03, 2026-09-29)
 
@@ -336,6 +360,7 @@ Release, `earth_like`, seed 20260928, four workers:
 | Check | L5 | L6 |
 |---|---:|---:|
 | outlets / basins | 7,904 / 7,904 | 30,762 / 30,762 |
+| basins draining land (added 2026-09-29) | 1,198 | 3,111 |
 | filled depressions | 69 | 470 |
 | routed land area (m²) | 1.47919e14 | 1.47923e14 |
 | V6 relative closure error | 6.33794e-16 | 4.22518e-16 |

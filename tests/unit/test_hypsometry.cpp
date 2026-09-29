@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -58,6 +59,13 @@ int main() {
         std::vector<ElevationSample> empty;
         PLANETSIM_EXPECT_THROWS(test, std::invalid_argument,
                                 planetsim::weighted_elevation_quantiles(empty));
+    }
+    {
+        // A NaN is rejected before sorting, not left to an invalid comparator.
+        std::vector<ElevationSample> with_nan{
+            {10.0, 1.0}, {std::numeric_limits<double>::quiet_NaN(), 1.0}, {-5.0, 1.0}};
+        PLANETSIM_EXPECT_THROWS(test, std::invalid_argument,
+                                planetsim::weighted_elevation_quantiles(with_nan));
     }
 
     // below_fraction and mean elevation.

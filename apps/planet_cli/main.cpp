@@ -318,7 +318,8 @@ int run_terrain(const TerrainOptions& options) {
     std::cout << '\n'
               << "target_land_fraction: " << parameters.target_land_fraction << '\n'
               << "achieved_land_fraction: " << solution.achieved_land_fraction << '\n'
-              << "sea_level_m: " << std::setprecision(9) << solution.sea_level_m
+              << "sea_level_m: " << std::setprecision(9) << solution.sea_level_m << '\n'
+              << "sea_level_datum_shift_m: " << solution.datum_shift_m
               << std::setprecision(6) << '\n'
               << "sea_level_in_connectivity_jump: " << (solution.target_in_jump ? "true" : "false")
               << '\n';
@@ -339,6 +340,7 @@ int run_terrain(const TerrainOptions& options) {
     const double drainage_time_ms = milliseconds(drainage_start, drainage_finish);
     std::cout << "drainage_outlet_count: " << drainage.surface.outlet_count << '\n'
               << "drainage_basin_count: " << drainage.diagnostics.basin_count << '\n'
+              << "drainage_land_basin_count: " << drainage.diagnostics.land_basin_count << '\n'
               << "drainage_depression_count: " << drainage.surface.depressions.size() << '\n'
               << "drainage_total_routed_land_area_m2: "
               << drainage.diagnostics.total_routed_land_area_m2 << '\n'

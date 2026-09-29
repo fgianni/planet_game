@@ -18,7 +18,7 @@ struct TerrainGeneration {
 };
 
 // Generates geology, sub-cell hypsometry, sea level and the static drainage
-// graph. Only hypsometry and sea level are authoritative slow state; geology
+// graph. Elevations are re-datumed so the generated sea level is 0 m. Only hypsometry and sea level are authoritative slow state; geology
 // and drainage remain derived in memory. The result is deterministic and
 // identical for every worker count.
 [[nodiscard]] TerrainGeneration generate_terrain(PlanetState& state, std::uint64_t world_seed,

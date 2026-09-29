@@ -57,15 +57,19 @@ HypsometryQuantiles weighted_elevation_quantiles(std::span<ElevationSample> samp
     if (samples.empty()) {
         throw std::invalid_argument("hypsometry needs at least one sample");
     }
+    // Validate before sorting: a NaN elevation would break the comparator's
+    // strict weak ordering, which is undefined behaviour in the sort.
+    for (const auto& sample : samples) {
+        if (!(sample.weight > 0.0) || !std::isfinite(sample.elevation_m)) {
+            throw std::invalid_argument("hypsometry samples need positive weight, finite elevation");
+        }
+    }
     std::stable_sort(samples.begin(), samples.end(),
                      [](const ElevationSample& left, const ElevationSample& right) {
                          return left.elevation_m < right.elevation_m;
                      });
     double total_weight = 0.0;
     for (const auto& sample : samples) {
-        if (!(sample.weight > 0.0) || !std::isfinite(sample.elevation_m)) {
-            throw std::invalid_argument("hypsometry samples need positive weight, finite elevation");
-        }
         total_weight += sample.weight;
     }
 

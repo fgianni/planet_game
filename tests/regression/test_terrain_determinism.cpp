@@ -127,7 +127,7 @@ template <typename T>
            same_field(left.basin_id, right.basin_id) &&
            same_field(left.catchment_area_m2,
                       right.catchment_area_m2) &&
-           a.basin_count == b.basin_count &&
+           a.basin_count == b.basin_count && a.land_basin_count == b.land_basin_count &&
            a.invalid_downstream_count == b.invalid_downstream_count &&
            a.cycle_count == b.cycle_count &&
            a.unreachable_cell_count == b.unreachable_cell_count &&

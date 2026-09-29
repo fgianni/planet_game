@@ -78,6 +78,7 @@ void validate_hypsometry(const PlanetMesh& mesh,
 struct CatchmentTotals {
     double sum_m2 = 0.0;
     double maximum_m2 = 0.0;
+    std::uint32_t land_basin_count = 0U;
 };
 
 }  // namespace
@@ -653,6 +654,9 @@ DrainageState generate_drainage(const PlanetMesh& mesh,
                         subtotal.maximum_m2 =
                             std::max(subtotal.maximum_m2,
                                      catchment_area_m2[index]);
+                        if (catchment_area_m2[index] > 0.0) {
+                            ++subtotal.land_basin_count;
+                        }
                     }
                 }
                 return subtotal;
@@ -662,9 +666,11 @@ DrainageState generate_drainage(const PlanetMesh& mesh,
                 accumulated.sum_m2 += next.sum_m2;
                 accumulated.maximum_m2 =
                     std::max(accumulated.maximum_m2, next.maximum_m2);
+                accumulated.land_basin_count += next.land_basin_count;
                 return accumulated;
             });
     state.diagnostics.basin_count = terminal_count;
+    state.diagnostics.land_basin_count = terminal_totals.land_basin_count;
     state.diagnostics.terminal_catchment_area_m2 =
         terminal_totals.sum_m2;
     state.diagnostics.largest_catchment_area_m2 =
