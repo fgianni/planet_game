@@ -482,7 +482,10 @@ Requirements:
     main instance. If the ensemble is not finished, the player keeps the
     previous one; the simulation does not wait;
 -   **deterministic**: the perturbations come from the keyed RNG of ADR-0003
-    with the run seed and the tick, so a replay produces the same cone.
+    with the run seed and the tick, so a replay produces the same cone. They
+    use a dedicated `RandomStreamId` (a projection stream), never one shared
+    with weather, geology or validation, so adding or resizing an ensemble can
+    never change a draw that the authoritative instance makes.
 
 Presentation consumes ensemble quantiles, not individual members: a ghost
 coastline and a future ice edge on the planet, a temperature band past the
@@ -1341,9 +1344,11 @@ Run the forward ensemble of section 7.2 from an `EstimatedState`, expose
 quantiles rather than members, and render the ghost coastline, the future ice
 edge and the temperature band. Include the separate committed-warming run.
 
-Acceptance: with a perfect estimate and zero perturbation the ensemble mean
+Acceptance: with a perfect estimate and zero perturbation, and the projection
+running at the authoritative instance's mesh level, the ensemble mean
 reproduces a single long run of the same forcing to within the tolerance of
-section 24; with a degraded estimate the spread widens and still contains the
+section 24 (a coarser projection cannot reproduce a full-resolution run, so
+this check is made at the same level); with a degraded estimate the spread widens and still contains the
 truth at the stated rate (section 23.1); a replay reproduces the same cone.
 
 This milestone depends on the ADR-0001 amendment of section 7.3.
@@ -1691,7 +1696,7 @@ planet's forcing and never a damage number.
 
 | Measure | What it may change | Phase |
 |---|---|---|
-| Sea walls and dikes | the local flood boundary; inundation extent for a given sea level and surge | P2 |
+| Sea walls and dikes | the local flood boundary; inundation extent for a given sea level and surge. Expressed on the ADR-0005 sub-cell hypsometry (a protected elevation within the cell's curve), not as a second coastline model | P2 |
 | Managed retreat | where population and infrastructure are | P2 |
 | New crops and seeds | the crop's tolerance curve, after a transition period | P1 |
 | Irrigation and water storage | the water budget of section 9.10 --- a real physical change | P1 |
@@ -2009,7 +2014,10 @@ None of these blocks M2 terrain. All of them block the milestone named.
 
 1.  **Seasonal resolution in climate mode** (section 8). Fixes the
     climate-mode step at twelve sub-steps per year and therefore the fit
-    targets of section 24. *Blocks M3.* This is the one to write first,
+    targets of section 24. It must also say how the sub-steps stay aligned
+    with the orbit: the default orbital period is 525,948.7536 one-minute ticks,
+    which twelve does not divide, and the integer clock may not accumulate a
+    fractional remainder. *Blocks M3.* This is the one to write first,
     because everything calibrated before it would be calibrated against the
     wrong step.
 2.  **ADR-0001 amendment: the projection ensemble budget** (section 7.3).

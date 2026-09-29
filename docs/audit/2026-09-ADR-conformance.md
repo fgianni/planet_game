@@ -159,10 +159,9 @@ audits:
 - The stale post-migration re-audit was removed after its useful before/after
   summary was incorporated here.
 
-Development specification v0.4 and design record v0.9 are authoritative.
-Earlier specifications remain as source/history artifacts. Design records
-v0.7 and v0.8 are retained in the tree, while v0.3--v0.6 remain available in
-git history. Accepted ADRs retain their original design-version citations and
+Development specification v0.4 and design record v0.9 are authoritative and
+are the only versions kept in the tree; earlier specifications and design
+records are in git history. Accepted ADRs retain their original design-version citations and
 take precedence where a specification conflicts.
 
 ## Validation observed during the migration and M2 work

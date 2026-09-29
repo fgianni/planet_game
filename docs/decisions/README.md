@@ -16,9 +16,10 @@ status, date, consequences, validation plan, and supersession relationships.
 
 Records cite the design record by version and section (for example "Design
 Record v0.4, §28"). The current design record is
-`docs/planetary_civilization_simulator_design_v0_9.docx`; v0.7 and v0.8 are
-retained for history. Accepted records retain the design-version citations
-against which their decisions were made.
+`docs/planetary_civilization_simulator_design_v0_9.docx`, the only version
+kept in the tree; earlier versions are in git history. Accepted records
+retain the design-version citations against which their decisions were made,
+and every section they cite has the same number and title in v0.9.
 
 ## Historical records
 

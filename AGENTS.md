@@ -10,8 +10,9 @@ architecture source of truth. The design document is
 Accepted ADRs in `docs/decisions/` take precedence where they conflict
 with the specification (notably ADR-0002 on the mesh: a
 hexagonal--pentagonal centroidal Voronoi tessellation).
-`docs/DEVELOPMENT_SPEC.md`, v0.2 and v0.3 are superseded and not
-authoritative. Design versions v0.7 and v0.8 are retained for history.
+Only the current specification and design record are kept in the tree;
+earlier versions are in git history. Accepted ADRs and completed task
+documents keep the version citations they were written against.
 
 ## Current phase
 
