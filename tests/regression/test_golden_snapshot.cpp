@@ -64,6 +64,52 @@ void check_schema_1_fields(planetsim::test::Context& test, const planetsim::Plan
                                synthetic_tick, static_cast<std::uint32_t>(cell), sample);
 }
 
+// ADR-0003 V5: a loaded golden state steps ten simulated years of climate
+// sub-steps; every step's energy budget closes (the ADR-0007 V2 gate) and
+// the temperatures stay finite and positive.
+void step_ten_years(planetsim::test::Context& test, planetsim::PlanetState& state,
+                    const planetsim::PlanetParameters& parameters,
+                    const planetsim::SurfaceEnergyParameters& surface, std::string_view label) {
+    const auto fractions = planetsim::compute_surface_fractions(
+        state.mesh(), state.slow().hypsometry_m, state.slow().sea_level_m);
+    planetsim::SimulationClock clock;
+    planetsim::Scheduler scheduler(clock, planetsim::make_orbital_calendar(parameters));
+    planetsim::SurfaceEnergyDiagnostics last;
+    double worst_ratio = 0.0;
+    planetsim::register_surface_energy(scheduler, state, parameters, surface, fractions, 1U,
+                                       &last);
+    scheduler.register_process({"closure_check", planetsim::SimulationMode::climate, 0},
+                               [&](const planetsim::StepContext&) {
+                                   const double scale =
+                                       last.duration_s * (last.absorbed_W + last.emitted_W) +
+                                       std::abs(last.storage_change_J);
+                                   const double floor =
+                                       4.0 * std::numeric_limits<double>::epsilon() *
+                                       last.stored_energy_J;
+                                   worst_ratio = std::max(
+                                       worst_ratio,
+                                       last.closure_residual_J() / (1e-9 * scale + floor));
+                               });
+    const auto steps = scheduler.run_until(
+        planetsim::climate_substep(10 * planetsim::climate_substeps_per_year, parameters)
+            .begin_tick);
+    bool physical = true;
+    for (std::size_t cell = 0; cell < state.mesh().cell_count(); ++cell) {
+        const double values[] = {state.slow().land_surface_temperature_K[cell],
+                                 state.slow().land_ground_temperature_K[cell],
+                                 state.slow().ocean_mixed_layer_temperature_K[cell],
+                                 state.slow().ocean_deep_temperature_K[cell]};
+        for (const double value : values) {
+            physical = physical && std::isfinite(value) && value > 0.0;
+        }
+    }
+    std::cout << label << " ten_years steps=" << steps << " worst_closure_ratio=" << worst_ratio
+              << " mean_K=" << last.mean_surface_temperature_K << '\n';
+    PLANETSIM_EXPECT(test, steps == 120U);
+    PLANETSIM_EXPECT(test, worst_ratio <= 1.0);
+    PLANETSIM_EXPECT(test, physical);
+}
+
 }  // namespace
 
 int main() {
@@ -116,6 +162,7 @@ int main() {
         PLANETSIM_EXPECT(test, migrated);
         PLANETSIM_EXPECT(test, !state.has_fast_state());
         PLANETSIM_EXPECT_NEAR(test, state.forcing().incident_solar_flux_W_m2, 0.0, 0.0);
+        step_ten_years(test, state, parameters, surface, "psnap-v1");
     }
 
     // Schema 2 (M3-02): the mixed layer is stored as float32 under the retired
@@ -147,6 +194,7 @@ int main() {
                         std::bit_cast<std::uint64_t>(expected_temperature(cell, 23U));
         }
         PLANETSIM_EXPECT(test, exact);
+        step_ten_years(test, state, parameters, surface, "psnap-v2");
     }
 
     // Schema 3 (M3 close): the mixed layer is float64; every field stored.
@@ -171,6 +219,7 @@ int main() {
                         std::bit_cast<std::uint64_t>(expected_temperature(cell, 23U));
         }
         PLANETSIM_EXPECT(test, exact);
+        step_ten_years(test, state, parameters, surface, "psnap-v3");
     }
     return test.result();
 }

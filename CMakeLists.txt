@@ -50,6 +50,7 @@ add_library(PlanetSim STATIC
     sim/planet/surface/surface_materials.cpp
     sim/planet/planet_parameters.cpp
     sim/planet/planet_state.cpp
+    sim/planet/run/planet_run.cpp
     sim/planet/terrain/drainage.cpp
     sim/planet/terrain/hypsometry.cpp
     sim/planet/terrain/surface_fractions.cpp
@@ -148,6 +149,28 @@ if(PLANETSIM_BUILD_TESTS)
     set_tests_properties(
         planet_cli_thermal_smoke
         PROPERTIES PASS_REGULAR_EXPRESSION "g=0 mean_K=25[0-9]"
+    )
+    set(PLANETSIM_RUN_SMOKE_FILE "${CMAKE_CURRENT_BINARY_DIR}/planet_cli_run_smoke.prun")
+    add_test(
+        NAME planet_cli_run_smoke
+        COMMAND planet_cli run --subdivision 2 --years 2 --workers 2
+                --command 43830,set_solar_luminosity_factor,1.01
+                --manifest "${PLANETSIM_RUN_SMOKE_FILE}"
+                --min-years-per-minute 1
+    )
+    set_tests_properties(
+        planet_cli_run_smoke
+        PROPERTIES PASS_REGULAR_EXPRESSION "checkpoints=3 .*gate years_per_minute>=1: passed"
+    )
+    add_test(
+        NAME planet_cli_replay_smoke
+        COMMAND planet_cli replay "${PLANETSIM_RUN_SMOKE_FILE}" --workers 3
+    )
+    set_tests_properties(
+        planet_cli_replay_smoke
+        PROPERTIES
+            DEPENDS planet_cli_run_smoke
+            PASS_REGULAR_EXPRESSION "replay matched"
     )
     add_test(
         NAME planet_cli_registry_dump

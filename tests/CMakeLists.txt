@@ -43,3 +43,4 @@ add_planetsim_test(test_operator_conservation conservation/test_operator_conserv
 add_planetsim_test(test_mesh_determinism regression/test_mesh_determinism.cpp)
 add_planetsim_test(test_operator_determinism regression/test_operator_determinism.cpp)
 add_planetsim_test(test_terrain_determinism regression/test_terrain_determinism.cpp)
+add_planetsim_test(test_run_replay regression/test_run_replay.cpp)
