@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <limits>
 #include <queue>
 #include <stdexcept>
@@ -62,6 +63,22 @@ void validate_hypsometry(const PlanetMesh& mesh,
            (candidate_elevation_m == selected_elevation_m &&
             candidate_cell < selected_cell);
 }
+
+[[nodiscard]] bool cells_are_neighbors(const PlanetMesh& mesh,
+                                       CellId first,
+                                       CellId second) {
+    const auto edges = mesh.cell_edges(first);
+    return std::any_of(
+        edges.begin(), edges.end(),
+        [second](const CellEdgeGeometry& edge) {
+            return edge.neighbor == second;
+        });
+}
+
+struct CatchmentTotals {
+    double sum_m2 = 0.0;
+    double maximum_m2 = 0.0;
+};
 
 }  // namespace
 
@@ -262,6 +279,414 @@ DrainageSurface fill_drainage_depressions(const PlanetMesh& mesh,
     }
 
     return surface;
+}
+
+DrainageState generate_drainage(const PlanetMesh& mesh,
+                                const Field3D<float>& hypsometry_m,
+                                double sea_level_m,
+                                std::size_t worker_count) {
+    DrainageState state;
+    state.surface = fill_drainage_depressions(
+        mesh, hypsometry_m, sea_level_m, worker_count);
+    const std::size_t cell_count = mesh.cell_count();
+    state.downstream =
+        Field2D<std::uint32_t>(cell_count, no_downstream);
+    state.basin_id = Field2D<std::uint32_t>(cell_count, no_basin);
+    state.catchment_area_m2 = Field2D<float>(cell_count, 0.0F);
+
+    const auto is_terminal = [&](CellId cell) {
+        return state.surface.outlet[cell] != 0U ||
+               state.surface.terminal_sink == cell;
+    };
+
+    // Depression flats have a prescribed, unique exit. Multi-source BFS from
+    // every member adjacent to that exit gives the minimum edge distance to
+    // the spill; CellId resolves equal-distance choices.
+    std::vector<std::vector<CellId>> depression_members(
+        state.surface.depressions.size());
+    for (std::size_t index = 0; index < cell_count; ++index) {
+        const std::uint32_t id = state.surface.depression_id[index];
+        if (id != no_depression) {
+            depression_members.at(id).push_back(
+                CellId{static_cast<std::uint32_t>(index)});
+        }
+    }
+    constexpr std::uint32_t infinite_distance =
+        std::numeric_limits<std::uint32_t>::max();
+    std::vector<std::uint32_t> flat_distance(
+        cell_count, infinite_distance);
+    std::deque<CellId> pending;
+
+    for (const DepressionRecord& depression :
+         state.surface.depressions) {
+        const auto& members = depression_members[depression.id];
+        if (members.empty() || !depression.spill_cell.is_valid()) {
+            throw std::logic_error("invalid depression record");
+        }
+        pending.clear();
+        for (const CellId cell : members) {
+            flat_distance[cell.to_index()] = infinite_distance;
+            if (cells_are_neighbors(
+                    mesh, cell, depression.spill_cell)) {
+                flat_distance[cell.to_index()] = 0U;
+                state.downstream[cell] =
+                    depression.spill_cell.value();
+                pending.push_back(cell);
+            }
+        }
+        if (pending.empty()) {
+            throw std::logic_error(
+                "depression spill is not adjacent to a member");
+        }
+        while (!pending.empty()) {
+            const CellId cell = pending.front();
+            pending.pop_front();
+            const std::uint32_t next_distance =
+                flat_distance[cell.to_index()] + 1U;
+            for (const CellEdgeGeometry& edge :
+                 mesh.cell_edges(cell)) {
+                if (state.surface.depression_id[edge.neighbor] ==
+                        depression.id &&
+                    flat_distance[edge.neighbor.to_index()] ==
+                        infinite_distance) {
+                    flat_distance[edge.neighbor.to_index()] =
+                        next_distance;
+                    pending.push_back(edge.neighbor);
+                }
+            }
+        }
+        for (const CellId cell : members) {
+            const std::uint32_t distance =
+                flat_distance[cell.to_index()];
+            if (distance == 0U) {
+                continue;
+            }
+            CellId selected = CellId::invalid();
+            for (const CellEdgeGeometry& edge :
+                 mesh.cell_edges(cell)) {
+                if (state.surface.depression_id[edge.neighbor] ==
+                        depression.id &&
+                    flat_distance[edge.neighbor.to_index()] + 1U ==
+                        distance &&
+                    (!selected.is_valid() ||
+                     edge.neighbor < selected)) {
+                    selected = edge.neighbor;
+                }
+            }
+            if (!selected.is_valid()) {
+                throw std::logic_error(
+                    "depression flat has no route to its spill");
+            }
+            state.downstream[cell] = selected.value();
+        }
+    }
+
+    // Strict descent takes priority over flat routing. The comparison is the
+    // filled-surface drop per metre across the shared edge.
+    for (std::size_t index = 0; index < cell_count; ++index) {
+        const CellId cell{static_cast<std::uint32_t>(index)};
+        if (is_terminal(cell) ||
+            state.surface.depression_id[index] != no_depression) {
+            continue;
+        }
+        const double here = state.surface.filled_elevation_m[index];
+        double steepest_slope = -1.0;
+        CellId selected = CellId::invalid();
+        for (const CellEdgeGeometry& cell_edge :
+             mesh.cell_edges(cell)) {
+            const double neighbor =
+                state.surface
+                    .filled_elevation_m[cell_edge.neighbor];
+            if (!(neighbor < here)) {
+                continue;
+            }
+            const double distance_m =
+                mesh.edge(cell_edge.edge).centroid_distance_m;
+            const double slope = (here - neighbor) / distance_m;
+            if (slope > steepest_slope ||
+                (slope == steepest_slope &&
+                 cell_edge.neighbor < selected)) {
+                steepest_slope = slope;
+                selected = cell_edge.neighbor;
+            }
+        }
+        if (selected.is_valid()) {
+            state.downstream[cell] = selected.value();
+            continue;
+        }
+
+        // A same-level terminal is an exit seed for its plateau.
+        for (const CellEdgeGeometry& cell_edge :
+             mesh.cell_edges(cell)) {
+            if (is_terminal(cell_edge.neighbor) &&
+                state.surface.filled_elevation_m[
+                    cell_edge.neighbor] <= here &&
+                (!selected.is_valid() ||
+                 cell_edge.neighbor < selected)) {
+                selected = cell_edge.neighbor;
+            }
+        }
+        if (selected.is_valid()) {
+            state.downstream[cell] = selected.value();
+        }
+    }
+
+    // Route each remaining non-depression plateau by BFS distance to any cell
+    // in that plateau that already descends or reaches a terminal.
+    std::vector<std::uint8_t> plateau_seen(cell_count, 0U);
+    std::vector<CellId> plateau_members;
+    for (std::size_t start_index = 0; start_index < cell_count;
+         ++start_index) {
+        const CellId start{static_cast<std::uint32_t>(start_index)};
+        if (plateau_seen[start_index] != 0U || is_terminal(start) ||
+            state.surface.depression_id[start_index] != no_depression) {
+            continue;
+        }
+        const float plateau_elevation =
+            state.surface.filled_elevation_m[start_index];
+        plateau_members.clear();
+        pending.clear();
+        pending.push_back(start);
+        plateau_seen[start_index] = 1U;
+        while (!pending.empty()) {
+            const CellId cell = pending.front();
+            pending.pop_front();
+            plateau_members.push_back(cell);
+            for (const CellEdgeGeometry& edge :
+                 mesh.cell_edges(cell)) {
+                const std::size_t neighbor =
+                    edge.neighbor.to_index();
+                if (plateau_seen[neighbor] == 0U &&
+                    !is_terminal(edge.neighbor) &&
+                    state.surface.depression_id[neighbor] ==
+                        no_depression &&
+                    state.surface.filled_elevation_m[neighbor] ==
+                        plateau_elevation) {
+                    plateau_seen[neighbor] = 1U;
+                    pending.push_back(edge.neighbor);
+                }
+            }
+        }
+
+        pending.clear();
+        for (const CellId cell : plateau_members) {
+            flat_distance[cell.to_index()] = infinite_distance;
+            if (state.downstream[cell] != no_downstream) {
+                flat_distance[cell.to_index()] = 0U;
+                pending.push_back(cell);
+            }
+        }
+        if (pending.empty()) {
+            throw std::logic_error(
+                "filled plateau has no lower route or terminal");
+        }
+        while (!pending.empty()) {
+            const CellId cell = pending.front();
+            pending.pop_front();
+            const std::uint32_t next_distance =
+                flat_distance[cell.to_index()] + 1U;
+            for (const CellEdgeGeometry& edge :
+                 mesh.cell_edges(cell)) {
+                const std::size_t neighbor =
+                    edge.neighbor.to_index();
+                if (state.surface.depression_id[neighbor] ==
+                        no_depression &&
+                    !is_terminal(edge.neighbor) &&
+                    state.surface.filled_elevation_m[neighbor] ==
+                        plateau_elevation &&
+                    flat_distance[neighbor] == infinite_distance) {
+                    flat_distance[neighbor] = next_distance;
+                    pending.push_back(edge.neighbor);
+                }
+            }
+        }
+        for (const CellId cell : plateau_members) {
+            if (state.downstream[cell] != no_downstream) {
+                continue;
+            }
+            const std::uint32_t distance =
+                flat_distance[cell.to_index()];
+            CellId selected = CellId::invalid();
+            for (const CellEdgeGeometry& edge :
+                 mesh.cell_edges(cell)) {
+                const std::size_t neighbor =
+                    edge.neighbor.to_index();
+                if (state.surface.depression_id[neighbor] ==
+                        no_depression &&
+                    state.surface.filled_elevation_m[neighbor] ==
+                        plateau_elevation &&
+                    flat_distance[neighbor] + 1U == distance &&
+                    (!selected.is_valid() ||
+                     edge.neighbor < selected)) {
+                    selected = edge.neighbor;
+                }
+            }
+            if (!selected.is_valid()) {
+                throw std::logic_error(
+                    "filled flat has no breadth-first downstream");
+            }
+            state.downstream[cell] = selected.value();
+        }
+    }
+
+    // Validate references while constructing a fixed source-to-terminal
+    // topological order. A short order would prove a cycle.
+    std::vector<std::uint32_t> upstream_count(cell_count, 0U);
+    std::uint32_t terminal_count = 0U;
+    for (std::size_t index = 0; index < cell_count; ++index) {
+        const CellId cell{static_cast<std::uint32_t>(index)};
+        const std::uint32_t downstream = state.downstream[index];
+        if (is_terminal(cell)) {
+            if (downstream != no_downstream) {
+                ++state.diagnostics.invalid_downstream_count;
+            }
+            ++terminal_count;
+            continue;
+        }
+        if (downstream >= cell_count ||
+            !cells_are_neighbors(
+                mesh, cell, CellId{downstream})) {
+            ++state.diagnostics.invalid_downstream_count;
+            continue;
+        }
+        ++upstream_count[downstream];
+    }
+    if (state.diagnostics.invalid_downstream_count != 0U) {
+        throw std::logic_error("drainage has invalid downstream references");
+    }
+
+    std::priority_queue<std::uint32_t,
+                        std::vector<std::uint32_t>,
+                        std::greater<>>
+        ready;
+    for (std::size_t index = 0; index < cell_count; ++index) {
+        if (upstream_count[index] == 0U) {
+            ready.push(static_cast<std::uint32_t>(index));
+        }
+    }
+    std::vector<CellId> topological_order;
+    topological_order.reserve(cell_count);
+    while (!ready.empty()) {
+        const CellId cell{ready.top()};
+        ready.pop();
+        topological_order.push_back(cell);
+        const std::uint32_t downstream = state.downstream[cell];
+        if (downstream == no_downstream) {
+            continue;
+        }
+        if (--upstream_count[downstream] == 0U) {
+            ready.push(downstream);
+        }
+    }
+    if (topological_order.size() != cell_count) {
+        state.diagnostics.cycle_count = 1U;
+        throw std::logic_error("drainage graph contains a cycle");
+    }
+
+    // Terminal-first is the graph's natural root order. Reversing the
+    // source-to-terminal order above assigns basin IDs with every downstream
+    // basin already known.
+    for (std::size_t index = 0; index < cell_count; ++index) {
+        const CellId cell{static_cast<std::uint32_t>(index)};
+        if (is_terminal(cell)) {
+            state.basin_id[cell] = cell.value();
+        }
+    }
+    for (auto iterator = topological_order.rbegin();
+         iterator != topological_order.rend(); ++iterator) {
+        const CellId cell = *iterator;
+        if (is_terminal(cell)) {
+            continue;
+        }
+        const std::uint32_t downstream = state.downstream[cell];
+        if (state.basin_id[downstream] == no_basin) {
+            ++state.diagnostics.unreachable_cell_count;
+        } else {
+            state.basin_id[cell] = state.basin_id[downstream];
+        }
+    }
+    if (state.diagnostics.unreachable_cell_count != 0U) {
+        throw std::logic_error("drainage cell does not reach a terminal");
+    }
+
+    std::vector<double> catchment_area_m2(cell_count, 0.0);
+    state.diagnostics.total_routed_land_area_m2 =
+        reduce_deterministic_blocks<double>(
+            mesh.blocks(), worker_count, 0.0,
+            [&](std::size_t, const CellBlock& block) {
+                double subtotal = 0.0;
+                for (std::uint32_t index = block.begin;
+                     index < block.end; ++index) {
+                    const double area_m2 =
+                        mesh.cell(CellId{index}).area_m2 *
+                        static_cast<double>(
+                            state.surface.land_fraction[index]);
+                    catchment_area_m2[index] = area_m2;
+                    subtotal += area_m2;
+                }
+                return subtotal;
+            },
+            [](double accumulated, const double& next) {
+                return accumulated + next;
+            });
+
+    // This source-to-terminal order is the reverse of the root-first
+    // topological order and therefore accumulates every child before parent.
+    for (const CellId cell : topological_order) {
+        const std::uint32_t downstream = state.downstream[cell];
+        if (downstream != no_downstream) {
+            catchment_area_m2[downstream] +=
+                catchment_area_m2[cell.to_index()];
+        }
+    }
+
+    const CatchmentTotals terminal_totals =
+        reduce_deterministic_blocks<CatchmentTotals>(
+            mesh.blocks(), worker_count, {},
+            [&](std::size_t, const CellBlock& block) {
+                CatchmentTotals subtotal;
+                for (std::uint32_t index = block.begin;
+                     index < block.end; ++index) {
+                    const CellId cell{index};
+                    if (is_terminal(cell)) {
+                        subtotal.sum_m2 += catchment_area_m2[index];
+                        subtotal.maximum_m2 =
+                            std::max(subtotal.maximum_m2,
+                                     catchment_area_m2[index]);
+                    }
+                }
+                return subtotal;
+            },
+            [](CatchmentTotals accumulated,
+               const CatchmentTotals& next) {
+                accumulated.sum_m2 += next.sum_m2;
+                accumulated.maximum_m2 =
+                    std::max(accumulated.maximum_m2, next.maximum_m2);
+                return accumulated;
+            });
+    state.diagnostics.basin_count = terminal_count;
+    state.diagnostics.terminal_catchment_area_m2 =
+        terminal_totals.sum_m2;
+    state.diagnostics.largest_catchment_area_m2 =
+        terminal_totals.maximum_m2;
+    const double closure_scale =
+        std::max(state.diagnostics.total_routed_land_area_m2, 1.0);
+    state.diagnostics.catchment_closure_relative_error =
+        std::abs(state.diagnostics.terminal_catchment_area_m2 -
+                 state.diagnostics.total_routed_land_area_m2) /
+        closure_scale;
+
+    for (std::size_t index = 0; index < cell_count; ++index) {
+        const float stored =
+            static_cast<float>(catchment_area_m2[index]);
+        state.catchment_area_m2[index] = stored;
+        state.diagnostics.maximum_catchment_storage_error_m2 =
+            std::max(
+                state.diagnostics.maximum_catchment_storage_error_m2,
+                std::abs(static_cast<double>(stored) -
+                         catchment_area_m2[index]));
+    }
+    return state;
 }
 
 }  // namespace planetsim

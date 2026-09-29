@@ -12,6 +12,10 @@ namespace planetsim {
 
 inline constexpr std::uint32_t no_depression =
     std::numeric_limits<std::uint32_t>::max();
+inline constexpr std::uint32_t no_downstream =
+    std::numeric_limits<std::uint32_t>::max();
+inline constexpr std::uint32_t no_basin =
+    std::numeric_limits<std::uint32_t>::max();
 
 struct DepressionRecord {
     std::uint32_t id = no_depression;
@@ -40,6 +44,29 @@ struct DrainageSurface {
     double maximum_fill_depth_m = 0.0;
 };
 
+struct DrainageDiagnostics {
+    std::uint32_t basin_count = 0U;
+    std::uint32_t invalid_downstream_count = 0U;
+    std::uint32_t cycle_count = 0U;
+    std::uint32_t unreachable_cell_count = 0U;
+    double total_routed_land_area_m2 = 0.0;
+    double terminal_catchment_area_m2 = 0.0;
+    double catchment_closure_relative_error = 0.0;
+    double largest_catchment_area_m2 = 0.0;
+    double maximum_catchment_storage_error_m2 = 0.0;
+};
+
+// Complete derived routing graph. Cell references are raw uint32 values as
+// required by ADR-0005 §4.3; no_downstream marks ocean outlets and the
+// no-ocean terminal sink. basin_id is the terminal CellId value.
+struct DrainageState {
+    DrainageSurface surface;
+    Field2D<std::uint32_t> downstream;
+    Field2D<std::uint32_t> basin_id;
+    Field2D<float> catchment_area_m2;
+    DrainageDiagnostics diagnostics;
+};
+
 // ADR-0005 §4.2 deterministic priority-flood. Ocean-connected cells with
 // ocean_fraction > 0 seed the flood. If no such cells exist, the lowest
 // drainage-elevation cell (ties by CellId) is the sole terminal sink.
@@ -49,6 +76,17 @@ struct DrainageSurface {
 // components receive deterministic depression IDs and one canonical spill
 // cell outside the component.
 [[nodiscard]] DrainageSurface fill_drainage_depressions(
+    const PlanetMesh& mesh,
+    const Field3D<float>& hypsometry_m,
+    double sea_level_m,
+    std::size_t worker_count = 1U);
+
+// Builds the single-downstream forest, assigns the terminal outlet to every
+// basin, and accumulates upstream land area in a fixed topological order.
+// Strict slopes use steepest descent per metre; equal-elevation flats use
+// breadth-first edge distance. Depression members route through their one
+// canonical spill cell.
+[[nodiscard]] DrainageState generate_drainage(
     const PlanetMesh& mesh,
     const Field3D<float>& hypsometry_m,
     double sea_level_m,
