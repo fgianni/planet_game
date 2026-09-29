@@ -237,7 +237,7 @@ void PlanetMeshNode::rebuild(std::int64_t subdivision, double radius_m, std::int
         const TerrainGeneration generation = generate_terrain(
             *next_state, next_seed, geology_parameters_for(*planet_preset), workers);
         TerrainSnapshot next_terrain =
-            make_terrain_snapshot(*next_state, generation.geology, workers);
+            make_terrain_snapshot(*next_state, generation.geology, generation.drainage, workers);
         update_solar_forcing(*next_state, next_parameters, 0);
 
         std::vector<std::array<std::uint32_t, 3>> next_corner_cells(next_mesh->corner_count());
