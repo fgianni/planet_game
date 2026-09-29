@@ -41,6 +41,7 @@ add_library(PlanetSim STATIC
     sim/planet/orbit/solar_forcing.cpp
     sim/planet/planet_parameters.cpp
     sim/planet/planet_state.cpp
+    sim/planet/terrain/drainage.cpp
     sim/planet/terrain/hypsometry.cpp
     sim/planet/terrain/surface_fractions.cpp
     sim/planet/terrain/terrain_diagnostics.cpp
