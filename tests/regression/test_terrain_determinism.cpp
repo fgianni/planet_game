@@ -83,6 +83,66 @@ template <typename T>
            same_field(left.structural_elevation_m, right.structural_elevation_m);
 }
 
+[[nodiscard]] bool same_depression(const planetsim::DepressionRecord& left,
+                                   const planetsim::DepressionRecord& right) {
+    return left.id == right.id &&
+           left.minimum_cell == right.minimum_cell &&
+           left.spill_cell == right.spill_cell &&
+           same_bits(left.spill_level_m, right.spill_level_m) &&
+           same_bits(left.raised_area_m2, right.raised_area_m2) &&
+           same_bits(left.maximum_fill_depth_m,
+                     right.maximum_fill_depth_m) &&
+           left.cell_count == right.cell_count;
+}
+
+[[nodiscard]] bool same_drainage(const planetsim::DrainageState& left,
+                                 const planetsim::DrainageState& right) {
+    if (left.surface.depressions.size() !=
+        right.surface.depressions.size()) {
+        return false;
+    }
+    for (std::size_t index = 0;
+         index < left.surface.depressions.size(); ++index) {
+        if (!same_depression(left.surface.depressions[index],
+                             right.surface.depressions[index])) {
+            return false;
+        }
+    }
+    const auto& a = left.diagnostics;
+    const auto& b = right.diagnostics;
+    return same_field(left.surface.land_fraction,
+                      right.surface.land_fraction) &&
+           same_field(left.surface.outlet, right.surface.outlet) &&
+           same_field(left.surface.drainage_elevation_m,
+                      right.surface.drainage_elevation_m) &&
+           same_field(left.surface.filled_elevation_m,
+                      right.surface.filled_elevation_m) &&
+           same_field(left.surface.depression_id,
+                      right.surface.depression_id) &&
+           left.surface.terminal_sink == right.surface.terminal_sink &&
+           left.surface.outlet_count == right.surface.outlet_count &&
+           same_bits(left.surface.maximum_fill_depth_m,
+                     right.surface.maximum_fill_depth_m) &&
+           same_field(left.downstream, right.downstream) &&
+           same_field(left.basin_id, right.basin_id) &&
+           same_field(left.catchment_area_m2,
+                      right.catchment_area_m2) &&
+           a.basin_count == b.basin_count &&
+           a.invalid_downstream_count == b.invalid_downstream_count &&
+           a.cycle_count == b.cycle_count &&
+           a.unreachable_cell_count == b.unreachable_cell_count &&
+           same_bits(a.total_routed_land_area_m2,
+                     b.total_routed_land_area_m2) &&
+           same_bits(a.terminal_catchment_area_m2,
+                     b.terminal_catchment_area_m2) &&
+           same_bits(a.catchment_closure_relative_error,
+                     b.catchment_closure_relative_error) &&
+           same_bits(a.largest_catchment_area_m2,
+                     b.largest_catchment_area_m2) &&
+           same_bits(a.maximum_catchment_storage_error_m2,
+                     b.maximum_catchment_storage_error_m2);
+}
+
 }  // namespace
 
 int main() {
@@ -108,6 +168,8 @@ int main() {
             PLANETSIM_EXPECT(test, same_geology(reference_generation.geology, generation.geology));
             PLANETSIM_EXPECT(test, same_bits(reference_generation.sea_level.achieved_land_fraction,
                                              generation.sea_level.achieved_land_fraction));
+            PLANETSIM_EXPECT(test, same_drainage(
+                                       reference_generation.drainage, generation.drainage));
         }
 
         // A2: a different seed gives a different planet.
@@ -126,6 +188,10 @@ int main() {
         PLANETSIM_EXPECT(test, same_hypsometry(reference.slow().hypsometry_m,
                                                loaded.slow().hypsometry_m));
         PLANETSIM_EXPECT(test, same_bits(reference.slow().sea_level_m, loaded.slow().sea_level_m));
+        const planetsim::DrainageState regenerated = planetsim::generate_drainage(
+            *mesh, loaded.slow().hypsometry_m, loaded.slow().sea_level_m, 16U);
+        PLANETSIM_EXPECT(
+            test, same_drainage(reference_generation.drainage, regenerated));
         std::filesystem::remove(path);
     }
 

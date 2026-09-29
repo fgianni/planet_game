@@ -210,10 +210,9 @@ void print_usage(std::ostream& output) {
 }
 
 void write_terrain_map(const std::filesystem::path& path, const planetsim::PlanetState& state,
-                       const planetsim::GeologyState& geology) {
+                       const planetsim::GeologyState& geology,
+                       const planetsim::DrainageState& drainage) {
     const auto& mesh = state.mesh();
-    const auto fractions = planetsim::compute_surface_fractions(
-        mesh, state.slow().hypsometry_m, state.slow().sea_level_m);
     std::ofstream output(path);
     if (!output) {
         throw std::runtime_error("cannot open terrain map: " + path.string());
@@ -222,7 +221,9 @@ void write_terrain_map(const std::filesystem::path& path, const planetsim::Plane
     output << std::setprecision(9)
            << "cell_id,latitude_deg,longitude_deg,plate_id,crust_type,crust_age_myr,"
               "nearest_boundary_class,nearest_boundary_distance_km,mean_elevation_m,"
-              "lowest_quantile_m,highest_quantile_m,land_fraction\n";
+              "lowest_quantile_m,highest_quantile_m,land_fraction,"
+              "drainage_elevation_m,filled_elevation_m,downstream,basin_id,"
+              "depression_id,catchment_area_m2\n";
     for (const auto& cell : mesh.cells()) {
         const auto quantiles = planetsim::cell_hypsometry(state.slow().hypsometry_m, cell.id);
         output << cell.id.value() << ','
@@ -237,7 +238,14 @@ void write_terrain_map(const std::filesystem::path& path, const planetsim::Plane
                << boundary_class_name(geology.nearest_boundary_class[cell.id]) << ','
                << geology.nearest_boundary_distance_m[cell.id] / 1'000.0 << ','
                << planetsim::mean_elevation_m(quantiles) << ',' << quantiles.front() << ','
-               << quantiles.back() << ',' << fractions.land_fraction[cell.id] << '\n';
+               << quantiles.back() << ','
+               << drainage.surface.land_fraction[cell.id] << ','
+               << drainage.surface.drainage_elevation_m[cell.id] << ','
+               << drainage.surface.filled_elevation_m[cell.id] << ','
+               << drainage.downstream[cell.id] << ','
+               << drainage.basin_id[cell.id] << ','
+               << drainage.surface.depression_id[cell.id] << ','
+               << drainage.catchment_area_m2[cell.id] << '\n';
     }
     if (!output) {
         throw std::runtime_error("failed writing terrain map: " + path.string());
@@ -322,20 +330,44 @@ int run_terrain(const TerrainOptions& options) {
               << "ocean_deeper_than_4000m_fraction: " << diagnostics.ocean_deeper_than_4000m_fraction
               << '\n'
               << "ocean_elevation_mean_m: " << diagnostics.ocean_elevation_mean_m << '\n'
-              << "ocean_elevation_std_m: " << diagnostics.ocean_elevation_std_m << '\n'
+              << "ocean_elevation_std_m: " << diagnostics.ocean_elevation_std_m << '\n';
+    const auto& drainage = generation.drainage;
+    std::cout << "drainage_outlet_count: " << drainage.surface.outlet_count << '\n'
+              << "drainage_basin_count: " << drainage.diagnostics.basin_count << '\n'
+              << "drainage_depression_count: " << drainage.surface.depressions.size() << '\n'
+              << "drainage_total_routed_land_area_m2: "
+              << drainage.diagnostics.total_routed_land_area_m2 << '\n'
+              << "drainage_terminal_catchment_area_m2: "
+              << drainage.diagnostics.terminal_catchment_area_m2 << '\n'
+              << "drainage_catchment_closure_relative_error: "
+              << drainage.diagnostics.catchment_closure_relative_error << '\n'
+              << "drainage_largest_catchment_area_m2: "
+              << drainage.diagnostics.largest_catchment_area_m2 << '\n'
+              << "drainage_maximum_fill_depth_m: "
+              << drainage.surface.maximum_fill_depth_m << '\n'
+              << "drainage_invalid_downstream_count: "
+              << drainage.diagnostics.invalid_downstream_count << '\n'
+              << "drainage_cycle_count: " << drainage.diagnostics.cycle_count << '\n'
+              << "drainage_unreachable_cell_count: "
+              << drainage.diagnostics.unreachable_cell_count << '\n'
               << "mesh_time_ms: " << milliseconds(mesh_start, generation_start) << '\n'
               << "generation_time_ms: " << milliseconds(generation_start, generation_finish) << '\n';
 
     if (!options.map_path.empty()) {
-        write_terrain_map(options.map_path, state, generation.geology);
+        write_terrain_map(options.map_path, state, generation.geology, drainage);
         std::cout << "map_written: " << options.map_path.string() << '\n';
     }
     if (!options.snapshot_path.empty()) {
         planetsim::write_snapshot(options.snapshot_path, state, 0);
         std::cout << "snapshot_written: " << options.snapshot_path.string() << '\n';
     }
-    std::cout << "terrain_valid: true\n";
-    return 0;
+    const bool terrain_valid =
+        drainage.diagnostics.invalid_downstream_count == 0U &&
+        drainage.diagnostics.cycle_count == 0U &&
+        drainage.diagnostics.unreachable_cell_count == 0U &&
+        drainage.diagnostics.catchment_closure_relative_error <= 1e-12;
+    std::cout << "terrain_valid: " << (terrain_valid ? "true" : "false") << '\n';
+    return terrain_valid ? 0 : 2;
 }
 
 [[nodiscard]] SnapshotWriteOptions parse_snapshot_write_options(int argument_count,

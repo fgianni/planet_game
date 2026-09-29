@@ -105,7 +105,8 @@ if(PLANETSIM_BUILD_TESTS)
     )
     set_tests_properties(
         planet_cli_terrain_smoke
-        PROPERTIES PASS_REGULAR_EXPRESSION "achieved_land_fraction: 0\\.29[^0-9].*terrain_valid: true"
+        PROPERTIES PASS_REGULAR_EXPRESSION
+            "achieved_land_fraction: 0\\.29[^0-9].*drainage_catchment_closure_relative_error: [0-9eE+.-]+.*terrain_valid: true"
     )
     add_test(
         NAME planet_cli_terrain_aqua_smoke

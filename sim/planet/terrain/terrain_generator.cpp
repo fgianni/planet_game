@@ -16,6 +16,8 @@ TerrainGeneration generate_terrain(PlanetState& state, std::uint64_t world_seed,
     generation.sea_level =
         solve_sea_level(mesh, slow.hypsometry_m, parameters.target_land_fraction, worker_count);
     slow.sea_level_m = generation.sea_level.sea_level_m;
+    generation.drainage =
+        generate_drainage(mesh, slow.hypsometry_m, slow.sea_level_m, worker_count);
     return generation;
 }
 
