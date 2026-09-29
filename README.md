@@ -1,10 +1,10 @@
 # Planetary Civilization Simulator
 
-The repository has completed **P0 / M2 — Geological planet, terrain and
-ocean basins**, including the ADR-0002/0003 conformance migration and the
-simulation-mode scheduler. It contains a standalone C++20 `PlanetSim` library,
-headless mesh, solar, terrain, drainage and calendar diagnostics, tests, and
-an optional Godot 4 presentation adapter.
+The repository has completed **P0 / M3 — Surface energy and first thermal
+planet**, on top of M2's geological planet, terrain and ocean basins. It
+contains a standalone C++20 `PlanetSim` library; headless mesh, solar,
+terrain, drainage, calendar and thermal diagnostics; recorded and replayable
+runs; tests; and an optional Godot 4 presentation adapter.
 
 ## Requirements
 
@@ -167,8 +167,9 @@ second order in L2; see ADR-0002 §9 for the full record.
 ./build/planet_cli snapshot inspect planet.psnap
 ```
 
-The `PSNAP` format (schema v2 since M3 added the surface temperatures; v1
-files load through a declared migration, ADR-0007 §4.6) stores only
+The `PSNAP` format (schema v3: M3 added the surface temperatures and then
+stored the ocean mixed layer as `double`; v1 and v2 files load through the
+migration chain, ADR-0007 §4.6 and §10) stores only
 authoritative slow state, in stable
 field-ID order and layer-major/cell-major order within each field. Its fixed
 little-endian representation, canonical manifest, per-field CRC-32C checksums,
@@ -268,6 +269,33 @@ the specification; the Earth-like `g = 0.4964` is a calibration constant
 fitted to a 288 K global mean (`--calibrate`), to be refitted when the
 atmosphere and clouds arrive.
 
+## Recorded runs and replay
+
+```bash
+./build/planet_cli run --subdivision 5 --years 10 \
+    --command 600000,set_solar_luminosity_factor,1.02 --manifest run.prun
+./build/planet_cli replay run.prun
+./build/planet_cli run --subdivision 5 --years 250 \
+    --min-years-per-minute 20 --max-seconds 240
+```
+
+`run` builds a scenario (`--preset`, `--seed`, `--subdivision`,
+`--spin-up-years`, `--initial-mode`), steps it on the scheduler for whole
+orbital years and records it in a `PRUNv1` run manifest (ADR-0003 §3.3): the
+build, the scenario and its hash, every command with the tick at which it
+took effect, and an XXH3 hash of the slow state at tick 0 and at the start
+of each orbital year. Commands are `TICK,TYPE,PAYLOAD`: `set_mode` with
+`climate` or `reference`, and `set_solar_luminosity_factor` with a multiple
+of the scenario's luminosity. A command takes effect at the next step
+boundary; in climate mode that is the next monthly sub-step. `replay`
+re-simulates from the manifest alone, on any worker count, and reports
+either `replay matched` or the first tick at which the state diverged. The
+same build replays bit for bit; another build is only statistically
+equivalent, and `replay` says so. `run` also prints the stepping rate in
+simulated years per minute; `--min-years-per-minute` and `--max-seconds` turn
+it into the ADR-0001 performance gate that CI applies to 250-year runs at L5
+and L6.
+
 ## Optional Godot preview
 
 The default build does not inspect or require Godot. To build the adapter,
@@ -333,7 +361,8 @@ not alter persistent `PSNAP` files.
 - Evolving fields are separate 64-byte-aligned `Field2D<T>`, layer-major
   `Field3D<T>`, or `EdgeField<T>` arrays indexed by strong IDs.
 - `PlanetState` retains a shared immutable mesh handle. Its authoritative
-  `SlowState` currently owns hypsometry and global sea level; `FastState` is
+  `SlowState` owns hypsometry, global sea level and the four surface
+  temperatures; `FastState` is
   optional and lazily allocated, `Climatology` is derived, and forcing remains
   outside the persistent partition.
 - The mesh is body-fixed with geographic north on `+Z`; physical rotation and
@@ -368,7 +397,9 @@ The main decisions are recorded in:
 - [mesh topology, resolution, and field layout](docs/decisions/0002-mesh-and-field-layout.md);
 - [determinism, snapshots, and migration](docs/decisions/0003-determinism-snapshots-migration.md);
 - [Keplerian orbit and coordinate frames](docs/decisions/0004-keplerian-orbit-and-coordinate-frames.md);
-- [coastlines and drainage](docs/decisions/0005-coastlines-and-drainage.md).
+- [coastlines and drainage](docs/decisions/0005-coastlines-and-drainage.md);
+- [seasonal climate-mode steps](docs/decisions/0006-seasonal-climate-steps.md);
+- [surface energy columns](docs/decisions/0007-surface-energy-columns.md).
 
 The precise M1 coordinate and validation conventions are in
 [`docs/M1_TECHNICAL_SPEC.md`](docs/M1_TECHNICAL_SPEC.md).
@@ -378,10 +409,10 @@ The precise M1 coordinate and validation conventions are in
 M2 provides the finite-volume operators, state partitions, base persistent
 snapshots, procedural plate-scale terrain with sea level, and static drainage
 topology; M3 adds surface temperatures from radiative columns without
-horizontal transport. Dynamic runoff, discharge, lake water balance, snow and
+horizontal transport, and runs are recorded and replayable. Dynamic runoff, discharge, lake water balance, snow and
 ice, the atmosphere, clouds, orbital precession and perturbations are not yet
 computed. Geology and drainage are generated once and are
-not time-evolving, and `GeologyState` is not persisted. Run manifests and replay, compressed/delta snapshots and autosaves remain assigned to later tasks and milestones. Tracer
+not time-evolving, and `GeologyState` is not persisted. Compressed/delta snapshots, forks and autosaves remain assigned to later milestones. Tracer
 advection and the placement of vector fields (cell centres or edge normals)
 are left to the first milestone that transports them. The two-point
 Laplacian's pointwise truncation error does not converge next to the pentagons

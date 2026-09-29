@@ -18,20 +18,21 @@ documents keep the version citations they were written against.
 
 P0 --- Living Planet.
 
-Most recently completed milestone: **M2 --- Geological planet, terrain and
-ocean basins**.
+Most recently completed milestone: **M3 --- Surface energy and first thermal
+planet**.
 
-M0 through M2 are complete. M2 includes gate G2-M2 (finite-volume
+M0 through M3 are complete. M2 includes gate G2-M2 (finite-volume
 operators), the state-partition/persistent-snapshot foundation, foundation
 hardening, plate-scale terrain with sub-cell hypsometry and sea level, static
 cell-mesh drainage, and the simulation modes, scheduler skeleton and sub-step
 calendar (task M2-04). The pre-M3 seasonal decision record is accepted
 (ADR-0006).
 
-M3 tasks M3-01 (sub-step mean insolation) and M3-02 (surface energy
-columns, experiments A and B, ADR-0007) are complete. Most recently
-completed task:
-[`docs/tasks/M3-02-surface-energy-columns.md`](docs/tasks/M3-02-surface-energy-columns.md).
+M3 tasks M3-01 (sub-step mean insolation), M3-02 (surface energy columns,
+experiments A and B, ADR-0007) and M3-03 (the ocean mixed layer in `double`,
+run manifests, state hashes and replay, the ADR-0001 performance gate) are
+complete. Most recently completed task:
+[`docs/tasks/M3-03-replay-gates-and-close.md`](docs/tasks/M3-03-replay-gates-and-close.md).
 Task documents in `docs/tasks/` state their scope, the decisions already
 made, acceptance criteria and what to report. Do not implement M4 or later
 milestones unless explicitly requested.

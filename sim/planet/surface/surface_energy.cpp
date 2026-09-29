@@ -63,7 +63,7 @@ void initialise_surface_temperatures(const PlanetMesh& mesh, SlowState& slow,
 
     slow.land_surface_temperature_K = Field2D<float>(cells, 0.0F);
     slow.land_ground_temperature_K = Field2D<float>(cells, 0.0F);
-    slow.ocean_mixed_layer_temperature_K = Field2D<float>(cells, 0.0F);
+    slow.ocean_mixed_layer_temperature_K = Field2D<double>(cells, 0.0);
     slow.ocean_deep_temperature_K = Field2D<double>(cells, 0.0);
     for_each_deterministic_block(
         mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
@@ -79,7 +79,7 @@ void initialise_surface_temperatures(const PlanetMesh& mesh, SlowState& slow,
                     ocean, annual_mean[cell], surface.grey_emissivity);
                 slow.land_surface_temperature_K[cell] = static_cast<float>(land_K);
                 slow.land_ground_temperature_K[cell] = static_cast<float>(land_K);
-                slow.ocean_mixed_layer_temperature_K[cell] = static_cast<float>(ocean_K);
+                slow.ocean_mixed_layer_temperature_K[cell] = ocean_K;
                 slow.ocean_deep_temperature_K[cell] = ocean_K;
             }
         });
@@ -206,8 +206,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 slow.land_surface_temperature_K[cell] =
                     static_cast<float>(land_step.state.surface_K);
                 slow.land_ground_temperature_K[cell] = static_cast<float>(land_step.state.lower_K);
-                slow.ocean_mixed_layer_temperature_K[cell] =
-                    static_cast<float>(ocean_step.state.surface_K);
+                slow.ocean_mixed_layer_temperature_K[cell] = ocean_step.state.surface_K;
                 slow.ocean_deep_temperature_K[cell] = ocean_step.state.lower_K;
             }
             return partial;

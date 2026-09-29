@@ -107,9 +107,9 @@ schemas evolve.
 | G2-M0 | ✅ EVIDENCED | V1/V2 dual-mesh geometry and topology are green through L6. |
 | G2-M2 | ✅ EVIDENCED | *Updated 2026-09-28.* V3/V4 pass L3–L6 with the error map uploaded by CI. Required the ADR-0002 amendment to circumcentre corners and a centroidal Voronoi mesh; see ADR-0002 §9. |
 | G3-M1 | ✅ EVIDENCED | Field layout, fixed blocks, fixed block-index reductions, 1/2/8/16-worker forcing equality, memory gates, and V7 are green. |
-| G3-M3 | NOT FOUND | Full command replay and checkpoint state hashes are correctly deferred to M3. |
-| G4 | ⚠ RUNTIME_ONLY | The slow/fast/climatology state partition, lazy fast-state lifecycle, simulation modes and the multi-rate scheduler skeleton (task M2-04) are implemented. The years-per-minute harness and state hashes remain M3 work. |
-| G5 | ⚠ RUNTIME_ONLY | The M2 base snapshot writer/reader, canonical ordering, CRC-32C validation, corruption tests, V4 round trips, CLI inspection, and initial golden save are complete. *Updated 2026-09-29 (task M3-02):* schema v2 with a declared v1 → v2 migration hook is implemented. Manifests/replay (M3), delta chains/compression (M4), and general migration machinery (M5) are not yet implemented. |
+| G3-M3 | ✅ EVIDENCED | *Updated 2026-09-29 (task M3-03):* run manifest (`PRUNv1`), command log, yearly XXH3 checkpoint state hashes and replay are implemented; ADR-0003 V1 and V2 run in CI (`tests/regression/test_run_replay.cpp`, `planet_cli replay`). Weather-window schedules await weather windows. |
+| G4 | ✅ EVIDENCED | The slow/fast/climatology state partition, lazy fast-state lifecycle, simulation modes and the multi-rate scheduler skeleton (task M2-04) are implemented. *Updated 2026-09-29 (task M3-03):* the years-per-minute harness and the ADR-0001 §5 250-year CI gate at L5 and L6 run in CI Release jobs (ADR-0001 §10); the >20 % regression comparison is deferred until cost approaches the budget. |
+| G5 | ⚠ RUNTIME_ONLY | The M2 base snapshot writer/reader, canonical ordering, CRC-32C validation, corruption tests, V4 round trips, CLI inspection, and initial golden save are complete. *Updated 2026-09-29 (task M3-02):* schema v2 with a declared v1 → v2 migration hook is implemented. Schema v3 (ADR-0007 §10) adds the first retired field and an exact v2 → v3 step. *Updated (task M3-03):* manifests and replay are implemented, and every golden save steps ten years (V5). Delta chains/compression (M4) and general migration machinery (M5) are not yet implemented. |
 
 ### M2-02 terrain (2026-09-28)
 
@@ -144,7 +144,18 @@ schemas evolve.
 | ADR-0007 V9, PSNAP schema v2 | ✅ EVIDENCED | Four new slow fields in the registry baseline; v1 golden loads through the declared migration; v2 golden round trip exact (`tests/regression/test_golden_snapshot.cpp`). |
 | ADR-0007 V10 | ✅ EVIDENCED | 1.1 ms (L5) and 4.0 ms (L6) per climate sub-step at 8 workers, against 250 ms and 1 s (`planet_cli thermal`). |
 | Calibration constants recorded (specification §24) | ✅ EVIDENCED | `earth_like_grey_emissivity = 0.4964` carries its fit target, run and sensitivity (`sim/planet/surface/surface_energy.hpp`, ADR-0007 §9). |
-| Reference-mode precision (ADR-0002 §4.4) | ⚠ RUNTIME_ONLY | The `float` ocean mixed layer loses ten-minute increments to rounding; see the open finding in ADR-0007 §9. |
+| Reference-mode precision (ADR-0002 §4.4) | ✅ EVIDENCED | *Updated 2026-09-29:* the ocean mixed layer is `double` (ADR-0007 §10; retired field `0x0003'0003`, new `0x0003'0005`, PSNAP schema 3 with an exact v2 → v3 widening). Thirty days of ten-minute ocean steps equal an all-`double` column bit for bit (`tests/physics/test_surface_energy.cpp`); v1, v2 and v3 golden files load (`tests/regression/test_golden_snapshot.cpp`). |
+
+### M3-03 replay, performance gate and M3 close (2026-09-29)
+
+| Requirement | Status | Finding |
+|---|---|---|
+| ADR-0003 §3.3 run manifest and state hash | ✅ EVIDENCED | `sim/core/serialization/run_manifest.{hpp,cpp}`, `slow_state_hash`; XXH3-64 pinned by reference vectors (`tests/unit/test_xxh3.cpp`); manifest round trip and rejection tests (`tests/unit/test_run_manifest.cpp`). |
+| ADR-0003 V1 | ✅ EVIDENCED | Identical manifests for 1/2/8/16 workers, chunked pacing across a reference window and late command submission (`tests/regression/test_run_replay.cpp`). |
+| ADR-0003 V2 | ✅ EVIDENCED | Replay from the manifest file matches; altered inputs and records are located at the right tick; CI replays the 250-year L5 run. |
+| ADR-0003 V5 | ✅ EVIDENCED | Golden saves of schemas 1–3 load and step ten years with every step's budget closing (`tests/regression/test_golden_snapshot.cpp`). |
+| ADR-0001 §5/§8 M3 gate | ✅ EVIDENCED | CI Release: 250 years at L5 (≥ 20 years/min, ≤ 240 s) and L6 (≥ 5 years/min, ≤ 600 s); measured 2,981 and 774 years/min on 4 workers. |
+| ADR-0001 V4 regression gate | ⚠ RUNTIME_ONLY | Absolute budget gated; the >20 % regression comparison against a baseline is not yet automated (ADR-0001 §10). |
 
 ## Risk-register audit
 
@@ -177,6 +188,10 @@ take precedence where a specification conflicts.
 
 ## Validation observed during the migration and M2 work
 
+- M3-03 (2026-09-29): GCC 11 Debug and Release, Clang 14 Debug and
+  Release, ASan+UBSan on Clang 14 and GCC 12 (under `setarch -R`) 51/51;
+  floating-point policy 0 violations in 75 translation units; registry check
+  8 current, 1 retired.
 - M2-03 drainage (2026-09-29): Release 38/38; Clang 14
   ASan+UBSan RelWithDebInfo 38/38 under `setarch -R`; floating-point policy
   0 violations in 57 translation units.

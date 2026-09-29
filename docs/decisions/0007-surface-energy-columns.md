@@ -1,6 +1,6 @@
 # ADR-0007 — Surface energy columns for the first thermal planet
 
-- **Status:** Accepted
+- **Status:** Accepted (amended 2026-09-29, §10)
 - **Date:** 2026-09-29
 - **Accepted:** 2026-09-29
 - **Milestone:** P0 / M3 (surface energy and first thermal planet)
@@ -128,7 +128,7 @@ migration chain forward, deliberately and minimally.
 |---|---|---|---|
 | `land_surface_temperature_K` | land, surface layer | `float` | slow |
 | `land_ground_temperature_K` | land, ground layer | `float` | slow |
-| `ocean_mixed_layer_temperature_K` | ocean, mixed layer | `float` | slow |
+| `ocean_mixed_layer_temperature_K` | ocean, mixed layer | `float`; `double` since schema 3 (§10) | slow |
 | `ocean_deep_temperature_K` | ocean, deep layer | `double` (ADR-0002: slow ocean reservoir) | slow |
 
 Every cell carries both tiles' temperatures, including a tile with zero area,
@@ -304,7 +304,7 @@ Validation (L4, seed 20260929, 60 spin-up years unless stated):
 The suite passes 46/46 in GCC 11 Release and Debug, Clang 14 Release and
 Clang ASan+UBSan, with the floating-point and field-registry checks.
 
-**Open finding (not changed here).** §4.1 stores the ocean mixed layer as
+**Open finding (resolved by §10).** §4.1 stores the ocean mixed layer as
 `float`. In reference mode a ten-minute step moves it by 1e-4 K, a few
 `float` ulps at 295 K, and rounding the stored value each step biases the
 result: over 30 days of ten-minute steps the error reaches 0.01–0.04 K,
@@ -312,3 +312,41 @@ comparable to the whole diurnal range (0.07 K), and the response to a
 3 W/m² imbalance is off by a factor of about 3. Climate mode is unaffected.
 ADR-0002 §4.4 keeps slow ocean reservoirs in `float64` for this reason;
 storing the mixed layer as `double` would resolve it.
+
+## 10. Amendment: the ocean mixed layer in `double` (2026-09-29)
+
+**Decision.** The ocean mixed layer is stored as `double`, like the deep
+layer, which resolves the §9 open finding. ADR-0002 §4.4 already keeps slow
+ocean reservoirs in `float64`; §4.1 applied it to the deep layer only. The
+land layers stay `float`: a ten-minute step moves the land surface by tenths
+of a kelvin, far above its rounding.
+
+**Field identity.** A registered field's type may not change (ADR-0003 §3.6,
+the append-only registry check), so the `float` field `0x0003'0003` is
+retired and the mixed layer is registered again as `0x0003'0005`, `float64`,
+under the same name. The C++ member keeps its name.
+
+**Snapshots.** PSNAP schema 3 stores the new field. The chain is now:
+
+| Step | Migration |
+|---|---|
+| 1 → 2 | the planet layer's declared initialiser (§4.6), which writes the current types |
+| 2 → 3 | core-level and exact: the retired `float32` values widen to `float64`; no initialiser, no loss |
+
+The reader recognises a retired field only in the schemas that stored it
+(`retired_persistent_fields` in `sim/core/serialization/snapshot_file.cpp`,
+statically checked against `retired_field_ids`). A v3 golden file is added;
+the v1 and v2 files stay and load through the chain.
+
+**Consequences.** The ocean tile now stores exactly the solver's result, so
+reference-mode ocean steps carry no storage rounding. The new
+`check_reference_ocean_precision` test in `tests/physics/test_surface_energy.cpp`
+runs thirty days of ten-minute steps at L2 with 3 W/m² of forcing above
+equilibrium, and the stored mixed layer is bit-identical to the same columns
+stepped entirely in `double`. Climate-mode results are unchanged to the
+recorded precision: V5–V7 reproduce the §9 table (dead rock 259.3 K,
+imbalance 3.8e-9; aqua planet 274.8 K, largest seasonal range 9.2 K,
+imbalance −2.2e-5). A snapshot grows by 4 bytes per cell (L6: +160 kB). The
+suite passes 46/46 in GCC 11 Release, Clang 14 Release and Clang ASan+UBSan,
+with the registry check (8 current fields, 1 retired) and the floating-point
+policy check.

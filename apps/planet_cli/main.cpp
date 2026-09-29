@@ -1,6 +1,7 @@
 #include "sim/core/fields/field_registry.hpp"
 #include "sim/core/random/counter_rng.hpp"
 #include "sim/core/scheduler/simulation_clock.hpp"
+#include "sim/core/serialization/run_manifest.hpp"
 #include "sim/core/serialization/snapshot_file.hpp"
 #include "sim/planet/mesh/icosphere.hpp"
 #include "sim/planet/mesh/mesh_diagnostics.hpp"
@@ -12,6 +13,7 @@
 #include "sim/planet/orbit/substep_forcing.hpp"
 #include "sim/planet/planet_parameters.hpp"
 #include "sim/planet/planet_state.hpp"
+#include "sim/planet/run/planet_run.hpp"
 #include "sim/planet/surface/surface_energy.hpp"
 #include "sim/planet/terrain/surface_fractions.hpp"
 #include "sim/planet/terrain/hypsometry.hpp"
@@ -33,6 +35,7 @@
 #include <memory>
 #include <numbers>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -89,6 +92,19 @@ struct ThermalOptions {
     std::size_t worker_count = 0;        // 0: hardware concurrency
 };
 
+struct RunOptions {
+    planetsim::Scenario scenario;
+    int years = 1;
+    std::vector<planetsim::RunCommand> commands;
+    std::size_t worker_count = 0;   // 0: hardware concurrency
+    std::optional<std::filesystem::path> manifest_path;
+    std::optional<std::filesystem::path> snapshot_path;
+    // ADR-0001 §5 gates: exit 3 if the stepping rate or the total wall time
+    // (setup included) misses them.
+    std::optional<double> min_years_per_minute;
+    std::optional<double> max_seconds;
+};
+
 constexpr std::uint64_t snapshot_synthetic_seed = 0x9B97'F4A7'C150'0011ULL;
 constexpr planetsim::SimulationTick snapshot_synthetic_tick = 123'456;
 
@@ -106,7 +122,13 @@ void print_usage(std::ostream& output) {
            << "    presets: earth_like (default), aqua_planet, dead_rock\n"
            << "  planet_cli calendar [--year N | --from-tick T]\n"
            << "  planet_cli thermal [--subdivision LEVEL] [--seed N] [--preset NAME]"
-              " [--years N] [--grey G | --calibrate KELVIN] [--workers W]\n";
+              " [--years N] [--grey G | --calibrate KELVIN] [--workers W]\n"
+           << "  planet_cli run [--subdivision LEVEL] [--seed N] [--preset NAME] [--years N]"
+              " [--spin-up-years N] [--initial-mode climate|reference]"
+              " [--command TICK,TYPE,PAYLOAD]... [--workers W] [--manifest FILE.prun]"
+              " [--snapshot FILE.psnap] [--min-years-per-minute R] [--max-seconds S]\n"
+           << "    commands: set_mode,climate|reference; set_solar_luminosity_factor,F\n"
+           << "  planet_cli replay FILE.prun [--workers W]\n";
 }
 
 [[nodiscard]] std::uint32_t parse_subdivision(std::string_view text) {
@@ -218,6 +240,73 @@ void print_usage(std::ostream& output) {
             options.snapshot_path = std::filesystem::path(value);
         } else {
             throw std::invalid_argument("unknown terrain option: " + std::string(argument));
+        }
+    }
+    return options;
+}
+
+[[nodiscard]] planetsim::RunCommand parse_run_command(std::string_view text) {
+    const std::size_t first = text.find(',');
+    const std::size_t second =
+        first == std::string_view::npos ? first : text.find(',', first + 1U);
+    if (second == std::string_view::npos) {
+        throw std::invalid_argument("--command needs TICK,TYPE,PAYLOAD: " + std::string(text));
+    }
+    return {parse_int64(text.substr(0, first), "command tick"), "cli",
+            std::string(text.substr(first + 1U, second - first - 1U)),
+            std::string(text.substr(second + 1U))};
+}
+
+[[nodiscard]] RunOptions parse_run_options(int argument_count, char** arguments) {
+    RunOptions options;
+    for (int index = 2; index < argument_count; ++index) {
+        const std::string_view argument{arguments[index]};
+        if (++index >= argument_count) {
+            throw std::invalid_argument(std::string(argument) + " requires a value");
+        }
+        const std::string_view value{arguments[index]};
+        if (argument == "--subdivision") {
+            options.scenario.subdivision = parse_subdivision(value);
+        } else if (argument == "--seed") {
+            options.scenario.seed = parse_unsigned(value, "seed");
+        } else if (argument == "--preset") {
+            const auto preset = planetsim::parse_planet_preset(value);
+            if (!preset) {
+                throw std::invalid_argument("unknown preset: " + std::string(value));
+            }
+            options.scenario.preset = *preset;
+        } else if (argument == "--years" || argument == "--spin-up-years") {
+            const std::int64_t years = parse_int64(value, "year count");
+            if (years < 0 || years > 100'000 || (argument == "--years" && years == 0)) {
+                throw std::invalid_argument("invalid year count: " + std::string(value));
+            }
+            (argument == "--years" ? options.years : options.scenario.spin_up_years) =
+                static_cast<int>(years);
+        } else if (argument == "--initial-mode") {
+            if (value == "climate") {
+                options.scenario.initial_mode = planetsim::SimulationMode::climate;
+            } else if (value == "reference") {
+                options.scenario.initial_mode = planetsim::SimulationMode::reference;
+            } else {
+                throw std::invalid_argument("unknown initial mode: " + std::string(value));
+            }
+        } else if (argument == "--command") {
+            options.commands.push_back(parse_run_command(value));
+        } else if (argument == "--workers") {
+            options.worker_count = static_cast<std::size_t>(parse_unsigned(value, "worker count"));
+            if (options.worker_count == 0U) {
+                throw std::invalid_argument("worker count must be positive");
+            }
+        } else if (argument == "--manifest") {
+            options.manifest_path = std::filesystem::path(value);
+        } else if (argument == "--snapshot") {
+            options.snapshot_path = std::filesystem::path(value);
+        } else if (argument == "--min-years-per-minute") {
+            options.min_years_per_minute = parse_double(value, "years per minute");
+        } else if (argument == "--max-seconds") {
+            options.max_seconds = parse_double(value, "maximum seconds");
+        } else {
+            throw std::invalid_argument("unknown run option: " + std::string(argument));
         }
     }
     return options;
@@ -505,7 +594,7 @@ void populate_snapshot_synthetic_state(planetsim::PlanetState& state) {
         auto& slow = state.slow();
         slow.land_surface_temperature_K[cell] = static_cast<float>(temperature(cell, 20U));
         slow.land_ground_temperature_K[cell] = static_cast<float>(temperature(cell, 21U));
-        slow.ocean_mixed_layer_temperature_K[cell] = static_cast<float>(temperature(cell, 22U));
+        slow.ocean_mixed_layer_temperature_K[cell] = temperature(cell, 22U);
         slow.ocean_deep_temperature_K[cell] = temperature(cell, 23U);
     }
 }
@@ -1100,6 +1189,118 @@ int run_thermal(const ThermalOptions& options) {
     return 0;
 }
 
+[[nodiscard]] std::string hash_hex(std::uint64_t hash) {
+    std::ostringstream text;
+    text << std::hex << std::setw(16) << std::setfill('0') << hash;
+    return text.str();
+}
+
+int run_scenario(const RunOptions& options) {
+    const std::size_t worker_count =
+        options.worker_count != 0U ? options.worker_count
+                                   : std::max<std::size_t>(1U, std::thread::hardware_concurrency());
+    const auto setup_start = std::chrono::steady_clock::now();
+    planetsim::PlanetRun run(options.scenario, worker_count);
+    for (const auto& command : options.commands) {
+        run.submit(command);
+    }
+    const auto run_start = std::chrono::steady_clock::now();
+    const auto end_tick = planetsim::orbital_year_begin_tick(options.years, run.parameters());
+    run.run_until(end_tick);
+    const auto run_finish = std::chrono::steady_clock::now();
+
+    const double setup_s = std::chrono::duration<double>(run_start - setup_start).count();
+    const double run_s = std::chrono::duration<double>(run_finish - run_start).count();
+    const double total_s = setup_s + run_s;
+    const double years_per_minute = run_s > 0.0 ? options.years * 60.0 / run_s : 0.0;
+    const auto manifest = run.manifest();
+    const auto& last = run.last_step();
+
+    std::cout << std::setprecision(9) << "scenario";
+    for (const auto& [key, value] : manifest.scenario) {
+        std::cout << ' ' << key << '=' << value;
+    }
+    std::cout << " cells=" << run.state().mesh().cell_count() << '\n'
+              << "run years=" << options.years << " end_tick=" << run.tick()
+              << " steps=" << run.scheduler().step_count()
+              << " commands=" << manifest.commands.size()
+              << " checkpoints=" << manifest.checkpoints.size()
+              << " state_hash=" << hash_hex(run.state_hash()) << '\n'
+              << "last_step mean_K=" << last.mean_surface_temperature_K
+              << " closure_residual_J=" << last.closure_residual_J()
+              << " max_newton_residual_W_m2=" << last.max_newton_residual_W_m2 << '\n'
+              << "timing workers=" << worker_count << " setup_s=" << setup_s
+              << " run_s=" << run_s << " total_s=" << total_s
+              << " years_per_minute=" << years_per_minute << '\n';
+
+    if (options.manifest_path) {
+        planetsim::write_run_manifest(*options.manifest_path, manifest);
+        std::cout << "manifest_written: " << options.manifest_path->string() << '\n';
+    }
+    if (options.snapshot_path) {
+        planetsim::write_snapshot(*options.snapshot_path, run.state(), run.tick());
+        std::cout << "snapshot_written: " << options.snapshot_path->string() << '\n';
+    }
+
+    bool gate_passed = true;
+    if (options.min_years_per_minute) {
+        const bool passed = years_per_minute >= *options.min_years_per_minute;
+        std::cout << "gate years_per_minute>=" << *options.min_years_per_minute << ": "
+                  << (passed ? "passed" : "FAILED") << '\n';
+        gate_passed = gate_passed && passed;
+    }
+    if (options.max_seconds) {
+        const bool passed = total_s <= *options.max_seconds;
+        std::cout << "gate total_s<=" << *options.max_seconds << ": "
+                  << (passed ? "passed" : "FAILED") << '\n';
+        gate_passed = gate_passed && passed;
+    }
+    return gate_passed ? 0 : 3;
+}
+
+int run_replay(int argument_count, char** arguments) {
+    if (argument_count < 3) {
+        throw std::invalid_argument("replay requires a run manifest");
+    }
+    std::size_t worker_count = std::max<std::size_t>(1U, std::thread::hardware_concurrency());
+    for (int index = 3; index < argument_count; ++index) {
+        const std::string_view argument{arguments[index]};
+        if (argument != "--workers" || ++index >= argument_count) {
+            throw std::invalid_argument("replay accepts only --workers W");
+        }
+        worker_count = static_cast<std::size_t>(parse_unsigned(arguments[index], "worker count"));
+        if (worker_count == 0U) {
+            throw std::invalid_argument("worker count must be positive");
+        }
+    }
+    const auto manifest = planetsim::read_run_manifest(arguments[2]);
+    const auto engine = planetsim::snapshot_engine_version();
+    std::cout << "manifest engine_version=" << manifest.engine_version
+              << " this_build=" << engine << " commands=" << manifest.commands.size()
+              << " checkpoints=" << manifest.checkpoints.size()
+              << " end_tick=" << manifest.end_tick.value_or(-1) << '\n';
+    if (manifest.engine_version != engine) {
+        std::cout << "warning: different engine version; only L1 (statistical) equivalence is "
+                     "guaranteed across builds (ADR-0003 §3.1)\n";
+    }
+    const auto start = std::chrono::steady_clock::now();
+    const auto result = planetsim::replay_run(manifest, worker_count);
+    const double replay_s =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    std::cout << "replay workers=" << worker_count << " checkpoints_compared="
+              << result.checkpoints_compared << " end_tick=" << result.end_tick
+              << " state_hash=" << hash_hex(result.final_state_hash) << " time_s=" << replay_s
+              << '\n';
+    if (result.matched) {
+        std::cout << "replay matched\n";
+        return 0;
+    }
+    std::cout << "replay DIVERGED first_divergence_tick=" << *result.first_divergence_tick
+              << " day=" << planetsim::simulation_time_s(*result.first_divergence_tick) / 86'400.0
+              << '\n';
+    return 4;
+}
+
 int main(int argument_count, char** arguments) {
     try {
         if (argument_count == 2 && std::string_view{arguments[1]} == "--help") {
@@ -1125,6 +1326,12 @@ int main(int argument_count, char** arguments) {
         }
         if (command == "thermal") {
             return run_thermal(parse_thermal_options(argument_count, arguments));
+        }
+        if (command == "run") {
+            return run_scenario(parse_run_options(argument_count, arguments));
+        }
+        if (command == "replay") {
+            return run_replay(argument_count, arguments);
         }
         if (command == "calendar") {
             return run_calendar(argument_count, arguments);

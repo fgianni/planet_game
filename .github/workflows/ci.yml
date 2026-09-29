@@ -61,6 +61,18 @@ jobs:
           ./build/planet_cli mesh --subdivision 6
           ./build/planet_cli solar --subdivision 5 --time-days 91.31055
 
+      - name: Climate-mode performance gate (ADR-0001 §5, V4)
+        if: matrix.build_type == 'Release'
+        run: |
+          ./build/planet_cli run --subdivision 5 --years 250 \
+            --min-years-per-minute 20 --max-seconds 240 --manifest run_L5_250y.prun
+          ./build/planet_cli run --subdivision 6 --years 250 \
+            --min-years-per-minute 5 --max-seconds 600
+
+      - name: Replay the 250-year run (ADR-0003 V2)
+        if: matrix.build_type == 'Release'
+        run: ./build/planet_cli replay run_L5_250y.prun
+
       - name: Operator validation (ADR-0002 V3/V4)
         if: matrix.build_type == 'Release'
         run: >
