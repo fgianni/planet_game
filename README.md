@@ -288,7 +288,20 @@ falls as snow where the land surface is at or below 0 °C, raises the tile's
 albedo with snow cover, and melts with latent heat when the surface would
 warm past 0 °C. Energy (with the latent term) and water close to rounding.
 With the transport, snow now clears seasonally from about 15 % of land
-cells, while high latitudes still accumulate it. Sea ice is the next task.
+cells, while high latitudes still accumulate it.
+
+Sea ice forms on the ocean tile (ADR-0008 §4.4) when open water would cool
+below the seawater freezing point, −1.8 °C. Under ice the mixed layer stays
+at freezing and the deep layer's heat reaches the ice base. The ice surface
+balances sunlight, emission, conduction through the ice, the transport and
+the cell's air, and melts at 0 °C. Each step solves the new thickness
+implicitly, and ice raises the tile's albedo with its thickness. `planet_cli
+thermal` reports the year's end ice mass and each hemisphere's smallest and
+largest ice area. Energy, with latent heat, and water close to rounding. The
+current calibration predates ice, so ice is too extensive and barely
+seasonal: 21 and 48 million km² in the northern and southern hemispheres on
+the Earth-like planet. The refit of `D` and `g` with ice is task M4-04
+(ADR-0008 §10).
 
 ## Recorded runs and replay
 
@@ -314,8 +327,10 @@ either `replay matched` or the first tick at which the state diverged. The
 same build replays bit for bit; another build is only statistically
 equivalent, and `replay` says so. `run` also prints the stepping rate in
 simulated years per minute; `--min-years-per-minute` and `--max-seconds` turn
-it into the ADR-0001 performance gate that CI applies to 250-year runs at L5
-and L6.
+it into the ADR-0001 performance gate. The budgets hold on the target
+machine, where each task measures the 250-year scenario. CI runs 25 years at
+L5 and L6 and gates the equivalent rate, scaled by the hosted runner's
+measured speed (ADR-0001 §11).
 
 ## Optional Godot preview
 

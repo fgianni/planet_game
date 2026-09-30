@@ -1,6 +1,6 @@
 # ADR-0008 — Snow, sea ice and the ice–albedo feedback
 
-- **Status:** Accepted
+- **Status:** Accepted (implementation records §9 M4-01, §10 M4-03)
 - **Date:** 2026-09-30
 - **Accepted:** 2026-09-30
 - **Milestone:** P0 / M4 (basic snow, ice and albedo feedback)
@@ -360,3 +360,78 @@ seasonal-experiment acceptance (§5 V7) for land snow out of reach until
 heat reaches the land. Sea ice (M4-02) has the ocean's heat beneath it and
 is expected to behave differently. The decision on transport is ADR-0009
 (accepted 2026-09-30), implemented as task M4-02 before sea ice.
+
+## 10. Implementation record (task M4-03, 2026-09-30)
+
+§4.4 (the ocean tile with zero-layer sea ice) and §4.5's ice terms are
+implemented. The sea-ice field of M4-01 (`sea_ice_mass_kg_m2`, schema 4) is
+now live, and no new field or schema was needed.
+
+| Concern | Code |
+|---|---|
+| Ocean tile: open water, freezing, ice growth and melt, complete melt, slope | `sim/planet/surface/sea_ice.{hpp,cpp}` |
+| Cell solve, mesh step, latent and water budgets, hemispheric diagnostics, annual ice summary | `sim/planet/surface/surface_energy.{hpp,cpp}` |
+| Tests | `tests/unit/test_sea_ice.cpp`, `tests/physics/test_sea_ice_planet.cpp` |
+| `planet_cli thermal` ice line (end mass, smallest and largest area per hemisphere) | `apps/planet_cli/main.cpp` |
+
+Refinements, recorded here rather than changing the decision:
+
+- **Thickness solve.** A bracketed Newton on the growth residual, with the
+  exact derivative from the implicit-function theorem on the surface
+  balance, replaces the task's Newton–bisection. It starts warm from the
+  tile's previous root in the same step, otherwise from the discrete Stefan
+  estimate, and stops when a step is below 1e-13 of the thickness. The
+  residual is reported.
+- **Slope for the transport solve.** It includes the thickness response and
+  is taken against the cell's air (ADR-0009 §11), so it is never zero. This
+  replaces the task's decision 5 (slope 0 at a phase change), which let a
+  freezing coastal cell drain without limit.
+- **Initial state.** `initialise_cryosphere`, which also serves the
+  schema 3 → 4 migration, raises ocean layers below `T_f` to `T_f`. The
+  ADR-0007 state without ice holds polar oceans at 220–250 K, and the ice
+  physics would otherwise turn that deficit into hundreds of metres of ice
+  at once.
+
+Validation (unit cases, and L4 planets with seed 20260930; Earth-like with
+transport on):
+
+| ID | Result |
+|---|---|
+| V1 | per tile: worst 0.16 of the ADR-0007 gate over a grid of cases; planet: 0.038 (Earth-like, three climate years and a reference day), 2.2e-5 (aqua planet, three climate years) |
+| V2 | per tile exact; planet: worst 4.1e-5 of the gate (Earth-like), 2.5e-5 (aqua planet) |
+| V3 | discrete Stefan scheme matched to 1.9e-13; against `h² = h₀² + 2 k_i ΔT t / (ρ_i L_f)` after a winter: 7.7 % at 30-day steps, 3.1 % at 10-day steps, 0.39 % at 1-day steps (gate ≤ 1 %), first order |
+| V4 | ice ≥ 0; ice present ⇒ mixed layer = `T_f`; deep layer ≥ `T_f` (to 1e-9 K), per tile over a grid and on both planets |
+| V5 (ice) | 1 m of extra ice on every ocean tile lowers the absorbed shortwave from 1.53e17 W to 9.24e16 W and the global mean a year later from 284.4 K to 259.5 K |
+| V6 | open water above `T_f` is the ADR-0007 column bit for bit; dead rock unchanged (259.336 K, imbalance 3.8e-9) |
+| V8 | 1/2/8/16 workers bit-identical; runs replay bit for bit (ADR-0003 V1–V2, `test_run_replay`) |
+| V10 | 250 years on four workers, target machine: L5 117 s (limit 240 s), L6 395 s (limit 600 s). CI gates the equivalent rate (ADR-0001 §11) |
+| Planets | ice forms in both hemispheres and only poleward of 37.6° on both the Earth-like and the aqua planet |
+
+**Finding: too much ice, and hardly any seasonal cycle.** After a 60-year
+spin-up at L5 (seed 1, `planet_cli thermal`):
+
+| Planet | Northern ice area, year's range (million km²) | Southern ice area, year's range (million km²) |
+|---|---|---|
+| Earth-like | 21.2–21.6 | 47.5–47.7 |
+| Aqua planet | 92.7, constant | 100.1, constant |
+
+Earth's sea ice ranges about 4–16 million km² in the Arctic and 3–19 in the
+Antarctic. Four causes, in expected order of weight:
+
+1. **The calibration predates ice and ADR-0009 §11.** `D` and `g` were fitted
+   without either (§11 there). The Earth-like planet now averages 282.7 K
+   with a 64.7 K P2 equator-to-pole difference, against targets of 288 K
+   and 42 K.
+2. **No heat reaches the ice from below.** There is no ocean heat transport
+   under the ice until M11, so ice that forms in winter meets no warm water
+   in summer.
+3. **Grey radiation lets polar summers lose heat quickly.** This is the same
+   limitation ADR-0009 §10 records.
+4. **The aqua planet has no transport and no greenhouse** (`g = 0`). It is
+   a radiative-equilibrium planet: winter ice poleward of about 38° is
+   perennial there, and its global mean falls from 274.8 K (ADR-0007) to
+   254.9 K.
+
+Items 1 and 3 belong to task M4-04 (the seasonal experiment V7 and the refit
+of `D` and `g` with ice), item 2 to M11. None of them is a defect in the
+§4.4 step, whose budgets, invariants and signs hold.

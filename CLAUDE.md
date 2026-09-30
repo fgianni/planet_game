@@ -24,8 +24,9 @@ replay (ADR-0003 V1, V2, V5), and the ADR-0001 performance gate in CI.
 M0--M2 (mesh, orbit, terrain, drainage, scheduler and calendar) are complete.
 
 M4 (basic snow, ice and albedo feedback) is in progress under ADR-0008 and
-ADR-0009: M4-01 (cryosphere state, land snow, PSNAP schema 4) and M4-02
-(diffusive heat transport) are complete.
+ADR-0009: M4-01 (cryosphere state, land snow, PSNAP schema 4), M4-02
+(diffusive heat transport) and M4-03 (sea ice) are complete; M4-04 (seasonal
+experiment, refit of `D` and `g` with ice) is next.
 
 Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI

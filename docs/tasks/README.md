@@ -15,7 +15,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [M3-03](M3-03-replay-gates-and-close.md) | Ocean mixed layer in `double`, run manifest and replay, performance gate; closes M3 | Complete |
 | [M4-01](M4-01-cryosphere-state-and-land-snow.md) | Cryosphere state, land snow, PSNAP schema 4 (ADR-0008) | Complete |
 | [M4-02](M4-02-diffusive-heat-transport.md) | Diffusive horizontal heat transport (ADR-0009) | Complete |
-| [M4-03](M4-03-sea-ice.md) | Sea ice on the ocean tile (ADR-0008 §4.4) | In progress |
+| [M4-03](M4-03-sea-ice.md) | Sea ice on the ocean tile (ADR-0008 §4.4) | Complete |
 
 Completed tasks are records: they keep the specification and design versions
 they were written against, even after those files have left the tree. Read

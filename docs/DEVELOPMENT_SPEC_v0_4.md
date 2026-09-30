@@ -2021,6 +2021,28 @@ M3 is complete (2026-09-29):
         CI at L5 (≥ 20 years/min) and L6 (≥ 5 years/min); measured 2,981
         and 774 years/min on four workers.
 
+M4 status (2026-09-30), under ADR-0008 and ADR-0009:
+
+-   **M4-01**, cryosphere state, land snow with prescribed precipitation,
+    PSNAP schema 4: complete.
+-   **M4-02**, diffusive horizontal heat transport with shared cell air
+    (ADR-0009, amended in §10--§12): complete.
+-   **M4-03**, sea ice on the ocean tile (ADR-0008 §4.4, record §10):
+    complete. Budgets, invariants, Stefan growth, the ice--albedo sign and
+    worker bit-identity hold. Ice is too extensive and barely seasonal
+    because `D` and `g` were fitted before ice and before ADR-0009 §11: the
+    Earth-like planet averages 282.7 K with a 64.7 K equator-to-pole
+    difference, against 288 K and 42 K.
+-   **M4-04**, the seasonal experiment (ADR-0008 V7) and the refit of `D`
+    and `g` with ice: next.
+-   **M4-05**, the ADR-0003 M4 history work (delta chains, forks, V6--V7):
+    open.
+
+The ADR-0001 budget is gated in CI as a rate scaled by a measured runner
+factor, and the 250-year scenario is measured on the target machine
+(ADR-0001 §11). At M4-03 the scenario takes 117 s at L5 and 395 s at L6, on
+four workers, against limits of 240 s and 600 s.
+
 Carried forward from M3, not blocking M4: ADR-0001 V4's > 20 % regression
 comparison against a runner baseline; weather-window schedules in ADR-0003
 V1 (weather windows are M10--M12); autosave and the continuously appended

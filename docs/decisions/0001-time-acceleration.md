@@ -5,6 +5,7 @@
 - **Accepted:** 2026-09-24
 - **Amended:** 2026-09-28 — §8 milestone mapping aligned with `docs/DEVELOPMENT_SPEC_v0_2.md` §13
 - **Amended:** 2026-09-29 — §4.2 climate-mode step fixed by [ADR-0006](0006-seasonal-climate-steps.md): twelve orbital sub-steps per year, no adaptive coarsening
+- **Amended:** 2026-09-30 — §11: the budget is gated in CI as a rate scaled by a measured runner factor; the 250-year scenario is measured on the target machine
 - **Context document:** Planetary Civilization Simulator — Design Record v0.4, §28
 - **Supersedes / superseded by:** —
 - **Related:** ADR-0002 (mesh topology, resolution policy, field layout), ADR-0003 (determinism scope, snapshot schema, migration)
@@ -209,3 +210,43 @@ therefore the budget itself, with a margin of two orders of magnitude.
 V4's regression comparison (> 20 %) needs a stable runner baseline and is
 deferred to the first milestone whose cost approaches the budget; the
 measured rates above are its first data points.
+
+## 11. Amendment: gating the budget on hosted CI runners (2026-09-30)
+
+**Context.** §5 measures the budget "on the target desktop machine" and
+gates it in CI. The M3-03 gate (§10) ran the 250-year scenario on the
+hosted runners with §5's wall-clock limits. That held while a monthly step
+cost about 1 ms. With the transport of ADR-0009 (M4-02) and sea ice
+(ADR-0008 §4.4, M4-03), a monthly step costs about 39 ms at L5 and 132 ms at
+L6 on four workers. The target machine still meets every §5 budget: the
+250-year scenario takes 117 s at L5 (limit 240 s) and 395 s at L6 (limit
+600 s). A hosted runner, however, is about 2.5 times slower: at `bd6030d` it
+ran L5 at 51.8 years/min against 128.6 on the target machine, taking 290 s,
+and CI failed from `ca3fa64` onwards. The limits were being applied to the
+wrong machine.
+
+**Decision.**
+
+- The budgets of §5 are unchanged and remain defined on the target machine.
+  Each task that changes the cost measures the full 250-year scenario at L5
+  and L6 there, with four workers, and records it in its implementation
+  record (V4 evidence).
+- CI gates the equivalent **rate**. A scenario limit of 250 years in 240 s
+  (L5) or 600 s (L6) means at least 62.5 or 25 simulated years per minute on
+  the target machine. CI runs 25 years at each level on four workers and
+  requires those rates divided by the **runner factor** `2.5`: 25
+  years/min at L5 and 10 at L6. The climate-mode budgets (20 and 5
+  years/min) are weaker than these and are implied.
+- The runner factor is a measured constant, recorded like a calibration
+  constant (specification §24): target machine versus hosted runner on the
+  same commit and scenario. It is re-measured when the runner image or the
+  target machine changes, and never raised to make a failing gate pass.
+- CI replays the 25-year L5 run (ADR-0003 V2).
+
+**Consequences.** CI time for the gate falls from about 15 minutes per
+Release job to about 3. A 25-year run overstates the long-run rate slightly
+while ice builds up (L5: 140 against 129 years/min), well inside the
+factor-of-two margin the gates leave at `bd6030d` (L5 about 56 against 25;
+L6 about 16 against 10). The > 20 % regression comparison of V4 remains
+deferred (§10). The first regression it would catch is the next physics
+module, so the L6 margin is the number to watch.

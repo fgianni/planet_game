@@ -2,6 +2,9 @@
 
 - **Milestone:** P0 / M4 (third task; M4-01 and M4-02 are complete)
 - **Requested:** 2026-09-30
+- **Status:** Complete (2026-09-30); results in ADR-0008 §10. Decision 5
+  was replaced during implementation by ADR-0009 §11, and the transport
+  solve moved one mesh level coarser (ADR-0009 §12)
 - **Scope:** ADR-0008 §4.4 (ocean tile with zero-layer sea ice), §4.5
   (budgets, ice terms), V1–V6 and V8 for the ocean tile, and the ice
   diagnostics. The seasonal experiment, climatology and the refit of `D`

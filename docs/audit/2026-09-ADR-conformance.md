@@ -171,10 +171,21 @@ schemas evolve.
 | Requirement | Status | Finding |
 |---|---|---|
 | ADR-0009 V1–V3, V7 | ✅ EVIDENCED | Conservation ≤ 9e-17, closure, down-gradient sign, consistency ≤ 5e-7 W/m² (`tests/physics/test_heat_transport_planet.cpp`, `tests/unit/test_heat_transport.cpp`). |
-| ADR-0009 V4–V6, V8 | ✅ EVIDENCED | P2 response within 0.15 % at L5 and converging; stable at ten times `D`; off switch bit-identical; worker counts and replay bit-identical. |
-| ADR-0009 V9 calibration (specification §24) | ✅ EVIDENCED | `D` and `g` fitted to 288 K and a 42 K P2 equator-to-pole difference with their record (`sim/planet/surface/surface_energy.hpp`, ADR-0009 §9–10). |
-| ADR-0001 performance gates with transport | ✅ EVIDENCED | 250 years at L5 in 107 s and L6 in 461 s on 4 workers; L6 margin about 23 %. |
+| ADR-0009 V4–V6, V8 | ✅ EVIDENCED | P2 response within 0.15 % at L5 and converging; stable at ten times `D`; off switch bit-identical; worker counts and replay bit-identical. *Updated 2026-09-30 (M4-03):* with the coarser solve (ADR-0009 §12), 3.1 %, 0.90 %, 0.31 % at L3–L5, still converging. |
+| ADR-0009 V9 calibration (specification §24) | ⚠ RUNTIME_ONLY | `D` and `g` fitted to 288 K and a 42 K P2 equator-to-pole difference with their record (`sim/planet/surface/surface_energy.hpp`, ADR-0009 §9–10). *Updated 2026-09-30 (M4-03):* the fit predates ADR-0009 §11 and sea ice; the Earth-like planet is now 282.7 K with a 64.7 K difference. Refit is task M4-04. |
+| ADR-0001 performance gates with transport | ✅ EVIDENCED | 250 years at L5 in 107 s and L6 in 461 s on 4 workers; L6 margin about 23 %. *Updated 2026-09-30:* on the hosted runners the 250-year L5 run took 290 s and CI failed from `ca3fa64`; ADR-0001 §11 moves the CI gate to a rate scaled by the measured runner factor. |
 | Deterministic executor (ADR-0002 §4.6) | ✅ EVIDENCED | Persistent worker pool with unchanged block assignment; sanitizer build green. |
+
+### M4-03 sea ice (2026-09-30)
+
+| Requirement | Status | Finding |
+|---|---|---|
+| ADR-0008 V1, V2 (ocean) | ✅ EVIDENCED | Energy with latent heat and water close per tile and on the Earth-like and aqua planets, climate and reference steps (`tests/unit/test_sea_ice.cpp`, `tests/physics/test_sea_ice_planet.cpp`); values in ADR-0008 §10. |
+| ADR-0008 V3 | ✅ EVIDENCED | Discrete Stefan scheme exact to 1.9e-13; 0.39 % from the analytic law at one-day steps (gate 1 %), first order. |
+| ADR-0008 V4–V6, V8 (ocean) | ✅ EVIDENCED | Invariants on both planets; 1 m of ice lowers absorbed shortwave and the mean; open water above freezing and dead rock unchanged bit for bit; 1/2/8/16 workers and replay bit-identical. |
+| Undocumented design changes | ✅ EVIDENCED | *Found at closing:* the cell's air as the diffused temperature and the one-level-coarser solve were implemented (`1724497`, `fcfa0ff`) and cited in code as ADR-0009 §11–§12 without the records; now written. |
+| Plausible sea-ice extent | ⚠ RUNTIME_ONLY | Southern ice 47.5–47.7 million km² and barely seasonal on the Earth-like planet; perennial poleward of about 38° on the aqua planet. Refit (M4-04) and ocean transport (M11) (ADR-0008 §10). |
+| ADR-0001 budget (§11) | ✅ EVIDENCED | Target machine, 4 workers: 250 years at L5 in 117 s and L6 in 395 s; CI gates 25-year rates of 25 and 10 years/min. |
 
 ## Risk-register audit
 
@@ -207,6 +218,10 @@ take precedence where a specification conflicts.
 
 ## Validation observed during the migration and M2 work
 
+- M4-03 closing (2026-09-30): GCC 11 Debug and Release, Clang 14 Debug and
+  Release, ASan+UBSan on Clang 14 and GCC 12 (under `setarch -R`) 57/57;
+  floating-point policy 0 violations in 85 translation units; registry
+  check 11 current, 1 retired.
 - M3-03 (2026-09-29): GCC 11 Debug and Release, Clang 14 Debug and
   Release, ASan+UBSan on Clang 14 and GCC 12 (under `setarch -R`) 51/51;
   floating-point policy 0 violations in 75 translation units; registry check

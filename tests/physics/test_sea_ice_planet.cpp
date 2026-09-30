@@ -31,15 +31,17 @@ constexpr int spin_up_years = 15;
 struct Planet {
     std::shared_ptr<const planetsim::PlanetMesh> mesh;
     planetsim::PlanetParameters parameters = planetsim::PlanetParameters::earth_development();
-    planetsim::SurfaceEnergyParameters surface =
-        planetsim::surface_energy_parameters_for(PlanetPreset::earth_like);
+    planetsim::SurfaceEnergyParameters surface;
     planetsim::PlanetState state;
     planetsim::SurfaceFractions fractions;
 
-    explicit Planet(std::shared_ptr<const planetsim::PlanetMesh> shared_mesh)
-        : mesh(std::move(shared_mesh)), state(mesh) {
+    explicit Planet(std::shared_ptr<const planetsim::PlanetMesh> shared_mesh,
+                    PlanetPreset preset = PlanetPreset::earth_like)
+        : mesh(std::move(shared_mesh)),
+          surface(planetsim::surface_energy_parameters_for(preset)),
+          state(mesh) {
         static_cast<void>(planetsim::generate_terrain(
-            state, test_seed, planetsim::geology_parameters_for(PlanetPreset::earth_like), 4U));
+            state, test_seed, planetsim::geology_parameters_for(preset), 4U));
         fractions = planetsim::compute_surface_fractions(*mesh, state.slow().hypsometry_m,
                                                          state.slow().sea_level_m, 4U);
         planetsim::initialise_surface_temperatures(*mesh, state.slow(), parameters, surface, 4U);
@@ -197,6 +199,42 @@ void check_albedo_feedback_sign(planetsim::test::Context& test,
                      icy_last.mean_surface_temperature_K < open_last.mean_surface_temperature_K);
 }
 
+// Task M4-03 step 2 on the aqua planet (no land, no transport, g = 0):
+// three years from the initial state close their budgets and keep the
+// invariants; ice forms around both poles and never near the equator.
+void check_aqua_planet(planetsim::test::Context& test,
+                       const std::shared_ptr<const planetsim::PlanetMesh>& mesh) {
+    Planet planet(mesh, PlanetPreset::aqua_planet);
+    double worst_energy = 0.0;
+    double worst_water = 0.0;
+    planetsim::SurfaceEnergyDiagnostics last;
+    for (std::int64_t index = 0; index < 3 * planetsim::climate_substeps_per_year; ++index) {
+        last = planet.climate_step(index, 4U);
+        worst_energy = std::max(worst_energy, last.closure_residual_J() / last.closure_gate_J());
+        worst_water = std::max(worst_water, last.water_residual_kg() / last.water_gate_kg());
+    }
+    double lowest_ice_latitude_deg = 90.0;
+    const auto& slow = planet.state.slow();
+    for (std::size_t cell = 0; cell < mesh->cell_count(); ++cell) {
+        if (slow.sea_ice_mass_kg_m2[cell] > 0.0) {
+            lowest_ice_latitude_deg = std::min(
+                lowest_ice_latitude_deg,
+                std::abs(planetsim::latitude_rad(mesh->cells()[cell].center_unit)) * 180.0 /
+                    std::numbers::pi);
+        }
+    }
+    std::cout << "aqua_planet worst_energy=" << worst_energy << " worst_water=" << worst_water
+              << " north_area_km2=" << last.ice_area_north_m2 / 1e6
+              << " south_area_km2=" << last.ice_area_south_m2 / 1e6
+              << " lowest_ice_latitude_deg=" << lowest_ice_latitude_deg << '\n';
+    PLANETSIM_EXPECT(test, planet.fractions.land_area_fraction == 0.0);
+    PLANETSIM_EXPECT(test, worst_energy <= 1.0);
+    PLANETSIM_EXPECT(test, worst_water <= 1.0);
+    PLANETSIM_EXPECT(test, invariants_hold(planet));
+    PLANETSIM_EXPECT(test, last.ice_area_north_m2 > 0.0 && last.ice_area_south_m2 > 0.0);
+    PLANETSIM_EXPECT(test, lowest_ice_latitude_deg > 20.0);
+}
+
 }  // namespace
 
 int main() {
@@ -206,5 +244,6 @@ int main() {
     check_budgets_and_ice(test, mesh);
     check_workers(test, mesh);
     check_albedo_feedback_sign(test, mesh);
+    check_aqua_planet(test, mesh);
     return test.result();
 }
