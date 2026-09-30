@@ -145,8 +145,12 @@ void append_json_string(std::string& output, std::string_view value) {
         return 2U;
     case FieldId::ocean_mixed_layer_temperature_K:
         return 3U;
+    case FieldId::land_snow_water_equivalent_kg_m2:
+    case FieldId::sea_ice_mass_kg_m2:
+        return 4U;
     case FieldId::top_of_atmosphere_insolation_W_m2:
     case FieldId::substep_mean_insolation_W_m2:
+    case FieldId::prescribed_precipitation_kg_m2_s:
         return 0U;
     }
     return 0U;
@@ -198,8 +202,15 @@ void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& fi
     case FieldId::ocean_deep_temperature_K:
         append_cell_field(chunk.bytes, state.slow().ocean_deep_temperature_K);
         break;
+    case FieldId::land_snow_water_equivalent_kg_m2:
+        append_cell_field(chunk.bytes, state.slow().land_snow_water_equivalent_kg_m2);
+        break;
+    case FieldId::sea_ice_mass_kg_m2:
+        append_cell_field(chunk.bytes, state.slow().sea_ice_mass_kg_m2);
+        break;
     case FieldId::top_of_atmosphere_insolation_W_m2:
     case FieldId::substep_mean_insolation_W_m2:
+    case FieldId::prescribed_precipitation_kg_m2_s:
         throw std::logic_error("derived forcing field cannot be persisted");
     }
 
@@ -795,6 +806,9 @@ void validate_slow_state(const PlanetState& state) {
     check_cells(state.slow().ocean_mixed_layer_temperature_K.size(),
                 FieldId::ocean_mixed_layer_temperature_K);
     check_cells(state.slow().ocean_deep_temperature_K.size(), FieldId::ocean_deep_temperature_K);
+    check_cells(state.slow().land_snow_water_equivalent_kg_m2.size(),
+                FieldId::land_snow_water_equivalent_kg_m2);
+    check_cells(state.slow().sea_ice_mass_kg_m2.size(), FieldId::sea_ice_mass_kg_m2);
 }
 
 [[nodiscard]] Field2D<float> decode_float_cells(std::span<const std::byte> bytes,
@@ -853,8 +867,15 @@ void decode_chunk(const FieldDescriptor& descriptor,
     case FieldId::ocean_deep_temperature_K:
         staged.ocean_deep_temperature_K = decode_double_cells(bytes, cell_count);
         return;
+    case FieldId::land_snow_water_equivalent_kg_m2:
+        staged.land_snow_water_equivalent_kg_m2 = decode_double_cells(bytes, cell_count);
+        return;
+    case FieldId::sea_ice_mass_kg_m2:
+        staged.sea_ice_mass_kg_m2 = decode_double_cells(bytes, cell_count);
+        return;
     case FieldId::top_of_atmosphere_insolation_W_m2:
     case FieldId::substep_mean_insolation_W_m2:
+    case FieldId::prescribed_precipitation_kg_m2_s:
         break;
     }
     field_error(static_cast<std::uint32_t>(descriptor.id), "field has no persistent decoder");
@@ -1001,6 +1022,15 @@ SnapshotManifest read_snapshot(const std::filesystem::path& path, PlanetState& t
         for (std::size_t cell = 0; cell < cells; ++cell) {
             staged.ocean_mixed_layer_temperature_K[cell] = static_cast<double>(stored[cell]);
         }
+    }
+    if (file_schema < 4U) {
+        if (!migration.initialise_schema_4_fields) {
+            throw std::runtime_error(
+                "snapshot schema_version " + std::to_string(file_schema) +
+                " lacks the cryosphere fields and needs the schema 3 -> 4 migration "
+                "initialiser (ADR-0008 §4.6)");
+        }
+        migration.initialise_schema_4_fields(target_state.mesh(), staged);
     }
     target_state.slow() = std::move(staged);
     return std::move(parsed.manifest);

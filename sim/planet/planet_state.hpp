@@ -17,6 +17,10 @@ struct SlowState {
     field_container_t<FieldId::land_ground_temperature_K> land_ground_temperature_K;
     field_container_t<FieldId::ocean_mixed_layer_temperature_K> ocean_mixed_layer_temperature_K;
     field_container_t<FieldId::ocean_deep_temperature_K> ocean_deep_temperature_K;
+    // Cryosphere water reservoirs (ADR-0008 §4.1): snow on the land tile,
+    // sea ice on the ocean tile.
+    field_container_t<FieldId::land_snow_water_equivalent_kg_m2> land_snow_water_equivalent_kg_m2;
+    field_container_t<FieldId::sea_ice_mass_kg_m2> sea_ice_mass_kg_m2;
 };
 
 struct FastState {};
@@ -31,6 +35,9 @@ struct ForcingState {
     // Climate-mode forcing: the time mean over one orbital sub-step (ADR-0006
     // §4.3), written by update_substep_mean_insolation.
     field_container_t<FieldId::substep_mean_insolation_W_m2> substep_mean_insolation_W_m2;
+    // ADR-0008 §3.3 B: zero unless a scenario or test sets it; M6 replaces it
+    // with model precipitation.
+    field_container_t<FieldId::prescribed_precipitation_kg_m2_s> prescribed_precipitation_kg_m2_s;
 };
 
 class PlanetState {

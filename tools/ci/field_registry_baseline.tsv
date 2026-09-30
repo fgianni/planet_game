@@ -6,4 +6,7 @@
 196610	land_ground_temperature_K	slow	cell	float32	1	K
 196612	ocean_deep_temperature_K	slow	cell	float64	1	K
 196613	ocean_mixed_layer_temperature_K	slow	cell	float64	1	K
+262145	land_snow_water_equivalent_kg_m2	slow	cell	float64	1	kg/m2
+262146	sea_ice_mass_kg_m2	slow	cell	float64	1	kg/m2
+262147	prescribed_precipitation_kg_m2_s	derived	cell	float32	1	kg/m2/s
 # retired_field_id	196611

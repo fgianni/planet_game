@@ -17,6 +17,9 @@ enum class FieldId : std::uint32_t {
     // 0x0003'0003 is retired: the schema 2 float32 mixed layer.
     ocean_deep_temperature_K = 0x0003'0004U,
     ocean_mixed_layer_temperature_K = 0x0003'0005U,
+    land_snow_water_equivalent_kg_m2 = 0x0004'0001U,
+    sea_ice_mass_kg_m2 = 0x0004'0002U,
+    prescribed_precipitation_kg_m2_s = 0x0004'0003U,
 };
 
 enum class FieldDataType : std::uint8_t {
@@ -94,7 +97,7 @@ struct FieldDescriptor {
     return {};
 }
 
-inline constexpr std::array<FieldDescriptor, 8> field_registry{{
+inline constexpr std::array<FieldDescriptor, 11> field_registry{{
     {FieldId::top_of_atmosphere_insolation_W_m2, "top_of_atmosphere_insolation_W_m2",
      FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
     {FieldId::substep_mean_insolation_W_m2, "substep_mean_insolation_W_m2",
@@ -114,6 +117,14 @@ inline constexpr std::array<FieldDescriptor, 8> field_registry{{
     // a ten-minute reference step's change without biased rounding.
     {FieldId::ocean_mixed_layer_temperature_K, "ocean_mixed_layer_temperature_K",
      FieldPartition::slow, FieldLayout::cell, FieldDataType::float64, 1U, "K"},
+    // Cryosphere (ADR-0008 §4.1): water reservoirs in float64, and the
+    // prescribed precipitation that stands in for moisture until M6.
+    {FieldId::land_snow_water_equivalent_kg_m2, "land_snow_water_equivalent_kg_m2",
+     FieldPartition::slow, FieldLayout::cell, FieldDataType::float64, 1U, "kg/m2"},
+    {FieldId::sea_ice_mass_kg_m2, "sea_ice_mass_kg_m2", FieldPartition::slow, FieldLayout::cell,
+     FieldDataType::float64, 1U, "kg/m2"},
+    {FieldId::prescribed_precipitation_kg_m2_s, "prescribed_precipitation_kg_m2_s",
+     FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "kg/m2/s"},
 }};
 
 // Retired IDs are never registered again. Snapshots of the schemas that

@@ -64,6 +64,17 @@ void check_schema_1_fields(planetsim::test::Context& test, const planetsim::Plan
                                synthetic_tick, static_cast<std::uint32_t>(cell), sample);
 }
 
+// The schema 3 -> 4 migration declares no snow and no sea ice (ADR-0008 §4.6).
+[[nodiscard]] bool no_cryosphere(const planetsim::PlanetState& state) {
+    bool zero = state.slow().land_snow_water_equivalent_kg_m2.size() == state.mesh().cell_count() &&
+                state.slow().sea_ice_mass_kg_m2.size() == state.mesh().cell_count();
+    for (std::size_t cell = 0; zero && cell < state.mesh().cell_count(); ++cell) {
+        zero = state.slow().land_snow_water_equivalent_kg_m2[cell] == 0.0 &&
+               state.slow().sea_ice_mass_kg_m2[cell] == 0.0;
+    }
+    return zero;
+}
+
 // ADR-0003 V5: a loaded golden state steps ten simulated years of climate
 // sub-steps; every step's energy budget closes (the ADR-0007 V2 gate) and
 // the temperatures stay finite and positive.
@@ -160,6 +171,7 @@ int main() {
                        state.slow().ocean_mixed_layer_temperature_K[cell] > 150.0;
         }
         PLANETSIM_EXPECT(test, migrated);
+        PLANETSIM_EXPECT(test, no_cryosphere(state));
         PLANETSIM_EXPECT(test, !state.has_fast_state());
         PLANETSIM_EXPECT_NEAR(test, state.forcing().incident_solar_flux_W_m2, 0.0, 0.0);
         step_ten_years(test, state, parameters, surface, "psnap-v1");
@@ -171,7 +183,8 @@ int main() {
     {
         planetsim::PlanetState state(mesh);
         const auto manifest = planetsim::read_snapshot(
-            std::filesystem::path("tests/data/golden/psnap-v2-l0.psnap"), state);
+            std::filesystem::path("tests/data/golden/psnap-v2-l0.psnap"), state,
+            planetsim::surface_energy_migration(parameters, surface));
         PLANETSIM_EXPECT(test, manifest.schema_version == 2U);
         PLANETSIM_EXPECT(test, manifest.fields.size() == 6U);
         PLANETSIM_EXPECT(test, manifest.fields.size() == 6U &&
@@ -194,6 +207,7 @@ int main() {
                         std::bit_cast<std::uint64_t>(expected_temperature(cell, 23U));
         }
         PLANETSIM_EXPECT(test, exact);
+        PLANETSIM_EXPECT(test, no_cryosphere(state));
         step_ten_years(test, state, parameters, surface, "psnap-v2");
     }
 
@@ -201,7 +215,8 @@ int main() {
     {
         planetsim::PlanetState state(mesh);
         const auto manifest = planetsim::read_snapshot(
-            std::filesystem::path("tests/data/golden/psnap-v3-l0.psnap"), state);
+            std::filesystem::path("tests/data/golden/psnap-v3-l0.psnap"), state,
+            planetsim::surface_energy_migration(parameters, surface));
         PLANETSIM_EXPECT(test, manifest.schema_version == 3U);
         PLANETSIM_EXPECT(test, manifest.fields.size() == 6U);
         check_schema_1_fields(test, state);
@@ -219,7 +234,50 @@ int main() {
                         std::bit_cast<std::uint64_t>(expected_temperature(cell, 23U));
         }
         PLANETSIM_EXPECT(test, exact);
+        PLANETSIM_EXPECT(test, no_cryosphere(state));
         step_ten_years(test, state, parameters, surface, "psnap-v3");
+
+        // Without the schema 3 -> 4 initialiser the file is refused.
+        planetsim::PlanetState unmigrated(mesh);
+        bool refused = false;
+        try {
+            static_cast<void>(planetsim::read_snapshot(
+                std::filesystem::path("tests/data/golden/psnap-v3-l0.psnap"), unmigrated));
+        } catch (const std::runtime_error& error) {
+            refused = std::string_view{error.what()}.find("schema 3 -> 4") != std::string_view::npos;
+        }
+        PLANETSIM_EXPECT(test, refused);
+    }
+
+    // Schema 4 (M4-01): the cryosphere reservoirs; every field stored.
+    {
+        planetsim::PlanetState state(mesh);
+        const auto manifest = planetsim::read_snapshot(
+            std::filesystem::path("tests/data/golden/psnap-v4-l0.psnap"), state);
+        PLANETSIM_EXPECT(test, manifest.schema_version == 4U);
+        PLANETSIM_EXPECT(test, manifest.fields.size() == 8U);
+        check_schema_1_fields(test, state);
+        bool exact = true;
+        for (std::size_t cell = 0; cell < mesh->cell_count(); ++cell) {
+            const auto same = [](double first, double second) {
+                return std::bit_cast<std::uint64_t>(first) == std::bit_cast<std::uint64_t>(second);
+            };
+            exact = exact &&
+                    state.slow().land_surface_temperature_K[cell] ==
+                        static_cast<float>(expected_temperature(cell, 20U)) &&
+                    state.slow().land_ground_temperature_K[cell] ==
+                        static_cast<float>(expected_temperature(cell, 21U)) &&
+                    same(state.slow().ocean_mixed_layer_temperature_K[cell],
+                         expected_temperature(cell, 22U)) &&
+                    same(state.slow().ocean_deep_temperature_K[cell],
+                         expected_temperature(cell, 23U)) &&
+                    same(state.slow().land_snow_water_equivalent_kg_m2[cell],
+                         2.0 * (expected_temperature(cell, 24U) - 220.0)) &&
+                    same(state.slow().sea_ice_mass_kg_m2[cell],
+                         20.0 * (expected_temperature(cell, 25U) - 220.0));
+        }
+        PLANETSIM_EXPECT(test, exact);
+        step_ten_years(test, state, parameters, surface, "psnap-v4");
     }
     return test.result();
 }

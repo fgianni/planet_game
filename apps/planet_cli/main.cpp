@@ -596,6 +596,8 @@ void populate_snapshot_synthetic_state(planetsim::PlanetState& state) {
         slow.land_ground_temperature_K[cell] = static_cast<float>(temperature(cell, 21U));
         slow.ocean_mixed_layer_temperature_K[cell] = temperature(cell, 22U);
         slow.ocean_deep_temperature_K[cell] = temperature(cell, 23U);
+        slow.land_snow_water_equivalent_kg_m2[cell] = 2.0 * (temperature(cell, 24U) - 220.0);
+        slow.sea_ice_mass_kg_m2[cell] = 20.0 * (temperature(cell, 25U) - 220.0);
     }
 }
 

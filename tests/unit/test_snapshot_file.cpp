@@ -54,6 +54,8 @@ void populate_synthetic_state(planetsim::PlanetState& state) {
         slow.land_ground_temperature_K[cell] = static_cast<float>(temperature(cell, 21U));
         slow.ocean_mixed_layer_temperature_K[cell] = temperature(cell, 22U);
         slow.ocean_deep_temperature_K[cell] = temperature(cell, 23U);
+        slow.land_snow_water_equivalent_kg_m2[cell] = 2.0 * (temperature(cell, 24U) - 220.0);
+        slow.sea_ice_mass_kg_m2[cell] = 20.0 * (temperature(cell, 25U) - 220.0);
     }
 }
 
@@ -197,6 +199,10 @@ void expect_states_equal(planetsim::test::Context& test,
                                        second.slow().ocean_mixed_layer_temperature_K));
     PLANETSIM_EXPECT(test, same_double(first.slow().ocean_deep_temperature_K,
                                        second.slow().ocean_deep_temperature_K));
+    PLANETSIM_EXPECT(test, same_double(first.slow().land_snow_water_equivalent_kg_m2,
+                                       second.slow().land_snow_water_equivalent_kg_m2));
+    PLANETSIM_EXPECT(test, same_double(first.slow().sea_ice_mass_kg_m2,
+                                       second.slow().sea_ice_mass_kg_m2));
 }
 
 }  // namespace
@@ -242,8 +248,8 @@ int main() {
     PLANETSIM_EXPECT(test, inspected.mesh_level == 0U);
     PLANETSIM_EXPECT(test, inspected.cell_count == 12U);
     PLANETSIM_EXPECT(test, inspected.parent_snapshot_id == "parent-0");
-    PLANETSIM_EXPECT(test, inspected.fields.size() == 6U);
-    if (inspected.fields.size() == 6U) {
+    PLANETSIM_EXPECT(test, inspected.fields.size() == 8U);
+    if (inspected.fields.size() == 8U) {
         PLANETSIM_EXPECT(test, inspected.fields[0].field_id ==
                                    static_cast<std::uint32_t>(planetsim::FieldId::hypsometry_m));
         PLANETSIM_EXPECT(test, inspected.fields[1].field_id ==
@@ -255,6 +261,13 @@ int main() {
                                    static_cast<std::uint32_t>(
                                        planetsim::FieldId::ocean_mixed_layer_temperature_K));
         PLANETSIM_EXPECT(test, inspected.fields[5].dtype == "float64");
+        PLANETSIM_EXPECT(test, inspected.fields[6].field_id ==
+                                   static_cast<std::uint32_t>(
+                                       planetsim::FieldId::land_snow_water_equivalent_kg_m2));
+        PLANETSIM_EXPECT(test, inspected.fields[7].field_id ==
+                                   static_cast<std::uint32_t>(
+                                       planetsim::FieldId::sea_ice_mass_kg_m2));
+        PLANETSIM_EXPECT(test, inspected.fields[7].dtype == "float64");
     }
 
     for (const std::uint32_t level : {0U, 4U, 6U}) {
@@ -324,30 +337,37 @@ int main() {
     auto truncated = canonical_bytes;
     truncated.pop_back();
     write_file(invalid_path, truncated);
-    expect_read_failure(test, invalid_path, level_zero_mesh, "field_id 196613");
+    expect_read_failure(test, invalid_path, level_zero_mesh, "field_id 262146");
 
     write_file(invalid_path,
                replace_manifest_once(canonical_bytes, "\"format\"", "\"xormat\""));
     expect_read_failure(test, invalid_path, level_zero_mesh, "expected key format");
 
     write_file(invalid_path,
-               replace_manifest_once(canonical_bytes, "\"schema_version\":3",
+               replace_manifest_once(canonical_bytes, "\"schema_version\":4",
                                      "\"schema_version\":9"));
     expect_read_failure(test, invalid_path, level_zero_mesh, "schema_version");
 
     // A file that claims schema 1 may not carry fields introduced in schema 2.
     write_file(invalid_path,
-               replace_manifest_once(canonical_bytes, "\"schema_version\":3",
+               replace_manifest_once(canonical_bytes, "\"schema_version\":4",
                                      "\"schema_version\":1"));
     expect_read_failure(test, invalid_path, level_zero_mesh,
                         "does not exist in snapshot schema_version 1");
 
     // Nor may a schema 2 file carry the float64 mixed layer of schema 3.
     write_file(invalid_path,
-               replace_manifest_once(canonical_bytes, "\"schema_version\":3",
+               replace_manifest_once(canonical_bytes, "\"schema_version\":4",
                                      "\"schema_version\":2"));
     expect_read_failure(test, invalid_path, level_zero_mesh,
                         "field_id 196613: field does not exist in snapshot schema_version 2");
+
+    // Nor may a schema 3 file carry the cryosphere reservoirs of schema 4.
+    write_file(invalid_path,
+               replace_manifest_once(canonical_bytes, "\"schema_version\":4",
+                                     "\"schema_version\":3"));
+    expect_read_failure(test, invalid_path, level_zero_mesh,
+                        "field_id 262145: field does not exist in snapshot schema_version 3");
 
     write_file(invalid_path,
                replace_manifest_once(canonical_bytes, "\"mesh_level\":0",

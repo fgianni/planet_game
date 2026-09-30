@@ -51,8 +51,12 @@ void initialise_surface_temperatures(const PlanetMesh& mesh, SlowState& slow,
                                      const SurfaceEnergyParameters& surface,
                                      std::size_t worker_count = 1U);
 
-// The PSNAP schema 1 -> 2 migration (ADR-0007 §4.6): initialises the four
-// temperatures with initialise_surface_temperatures.
+// ADR-0008 §4.6: no snow and no sea ice, both reservoirs zero.
+void initialise_cryosphere(const PlanetMesh& mesh, SlowState& slow);
+
+// The PSNAP migrations: schema 1 -> 2 initialises the four temperatures with
+// initialise_surface_temperatures (ADR-0007 §4.6); schema 3 -> 4 the
+// cryosphere with initialise_cryosphere (ADR-0008 §4.6).
 [[nodiscard]] SnapshotMigration surface_energy_migration(const PlanetParameters& parameters,
                                                          const SurfaceEnergyParameters& surface);
 
