@@ -182,6 +182,57 @@ void check_closure_and_invariant(planetsim::test::Context& test) {
     PLANETSIM_EXPECT(test, invariant);
 }
 
+// ADR-0009: an external source enters the surface equation like absorbed
+// shortwave. Energy closes with it, the slope matches a finite difference,
+// and a tile held at the melting point by snow has slope 0 (the extra heat
+// melts snow).
+void check_source_and_slope(planetsim::test::Context& test) {
+    const auto ocean = column(SurfaceMaterial::ocean);
+    const auto soil = column(SurfaceMaterial::dry_soil);
+    double worst_closure = 0.0;
+    double worst_slope = 0.0;
+    for (const double dt : {600.0, 2.63e6}) {
+        for (const double source : {-80.0, 0.0, 150.0}) {
+            const auto water =
+                planetsim::step_column(ocean, {285.0, 280.0}, 300.0, 0.4964, dt, source);
+            const auto land = planetsim::step_land_tile(soil, {285.0, 283.0}, 0.0, 300.0, 0.0,
+                                                        0.4964, dt);
+            const auto tile = planetsim::prepare_land_tile(soil, {285.0, 283.0}, 0.0, 300.0,
+                                                           0.0, 0.4964, dt);
+            const auto sourced = planetsim::solve_land_tile(tile, source);
+            for (const auto& step : {water, sourced.column}) {
+                const double flux = dt * (step.absorbed_W_m2 - step.emitted_W_m2 + source);
+                worst_closure = std::max(
+                    worst_closure, std::abs(step.storage_change_J_m2 - flux) /
+                                       (1e-9 * (std::abs(flux) + dt * step.emitted_W_m2) +
+                                        1e-6));
+            }
+            const double delta = 1e-3;
+            const auto nudged = planetsim::solve_land_tile(tile, source + delta);
+            const double finite_difference =
+                (nudged.column.state.surface_K - sourced.column.state.surface_K) / delta;
+            worst_slope = std::max(
+                worst_slope, std::abs(finite_difference - sourced.column.surface_slope_K_m2_W) /
+                                 sourced.column.surface_slope_K_m2_W);
+            PLANETSIM_EXPECT(test, source != 0.0 || sourced.column.state.surface_K ==
+                                                        land.column.state.surface_K);
+        }
+    }
+    PLANETSIM_EXPECT(test, worst_closure <= 1.0);
+    PLANETSIM_EXPECT(test, worst_slope <= 1e-4);
+
+    const auto melting = planetsim::solve_land_tile(
+        planetsim::prepare_land_tile(soil, {273.0, 273.0}, 200.0, 1'300.0, 0.0, 0.4964, 3'600.0),
+        50.0);
+    PLANETSIM_EXPECT(test, melting.column.state.surface_K == planetsim::melting_point_K);
+    PLANETSIM_EXPECT(test, melting.column.surface_slope_K_m2_W == 0.0);
+    const auto more = planetsim::solve_land_tile(
+        planetsim::prepare_land_tile(soil, {273.0, 273.0}, 200.0, 1'300.0, 0.0, 0.4964, 3'600.0),
+        60.0);
+    PLANETSIM_EXPECT_NEAR(test, more.melt_kg_m2 - melting.melt_kg_m2,
+                          10.0 * 3'600.0 / planetsim::latent_heat_of_fusion_J_kg, 1e-9);
+}
+
 void check_albedo(planetsim::test::Context& test) {
     PLANETSIM_EXPECT(test, planetsim::snow_covered_albedo(0.3, 0.0) == 0.3);
     PLANETSIM_EXPECT_NEAR(test, planetsim::snow_covered_albedo(0.3, 10.0), 0.525, 1e-15);
@@ -213,6 +264,7 @@ int main() {
     check_complete_melt(test);
     check_precipitation_phase(test);
     check_closure_and_invariant(test);
+    check_source_and_slope(test);
     check_albedo(test);
     check_validation(test);
     return test.result();

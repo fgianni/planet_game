@@ -64,22 +64,42 @@ double solve_column_surface(const ColumnSystem& system, double sink_W_m2) {
     return x;
 }
 
-ColumnStepResult step_column(const ColumnProperties& column, ColumnState state,
-                             double insolation_W_m2, double grey_emissivity, double dt_s) {
-    const ColumnSystem system =
-        column_system(column, state, insolation_W_m2, grey_emissivity, dt_s);
-    const double x = solve_column_surface(system);
+double ColumnSystem::slope_K_m2_W(double surface_K) const noexcept {
+    return 1.0 / (a + 4.0 * radiative * surface_K * surface_K * surface_K);
+}
 
+ColumnStepResult complete_column_step(const ColumnProperties& column, const ColumnSystem& system,
+                                      ColumnState before, double surface_K, double sink_W_m2,
+                                      double source_W_m2) {
     ColumnStepResult result;
-    result.state.surface_K = x;
-    result.state.lower_K = system.lower_K(state.lower_K, x);
+    result.state.surface_K = surface_K;
+    result.state.lower_K = system.lower_K(before.lower_K, surface_K);
     result.absorbed_W_m2 = system.absorbed_W_m2;
-    result.emitted_W_m2 = system.radiative * x * x * x * x;
+    result.emitted_W_m2 = system.radiative * surface_K * surface_K * surface_K * surface_K;
     result.storage_change_J_m2 =
-        column.surface_heat_capacity_J_m2_K * (result.state.surface_K - state.surface_K) +
-        column.lower_heat_capacity_J_m2_K * (result.state.lower_K - state.lower_K);
-    result.newton_residual_W_m2 = system.a * x + result.emitted_W_m2 - system.b;
+        column.surface_heat_capacity_J_m2_K * (result.state.surface_K - before.surface_K) +
+        column.lower_heat_capacity_J_m2_K * (result.state.lower_K - before.lower_K);
+    result.newton_residual_W_m2 =
+        system.a * surface_K + result.emitted_W_m2 - (system.b - sink_W_m2);
+    result.source_W_m2 = source_W_m2;
     return result;
+}
+
+ColumnStepResult solve_column_step(const ColumnProperties& column, ColumnSystem system,
+                                   ColumnState before, double source_W_m2) {
+    system.b += source_W_m2;
+    const double x = solve_column_surface(system);
+    auto result = complete_column_step(column, system, before, x, 0.0, source_W_m2);
+    result.surface_slope_K_m2_W = system.slope_K_m2_W(x);
+    return result;
+}
+
+ColumnStepResult step_column(const ColumnProperties& column, ColumnState state,
+                             double insolation_W_m2, double grey_emissivity, double dt_s,
+                             double source_W_m2) {
+    return solve_column_step(
+        column, column_system(column, state, insolation_W_m2, grey_emissivity, dt_s), state,
+        source_W_m2);
 }
 
 double column_equilibrium_temperature_K(const ColumnProperties& column, double insolation_W_m2,

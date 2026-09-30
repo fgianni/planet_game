@@ -28,6 +28,10 @@ struct ColumnStepResult {
     double emitted_W_m2 = 0.0;          // β ε σ T_s'⁴, to space
     double storage_change_J_m2 = 0.0;   // C_s ΔT_s + C_l ΔT_l
     double newton_residual_W_m2 = 0.0;  // of the scalar equation, after the last iteration
+    double source_W_m2 = 0.0;           // external source (horizontal transport, ADR-0009)
+    // dT_s'/d(source): 1 / (a + 4 r T_s'³), or 0 where a phase change holds
+    // the surface at its melting point (ADR-0008 §4.3).
+    double surface_slope_K_m2_W = 0.0;
 };
 
 // The step with the lower layer eliminated: a·x + r·x⁴ = b for the new
@@ -46,6 +50,8 @@ struct ColumnSystem {
     }
     // b − a·x − r·x⁴: the power the surface cannot absorb at temperature x.
     [[nodiscard]] double surplus_W_m2(double surface_K) const noexcept;
+    // 1 / (a + 4 r x³): how the root moves with b.
+    [[nodiscard]] double slope_K_m2_W(double surface_K) const noexcept;
 };
 
 // Validates as step_column does and builds the system.
@@ -57,11 +63,24 @@ struct ColumnSystem {
 // sink (for example latent heat) keeps the start at or above the root.
 [[nodiscard]] double solve_column_surface(const ColumnSystem& system, double sink_W_m2 = 0.0);
 
+// The step's budget terms once the new surface temperature is known. `sink`
+// is the constant sink the surface solve used (latent heat); the source is
+// already part of system.b and is recorded for the budget.
+[[nodiscard]] ColumnStepResult complete_column_step(const ColumnProperties& column,
+                                                    const ColumnSystem& system,
+                                                    ColumnState before, double surface_K,
+                                                    double sink_W_m2, double source_W_m2);
+
+// Solves a prepared system with an external source added to b.
+[[nodiscard]] ColumnStepResult solve_column_step(const ColumnProperties& column,
+                                                 ColumnSystem system, ColumnState before,
+                                                 double source_W_m2);
+
 // Throws std::invalid_argument for a non-positive or non-finite step,
 // non-positive temperatures, negative insolation or g outside [0, 1).
 [[nodiscard]] ColumnStepResult step_column(const ColumnProperties& column, ColumnState state,
                                            double insolation_W_m2, double grey_emissivity,
-                                           double dt_s);
+                                           double dt_s, double source_W_m2 = 0.0);
 
 // The closed-form equilibrium under constant insolation, both layers equal:
 // T = [(1 − α) Q / (β ε σ)]^¼.

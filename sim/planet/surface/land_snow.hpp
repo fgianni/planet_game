@@ -22,12 +22,37 @@ struct LandSnowStepResult {
     [[nodiscard]] double runoff_kg_m2() const noexcept { return rain_kg_m2 + melt_kg_m2; }
 };
 
+// Everything about a land tile's step that does not depend on an external
+// source: the albedo, the precipitation phase and the eliminated system.
+// Prepared once and solved for as many sources as the transport solve of
+// ADR-0009 needs.
+struct LandSnowSystem {
+    ColumnProperties column;       // the ground with the snow-covered albedo
+    ColumnSystem system;
+    ColumnState before;
+    double snow_kg_m2 = 0.0;       // before the step
+    double snowfall_kg_m2 = 0.0;
+    double rain_kg_m2 = 0.0;
+    double dt_s = 0.0;
+};
+
 // The albedo of a land tile with snow W: the ground's, blended with snow by
 // the cover W / (W + W_m).
 [[nodiscard]] double snow_covered_albedo(double ground_albedo, double snow_kg_m2) noexcept;
 
 // Throws std::invalid_argument for negative or non-finite snow or
 // precipitation, and as step_column does.
+[[nodiscard]] LandSnowSystem prepare_land_tile(const ColumnProperties& ground, ColumnState state,
+                                               double snow_kg_m2, double insolation_W_m2,
+                                               double precipitation_kg_m2_s,
+                                               double grey_emissivity, double dt_s);
+
+// Solves a prepared tile with an external source (W/m²) added to its surface
+// equation. The result's surface slope is 0 while snow holds the surface at
+// the melting point.
+[[nodiscard]] LandSnowStepResult solve_land_tile(const LandSnowSystem& tile,
+                                                 double source_W_m2 = 0.0);
+
 [[nodiscard]] LandSnowStepResult step_land_tile(const ColumnProperties& ground, ColumnState state,
                                                 double snow_kg_m2, double insolation_W_m2,
                                                 double precipitation_kg_m2_s,
