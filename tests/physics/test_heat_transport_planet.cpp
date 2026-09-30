@@ -49,6 +49,9 @@ struct Planet {
           surface(planetsim::surface_energy_parameters_for(preset)),
           state(mesh) {
         surface.transport_coefficient_W_m2_K = coefficient;
+        // Transport diffuses the cells' air (ADR-0009 §11), which needs air
+        // exchange even on the presets that have none.
+        surface.air_exchange_W_m2_K = planetsim::bulk_air_exchange_W_m2_K;
         static_cast<void>(planetsim::generate_terrain(
             state, test_seed, planetsim::geology_parameters_for(preset), 4U));
         fractions = planetsim::compute_surface_fractions(*mesh, state.slow().hypsometry_m,
@@ -131,7 +134,9 @@ void check_budgets(planetsim::test::Context& test,
 
 // V4: the steady response of an ocean planet (g = 0) to a small P2 anomaly
 // of uniform insolation, with and without transport, against the linear
-// energy-balance result λ / (λ + 6 D), λ = 4 ε σ T₀³ (North, 1975).
+// energy-balance result λ / (λ + 6 D_eff), λ = 4 ε σ T₀³ (North, 1975),
+// where diffusing the air behind an exchange γ gives D_eff = D γ / (γ + 6 D)
+// (ADR-0009 §11).
 void check_p2_response(planetsim::test::Context& test) {
     constexpr double mean_insolation = 340.0;
     constexpr double anomaly = 0.02;
@@ -170,7 +175,10 @@ void check_p2_response(planetsim::test::Context& test) {
             planetsim::column_equilibrium_temperature_K(ocean, mean_insolation, 0.0);
         const double lambda =
             4.0 * ocean.emissivity * planetsim::stefan_boltzmann_W_m2_K4 * t0 * t0 * t0;
-        const double expected = lambda / (lambda + 6.0 * test_coefficient_W_m2_K);
+        const double gamma = planetsim::bulk_air_exchange_W_m2_K;
+        const double effective =
+            test_coefficient_W_m2_K * gamma / (gamma + 6.0 * test_coefficient_W_m2_K);
+        const double expected = lambda / (lambda + 6.0 * effective);
         const double ratio = amplitude(test_coefficient_W_m2_K) / amplitude(0.0);
         error = std::abs(ratio - expected) / expected;
         if (level == 3U) {

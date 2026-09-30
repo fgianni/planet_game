@@ -198,7 +198,21 @@ OceanTileResult solve_ocean_tile(const OceanTileSystem& tile, double source_W_m2
         tile.column.lower_heat_capacity_J_m2_K * (deep_K - tile.before.lower_K);
     column.source_W_m2 = source_W_m2 - exchange_W_m2_K * ice.surface_K;
     column.newton_residual_W_m2 = residual(root);
-    column.surface_slope_K_m2_W = ice.held ? 0.0 : ice.system.slope_K_m2_W(ice.surface_K);
+    // dT_i/ds with the thickness responding too (implicit function theorem on
+    // the surface balance and the growth equation):
+    //   A dT + B dh' = ds,   (ρL/Δt + B) dh' + (k/h') dT = 0,
+    //   A = 4 r T³ + γ + k/h',  B = k (T_f − T) / h'²,
+    // so dT/ds = 1 / (A − (k/h') B / (ρL/Δt + B)) > 1 / (4 r T³ + γ) > 0.
+    // Holding h' fixed underestimates it by up to a factor of a few for thin
+    // ice on a monthly step, which slowed the transport Newton to linear.
+    if (ice.held) {
+        column.surface_slope_K_m2_W = 0.0;
+    } else {
+        const double conductance = sea_ice_conductivity_W_m_K / root;
+        const double a = ice.system.a + 4.0 * ice.system.radiative * std::pow(ice.surface_K, 3);
+        const double b = conductance * (freezing_K - ice.surface_K) / root;
+        column.surface_slope_K_m2_W = 1.0 / (a - conductance * b / (latent_rate + b));
+    }
     return result;
 }
 

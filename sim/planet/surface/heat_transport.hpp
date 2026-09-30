@@ -25,6 +25,11 @@ using TransportResponse = std::function<void(const Field2D<double>& source_W_m2,
 struct ImplicitTransportSettings {
     int max_newton_iterations = 30;
     int max_line_search_halvings = 12;
+    // A failed line search ends the solve only below this residual (the
+    // rounding floor); above it, up to max_non_monotone_steps full steps are
+    // taken across kinks of the tiles' response.
+    double rounding_floor_W_m2 = 1e-3;
+    int max_non_monotone_steps = 4;
     // Stop once max |h − K ∇² T̄(h)| is below: ADR-0009 V7's gate. The cell
     // solves converge T̄ to about 1e-12 relative, so the residual cannot fall
     // much below 1e-7 W/m² at Earth-like conductance.

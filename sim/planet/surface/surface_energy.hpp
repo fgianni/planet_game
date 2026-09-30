@@ -23,11 +23,12 @@ struct SurfaceFractions;
 struct SurfaceEnergyParameters {
     SurfaceMaterial land_material = SurfaceMaterial::dry_soil;
     double grey_emissivity = 0.0;   // g in [0, 1)
-    // ADR-0009: North's unit-sphere diffusion coefficient D (W/m²/K); the
-    // conductance is K = D R². Zero switches horizontal transport off.
+    // ADR-0009: North's unit-sphere diffusion coefficient D (W/m²/K) of the
+    // cells' air temperature (§11); the conductance is K = D R². Zero
+    // switches horizontal transport off; non-zero needs air exchange.
     double transport_coefficient_W_m2_K = 0.0;
-    // ADR-0009 §10: exchange γ (W/m²/K) of every tile with its cell's air,
-    // the area-weighted mean surface temperature. Zero: no shared air.
+    // ADR-0009 §10: exchange γ (W/m²/K) of every tile with its cell's air.
+    // Zero: no shared air.
     double air_exchange_W_m2_K = 0.0;
 };
 

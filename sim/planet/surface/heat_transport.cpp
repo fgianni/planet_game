@@ -5,9 +5,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <span>
 #include <stdexcept>
 #include <utility>
-#include <span>
 #include <vector>
 
 namespace planetsim {
@@ -511,6 +511,7 @@ ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double 
     };
 
     double merit = evaluate(source, mean, slope, residual);
+    int non_monotone_steps = 0;
     for (int iteration = 0; iteration < settings.max_newton_iterations; ++iteration) {
         if (max_abs(mesh, residual, worker_count) <= settings.newton_tolerance_W_m2) {
             break;
@@ -547,8 +548,29 @@ ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double 
                 break;
             }
             if (halving == settings.max_line_search_halvings) {
-                // No descent left: the iterate is at the rounding floor.
-                step = 0.0;
+                // No descent along the Newton direction. Near the solution
+                // that is the rounding floor. Farther out it is a kink (ice
+                // forming or melting away, snow starting to melt) where the
+                // Jacobian from one side does not describe the other: take
+                // the full step, whose next Jacobian sees the other side,
+                // a bounded number of times.
+                if (max_abs(mesh, residual, worker_count) <=
+                        settings.rounding_floor_W_m2 ||
+                    non_monotone_steps == settings.max_non_monotone_steps) {
+                    step = 0.0;
+                } else {
+                    ++non_monotone_steps;
+                    step = 1.0;
+                    for_each_deterministic_block(
+                        mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+                            for (std::size_t cell = block.begin; cell < block.end; ++cell) {
+                                trial[cell] = std::max(source[cell] + delta_source[cell],
+                                                       source_floor_W_m2[cell]);
+                            }
+                        });
+                    trial_merit = evaluate(trial, trial_mean, trial_slope, trial_residual);
+                    residual = std::move(trial_residual);
+                }
                 break;
             }
             step *= 0.5;

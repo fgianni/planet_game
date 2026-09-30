@@ -429,6 +429,9 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     if (!std::isfinite(exchange) || exchange < 0.0) {
         throw std::invalid_argument("air exchange must be finite and non-negative");
     }
+    if (coefficient > 0.0 && !(exchange > 0.0)) {
+        throw std::invalid_argument("horizontal transport needs air exchange (ADR-0009 §11)");
+    }
     // The start-of-step cell temperature: the first guess of each cell solve.
     std::vector<double> first_guess(cells, 0.0);
     for_each_deterministic_block(
@@ -457,8 +460,14 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                             land_tiles[cell], ocean_tiles[cell],
                             fractions.land_fraction[cell], fractions.ocean_fraction[cell],
                             source[cell], exchange, first_guess[cell], false);
-                        mean[cell] = tiles.mean_K;
-                        slope[cell] = tiles.slope_K_m2_W;
+                        // The diffused temperature is the cell's air (ADR-0009
+                        // §11): from the air's balance, T_a = T̄ + h / (γ s),
+                        // s = f_land + f_ocean. Its slope is never 0, so a
+                        // freezing or melting cell cannot become an unlimited
+                        // source or sink of transported heat.
+                        const double air_share = exchange * tile_share[cell];
+                        mean[cell] = tiles.mean_K + source[cell] / air_share;
+                        slope[cell] = tiles.slope_K_m2_W + 1.0 / air_share;
                         // The next response's sources are close to these: its
                         // cell solve starts here (a deterministic sequence of
                         // calls, one cell per writer).
