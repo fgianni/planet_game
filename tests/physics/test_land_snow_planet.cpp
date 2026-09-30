@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -156,8 +157,8 @@ void check_workers(planetsim::test::Context& test,
 }
 
 // ADR-0008 V5 for snow: the same state with and without snow on the land
-// tiles, under the same forcing. Snow lowers the absorbed shortwave and,
-// cell by cell, the new land surface temperature.
+// tiles, under the same forcing. Snow lowers the absorbed shortwave and the
+// land's mean temperature, and, for the local physics, every cell's.
 void check_albedo_feedback_sign(planetsim::test::Context& test,
                                 const std::shared_ptr<const planetsim::PlanetMesh>& mesh) {
     Planet bare(mesh);
@@ -169,13 +170,26 @@ void check_albedo_feedback_sign(planetsim::test::Context& test,
         snowy.state.slow().land_snow_water_equivalent_kg_m2[cell] = 50.0;
     }
     const std::int64_t month = spin_up_years * planetsim::climate_substeps_per_year + 6;
-    const auto bare_step = bare.climate_step(month, 4U);
-    const auto snowy_step = snowy.climate_step(month, 4U);
+    // Cell by cell the claim holds for the local physics; with transport a
+    // snowy region also draws heat from its neighbours, so it is checked with
+    // transport and shared air off, and globally with them on.
+    Planet local_bare(mesh);
+    Planet local_snowy(mesh);
+    for (Planet* local : {&local_bare, &local_snowy}) {
+        local->surface.transport_coefficient_W_m2_K = 0.0;
+        local->surface.air_exchange_W_m2_K = 0.0;
+    }
+    local_bare.state.slow() = bare.state.slow();
+    local_snowy.state.slow() = snowy.state.slow();
+    static_cast<void>(local_bare.climate_step(month, 4U));
+    static_cast<void>(local_snowy.climate_step(month, 4U));
     bool colder = true;
     for (std::size_t cell = 0; cell < mesh->cell_count(); ++cell) {
-        colder = colder && snowy.state.slow().land_surface_temperature_K[cell] <=
-                               bare.state.slow().land_surface_temperature_K[cell];
+        colder = colder && local_snowy.state.slow().land_surface_temperature_K[cell] <=
+                               local_bare.state.slow().land_surface_temperature_K[cell];
     }
+    const auto bare_step = bare.climate_step(month, 4U);
+    const auto snowy_step = snowy.climate_step(month, 4U);
     std::cout << "albedo_sign absorbed_bare_W=" << bare_step.absorbed_W
               << " absorbed_snowy_W=" << snowy_step.absorbed_W
               << " land_mean_bare_K=" << bare_step.land_mean_surface_temperature_K

@@ -1,10 +1,16 @@
 #include "sim/planet/surface/heat_transport.hpp"
 
+#include "sim/core/math/vec3d.hpp"
 #include "sim/core/scheduler/deterministic_executor.hpp"
+#include "sim/planet/mesh/icosphere.hpp"
 #include "sim/planet/mesh/planet_mesh.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <span>
 #include <stdexcept>
 #include <utility>
@@ -13,56 +19,30 @@
 namespace planetsim {
 namespace {
 
-// Σ_e (l_e / d_e) (x_n − x_c) for one cell: A_c times the Laplacian.
-[[nodiscard]] double edge_sum(const PlanetMesh& mesh, std::size_t cell,
+// Σ_e w_e (x_n − x_c) for one node: A_c times the Laplacian.
+[[nodiscard]] double edge_sum(const TransportGraph& graph, std::size_t node,
                               const Field2D<double>& values) {
-    const CellId id{static_cast<CellId::value_type>(cell)};
-    const double own = values[cell];
+    const double own = values[node];
     double sum = 0.0;
-    for (const auto& cell_edge : mesh.cell_edges(id)) {
-        const auto& edge = mesh.edge(cell_edge.edge);
-        sum += (values[cell_edge.neighbor] - own) * edge.length_m / edge.centroid_distance_m;
+    for (std::size_t k = graph.offset[node]; k < graph.offset[node + 1U]; ++k) {
+        sum += (values[graph.neighbour[k]] - own) * graph.weight[k];
     }
     return sum;
 }
 
-[[nodiscard]] double max_abs(const PlanetMesh& mesh, const Field2D<double>& values,
+[[nodiscard]] double max_abs(const TransportGraph& graph, const Field2D<double>& values,
                              std::size_t worker_count) {
     return reduce_deterministic_blocks<double>(
-        mesh.blocks(), worker_count, 0.0,
+        std::span<const CellBlock>(graph.blocks), worker_count, 0.0,
         [&](std::size_t, const CellBlock& block) {
             double largest = 0.0;
-            for (std::size_t cell = block.begin; cell < block.end; ++cell) {
-                largest = std::max(largest, std::abs(values[cell]));
+            for (std::size_t node = block.begin; node < block.end; ++node) {
+                largest = std::max(largest, std::abs(values[node]));
             }
             return largest;
         },
         [](double a, double b) { return std::max(a, b); });
 }
-
-// The mesh's cell–edge incidence flattened for the solver: for cell c, the
-// neighbours and weights l_e / d_e in [offset[c], offset[c + 1]).
-struct Stencil {
-    std::vector<std::size_t> offset;
-    std::vector<std::size_t> neighbour;
-    std::vector<double> weight;
-    std::vector<double> weight_sum;
-
-    explicit Stencil(const PlanetMesh& mesh) : offset(mesh.cell_count() + 1U, 0U) {
-        for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
-            const CellId id{static_cast<CellId::value_type>(cell)};
-            double sum = 0.0;
-            for (const auto& cell_edge : mesh.cell_edges(id)) {
-                const auto& edge = mesh.edge(cell_edge.edge);
-                neighbour.push_back(cell_edge.neighbor.to_index());
-                weight.push_back(edge.length_m / edge.centroid_distance_m);
-                sum += weight.back();
-            }
-            offset[cell + 1U] = neighbour.size();
-            weight_sum.push_back(sum);
-        }
-    }
-};
 
 // One level of the aggregation multigrid: a symmetric matrix as diagonal
 // plus off-diagonal CSR, and each row's aggregate on the next level.
@@ -187,7 +167,7 @@ void coarsen_values(const Level& fine, Level& coarse) {
 
 // The multigrid hierarchy's structure on the mesh graph: every cell with all
 // its neighbours, down to a dense coarsest level.
-[[nodiscard]] std::vector<Level> build_hierarchy(const Stencil& stencil, std::size_t cells) {
+[[nodiscard]] std::vector<Level> build_hierarchy(const TransportGraph& stencil, std::size_t cells) {
     std::vector<Level> levels(1U);
     Level& fine = levels.front();
     fine.size = cells;
@@ -349,14 +329,14 @@ void v_cycle(const std::vector<Level>& levels, std::size_t index, const std::vec
 // Laplacian dominates the diagonal by three orders of magnitude). Fine-level
 // work runs over the mesh's fixed blocks with block-ordered reductions, so
 // the result is the same for any worker count.
-int solve_newton_system(const PlanetMesh& mesh, const Stencil& stencil, double conductance_W_K,
+int solve_newton_system(const TransportGraph& stencil, double conductance_W_K,
                         const Field2D<double>& slope, const Field2D<double>& rhs,
                         std::vector<Level>& levels, Field2D<double>& solution,
                         const ImplicitTransportSettings& settings, std::size_t worker_count) {
-    const std::size_t cells = mesh.cell_count();
-    const Parallel parallel{mesh.blocks(), worker_count};
+    const std::size_t cells = stencil.size();
+    const Parallel parallel{std::span<const CellBlock>(stencil.blocks), worker_count};
     const auto each_block = [&](const auto& body) {
-        for_each_deterministic_block(mesh.blocks(), worker_count,
+        for_each_deterministic_block(std::span<const CellBlock>(stencil.blocks), worker_count,
                                      [&](std::size_t, const CellBlock& block) {
                                          body(block.begin, block.end);
                                      });
@@ -366,7 +346,7 @@ int solve_newton_system(const PlanetMesh& mesh, const Stencil& stencil, double c
     each_block([&](std::size_t begin, std::size_t end) {
         for (std::size_t cell = begin; cell < end; ++cell) {
             const bool free = slope[cell] > 0.0;
-            fine.diagonal[cell] = free ? mesh.cells()[cell].area_m2 / slope[cell] +
+            fine.diagonal[cell] = free ? stencil.area_m2[cell] / slope[cell] +
                                              conductance_W_K * stencil.weight_sum[cell]
                                        : 1.0;
             for (std::size_t k = stencil.offset[cell]; k < stencil.offset[cell + 1U]; ++k) {
@@ -395,7 +375,7 @@ int solve_newton_system(const PlanetMesh& mesh, const Stencil& stencil, double c
     };
     const auto dot = [&](const std::vector<double>& first, const std::vector<double>& second) {
         return reduce_deterministic_blocks<double>(
-            mesh.blocks(), worker_count, 0.0,
+            std::span<const CellBlock>(stencil.blocks), worker_count, 0.0,
             [&](std::size_t, const CellBlock& block) {
                 double sum = 0.0;
                 for (std::size_t cell = block.begin; cell < block.end; ++cell) {
@@ -445,28 +425,123 @@ int solve_newton_system(const PlanetMesh& mesh, const Stencil& stencil, double c
 
 }  // namespace
 
-void diffusion_source(const PlanetMesh& mesh, double conductance_W_K,
+TransportGraph mesh_transport_graph(const PlanetMesh& mesh) {
+    TransportGraph graph;
+    const std::size_t cells = mesh.cell_count();
+    graph.offset.assign(cells + 1U, 0U);
+    for (std::size_t cell = 0; cell < cells; ++cell) {
+        const CellId id{static_cast<CellId::value_type>(cell)};
+        graph.area_m2.push_back(mesh.cells()[cell].area_m2);
+        double sum = 0.0;
+        for (const auto& cell_edge : mesh.cell_edges(id)) {
+            const auto& edge = mesh.edge(cell_edge.edge);
+            graph.neighbour.push_back(cell_edge.neighbor.to_index());
+            graph.weight.push_back(edge.length_m / edge.centroid_distance_m);
+            sum += graph.weight.back();
+        }
+        graph.offset[cell + 1U] = graph.neighbour.size();
+        graph.weight_sum.push_back(sum);
+    }
+    graph.blocks.assign(mesh.blocks().begin(), mesh.blocks().end());
+    return graph;
+}
+
+namespace {
+
+struct Agglomeration {
+    TransportGraph graph;
+    std::vector<std::size_t> group_of_cell;
+};
+
+// Each fine cell joins the nearest cell of the mesh one level coarser (a
+// greedy walk over the coarse mesh from the previous fine cell's answer:
+// fine cells come in a space-filling order). Groups take the fine cells'
+// areas, so energy stays exact, and the coarse mesh's own two-point weights,
+// the ADR-0002 operator one level down.
+[[nodiscard]] Agglomeration build_agglomeration(const PlanetMesh& mesh) {
+    Agglomeration result;
+    if (mesh.subdivision() == 0U) {
+        result.graph = mesh_transport_graph(mesh);
+        result.group_of_cell.resize(mesh.cell_count());
+        for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
+            result.group_of_cell[cell] = cell;
+        }
+        return result;
+    }
+    const PlanetMesh coarse = make_icosphere(mesh.subdivision() - 1U, mesh.radius_m());
+    result.graph = mesh_transport_graph(coarse);
+    std::fill(result.graph.area_m2.begin(), result.graph.area_m2.end(), 0.0);
+    result.group_of_cell.resize(mesh.cell_count());
+    std::size_t guess = 0;
+    for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
+        const Vec3d& centre = mesh.cells()[cell].center_unit;
+        for (;;) {
+            std::size_t best = guess;
+            double best_dot = dot(centre, coarse.cells()[guess].center_unit);
+            const CellId id{static_cast<CellId::value_type>(guess)};
+            for (const auto& cell_edge : coarse.cell_edges(id)) {
+                const std::size_t other = cell_edge.neighbor.to_index();
+                const double value = dot(centre, coarse.cells()[other].center_unit);
+                if (value > best_dot) {
+                    best_dot = value;
+                    best = other;
+                }
+            }
+            if (best == guess) {
+                break;
+            }
+            guess = best;
+        }
+        result.group_of_cell[cell] = guess;
+        result.graph.area_m2[guess] += mesh.cells()[cell].area_m2;
+    }
+    for (const double area : result.graph.area_m2) {
+        if (!(area > 0.0)) {
+            throw std::logic_error("a coarse transport cell received no fine cell");
+        }
+    }
+    return result;
+}
+
+}  // namespace
+
+const TransportGraph& agglomerated_transport_graph(const PlanetMesh& mesh,
+                                                   const std::vector<std::size_t>*& group_of_cell) {
+    // One agglomeration per mesh level and radius for the process: building
+    // the coarse mesh takes about 0.1 s at L5.
+    static std::mutex mutex;
+    static std::map<std::pair<std::uint32_t, double>, std::unique_ptr<Agglomeration>> cache;
+    const std::lock_guard lock(mutex);
+    auto& entry = cache[{mesh.subdivision(), mesh.radius_m()}];
+    if (!entry || entry->group_of_cell.size() != mesh.cell_count()) {
+        entry = std::make_unique<Agglomeration>(build_agglomeration(mesh));
+    }
+    group_of_cell = &entry->group_of_cell;
+    return entry->graph;
+}
+
+void diffusion_source(const TransportGraph& graph, double conductance_W_K,
                       const Field2D<double>& temperature_K, Field2D<double>& source_W_m2,
                       std::size_t worker_count) {
-    if (temperature_K.size() != mesh.cell_count()) {
+    if (temperature_K.size() != graph.size()) {
         throw std::invalid_argument("transport temperature does not match the mesh");
     }
-    source_W_m2 = Field2D<double>(mesh.cell_count(), 0.0);
+    source_W_m2 = Field2D<double>(graph.size(), 0.0);
     for_each_deterministic_block(
-        mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+        std::span<const CellBlock>(graph.blocks), worker_count, [&](std::size_t, const CellBlock& block) {
             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
-                source_W_m2[cell] = conductance_W_K * edge_sum(mesh, cell, temperature_K) /
-                                    mesh.cells()[cell].area_m2;
+                source_W_m2[cell] = conductance_W_K * edge_sum(graph, cell, temperature_K) /
+                                    graph.area_m2[cell];
             }
         });
 }
 
-ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double conductance_W_K,
+ImplicitTransportResult solve_implicit_transport(const TransportGraph& graph, double conductance_W_K,
                                                  const Field2D<double>& source_floor_W_m2,
                                                  const TransportResponse& response,
                                                  const ImplicitTransportSettings& settings,
                                                  std::size_t worker_count) {
-    const std::size_t cells = mesh.cell_count();
+    const std::size_t cells = graph.size();
     if (!std::isfinite(conductance_W_K) || !(conductance_W_K > 0.0)) {
         throw std::invalid_argument("transport conductance must be finite and positive");
     }
@@ -474,8 +549,7 @@ ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double 
         throw std::invalid_argument("transport floor does not match the mesh");
     }
 
-    const Stencil stencil(mesh);
-    std::vector<Level> levels = build_hierarchy(stencil, cells);
+    std::vector<Level> levels = build_hierarchy(graph, cells);
     ImplicitTransportResult result;
     Field2D<double> source(cells, 0.0);
     for (std::size_t cell = 0; cell < cells; ++cell) {
@@ -496,14 +570,14 @@ ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double 
     const auto evaluate = [&](const Field2D<double>& at, Field2D<double>& at_mean,
                               Field2D<double>& at_slope, Field2D<double>& at_residual) {
         response(at, at_mean, at_slope);
-        diffusion_source(mesh, conductance_W_K, at_mean, diffusion, worker_count);
+        diffusion_source(graph, conductance_W_K, at_mean, diffusion, worker_count);
         return reduce_deterministic_blocks<double>(
-            mesh.blocks(), worker_count, 0.0,
+            std::span<const CellBlock>(graph.blocks), worker_count, 0.0,
             [&](std::size_t, const CellBlock& block) {
                 double merit = 0.0;
                 for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                     at_residual[cell] = at[cell] - diffusion[cell];
-                    merit += mesh.cells()[cell].area_m2 * at_residual[cell] * at_residual[cell];
+                    merit += graph.area_m2[cell] * at_residual[cell] * at_residual[cell];
                 }
                 return merit;
             },
@@ -513,19 +587,19 @@ ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double 
     double merit = evaluate(source, mean, slope, residual);
     int non_monotone_steps = 0;
     for (int iteration = 0; iteration < settings.max_newton_iterations; ++iteration) {
-        if (max_abs(mesh, residual, worker_count) <= settings.newton_tolerance_W_m2) {
+        if (max_abs(graph, residual, worker_count) <= settings.newton_tolerance_W_m2) {
             break;
         }
         // Newton: (A / S) δT̄ − K Q δT̄ = −A F, then δh = −F + K ∇² δT̄.
         for_each_deterministic_block(
-            mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+            std::span<const CellBlock>(graph.blocks), worker_count, [&](std::size_t, const CellBlock& block) {
                 for (std::size_t cell = block.begin; cell < block.end; ++cell) {
-                    rhs[cell] = -residual[cell] * mesh.cells()[cell].area_m2;
+                    rhs[cell] = -residual[cell] * graph.area_m2[cell];
                 }
             });
-        result.cg_iterations += solve_newton_system(mesh, stencil, conductance_W_K, slope, rhs,
+        result.cg_iterations += solve_newton_system(graph, conductance_W_K, slope, rhs,
                                                     levels, delta_mean, settings, worker_count);
-        diffusion_source(mesh, conductance_W_K, delta_mean, delta_source, worker_count);
+        diffusion_source(graph, conductance_W_K, delta_mean, delta_source, worker_count);
         for (std::size_t cell = 0; cell < cells; ++cell) {
             delta_source[cell] -= residual[cell];
         }
@@ -535,7 +609,7 @@ ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double 
         double trial_merit = 0.0;
         for (int halving = 0;; ++halving) {
             for_each_deterministic_block(
-                mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+                std::span<const CellBlock>(graph.blocks), worker_count, [&](std::size_t, const CellBlock& block) {
                     for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                         trial[cell] = std::max(source[cell] + step * delta_source[cell],
                                                source_floor_W_m2[cell]);
@@ -554,7 +628,7 @@ ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double 
                 // Jacobian from one side does not describe the other: take
                 // the full step, whose next Jacobian sees the other side,
                 // a bounded number of times.
-                if (max_abs(mesh, residual, worker_count) <=
+                if (max_abs(graph, residual, worker_count) <=
                         settings.rounding_floor_W_m2 ||
                     non_monotone_steps == settings.max_non_monotone_steps) {
                     step = 0.0;
@@ -562,7 +636,7 @@ ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double 
                     ++non_monotone_steps;
                     step = 1.0;
                     for_each_deterministic_block(
-                        mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+                        std::span<const CellBlock>(graph.blocks), worker_count, [&](std::size_t, const CellBlock& block) {
                             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                                 trial[cell] = std::max(source[cell] + delta_source[cell],
                                                        source_floor_W_m2[cell]);
@@ -587,9 +661,9 @@ ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double 
 
     // The transport applied is the conservative diffusion of the last cell
     // temperatures; |F| there is the consistency residual.
-    diffusion_source(mesh, conductance_W_K, mean, result.source_W_m2, worker_count);
+    diffusion_source(graph, conductance_W_K, mean, result.source_W_m2, worker_count);
     result.mean_K = mean;
-    result.consistency_residual_W_m2 = max_abs(mesh, residual, worker_count);
+    result.consistency_residual_W_m2 = max_abs(graph, residual, worker_count);
 
     struct Sums {
         double sum = 0.0;
@@ -597,11 +671,11 @@ ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double 
         double dissipation = 0.0;
     };
     const Sums sums = reduce_deterministic_blocks<Sums>(
-        mesh.blocks(), worker_count, Sums{},
+        std::span<const CellBlock>(graph.blocks), worker_count, Sums{},
         [&](std::size_t, const CellBlock& block) {
             Sums partial;
             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
-                const double flux = mesh.cells()[cell].area_m2 * result.source_W_m2[cell];
+                const double flux = graph.area_m2[cell] * result.source_W_m2[cell];
                 partial.sum += flux;
                 partial.absolute += std::abs(flux);
                 partial.dissipation += flux * mean[cell];

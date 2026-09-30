@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <limits>
 #include <numbers>
+#include <span>
 #include <stdexcept>
 #include <vector>
 
@@ -445,65 +446,100 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             }
         });
 
-    // The cell's source reaches each tile as H / (f_land + f_ocean) per unit
-    // area, so the tile-weighted sum is Σ A H exactly (task M4-02 §1.2).
+    // Transport runs on the mesh one level coarser (ADR-0009 §12):
+    // every cell of a group receives the group's source H, which reaches each
+    // tile with area as H / (f_land + f_ocean) per unit area, so the
+    // tile-weighted sum is Σ A H exactly (task M4-02 §1.2).
     Field2D<double> transport(cells, 0.0);
     ImplicitTransportResult solve;
     if (coefficient > 0.0) {
         const double conductance = coefficient * mesh.radius_m() * mesh.radius_m();
+        const std::vector<std::size_t>* group_map = nullptr;
+        const TransportGraph& graph = agglomerated_transport_graph(mesh, group_map);
+        const std::vector<std::size_t>& group_of_cell = *group_map;
+        const std::size_t groups = graph.size();
+        // Each group's cells in cell order.
+        std::vector<std::size_t> member_offset(groups + 1U, 0U);
+        for (std::size_t cell = 0; cell < cells; ++cell) {
+            ++member_offset[group_of_cell[cell] + 1U];
+        }
+        for (std::size_t group = 0; group < groups; ++group) {
+            member_offset[group + 1U] += member_offset[group];
+        }
+        std::vector<std::size_t> members(cells);
+        {
+            std::vector<std::size_t> next(member_offset.begin(), member_offset.end() - 1);
+            for (std::size_t cell = 0; cell < cells; ++cell) {
+                members[next[group_of_cell[cell]]++] = cell;
+            }
+        }
+        std::vector<double> cell_air(cells, 0.0);
+        std::vector<double> cell_slope(cells, 0.0);
         const TransportResponse response = [&](const Field2D<double>& source,
                                                Field2D<double>& mean, Field2D<double>& slope) {
             for_each_deterministic_block(
                 mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
                     for (std::size_t cell = block.begin; cell < block.end; ++cell) {
+                        const double h = source[group_of_cell[cell]];
                         const auto tiles = solve_cell(
                             land_tiles[cell], ocean_tiles[cell],
-                            fractions.land_fraction[cell], fractions.ocean_fraction[cell],
-                            source[cell], exchange, first_guess[cell], false);
-                        // The diffused temperature is the cell's air (ADR-0009
-                        // §11): from the air's balance, T_a = T̄ + h / (γ s),
+                            fractions.land_fraction[cell], fractions.ocean_fraction[cell], h,
+                            exchange, first_guess[cell], false);
+                        // The diffused temperature is the air (ADR-0009 §11):
+                        // from the air's balance, T_a = T̄ + h / (γ s),
                         // s = f_land + f_ocean. Its slope is never 0, so a
                         // freezing or melting cell cannot become an unlimited
                         // source or sink of transported heat.
                         const double air_share = exchange * tile_share[cell];
-                        mean[cell] = tiles.mean_K + source[cell] / air_share;
-                        slope[cell] = tiles.slope_K_m2_W + 1.0 / air_share;
+                        cell_air[cell] = tiles.mean_K + h / air_share;
+                        cell_slope[cell] = tiles.slope_K_m2_W + 1.0 / air_share;
                         // The next response's sources are close to these: its
                         // cell solve starts here (a deterministic sequence of
                         // calls, one cell per writer).
                         first_guess[cell] = tiles.mean_K;
                     }
                 });
-        };
-        // Below this source a tile's surface root would fall under 100 K.
-        Field2D<double> floor(cells, 0.0);
-        for_each_deterministic_block(
-            mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
-                for (std::size_t cell = block.begin; cell < block.end; ++cell) {
-                    constexpr double lowest_K = 100.0;
-                    // Only tiles with area take part. With shared air the
-                    // floor holds the cell's mean at 100 K (the exchange
-                    // terms cancel when all tiles are equal); without it,
-                    // every tile with area.
-                    const double land_fraction = fractions.land_fraction[cell];
-                    const double ocean_fraction = fractions.ocean_fraction[cell];
-                    const double land_floor =
-                        land_fraction > 0.0 ? -land_tiles[cell].system.surplus_W_m2(lowest_K)
-                                            : -std::numeric_limits<double>::infinity();
-                    const double ocean_floor =
-                        ocean_fraction > 0.0
-                            ? ocean_tile_source_floor_W_m2(ocean_tiles[cell], lowest_K)
-                            : -std::numeric_limits<double>::infinity();
-                    if (exchange > 0.0) {
-                        floor[cell] = (land_fraction > 0.0 ? land_fraction * land_floor : 0.0) +
-                                      (ocean_fraction > 0.0 ? ocean_fraction * ocean_floor : 0.0);
-                    } else {
-                        floor[cell] = std::max(land_floor, ocean_floor) * tile_share[cell];
+            // A group's air is the area-weighted mean of its cells' air.
+            for_each_deterministic_block(
+                std::span<const CellBlock>(graph.blocks), worker_count,
+                [&](std::size_t, const CellBlock& block) {
+                    for (std::size_t group = block.begin; group < block.end; ++group) {
+                        double air = 0.0;
+                        double air_slope = 0.0;
+                        for (std::size_t k = member_offset[group]; k < member_offset[group + 1U];
+                             ++k) {
+                            const std::size_t cell = members[k];
+                            const double area = mesh.cells()[cell].area_m2;
+                            air += area * cell_air[cell];
+                            air_slope += area * cell_slope[cell];
+                        }
+                        mean[group] = air / graph.area_m2[group];
+                        slope[group] = air_slope / graph.area_m2[group];
                     }
-                }
-            });
-        solve = solve_implicit_transport(mesh, conductance, floor, response, {}, worker_count);
-        transport = solve.source_W_m2;
+                });
+        };
+        // Below this source a cell's mean surface temperature would fall under
+        // 100 K; a group takes the highest floor of its cells.
+        Field2D<double> floor(groups, -std::numeric_limits<double>::infinity());
+        for (std::size_t cell = 0; cell < cells; ++cell) {
+            constexpr double lowest_K = 100.0;
+            // Only tiles with area take part; the exchange terms cancel when
+            // all tiles are equal.
+            const double land_fraction = fractions.land_fraction[cell];
+            const double ocean_fraction = fractions.ocean_fraction[cell];
+            const double land_floor =
+                land_fraction > 0.0 ? -land_tiles[cell].system.surplus_W_m2(lowest_K) : 0.0;
+            const double ocean_floor =
+                ocean_fraction > 0.0 ? ocean_tile_source_floor_W_m2(ocean_tiles[cell], lowest_K)
+                                     : 0.0;
+            const double cell_floor = land_fraction * land_floor + ocean_fraction * ocean_floor;
+            auto& group_floor = floor[group_of_cell[cell]];
+            group_floor = std::max(group_floor, cell_floor);
+        }
+        solve = solve_implicit_transport(graph, conductance, floor, response, {}, worker_count);
+        for (std::size_t cell = 0; cell < cells; ++cell) {
+            transport[cell] = solve.source_W_m2[group_of_cell[cell]];
+        }
     }
 
     const BudgetPartial total = reduce_deterministic_blocks<BudgetPartial>(

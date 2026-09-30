@@ -91,7 +91,7 @@ void check_linear(planetsim::test::Context& test, const planetsim::PlanetMesh& m
     const planetsim::Field2D<double> floor(mesh.cell_count(),
                                            -std::numeric_limits<double>::infinity());
     const auto result =
-        planetsim::solve_implicit_transport(mesh, conductance_W_K, floor, response, {}, 4U);
+        planetsim::solve_implicit_transport(planetsim::mesh_transport_graph(mesh), conductance_W_K, floor, response, {}, 4U);
     std::cout << "linear newton=" << result.newton_iterations << " cg=" << result.cg_iterations
               << " residual_W_m2=" << result.consistency_residual_W_m2
               << " sum_ratio=" << std::abs(result.sum_W) / result.absolute_sum_W << '\n';
@@ -110,7 +110,8 @@ void check_quartic(planetsim::test::Context& test, const planetsim::PlanetMesh& 
             const auto response = quartic(mesh, a);
             const auto floor = response.floor();
             const auto result = planetsim::solve_implicit_transport(
-                mesh, factor * conductance_W_K, floor, response, {}, 4U);
+                planetsim::mesh_transport_graph(mesh), factor * conductance_W_K, floor, response,
+                {}, 4U);
             bool held = true;
             for (std::size_t cell = 0; cell < mesh.cell_count(); cell += 7U) {
                 held = held && result.mean_K[cell] <= 273.15;
@@ -147,11 +148,11 @@ void check_workers(planetsim::test::Context& test, const planetsim::PlanetMesh& 
     const auto response = quartic(mesh, 0.41);
     const auto floor = response.floor();
     const auto reference =
-        planetsim::solve_implicit_transport(mesh, conductance_W_K, floor, response, {}, 1U);
+        planetsim::solve_implicit_transport(planetsim::mesh_transport_graph(mesh), conductance_W_K, floor, response, {}, 1U);
     bool identical = true;
     for (const std::size_t workers : {2U, 8U, 16U}) {
         const auto result =
-            planetsim::solve_implicit_transport(mesh, conductance_W_K, floor, response, {},
+            planetsim::solve_implicit_transport(planetsim::mesh_transport_graph(mesh), conductance_W_K, floor, response, {},
                                                 workers);
         for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
             identical = identical && std::bit_cast<std::uint64_t>(result.source_W_m2[cell]) ==
@@ -162,14 +163,55 @@ void check_workers(planetsim::test::Context& test, const planetsim::PlanetMesh& 
     PLANETSIM_EXPECT(test, identical);
 }
 
+// ADR-0009 §12: the agglomerated graph covers every cell once, its areas sum
+// to the sphere's, its weights are symmetric, and groups hold about four
+// cells (the mesh one level coarser).
+void check_agglomeration(planetsim::test::Context& test, const planetsim::PlanetMesh& mesh) {
+    const std::vector<std::size_t>* group_map = nullptr;
+    const auto& graph = planetsim::agglomerated_transport_graph(mesh, group_map);
+    const auto& group_of_cell = *group_map;
+    double mesh_area = 0.0;
+    for (const auto& cell : mesh.cells()) {
+        mesh_area += cell.area_m2;
+    }
+    double graph_area = 0.0;
+    for (const double area : graph.area_m2) {
+        graph_area += area;
+    }
+    bool symmetric = true;
+    for (std::size_t group = 0; group < graph.size(); ++group) {
+        for (std::size_t k = graph.offset[group]; k < graph.offset[group + 1U]; ++k) {
+            const std::size_t other = graph.neighbour[k];
+            bool found = false;
+            for (std::size_t j = graph.offset[other]; j < graph.offset[other + 1U]; ++j) {
+                found = found || (graph.neighbour[j] == group && graph.weight[j] == graph.weight[k]);
+            }
+            symmetric = symmetric && found && other != group && graph.weight[k] > 0.0;
+        }
+    }
+    bool covered = group_of_cell.size() == mesh.cell_count();
+    for (const std::size_t group : group_of_cell) {
+        covered = covered && group < graph.size();
+    }
+    const double cells_per_group =
+        static_cast<double>(mesh.cell_count()) / static_cast<double>(graph.size());
+    std::cout << "agglomeration groups=" << graph.size() << " cells_per_group=" << cells_per_group
+              << '\n';
+    PLANETSIM_EXPECT(test, covered);
+    PLANETSIM_EXPECT_NEAR(test, graph_area, mesh_area, 1e-12 * mesh_area);
+    PLANETSIM_EXPECT(test, symmetric);
+    PLANETSIM_EXPECT(test, cells_per_group > 3.9 && cells_per_group < 4.1);
+}
+
 void check_validation(planetsim::test::Context& test, const planetsim::PlanetMesh& mesh) {
     const auto response = quartic(mesh, 0.41);
     const auto floor = response.floor();
     PLANETSIM_EXPECT_THROWS(test, std::invalid_argument,
-                            planetsim::solve_implicit_transport(mesh, 0.0, floor, response));
+                            planetsim::solve_implicit_transport(planetsim::mesh_transport_graph(mesh), 0.0, floor, response));
     PLANETSIM_EXPECT_THROWS(test, std::invalid_argument,
                             planetsim::solve_implicit_transport(
-                                mesh, conductance_W_K, planetsim::Field2D<double>(3U, 0.0),
+                                planetsim::mesh_transport_graph(mesh), conductance_W_K,
+                                planetsim::Field2D<double>(3U, 0.0),
                                 response));
 }
 
@@ -181,6 +223,7 @@ int main() {
     check_linear(test, mesh);
     check_quartic(test, mesh);
     check_workers(test, mesh);
+    check_agglomeration(test, mesh);
     check_validation(test, mesh);
     return test.result();
 }

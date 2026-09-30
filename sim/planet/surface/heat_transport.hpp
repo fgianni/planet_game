@@ -1,13 +1,13 @@
 #pragma once
 
 #include "sim/core/fields/field.hpp"
+#include "sim/planet/mesh/planet_mesh.hpp"
 
 #include <cstddef>
 #include <functional>
+#include <vector>
 
 namespace planetsim {
-
-class PlanetMesh;
 
 // Diffusive horizontal heat transport, integrated implicitly (ADR-0009):
 //
@@ -17,6 +17,31 @@ class PlanetMesh;
 // receives H as a source. The solver knows nothing about tiles: a response
 // callback returns, for given sources h, each cell's temperature T̄(h) and
 // its slope dT̄/dh ≥ 0 (0 where a phase change absorbs extra heat).
+
+// The graph the transport runs on: nodes with areas, and for each node its
+// neighbours with the two-point weights l/d (boundary length over the
+// distance between centres), in CSR form; fixed blocks of nodes for
+// parallel work. Either the mesh itself or its agglomeration (ADR-0009 §12).
+struct TransportGraph {
+    std::vector<double> area_m2;
+    std::vector<std::size_t> offset;      // size() + 1
+    std::vector<std::size_t> neighbour;
+    std::vector<double> weight;           // l / d
+    std::vector<double> weight_sum;       // Σ weight per node
+    std::vector<CellBlock> blocks;
+
+    [[nodiscard]] std::size_t size() const noexcept { return area_m2.size(); }
+};
+
+[[nodiscard]] TransportGraph mesh_transport_graph(const PlanetMesh& mesh);
+
+// The transport graph one mesh level coarser (ADR-0009 §12): every fine cell
+// belongs to the nearest cell of the mesh one level coarser (about four
+// fine cells each); groups take the fine cells' areas and the coarse mesh's
+// two-point weights. Built once per mesh level and radius and cached for
+// the process; `group_of_cell` points at each fine cell's group.
+[[nodiscard]] const TransportGraph& agglomerated_transport_graph(
+    const PlanetMesh& mesh, const std::vector<std::size_t>*& group_of_cell);
 
 using TransportResponse = std::function<void(const Field2D<double>& source_W_m2,
                                              Field2D<double>& mean_K,
@@ -49,8 +74,8 @@ struct ImplicitTransportResult {
     double dissipation_W_K = 0.0;  // Σ A H T̄ ≤ 0: transport runs down the gradient
 };
 
-// The two-point Laplacian of ADR-0002 times K (W/K), in W/m² per cell.
-void diffusion_source(const PlanetMesh& mesh, double conductance_W_K,
+// The two-point Laplacian of ADR-0002 on the graph times K (W/K), in W/m².
+void diffusion_source(const TransportGraph& graph, double conductance_W_K,
                       const Field2D<double>& temperature_K, Field2D<double>& source_W_m2,
                       std::size_t worker_count = 1U);
 
@@ -59,7 +84,7 @@ void diffusion_source(const PlanetMesh& mesh, double conductance_W_K,
 // Bit-identical for any worker count: all parallel work runs over the
 // mesh's fixed blocks with block-ordered reductions.
 [[nodiscard]] ImplicitTransportResult solve_implicit_transport(
-    const PlanetMesh& mesh, double conductance_W_K, const Field2D<double>& source_floor_W_m2,
+    const TransportGraph& graph, double conductance_W_K, const Field2D<double>& source_floor_W_m2,
     const TransportResponse& response, const ImplicitTransportSettings& settings = {},
     std::size_t worker_count = 1U);
 
