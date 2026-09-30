@@ -128,6 +128,8 @@ struct BudgetPartial {
     double area_m2 = 0.0;
     std::array<double, 18> band_temperature_K_m2{};
     std::array<double, 18> band_area_m2{};
+    double p2_temperature_K_m2 = 0.0;
+    double p2_squared_m2 = 0.0;
     double land_temperature_K_m2 = 0.0;
     double land_area_m2 = 0.0;
     double ocean_temperature_K_m2 = 0.0;
@@ -151,6 +153,8 @@ struct BudgetPartial {
     a.snow_kg += b.snow_kg;
     a.weighted_temperature_K_m2 += b.weighted_temperature_K_m2;
     a.area_m2 += b.area_m2;
+    a.p2_temperature_K_m2 += b.p2_temperature_K_m2;
+    a.p2_squared_m2 += b.p2_squared_m2;
     for (std::size_t band = 0; band < a.band_area_m2.size(); ++band) {
         a.band_temperature_K_m2[band] += b.band_temperature_K_m2[band];
         a.band_area_m2[band] += b.band_area_m2[band];
@@ -338,6 +342,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     std::vector<ColumnSystem> ocean_tiles(cells);
     std::vector<double> tile_share(cells, 0.0);   // f_land + f_ocean
     std::vector<std::uint8_t> band_of_cell(cells, 0U);   // 10° band from 90° S
+    std::vector<double> p2_of_cell(cells, 0.0);           // P2(sin φ)
     for_each_deterministic_block(
         mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
@@ -354,8 +359,10 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     insolation, surface.grey_emissivity, dt_s);
                 tile_share[cell] = static_cast<double>(fractions.land_fraction[cell]) +
                                    static_cast<double>(fractions.ocean_fraction[cell]);
-                const double latitude_deg =
-                    latitude_rad(mesh.cells()[cell].center_unit) * 180.0 / std::numbers::pi;
+                const double latitude = latitude_rad(mesh.cells()[cell].center_unit);
+                const double mu = std::sin(latitude);
+                p2_of_cell[cell] = 0.5 * (3.0 * mu * mu - 1.0);
+                const double latitude_deg = latitude * 180.0 / std::numbers::pi;
                 band_of_cell[cell] = static_cast<std::uint8_t>(
                     std::clamp(std::floor((latitude_deg + 90.0) / 10.0), 0.0, 17.0));
             }
@@ -472,6 +479,10 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     land_weight * land_step.state.surface_K +
                     ocean_weight * ocean_step.state.surface_K;
                 partial.band_area_m2[band] += land_weight + ocean_weight;
+                const double p2 = p2_of_cell[cell];
+                partial.p2_temperature_K_m2 += p2 * (land_weight * land_step.state.surface_K +
+                                                     ocean_weight * ocean_step.state.surface_K);
+                partial.p2_squared_m2 += p2 * p2 * (land_weight + ocean_weight);
                 slow.land_surface_temperature_K[cell] =
                     static_cast<float>(land_step.state.surface_K);
                 slow.land_ground_temperature_K[cell] = static_cast<float>(land_step.state.lower_K);
@@ -491,6 +502,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.stored_energy_J = total.stored_energy_J;
     diagnostics.latent_heat_J = total.latent_heat_J;
     diagnostics.transport_W = total.transport_W;
+    diagnostics.p2_surface_temperature_K = total.p2_temperature_K_m2 / total.p2_squared_m2;
     for (std::size_t band = 0; band < total.band_area_m2.size(); ++band) {
         diagnostics.zonal_mean_surface_temperature_K[band] =
             total.band_area_m2[band] > 0.0
@@ -597,6 +609,7 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
             summary.rain_kg += step.rain_kg;
             summary.melt_kg += step.melt_kg;
             summary.snow_kg = step.snow_kg;
+            summary.p2_surface_temperature_K += dt_s * step.p2_surface_temperature_K;
             for (std::size_t band = 0; band < summary.northward_transport_W.size(); ++band) {
                 summary.northward_transport_W[band] += dt_s * step.northward_transport_W[band];
             }
@@ -612,6 +625,7 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
         summary.mean_surface_temperature_K /= total_s;
         summary.land_mean_surface_temperature_K /= total_s;
         summary.ocean_mean_surface_temperature_K /= total_s;
+        summary.p2_surface_temperature_K /= total_s;
         for (auto& value : summary.northward_transport_W) {
             value /= total_s;
         }

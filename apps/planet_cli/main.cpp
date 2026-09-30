@@ -92,6 +92,7 @@ struct ThermalOptions {
     double precipitation_kg_m2_s = 0.0;  // uniform prescribed precipitation (ADR-0008 §3.3 B)
     std::optional<double> transport_W_m2_K;           // D (ADR-0009)
     std::optional<double> calibrate_transport_PW;     // fit D to this peak transport
+    std::optional<double> calibrate_gradient_K;       // fit D to this P2 equator-to-pole ΔT
     std::size_t worker_count = 0;        // 0: hardware concurrency
 };
 
@@ -126,7 +127,8 @@ void print_usage(std::ostream& output) {
            << "  planet_cli calendar [--year N | --from-tick T]\n"
            << "  planet_cli thermal [--subdivision LEVEL] [--seed N] [--preset NAME]"
               " [--years N] [--grey G | --calibrate KELVIN]"
-              " [--transport D | --calibrate-transport PW] [--precipitation KG_M2_S]"
+              " [--transport D | --calibrate-gradient KELVIN | --calibrate-transport PW]"
+              " [--precipitation KG_M2_S]"
               " [--workers W]\n"
            << "  planet_cli run [--subdivision LEVEL] [--seed N] [--preset NAME] [--years N]"
               " [--spin-up-years N] [--initial-mode climate|reference]"
@@ -347,6 +349,8 @@ void print_usage(std::ostream& output) {
             options.calibrate_K = parse_double(value, "calibration target");
         } else if (argument == "--transport") {
             options.transport_W_m2_K = parse_double(value, "transport coefficient");
+        } else if (argument == "--calibrate-gradient") {
+            options.calibrate_gradient_K = parse_double(value, "gradient calibration target");
         } else if (argument == "--calibrate-transport") {
             options.calibrate_transport_PW = parse_double(value, "transport calibration target");
         } else if (argument == "--precipitation") {
@@ -367,8 +371,11 @@ void print_usage(std::ostream& output) {
     if (options.grey_emissivity && options.calibrate_K) {
         throw std::invalid_argument("--grey and --calibrate are exclusive");
     }
-    if (options.transport_W_m2_K && options.calibrate_transport_PW) {
-        throw std::invalid_argument("--transport and --calibrate-transport are exclusive");
+    if ((options.transport_W_m2_K ? 1 : 0) + (options.calibrate_transport_PW ? 1 : 0) +
+            (options.calibrate_gradient_K ? 1 : 0) >
+        1) {
+        throw std::invalid_argument(
+            "--transport, --calibrate-transport and --calibrate-gradient are exclusive");
     }
     return options;
 }
@@ -1211,12 +1218,22 @@ int run_thermal(const ThermalOptions& options) {
     };
     // D and g are fitted alternately (ADR-0009 §4.4): transport changes the
     // global mean through the T⁴ nonlinearity, g the gradient that drives it.
-    for (int round = 0; round < 6 && (options.calibrate_K || options.calibrate_transport_PW);
+    // The P2 difference falls as D grows; bisection wants a rising statistic.
+    const auto negative_gradient = [](const planetsim::AnnualSurfaceSummary& year) {
+        return -year.p2_equator_to_pole_K();
+    };
+    for (int round = 0; round < 6 && (options.calibrate_K || options.calibrate_transport_PW ||
+                                      options.calibrate_gradient_K);
          ++round) {
         if (options.calibrate_transport_PW) {
             bisect(0.3, 2.5, *options.calibrate_transport_PW, 0.02,
                    &planetsim::SurfaceEnergyParameters::transport_coefficient_W_m2_K, peak_PW,
                    "D");
+        }
+        if (options.calibrate_gradient_K) {
+            bisect(0.02, 1.5, -*options.calibrate_gradient_K, 0.05,
+                   &planetsim::SurfaceEnergyParameters::transport_coefficient_W_m2_K,
+                   negative_gradient, "D");
         }
         if (options.calibrate_K) {
             bisect(0.2, 0.8, *options.calibrate_K, 0.02,
@@ -1224,14 +1241,17 @@ int run_thermal(const ThermalOptions& options) {
         }
         const auto year = spin_up(surface);
         const bool transport_fits =
-            !options.calibrate_transport_PW ||
-            std::abs(peak_PW(year) - *options.calibrate_transport_PW) <= 0.05;
+            (!options.calibrate_transport_PW ||
+             std::abs(peak_PW(year) - *options.calibrate_transport_PW) <= 0.05) &&
+            (!options.calibrate_gradient_K ||
+             std::abs(year.p2_equator_to_pole_K() - *options.calibrate_gradient_K) <= 0.1);
         const bool mean_fits =
             !options.calibrate_K || std::abs(mean_K(year) - *options.calibrate_K) <= 0.05;
         std::cout << "calibrated round=" << round << std::setprecision(6)
                   << " g=" << surface.grey_emissivity
                   << " D=" << surface.transport_coefficient_W_m2_K << std::setprecision(9)
-                  << " mean_K=" << mean_K(year) << " peak_PW=" << peak_PW(year) << '\n';
+                  << " mean_K=" << mean_K(year) << " peak_PW=" << peak_PW(year)
+                  << " p2_equator_to_pole_K=" << year.p2_equator_to_pole_K() << '\n';
         if (transport_fits && mean_fits) {
             break;
         }
@@ -1251,7 +1271,8 @@ int run_thermal(const ThermalOptions& options) {
               << " absorbed_W=" << year.absorbed_W << " emitted_W=" << year.emitted_W
               << " relative_imbalance=" << year.relative_imbalance() << '\n'
               << "transport peak_poleward_PW=" << peak_PW(year)
-              << " equator_to_pole_K=" << year.equator_to_pole_difference_K() << " northward_PW";
+              << " equator_to_pole_K=" << year.equator_to_pole_difference_K()
+              << " p2_equator_to_pole_K=" << year.p2_equator_to_pole_K() << " northward_PW";
     for (const double value : year.northward_transport_W) {
         std::cout << ' ' << std::setprecision(3) << value / 1e15;
     }

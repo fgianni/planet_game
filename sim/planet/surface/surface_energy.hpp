@@ -110,6 +110,9 @@ struct SurfaceEnergyDiagnostics {
     // Area- and tile-weighted surface temperature of the 10° bands from
     // 90° S (0 for a band with no area).
     std::array<double, 18> zonal_mean_surface_temperature_K{};
+    // The P2(sin φ) component of the area- and tile-weighted surface
+    // temperature, Σ w T P2 / Σ w P2² (K); negative when the poles are cold.
+    double p2_surface_temperature_K = 0.0;
     double mean_surface_temperature_K = 0.0;   // area- and tile-weighted
     double land_mean_surface_temperature_K = 0.0;
     double ocean_mean_surface_temperature_K = 0.0;
@@ -167,7 +170,13 @@ struct AnnualSurfaceSummary {
     // Time means over the year (ADR-0009 §4.5).
     std::array<double, 17> northward_transport_W{};
     std::array<double, 18> zonal_mean_surface_temperature_K{};
+    double p2_surface_temperature_K = 0.0;
 
+    // The equator-to-pole difference of the P2 fit, −1.5 T₂ (ADR-0009 §10:
+    // the calibration target, 42 K for Earth after North et al., 1981).
+    [[nodiscard]] double p2_equator_to_pole_K() const noexcept {
+        return -1.5 * p2_surface_temperature_K;
+    }
     // The larger of the two hemispheres' peak poleward transports.
     [[nodiscard]] double peak_poleward_transport_W() const noexcept;
     // Mean of the two equatorward bands minus mean of the two polar bands.
