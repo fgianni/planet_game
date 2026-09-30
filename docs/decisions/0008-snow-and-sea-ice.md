@@ -307,8 +307,8 @@ suppresses them. The refitted `g` shifts again at M5 and M8.
 ## 9. Implementation record (task M4-01, 2026-09-30)
 
 §4.1 (all fields), §4.2, §4.3, §4.5 (land terms) and §4.6 (schema 4) are
-implemented; §4.4 (sea ice) is task M4-02, and the sea-ice field stays zero
-until then.
+implemented; §4.4 (sea ice) is task M4-03, after the heat transport of
+ADR-0009 (task M4-02), and the sea-ice field stays zero until then.
 
 | Concern | Code |
 |---|---|
@@ -358,5 +358,5 @@ have until M5 (atmosphere) or a reduced transport. This is the physics of
 §4.3 on a transport-free planet, not a defect of the step, and it puts the
 seasonal-experiment acceptance (§5 V7) for land snow out of reach until
 heat reaches the land. Sea ice (M4-02) has the ocean's heat beneath it and
-is expected to behave differently; the decision on transport belongs before
-M4-03.
+is expected to behave differently. The decision on transport is ADR-0009
+(accepted 2026-09-30), implemented as task M4-02 before sea ice.
