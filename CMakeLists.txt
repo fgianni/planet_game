@@ -47,6 +47,7 @@ add_library(PlanetSim STATIC
     sim/planet/orbit/substep_forcing.cpp
     sim/planet/surface/column_step.cpp
     sim/planet/surface/land_snow.cpp
+    sim/planet/surface/heat_transport.cpp
     sim/planet/surface/surface_energy.cpp
     sim/planet/surface/surface_materials.cpp
     sim/planet/planet_parameters.cpp
@@ -149,7 +150,7 @@ if(PLANETSIM_BUILD_TESTS)
     )
     set_tests_properties(
         planet_cli_thermal_smoke
-        PROPERTIES PASS_REGULAR_EXPRESSION "g=0 mean_K=25[0-9]"
+        PROPERTIES PASS_REGULAR_EXPRESSION "g=0 D=0 mean_K=25[0-9]"
     )
     set(PLANETSIM_RUN_SMOKE_FILE "${CMAKE_CURRENT_BINARY_DIR}/planet_cli_run_smoke.prun")
     add_test(

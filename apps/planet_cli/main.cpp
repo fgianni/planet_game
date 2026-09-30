@@ -90,6 +90,8 @@ struct ThermalOptions {
     std::optional<double> grey_emissivity;
     std::optional<double> calibrate_K;   // fit g so the last spin-up year has this mean
     double precipitation_kg_m2_s = 0.0;  // uniform prescribed precipitation (ADR-0008 §3.3 B)
+    std::optional<double> transport_W_m2_K;           // D (ADR-0009)
+    std::optional<double> calibrate_transport_PW;     // fit D to this peak transport
     std::size_t worker_count = 0;        // 0: hardware concurrency
 };
 
@@ -123,7 +125,8 @@ void print_usage(std::ostream& output) {
            << "    presets: earth_like (default), aqua_planet, dead_rock\n"
            << "  planet_cli calendar [--year N | --from-tick T]\n"
            << "  planet_cli thermal [--subdivision LEVEL] [--seed N] [--preset NAME]"
-              " [--years N] [--grey G | --calibrate KELVIN] [--precipitation KG_M2_S]"
+              " [--years N] [--grey G | --calibrate KELVIN]"
+              " [--transport D | --calibrate-transport PW] [--precipitation KG_M2_S]"
               " [--workers W]\n"
            << "  planet_cli run [--subdivision LEVEL] [--seed N] [--preset NAME] [--years N]"
               " [--spin-up-years N] [--initial-mode climate|reference]"
@@ -342,6 +345,10 @@ void print_usage(std::ostream& output) {
             options.grey_emissivity = parse_double(value, "grey emissivity");
         } else if (argument == "--calibrate") {
             options.calibrate_K = parse_double(value, "calibration target");
+        } else if (argument == "--transport") {
+            options.transport_W_m2_K = parse_double(value, "transport coefficient");
+        } else if (argument == "--calibrate-transport") {
+            options.calibrate_transport_PW = parse_double(value, "transport calibration target");
         } else if (argument == "--precipitation") {
             options.precipitation_kg_m2_s = parse_double(value, "precipitation");
             if (!std::isfinite(options.precipitation_kg_m2_s) ||
@@ -359,6 +366,9 @@ void print_usage(std::ostream& output) {
     }
     if (options.grey_emissivity && options.calibrate_K) {
         throw std::invalid_argument("--grey and --calibrate are exclusive");
+    }
+    if (options.transport_W_m2_K && options.calibrate_transport_PW) {
+        throw std::invalid_argument("--transport and --calibrate-transport are exclusive");
     }
     return options;
 }
@@ -1154,6 +1164,9 @@ int run_thermal(const ThermalOptions& options) {
     if (options.grey_emissivity) {
         surface.grey_emissivity = *options.grey_emissivity;
     }
+    if (options.transport_W_m2_K) {
+        surface.transport_coefficient_W_m2_K = *options.transport_W_m2_K;
+    }
     auto& precipitation = state.forcing().prescribed_precipitation_kg_m2_s;
     for (std::size_t cell = 0; cell < precipitation.size(); ++cell) {
         precipitation[cell] = static_cast<float>(options.precipitation_kg_m2_s);
@@ -1171,21 +1184,57 @@ int run_thermal(const ThermalOptions& options) {
               << " seed=" << options.seed << " years=" << options.years
               << " axial_tilt_deg=" << parameters.axial_tilt_rad * 180.0 / std::numbers::pi
               << " land_area_fraction=" << fractions.land_area_fraction << '\n';
-    if (options.calibrate_K) {
-        double low = 0.0;
-        double high = 0.95;
+
+    // Bisection of one parameter so that a spin-up statistic reaches its
+    // target; the statistic increases with the parameter.
+    const auto bisect = [&](double low, double high, double target, double tolerance,
+                            double planetsim::SurfaceEnergyParameters::*member,
+                            const auto& statistic, std::string_view name) {
         for (int iteration = 0; iteration < 40; ++iteration) {
             auto candidate = surface;
-            candidate.grey_emissivity = 0.5 * (low + high);
-            const auto year = spin_up(candidate);
-            (year.mean_surface_temperature_K < *options.calibrate_K ? low : high) =
-                candidate.grey_emissivity;
-            std::cout << "calibrate iteration=" << iteration << " g=" << candidate.grey_emissivity
-                      << " mean_K=" << year.mean_surface_temperature_K << '\n';
+            candidate.*member = 0.5 * (low + high);
+            const double value = statistic(spin_up(candidate));
+            std::cout << "calibrate " << name << "=" << candidate.*member << " value=" << value
+                      << '\n';
+            (value < target ? low : high) = candidate.*member;
+            if (std::abs(value - target) <= tolerance) {
+                break;
+            }
         }
-        surface.grey_emissivity = 0.5 * (low + high);
-        std::cout << "calibrated g=" << std::setprecision(6) << surface.grey_emissivity
-                  << std::setprecision(9) << '\n';
+        surface.*member = 0.5 * (low + high);
+    };
+    const auto mean_K = [](const planetsim::AnnualSurfaceSummary& year) {
+        return year.mean_surface_temperature_K;
+    };
+    const auto peak_PW = [](const planetsim::AnnualSurfaceSummary& year) {
+        return year.peak_poleward_transport_W() / 1e15;
+    };
+    // D and g are fitted alternately (ADR-0009 §4.4): transport changes the
+    // global mean through the T⁴ nonlinearity, g the gradient that drives it.
+    for (int round = 0; round < 6 && (options.calibrate_K || options.calibrate_transport_PW);
+         ++round) {
+        if (options.calibrate_transport_PW) {
+            bisect(0.3, 2.5, *options.calibrate_transport_PW, 0.02,
+                   &planetsim::SurfaceEnergyParameters::transport_coefficient_W_m2_K, peak_PW,
+                   "D");
+        }
+        if (options.calibrate_K) {
+            bisect(0.2, 0.8, *options.calibrate_K, 0.02,
+                   &planetsim::SurfaceEnergyParameters::grey_emissivity, mean_K, "g");
+        }
+        const auto year = spin_up(surface);
+        const bool transport_fits =
+            !options.calibrate_transport_PW ||
+            std::abs(peak_PW(year) - *options.calibrate_transport_PW) <= 0.05;
+        const bool mean_fits =
+            !options.calibrate_K || std::abs(mean_K(year) - *options.calibrate_K) <= 0.05;
+        std::cout << "calibrated round=" << round << std::setprecision(6)
+                  << " g=" << surface.grey_emissivity
+                  << " D=" << surface.transport_coefficient_W_m2_K << std::setprecision(9)
+                  << " mean_K=" << mean_K(year) << " peak_PW=" << peak_PW(year) << '\n';
+        if (transport_fits && mean_fits) {
+            break;
+        }
     }
 
     const auto spin_start = std::chrono::steady_clock::now();
@@ -1195,11 +1244,22 @@ int run_thermal(const ThermalOptions& options) {
         std::chrono::duration<double, std::milli>(spin_finish - spin_start).count() /
         static_cast<double>(options.years * planetsim::climate_substeps_per_year);
     std::cout << "g=" << surface.grey_emissivity
+              << " D=" << surface.transport_coefficient_W_m2_K
               << " mean_K=" << year.mean_surface_temperature_K
               << " land_mean_K=" << year.land_mean_surface_temperature_K
               << " ocean_mean_K=" << year.ocean_mean_surface_temperature_K
               << " absorbed_W=" << year.absorbed_W << " emitted_W=" << year.emitted_W
               << " relative_imbalance=" << year.relative_imbalance() << '\n'
+              << "transport peak_poleward_PW=" << peak_PW(year)
+              << " equator_to_pole_K=" << year.equator_to_pole_difference_K() << " northward_PW";
+    for (const double value : year.northward_transport_W) {
+        std::cout << ' ' << std::setprecision(3) << value / 1e15;
+    }
+    std::cout << std::setprecision(9) << '\n' << "zonal_mean_K";
+    for (const double value : year.zonal_mean_surface_temperature_K) {
+        std::cout << ' ' << std::setprecision(4) << value;
+    }
+    std::cout << std::setprecision(9) << '\n'
               << "snow precipitation_kg_m2_s=" << options.precipitation_kg_m2_s
               << " snowfall_kg=" << year.snowfall_kg << " rain_kg=" << year.rain_kg
               << " melt_kg=" << year.melt_kg << " snow_end_kg=" << year.snow_kg << '\n'

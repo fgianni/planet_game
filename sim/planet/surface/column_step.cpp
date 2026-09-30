@@ -86,10 +86,13 @@ ColumnStepResult complete_column_step(const ColumnProperties& column, const Colu
 }
 
 ColumnStepResult solve_column_step(const ColumnProperties& column, ColumnSystem system,
-                                   ColumnState before, double source_W_m2) {
+                                   ColumnState before, double source_W_m2,
+                                   double exchange_W_m2_K) {
+    system.a += exchange_W_m2_K;
     system.b += source_W_m2;
     const double x = solve_column_surface(system);
-    auto result = complete_column_step(column, system, before, x, 0.0, source_W_m2);
+    auto result = complete_column_step(column, system, before, x, 0.0,
+                                       source_W_m2 - exchange_W_m2_K * x);
     result.surface_slope_K_m2_W = system.slope_K_m2_W(x);
     return result;
 }

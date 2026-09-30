@@ -315,8 +315,12 @@ void check_experiments(planetsim::test::Context& test,
 // entirely in double. A float32 mixed layer drifted 0.01-0.04 K here.
 void check_reference_ocean_precision(planetsim::test::Context& test,
                                      const std::shared_ptr<const planetsim::PlanetMesh>& mesh) {
-    Planet planet(mesh, PlanetPreset::earth_like,
-                  planetsim::surface_energy_parameters_for(PlanetPreset::earth_like));
+    // The column alone: no horizontal transport and no shared air
+    // (ADR-0009), which would couple the columns this test compares.
+    auto surface = planetsim::surface_energy_parameters_for(PlanetPreset::earth_like);
+    surface.transport_coefficient_W_m2_K = 0.0;
+    surface.air_exchange_W_m2_K = 0.0;
+    Planet planet(mesh, PlanetPreset::earth_like, surface);
     const std::size_t cells = mesh->cell_count();
     // Constant forcing, 3 W/m2 of absorbed shortwave above the initial
     // equilibrium's, so every ocean column warms slowly (~1e-5 K per step).

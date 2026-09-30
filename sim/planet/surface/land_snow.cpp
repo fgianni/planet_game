@@ -42,8 +42,10 @@ LandSnowSystem prepare_land_tile(const ColumnProperties& ground, ColumnState sta
     return tile;
 }
 
-LandSnowStepResult solve_land_tile(const LandSnowSystem& tile, double source_W_m2) {
+LandSnowStepResult solve_land_tile(const LandSnowSystem& tile, double source_W_m2,
+                                   double exchange_W_m2_K) {
     ColumnSystem system = tile.system;
+    system.a += exchange_W_m2_K;
     system.b += source_W_m2;
     const double snow_before_melt = tile.snow_kg_m2 + tile.snowfall_kg_m2;
 
@@ -71,8 +73,8 @@ LandSnowStepResult solve_land_tile(const LandSnowSystem& tile, double source_W_m
     }
     result.snow_kg_m2 = snow_before_melt - result.melt_kg_m2;
     result.latent_J_m2 = latent_heat_of_fusion_J_kg * result.melt_kg_m2;
-    result.column =
-        complete_column_step(tile.column, system, tile.before, surface_K, sink_W_m2, source_W_m2);
+    result.column = complete_column_step(tile.column, system, tile.before, surface_K, sink_W_m2,
+                                         source_W_m2 - exchange_W_m2_K * surface_K);
     result.column.surface_slope_K_m2_W = clamped ? 0.0 : system.slope_K_m2_W(surface_K);
     return result;
 }

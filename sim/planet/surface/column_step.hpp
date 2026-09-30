@@ -28,7 +28,9 @@ struct ColumnStepResult {
     double emitted_W_m2 = 0.0;          // β ε σ T_s'⁴, to space
     double storage_change_J_m2 = 0.0;   // C_s ΔT_s + C_l ΔT_l
     double newton_residual_W_m2 = 0.0;  // of the scalar equation, after the last iteration
-    double source_W_m2 = 0.0;           // external source (horizontal transport, ADR-0009)
+    // External source actually received (horizontal transport and exchange
+    // with the cell's air, ADR-0009), W/m²; part of the budget.
+    double source_W_m2 = 0.0;
     // dT_s'/d(source): 1 / (a + 4 r T_s'³), or 0 where a phase change holds
     // the surface at its melting point (ADR-0008 §4.3).
     double surface_slope_K_m2_W = 0.0;
@@ -71,10 +73,12 @@ struct ColumnSystem {
                                                     ColumnState before, double surface_K,
                                                     double sink_W_m2, double source_W_m2);
 
-// Solves a prepared system with an external source added to b.
+// Solves a prepared system with an external source s − γ·T_s' in the
+// surface equation: `source` is added to b and `exchange` (γ, W/m²/K) to a.
+// The result records the source actually received, s − γ·T_s'.
 [[nodiscard]] ColumnStepResult solve_column_step(const ColumnProperties& column,
                                                  ColumnSystem system, ColumnState before,
-                                                 double source_W_m2);
+                                                 double source_W_m2, double exchange_W_m2_K = 0.0);
 
 // Throws std::invalid_argument for a non-positive or non-finite step,
 // non-positive temperatures, negative insolation or g outside [0, 1).

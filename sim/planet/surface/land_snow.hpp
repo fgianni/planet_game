@@ -47,11 +47,12 @@ struct LandSnowSystem {
                                                double precipitation_kg_m2_s,
                                                double grey_emissivity, double dt_s);
 
-// Solves a prepared tile with an external source (W/m²) added to its surface
-// equation. The result's surface slope is 0 while snow holds the surface at
-// the melting point.
+// Solves a prepared tile with an external source s − γ·T_s' in its surface
+// equation (see solve_column_step). The result's surface slope is 0 while
+// snow holds the surface at the melting point.
 [[nodiscard]] LandSnowStepResult solve_land_tile(const LandSnowSystem& tile,
-                                                 double source_W_m2 = 0.0);
+                                                 double source_W_m2 = 0.0,
+                                                 double exchange_W_m2_K = 0.0);
 
 [[nodiscard]] LandSnowStepResult step_land_tile(const ColumnProperties& ground, ColumnState state,
                                                 double snow_kg_m2, double insolation_W_m2,

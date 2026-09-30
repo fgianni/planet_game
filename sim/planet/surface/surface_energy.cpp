@@ -7,8 +7,13 @@
 #include "sim/planet/planet_state.hpp"
 #include "sim/core/scheduler/scheduler.hpp"
 #include "sim/planet/orbit/solar_forcing.hpp"
+#include "sim/planet/coordinates/local_tangent_basis.hpp"
 #include "sim/planet/surface/column_step.hpp"
+#include "sim/planet/surface/heat_transport.hpp"
 #include "sim/planet/surface/land_snow.hpp"
+
+#include <numbers>
+#include <vector>
 #include "sim/planet/terrain/surface_fractions.hpp"
 
 #include <algorithm>
@@ -26,7 +31,8 @@ SurfaceEnergyParameters surface_energy_parameters_for(PlanetPreset preset) noexc
     case PlanetPreset::aqua_planet:
         return {SurfaceMaterial::dry_soil, 0.0};
     case PlanetPreset::earth_like:
-        return {SurfaceMaterial::dry_soil, earth_like_grey_emissivity};
+        return {SurfaceMaterial::dry_soil, earth_like_grey_emissivity,
+                earth_like_transport_coefficient_W_m2_K, bulk_air_exchange_W_m2_K};
     }
     return {};
 }
@@ -112,6 +118,7 @@ struct BudgetPartial {
     double storage_change_J = 0.0;
     double stored_energy_J = 0.0;
     double latent_heat_J = 0.0;
+    double transport_W = 0.0;
     double max_newton_residual_W_m2 = 0.0;
     double snowfall_kg = 0.0;
     double rain_kg = 0.0;
@@ -120,6 +127,8 @@ struct BudgetPartial {
     double snow_kg = 0.0;
     double weighted_temperature_K_m2 = 0.0;
     double area_m2 = 0.0;
+    std::array<double, 18> band_temperature_K_m2{};
+    std::array<double, 18> band_area_m2{};
     double land_temperature_K_m2 = 0.0;
     double land_area_m2 = 0.0;
     double ocean_temperature_K_m2 = 0.0;
@@ -134,6 +143,7 @@ struct BudgetPartial {
     a.storage_change_J += b.storage_change_J;
     a.stored_energy_J += b.stored_energy_J;
     a.latent_heat_J += b.latent_heat_J;
+    a.transport_W += b.transport_W;
     a.max_newton_residual_W_m2 = std::max(a.max_newton_residual_W_m2, b.max_newton_residual_W_m2);
     a.snowfall_kg += b.snowfall_kg;
     a.rain_kg += b.rain_kg;
@@ -142,6 +152,10 @@ struct BudgetPartial {
     a.snow_kg += b.snow_kg;
     a.weighted_temperature_K_m2 += b.weighted_temperature_K_m2;
     a.area_m2 += b.area_m2;
+    for (std::size_t band = 0; band < a.band_area_m2.size(); ++band) {
+        a.band_temperature_K_m2[band] += b.band_temperature_K_m2[band];
+        a.band_area_m2[band] += b.band_area_m2[band];
+    }
     a.land_temperature_K_m2 += b.land_temperature_K_m2;
     a.land_area_m2 += b.land_area_m2;
     a.ocean_temperature_K_m2 += b.ocean_temperature_K_m2;
@@ -158,6 +172,7 @@ void accumulate_tile(BudgetPartial& partial, const ColumnProperties& column,
     }
     partial.absorbed_W += weight_m2 * result.absorbed_W_m2;
     partial.emitted_W += weight_m2 * result.emitted_W_m2;
+    partial.transport_W += weight_m2 * result.source_W_m2;
     partial.storage_change_J += weight_m2 * result.storage_change_J_m2;
     partial.stored_energy_J +=
         weight_m2 * (column.surface_heat_capacity_J_m2_K * result.state.surface_K +
@@ -170,15 +185,98 @@ void accumulate_tile(BudgetPartial& partial, const ColumnProperties& column,
     partial.max_K = std::max(partial.max_K, result.state.surface_K);
 }
 
+struct CellTiles {
+    LandSnowStepResult land;
+    ColumnStepResult ocean;
+    double mean_K = 0.0;          // T̄: area-weighted over the tiles with area
+    double slope_K_m2_W = 0.0;    // dT̄/dh
+};
+
+// One cell's tiles under the transport source h (W/m² of cell area), ADR-0009
+// §4.1 and §10. The tiles with area share h per unit area; with air exchange
+// γ every tile also receives γ (T̄ − T_t), and T̄ is found by safeguarded
+// Newton on G(T̄) = Σ w_t T_t(T̄) − T̄, which decreases with slope in (−1, 0).
+// A tile without area receives no transport and follows the cell's air.
+CellTiles solve_cell(const LandSnowSystem& land_tile, const ColumnProperties& ocean,
+                     const ColumnSystem& ocean_system, ColumnState ocean_before,
+                     double land_fraction, double ocean_fraction, double h, double exchange,
+                     double first_guess_K) {
+    const double share = land_fraction + ocean_fraction;
+    const double land_weight = land_fraction / share;
+    const double ocean_weight = ocean_fraction / share;
+    const double land_source = land_fraction > 0.0 ? h / share : 0.0;
+    const double ocean_source = ocean_fraction > 0.0 ? h / share : 0.0;
+
+    CellTiles tiles;
+    if (exchange == 0.0) {
+        tiles.land = solve_land_tile(land_tile, land_source);
+        tiles.ocean = solve_column_step(ocean, ocean_system, ocean_before, ocean_source);
+        tiles.mean_K = land_weight * tiles.land.column.state.surface_K +
+                       ocean_weight * tiles.ocean.state.surface_K;
+        tiles.slope_K_m2_W = (land_weight * tiles.land.column.surface_slope_K_m2_W +
+                              ocean_weight * tiles.ocean.surface_slope_K_m2_W) /
+                             share;
+        return tiles;
+    }
+
+    // A tile whose right-hand side is not positive has no positive root;
+    // it only happens far from the solution and counts as 0 K.
+    const auto evaluate = [&](double mean_K, double& weighted_slope) {
+        double weighted = 0.0;
+        weighted_slope = 0.0;
+        if (land_fraction > 0.0 &&
+            land_tile.system.b + land_source + exchange * mean_K > 0.0) {
+            const auto land = solve_land_tile(land_tile, land_source + exchange * mean_K, exchange);
+            weighted += land_weight * land.column.state.surface_K;
+            weighted_slope += land_weight * land.column.surface_slope_K_m2_W;
+        }
+        if (ocean_fraction > 0.0 && ocean_system.b + ocean_source + exchange * mean_K > 0.0) {
+            const auto water = solve_column_step(ocean, ocean_system, ocean_before,
+                                                 ocean_source + exchange * mean_K, exchange);
+            weighted += ocean_weight * water.state.surface_K;
+            weighted_slope += ocean_weight * water.surface_slope_K_m2_W;
+        }
+        return weighted - mean_K;
+    };
+    double low = 0.0;        // G(low) ≥ 0
+    double high = 1.0e4;     // G(high) < 0
+    double mean_K = std::clamp(first_guess_K, low, high);
+    double weighted_slope = 0.0;
+    for (int iteration = 0; iteration < 60; ++iteration) {
+        const double g = evaluate(mean_K, weighted_slope);
+        (g > 0.0 ? low : high) = mean_K;
+        const double derivative = exchange * weighted_slope - 1.0;
+        double next = mean_K - g / derivative;
+        if (!(next > low && next < high)) {
+            next = 0.5 * (low + high);
+        }
+        if (std::abs(next - mean_K) <= 1e-12 * mean_K) {
+            mean_K = next;
+            break;
+        }
+        mean_K = next;
+    }
+    static_cast<void>(evaluate(mean_K, weighted_slope));
+
+    tiles.land = solve_land_tile(land_tile, land_source + exchange * mean_K, exchange);
+    tiles.ocean = solve_column_step(ocean, ocean_system, ocean_before,
+                                    ocean_source + exchange * mean_K, exchange);
+    tiles.mean_K = mean_K;
+    // T̄ = Σ w T_t(h/share + γ T̄)  ⇒  dT̄/dh = (Σ w s_t / share) / (1 − γ Σ w s_t).
+    tiles.slope_K_m2_W = weighted_slope / share / (1.0 - exchange * weighted_slope);
+    return tiles;
+}
+
 }  // namespace
 
 double SurfaceEnergyDiagnostics::closure_residual_J() const noexcept {
-    return std::abs(storage_change_J + latent_heat_J - duration_s * (absorbed_W - emitted_W));
+    return std::abs(storage_change_J + latent_heat_J -
+                    duration_s * (absorbed_W - emitted_W + transport_W));
 }
 
 double SurfaceEnergyDiagnostics::closure_gate_J() const noexcept {
-    const double scale = duration_s * (absorbed_W + emitted_W) + std::abs(storage_change_J) +
-                         std::abs(latent_heat_J);
+    const double scale = duration_s * (absorbed_W + emitted_W + transport_absolute_W) +
+                         std::abs(storage_change_J) + std::abs(latent_heat_J);
     return 1e-9 * scale + 4.0 * std::numeric_limits<double>::epsilon() * stored_energy_J;
 }
 
@@ -189,6 +287,21 @@ double SurfaceEnergyDiagnostics::water_residual_kg() const noexcept {
 double SurfaceEnergyDiagnostics::water_gate_kg() const noexcept {
     return 1e-12 * (snowfall_kg + melt_kg + snow_kg) +
            4.0 * std::numeric_limits<double>::epsilon() * snow_kg;
+}
+
+double AnnualSurfaceSummary::peak_poleward_transport_W() const noexcept {
+    double north = 0.0;
+    double south = 0.0;
+    for (std::size_t band = 0; band < northward_transport_W.size(); ++band) {
+        north = std::max(north, northward_transport_W[band]);
+        south = std::max(south, -northward_transport_W[band]);
+    }
+    return std::max(north, south);
+}
+
+double AnnualSurfaceSummary::equator_to_pole_difference_K() const noexcept {
+    const auto& t = zonal_mean_surface_temperature_K;
+    return 0.5 * (t[8] + t[9]) - 0.5 * (t[0] + t[17]);
 }
 
 double AnnualSurfaceSummary::relative_imbalance() const noexcept {
@@ -209,9 +322,107 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
         state.slow().land_snow_water_equivalent_kg_m2.size() != cells) {
         throw std::invalid_argument("surface energy inputs do not match the mesh");
     }
+    const double coefficient = surface.transport_coefficient_W_m2_K;
+    if (!std::isfinite(coefficient) || coefficient < 0.0) {
+        throw std::invalid_argument("transport coefficient must be finite and non-negative");
+    }
     const ColumnProperties land = column_properties(surface.land_material, parameters);
     const ColumnProperties ocean = column_properties(SurfaceMaterial::ocean, parameters);
     SlowState& slow = state.slow();
+
+    // Each tile's system is prepared once; the transport solve re-solves it
+    // for as many sources as it needs (ADR-0009 §4.3).
+    std::vector<LandSnowSystem> land_tiles(cells);
+    std::vector<ColumnSystem> ocean_tiles(cells);
+    std::vector<double> tile_share(cells, 0.0);   // f_land + f_ocean
+    for_each_deterministic_block(
+        mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+            for (std::size_t cell = block.begin; cell < block.end; ++cell) {
+                const double insolation = insolation_W_m2[cell];
+                land_tiles[cell] = prepare_land_tile(
+                    land,
+                    {slow.land_surface_temperature_K[cell], slow.land_ground_temperature_K[cell]},
+                    slow.land_snow_water_equivalent_kg_m2[cell], insolation, precipitation[cell],
+                    surface.grey_emissivity, dt_s);
+                ocean_tiles[cell] = column_system(
+                    ocean,
+                    {slow.ocean_mixed_layer_temperature_K[cell],
+                     slow.ocean_deep_temperature_K[cell]},
+                    insolation, surface.grey_emissivity, dt_s);
+                tile_share[cell] = static_cast<double>(fractions.land_fraction[cell]) +
+                                   static_cast<double>(fractions.ocean_fraction[cell]);
+            }
+        });
+    const double exchange = surface.air_exchange_W_m2_K;
+    if (!std::isfinite(exchange) || exchange < 0.0) {
+        throw std::invalid_argument("air exchange must be finite and non-negative");
+    }
+    // The start-of-step cell temperature: the first guess of each cell solve.
+    std::vector<double> first_guess(cells, 0.0);
+    for_each_deterministic_block(
+        mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+            for (std::size_t cell = block.begin; cell < block.end; ++cell) {
+                const double land_K = slow.land_surface_temperature_K[cell];
+                first_guess[cell] =
+                    (fractions.land_fraction[cell] * land_K +
+                     fractions.ocean_fraction[cell] * slow.ocean_mixed_layer_temperature_K[cell]) /
+                    tile_share[cell];
+            }
+        });
+    const auto ocean_before = [&](std::size_t cell) {
+        return ColumnState{slow.ocean_mixed_layer_temperature_K[cell],
+                           slow.ocean_deep_temperature_K[cell]};
+    };
+
+    // The cell's source reaches each tile as H / (f_land + f_ocean) per unit
+    // area, so the tile-weighted sum is Σ A H exactly (task M4-02 §1.2).
+    Field2D<double> transport(cells, 0.0);
+    ImplicitTransportResult solve;
+    if (coefficient > 0.0) {
+        const double conductance = coefficient * mesh.radius_m() * mesh.radius_m();
+        const TransportResponse response = [&](const Field2D<double>& source,
+                                               Field2D<double>& mean, Field2D<double>& slope) {
+            for_each_deterministic_block(
+                mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+                    for (std::size_t cell = block.begin; cell < block.end; ++cell) {
+                        const auto tiles = solve_cell(
+                            land_tiles[cell], ocean, ocean_tiles[cell], ocean_before(cell),
+                            fractions.land_fraction[cell], fractions.ocean_fraction[cell],
+                            source[cell], exchange, first_guess[cell]);
+                        mean[cell] = tiles.mean_K;
+                        slope[cell] = tiles.slope_K_m2_W;
+                    }
+                });
+        };
+        // Below this source a tile's surface root would fall under 100 K.
+        Field2D<double> floor(cells, 0.0);
+        for_each_deterministic_block(
+            mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+                for (std::size_t cell = block.begin; cell < block.end; ++cell) {
+                    constexpr double lowest_K = 100.0;
+                    // Only tiles with area take part. With shared air the
+                    // floor holds the cell's mean at 100 K (the exchange
+                    // terms cancel when all tiles are equal); without it,
+                    // every tile with area.
+                    const double land_fraction = fractions.land_fraction[cell];
+                    const double ocean_fraction = fractions.ocean_fraction[cell];
+                    const double land_floor =
+                        land_fraction > 0.0 ? -land_tiles[cell].system.surplus_W_m2(lowest_K)
+                                            : -std::numeric_limits<double>::infinity();
+                    const double ocean_floor =
+                        ocean_fraction > 0.0 ? -ocean_tiles[cell].surplus_W_m2(lowest_K)
+                                             : -std::numeric_limits<double>::infinity();
+                    if (exchange > 0.0) {
+                        floor[cell] = (land_fraction > 0.0 ? land_fraction * land_floor : 0.0) +
+                                      (ocean_fraction > 0.0 ? ocean_fraction * ocean_floor : 0.0);
+                    } else {
+                        floor[cell] = std::max(land_floor, ocean_floor) * tile_share[cell];
+                    }
+                }
+            });
+        solve = solve_implicit_transport(mesh, conductance, floor, response, {}, worker_count);
+        transport = solve.source_W_m2;
+    }
 
     const BudgetPartial total = reduce_deterministic_blocks<BudgetPartial>(
         mesh.blocks(), worker_count, BudgetPartial{},
@@ -219,18 +430,14 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             BudgetPartial partial;
             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                 const double area_m2 = mesh.cells()[cell].area_m2;
-                const double insolation = insolation_W_m2[cell];
                 const double snow = slow.land_snow_water_equivalent_kg_m2[cell];
-                const LandSnowStepResult land_tile = step_land_tile(
-                    land,
-                    {slow.land_surface_temperature_K[cell], slow.land_ground_temperature_K[cell]},
-                    snow, insolation, precipitation[cell], surface.grey_emissivity, dt_s);
+                const auto tiles = solve_cell(land_tiles[cell], ocean, ocean_tiles[cell],
+                                              ocean_before(cell), fractions.land_fraction[cell],
+                                              fractions.ocean_fraction[cell], transport[cell],
+                                              exchange, first_guess[cell]);
+                const LandSnowStepResult& land_tile = tiles.land;
                 const ColumnStepResult& land_step = land_tile.column;
-                const ColumnStepResult ocean_step =
-                    step_column(ocean,
-                                {slow.ocean_mixed_layer_temperature_K[cell],
-                                 slow.ocean_deep_temperature_K[cell]},
-                                insolation, surface.grey_emissivity, dt_s);
+                const ColumnStepResult& ocean_step = tiles.ocean;
                 const double land_weight = area_m2 * fractions.land_fraction[cell];
                 const double ocean_weight = area_m2 * fractions.ocean_fraction[cell];
                 accumulate_tile(partial, land, land_step, land_weight);
@@ -249,6 +456,14 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     partial.ocean_temperature_K_m2 += ocean_weight * ocean_step.state.surface_K;
                     partial.ocean_area_m2 += ocean_weight;
                 }
+                const double latitude_deg =
+                    latitude_rad(mesh.cells()[cell].center_unit) * 180.0 / std::numbers::pi;
+                const auto band = static_cast<std::size_t>(
+                    std::clamp(std::floor((latitude_deg + 90.0) / 10.0), 0.0, 17.0));
+                partial.band_temperature_K_m2[band] +=
+                    land_weight * land_step.state.surface_K +
+                    ocean_weight * ocean_step.state.surface_K;
+                partial.band_area_m2[band] += land_weight + ocean_weight;
                 slow.land_surface_temperature_K[cell] =
                     static_cast<float>(land_step.state.surface_K);
                 slow.land_ground_temperature_K[cell] = static_cast<float>(land_step.state.lower_K);
@@ -267,6 +482,32 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.storage_change_J = total.storage_change_J;
     diagnostics.stored_energy_J = total.stored_energy_J;
     diagnostics.latent_heat_J = total.latent_heat_J;
+    diagnostics.transport_W = total.transport_W;
+    for (std::size_t band = 0; band < total.band_area_m2.size(); ++band) {
+        diagnostics.zonal_mean_surface_temperature_K[band] =
+            total.band_area_m2[band] > 0.0
+                ? total.band_temperature_K_m2[band] / total.band_area_m2[band]
+                : 0.0;
+    }
+    diagnostics.transport_cell_sum_W = solve.sum_W;
+    diagnostics.transport_absolute_W = solve.absolute_sum_W;
+    diagnostics.transport_dissipation_W_K = solve.dissipation_W_K;
+    diagnostics.transport_consistency_W_m2 = solve.consistency_residual_W_m2;
+    diagnostics.transport_newton_iterations = solve.newton_iterations;
+    diagnostics.transport_cg_iterations = solve.cg_iterations;
+    if (coefficient > 0.0) {
+        for (std::size_t band = 0; band < diagnostics.northward_transport_W.size(); ++band) {
+            const double boundary =
+                (-80.0 + 10.0 * static_cast<double>(band)) * std::numbers::pi / 180.0;
+            double north = 0.0;
+            for (std::size_t cell = 0; cell < cells; ++cell) {
+                if (latitude_rad(mesh.cells()[cell].center_unit) > boundary) {
+                    north += mesh.cells()[cell].area_m2 * transport[cell];
+                }
+            }
+            diagnostics.northward_transport_W[band] = north;
+        }
+    }
     diagnostics.snowfall_kg = total.snowfall_kg;
     diagnostics.rain_kg = total.rain_kg;
     diagnostics.melt_kg = total.melt_kg;
@@ -345,6 +586,14 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
             summary.rain_kg += step.rain_kg;
             summary.melt_kg += step.melt_kg;
             summary.snow_kg = step.snow_kg;
+            for (std::size_t band = 0; band < summary.northward_transport_W.size(); ++band) {
+                summary.northward_transport_W[band] += dt_s * step.northward_transport_W[band];
+            }
+            for (std::size_t band = 0; band < summary.zonal_mean_surface_temperature_K.size();
+                 ++band) {
+                summary.zonal_mean_surface_temperature_K[band] +=
+                    dt_s * step.zonal_mean_surface_temperature_K[band];
+            }
             total_s += dt_s;
         }
         summary.absorbed_W /= total_s;
@@ -352,6 +601,12 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
         summary.mean_surface_temperature_K /= total_s;
         summary.land_mean_surface_temperature_K /= total_s;
         summary.ocean_mean_surface_temperature_K /= total_s;
+        for (auto& value : summary.northward_transport_W) {
+            value /= total_s;
+        }
+        for (auto& value : summary.zonal_mean_surface_temperature_K) {
+            value /= total_s;
+        }
     }
     return summary;
 }

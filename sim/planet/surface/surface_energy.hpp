@@ -5,6 +5,7 @@
 #include "sim/planet/geology/geology_parameters.hpp"
 #include "sim/planet/surface/surface_materials.hpp"
 
+#include <array>
 #include <cstddef>
 
 namespace planetsim {
@@ -22,7 +23,17 @@ struct SurfaceFractions;
 struct SurfaceEnergyParameters {
     SurfaceMaterial land_material = SurfaceMaterial::dry_soil;
     double grey_emissivity = 0.0;   // g in [0, 1)
+    // ADR-0009: North's unit-sphere diffusion coefficient D (W/m²/K); the
+    // conductance is K = D R². Zero switches horizontal transport off.
+    double transport_coefficient_W_m2_K = 0.0;
+    // ADR-0009 §10: exchange γ (W/m²/K) of every tile with its cell's air,
+    // the area-weighted mean surface temperature. Zero: no shared air.
+    double air_exchange_W_m2_K = 0.0;
 };
+
+// ADR-0009 §10: the bulk sensible-heat exchange ρ c_p C_H U with
+// ρ = 1.2 kg/m³, c_p = 1005 J/kg/K, C_H = 1.2e-3 and U = 7 m/s.
+inline constexpr double bulk_air_exchange_W_m2_K = 10.0;
 
 // Earth-like grey-layer emissivity: a calibration constant (ADR-0007 §3.2 C,
 // specification §24), refitted when clouds (M8) and the atmosphere (M5)
@@ -33,9 +44,15 @@ struct SurfaceEnergyParameters {
 // 200-year spin-up 288.0 K.
 inline constexpr double earth_like_grey_emissivity = 0.4964;
 
-// dead_rock: rock, g = 0. aqua_planet: g = 0 (only the ocean tile has area).
-// earth_like: dry soil (until hydrology supplies moisture, M9) and the
-// calibrated g.
+// Earth-like transport coefficient D: a calibration constant (ADR-0009 §4.4)
+// fitted together with earth_like_grey_emissivity. See the fit record at
+// its definition.
+inline constexpr double earth_like_transport_coefficient_W_m2_K = 0.0;
+
+// dead_rock: rock, g = 0, no transport. aqua_planet: g = 0, no transport
+// (experiments A and B have no atmosphere and no currents; only the ocean
+// tile has area). earth_like: dry soil (until hydrology supplies moisture,
+// M9), the calibrated g and D.
 [[nodiscard]] SurfaceEnergyParameters surface_energy_parameters_for(PlanetPreset preset) noexcept;
 
 // Annual-mean insolation of every cell: the length-weighted mean of the
@@ -79,6 +96,20 @@ struct SurfaceEnergyDiagnostics {
     double melt_kg = 0.0;
     double snow_change_kg = 0.0;       // Σ A f (W' − W)
     double snow_kg = 0.0;              // Σ A f W' after the step
+    // Horizontal transport (ADR-0009), zero when it is off.
+    double transport_W = 0.0;          // Σ A f (source received): zero to rounding
+    double transport_cell_sum_W = 0.0; // Σ A H of the diffusion itself (V1)
+    double transport_absolute_W = 0.0; // Σ A |H|
+    double transport_dissipation_W_K = 0.0;   // Σ A H T̄ ≤ 0
+    double transport_consistency_W_m2 = 0.0;  // max |H − h| of the implicit solve
+    int transport_newton_iterations = 0;
+    int transport_cg_iterations = 0;
+    // Northward transport (W) across 80° S, 70° S, ..., 80° N: the heat the
+    // transport delivers north of each latitude.
+    std::array<double, 17> northward_transport_W{};
+    // Area- and tile-weighted surface temperature of the 10° bands from
+    // 90° S (0 for a band with no area).
+    std::array<double, 18> zonal_mean_surface_temperature_K{};
     double mean_surface_temperature_K = 0.0;   // area- and tile-weighted
     double land_mean_surface_temperature_K = 0.0;
     double ocean_mean_surface_temperature_K = 0.0;
@@ -87,7 +118,7 @@ struct SurfaceEnergyDiagnostics {
 
     [[nodiscard]] double runoff_kg() const noexcept { return rain_kg + melt_kg; }
 
-    // |storage + latent − Δt (absorbed − emitted)|
+    // |storage + latent − Δt (absorbed − emitted + transport)|
     [[nodiscard]] double closure_residual_J() const noexcept;
     // The V2 gate (ADR-0007 §9): 1e-9 of the flux scale plus the rounding
     // floor 4ε of the stored energy.
@@ -133,7 +164,14 @@ struct AnnualSurfaceSummary {
     double rain_kg = 0.0;
     double melt_kg = 0.0;
     double snow_kg = 0.0;
+    // Time means over the year (ADR-0009 §4.5).
+    std::array<double, 17> northward_transport_W{};
+    std::array<double, 18> zonal_mean_surface_temperature_K{};
 
+    // The larger of the two hemispheres' peak poleward transports.
+    [[nodiscard]] double peak_poleward_transport_W() const noexcept;
+    // Mean of the two equatorward bands minus mean of the two polar bands.
+    [[nodiscard]] double equator_to_pole_difference_K() const noexcept;
     // (absorbed − emitted) / absorbed
     [[nodiscard]] double relative_imbalance() const noexcept;
 };
