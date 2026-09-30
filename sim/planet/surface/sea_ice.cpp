@@ -117,11 +117,6 @@ OceanTileResult solve_ocean_tile(const OceanTileSystem& tile, double source_W_m2
 
     // R(h') = ρ L (h' − h) / Δt − F_top(h') + F_o, strictly increasing. As
     // h' → 0 the surface tends to T_f and F_top to its balance there.
-    const auto residual = [&](double trial_m) {
-        return latent_rate * (trial_m - thickness_m) -
-               ice_surface(tile, trial_m, source_W_m2, exchange_W_m2_K).top_loss_W_m2() +
-               ocean_flux_W_m2;
-    };
     const double balance_at_freezing_W_m2 =
         tile.open.radiative * std::pow(freezing_K, 4) + exchange_W_m2_K * freezing_K -
         tile.open.absorbed_W_m2 - source_W_m2;
@@ -132,47 +127,54 @@ OceanTileResult solve_ocean_tile(const OceanTileSystem& tile, double source_W_m2
                           latent_heat_of_fusion_J_kg * tile.ice_kg_m2 / tile.dt_s);
     }
 
-    // Bracket the root, then Illinois false position to full precision.
-    double low = 0.0;
-    double low_value = -latent_rate * thickness_m - balance_at_freezing_W_m2 + ocean_flux_W_m2;
-    double high = std::max(thickness_m, 1e-3);
-    double high_value = residual(high);
-    while (high_value < 0.0) {
-        low = high;
-        low_value = high_value;
-        high *= 2.0;
-        high_value = residual(high);
-    }
-    int side = 0;
-    double root = high;
-    for (int iteration = 0; iteration < 200; ++iteration) {
-        root = (low * high_value - high * low_value) / (high_value - low_value);
-        if (!(root > low && root < high)) {
-            root = 0.5 * (low + high);
-        }
-        const double value = residual(root);
-        if (value == 0.0 ||
-            high - low <= 4.0 * std::numeric_limits<double>::epsilon() * high) {
-            break;
-        }
-        if (value < 0.0) {
-            low = root;
-            low_value = value;
-            if (side == -1) {
-                high_value *= 0.5;
-            }
-            side = -1;
-        } else {
-            high = root;
-            high_value = value;
-            if (side == 1) {
-                low_value *= 0.5;
-            }
-            side = 1;
+    // Start from the previous solve of this tile, or else from the discrete
+    // Stefan estimate with the surface temperature at the current thickness
+    // (thin ice on a monthly step grows far from it).
+    double root = std::max(thickness_m, 1e-3);
+    if (tile.thickness_guess_m > 0.0) {
+        root = tile.thickness_guess_m;
+    } else {
+        const double deficit_K = freezing_K - ice_surface(tile, root, source_W_m2,
+                                                          exchange_W_m2_K).surface_K;
+        if (deficit_K > 0.0) {
+            const double growth = sea_ice_conductivity_W_m_K * deficit_K / latent_rate;
+            root = 0.5 * (root + std::sqrt(root * root + 4.0 * growth));
         }
     }
 
-    const IceSurface ice = ice_surface(tile, root, source_W_m2, exchange_W_m2_K);
+    // Safeguarded Newton. With the surface free, A dT + B dh' = 0 at fixed
+    // source gives dF_top/dh' = −(4 r T³ + γ) B / A (A = 4 r T³ + γ + k/h',
+    // B = k (T_f − T) / h'²); held at T_m, F_top does not depend on h'. A step
+    // that leaves the bracket bisects instead. The residual is known to about
+    // 1e-10 of its terms, so a step below 1e-13 of the thickness ends the
+    // solve, keeping the last evaluated thickness (energy error < 1e-4 J/m²).
+    double low = 0.0;          // R(low) < 0 (the h' → 0 limit)
+    double high = std::numeric_limits<double>::infinity();   // R(high) > 0
+    IceSurface ice;
+    double value = 0.0;
+    for (int iteration = 0; iteration < 100; ++iteration) {
+        ice = ice_surface(tile, root, source_W_m2, exchange_W_m2_K);
+        value = latent_rate * (root - thickness_m) - ice.top_loss_W_m2() + ocean_flux_W_m2;
+        (value < 0.0 ? low : high) = root;
+        double derivative = latent_rate;
+        if (!ice.held) {
+            const double conductance = sea_ice_conductivity_W_m_K / root;
+            const double radiative_slope =
+                4.0 * ice.system.radiative * std::pow(ice.surface_K, 3) + exchange_W_m2_K;
+            const double b = conductance * (freezing_K - ice.surface_K) / root;
+            derivative += radiative_slope * b / (radiative_slope + conductance);
+        }
+        double next = root - value / derivative;
+        if (!(next > low && next < high)) {
+            next = std::isfinite(high) ? 0.5 * (low + high) : 2.0 * root;
+        }
+        if (value == 0.0 || std::abs(next - root) <= 1e-13 * root) {
+            break;
+        }
+        root = next;
+    }
+    tile.thickness_guess_m = root;
+
     OceanTileResult result;
     result.radiating_K = ice.surface_K;
     result.ocean_heat_flux_W_m2 = ocean_flux_W_m2;
@@ -197,7 +199,7 @@ OceanTileResult solve_ocean_tile(const OceanTileSystem& tile, double source_W_m2
         tile.column.surface_heat_capacity_J_m2_K * (freezing_K - tile.before.surface_K) +
         tile.column.lower_heat_capacity_J_m2_K * (deep_K - tile.before.lower_K);
     column.source_W_m2 = source_W_m2 - exchange_W_m2_K * ice.surface_K;
-    column.newton_residual_W_m2 = residual(root);
+    column.newton_residual_W_m2 = value;
     // dT_i/ds with the thickness responding too (implicit function theorem on
     // the surface balance and the growth equation):
     //   A dT + B dh' = ds,   (ρL/Δt + B) dh' + (k/h') dT = 0,

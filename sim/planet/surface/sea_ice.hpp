@@ -22,6 +22,12 @@ struct OceanTileSystem {
     ColumnState before;        // mixed and deep layers
     double ice_kg_m2 = 0.0;    // before the step
     double dt_s = 0.0;
+    // The last thickness this tile solved for: the next solve of the same
+    // step starts there (the transport solve re-solves every tile with
+    // nearby sources). Only a starting point: the root does not depend on
+    // it beyond the solve's tolerance, and each cell's calls come in a fixed
+    // order.
+    mutable double thickness_guess_m = 0.0;
 };
 
 struct OceanTileResult {
