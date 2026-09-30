@@ -35,19 +35,23 @@ struct SurfaceEnergyParameters {
 // ρ = 1.2 kg/m³, c_p = 1005 J/kg/K, C_H = 1.2e-3 and U = 7 m/s.
 inline constexpr double bulk_air_exchange_W_m2_K = 10.0;
 
-// Earth-like grey-layer emissivity: a calibration constant (ADR-0007 §3.2 C,
-// specification §24), refitted when clouds (M8) and the atmosphere (M5)
-// arrive. Fit: bisection to a 288 K length-weighted global mean surface
-// temperature over the last of 60 spin-up years, earth_like preset, L5,
-// seed 1 (`planet_cli thermal --calibrate 288`), giving 0.49644. With it,
-// seeds 2, 3 and 7 give 288.1, 287.7 and 287.5 K, L6 288.0 K, and a
-// 200-year spin-up 288.0 K.
-inline constexpr double earth_like_grey_emissivity = 0.4964;
+// Earth-like grey-layer emissivity g and transport coefficient D:
+// calibration constants (ADR-0007 §3.2 C, ADR-0009 §4.4 and §10,
+// specification §24), fitted together and refitted when sea ice (M4-04),
+// the atmosphere (M5) and clouds (M8) arrive.
+//
+// Fit (2026-09-30): alternating bisection over the last of 150 spin-up
+// years, earth_like preset, L4, seed 1, no precipitation and no sea ice,
+// to a 288 K length-weighted global mean surface temperature and a 42 K
+// equator-to-pole difference of the P2 fit (North et al., 1981)
+// (`planet_cli thermal --subdivision 4 --years 150 --calibrate 288
+// --calibrate-gradient 42`): g = 0.44551, D = 0.19994. Peak poleward
+// transport 1.83 PW (Earth about 5.5), relative imbalance −1.2e-3 after
+// 150 years. The ADR-0007 fit without transport was g = 0.4964.
+inline constexpr double earth_like_grey_emissivity = 0.4455;
 
-// Earth-like transport coefficient D: a calibration constant (ADR-0009 §4.4)
-// fitted together with earth_like_grey_emissivity. See the fit record at
-// its definition.
-inline constexpr double earth_like_transport_coefficient_W_m2_K = 0.0;
+// See earth_like_grey_emissivity for the joint fit record.
+inline constexpr double earth_like_transport_coefficient_W_m2_K = 0.1999;
 
 // dead_rock: rock, g = 0, no transport. aqua_planet: g = 0, no transport
 // (experiments A and B have no atmosphere and no currents; only the ocean
