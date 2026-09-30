@@ -49,6 +49,7 @@ add_library(PlanetSim STATIC
     sim/planet/surface/column_step.cpp
     sim/planet/surface/land_snow.cpp
     sim/planet/surface/heat_transport.cpp
+    sim/planet/surface/sea_ice.cpp
     sim/planet/surface/surface_energy.cpp
     sim/planet/surface/surface_materials.cpp
     sim/planet/planet_parameters.cpp
