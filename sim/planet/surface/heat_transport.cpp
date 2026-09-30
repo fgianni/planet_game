@@ -19,6 +19,10 @@
 namespace planetsim {
 namespace {
 
+[[nodiscard]] std::span<const CellBlock> blocks_of(const TransportGraph& graph) noexcept {
+    return graph.blocks;
+}
+
 // Σ_e w_e (x_n − x_c) for one node: A_c times the Laplacian.
 [[nodiscard]] double edge_sum(const TransportGraph& graph, std::size_t node,
                               const Field2D<double>& values) {
@@ -33,7 +37,7 @@ namespace {
 [[nodiscard]] double max_abs(const TransportGraph& graph, const Field2D<double>& values,
                              std::size_t worker_count) {
     return reduce_deterministic_blocks<double>(
-        std::span<const CellBlock>(graph.blocks), worker_count, 0.0,
+        blocks_of(graph), worker_count, 0.0,
         [&](std::size_t, const CellBlock& block) {
             double largest = 0.0;
             for (std::size_t node = block.begin; node < block.end; ++node) {
@@ -334,9 +338,9 @@ int solve_newton_system(const TransportGraph& stencil, double conductance_W_K,
                         std::vector<Level>& levels, Field2D<double>& solution,
                         const ImplicitTransportSettings& settings, std::size_t worker_count) {
     const std::size_t cells = stencil.size();
-    const Parallel parallel{std::span<const CellBlock>(stencil.blocks), worker_count};
+    const Parallel parallel{blocks_of(stencil), worker_count};
     const auto each_block = [&](const auto& body) {
-        for_each_deterministic_block(std::span<const CellBlock>(stencil.blocks), worker_count,
+        for_each_deterministic_block(blocks_of(stencil), worker_count,
                                      [&](std::size_t, const CellBlock& block) {
                                          body(block.begin, block.end);
                                      });
@@ -375,7 +379,7 @@ int solve_newton_system(const TransportGraph& stencil, double conductance_W_K,
     };
     const auto dot = [&](const std::vector<double>& first, const std::vector<double>& second) {
         return reduce_deterministic_blocks<double>(
-            std::span<const CellBlock>(stencil.blocks), worker_count, 0.0,
+            blocks_of(stencil), worker_count, 0.0,
             [&](std::size_t, const CellBlock& block) {
                 double sum = 0.0;
                 for (std::size_t cell = block.begin; cell < block.end; ++cell) {
@@ -528,7 +532,7 @@ void diffusion_source(const TransportGraph& graph, double conductance_W_K,
     }
     source_W_m2 = Field2D<double>(graph.size(), 0.0);
     for_each_deterministic_block(
-        std::span<const CellBlock>(graph.blocks), worker_count, [&](std::size_t, const CellBlock& block) {
+        blocks_of(graph), worker_count, [&](std::size_t, const CellBlock& block) {
             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                 source_W_m2[cell] = conductance_W_K * edge_sum(graph, cell, temperature_K) /
                                     graph.area_m2[cell];
@@ -536,7 +540,8 @@ void diffusion_source(const TransportGraph& graph, double conductance_W_K,
         });
 }
 
-ImplicitTransportResult solve_implicit_transport(const TransportGraph& graph, double conductance_W_K,
+ImplicitTransportResult solve_implicit_transport(const TransportGraph& graph,
+                                                 double conductance_W_K,
                                                  const Field2D<double>& source_floor_W_m2,
                                                  const TransportResponse& response,
                                                  const ImplicitTransportSettings& settings,
@@ -572,7 +577,7 @@ ImplicitTransportResult solve_implicit_transport(const TransportGraph& graph, do
         response(at, at_mean, at_slope);
         diffusion_source(graph, conductance_W_K, at_mean, diffusion, worker_count);
         return reduce_deterministic_blocks<double>(
-            std::span<const CellBlock>(graph.blocks), worker_count, 0.0,
+            blocks_of(graph), worker_count, 0.0,
             [&](std::size_t, const CellBlock& block) {
                 double merit = 0.0;
                 for (std::size_t cell = block.begin; cell < block.end; ++cell) {
@@ -592,7 +597,7 @@ ImplicitTransportResult solve_implicit_transport(const TransportGraph& graph, do
         }
         // Newton: (A / S) δT̄ − K Q δT̄ = −A F, then δh = −F + K ∇² δT̄.
         for_each_deterministic_block(
-            std::span<const CellBlock>(graph.blocks), worker_count, [&](std::size_t, const CellBlock& block) {
+            blocks_of(graph), worker_count, [&](std::size_t, const CellBlock& block) {
                 for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                     rhs[cell] = -residual[cell] * graph.area_m2[cell];
                 }
@@ -609,7 +614,7 @@ ImplicitTransportResult solve_implicit_transport(const TransportGraph& graph, do
         double trial_merit = 0.0;
         for (int halving = 0;; ++halving) {
             for_each_deterministic_block(
-                std::span<const CellBlock>(graph.blocks), worker_count, [&](std::size_t, const CellBlock& block) {
+                blocks_of(graph), worker_count, [&](std::size_t, const CellBlock& block) {
                     for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                         trial[cell] = std::max(source[cell] + step * delta_source[cell],
                                                source_floor_W_m2[cell]);
@@ -636,7 +641,7 @@ ImplicitTransportResult solve_implicit_transport(const TransportGraph& graph, do
                     ++non_monotone_steps;
                     step = 1.0;
                     for_each_deterministic_block(
-                        std::span<const CellBlock>(graph.blocks), worker_count, [&](std::size_t, const CellBlock& block) {
+                        blocks_of(graph), worker_count, [&](std::size_t, const CellBlock& block) {
                             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                                 trial[cell] = std::max(source[cell] + delta_source[cell],
                                                        source_floor_W_m2[cell]);
@@ -671,7 +676,7 @@ ImplicitTransportResult solve_implicit_transport(const TransportGraph& graph, do
         double dissipation = 0.0;
     };
     const Sums sums = reduce_deterministic_blocks<Sums>(
-        std::span<const CellBlock>(graph.blocks), worker_count, Sums{},
+        blocks_of(graph), worker_count, Sums{},
         [&](std::size_t, const CellBlock& block) {
             Sums partial;
             for (std::size_t cell = block.begin; cell < block.end; ++cell) {

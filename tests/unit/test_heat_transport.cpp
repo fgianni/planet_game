@@ -18,6 +18,10 @@ namespace {
 constexpr double radius_m = 6'371'000.0;
 constexpr double conductance_W_K = 0.5 * radius_m * radius_m;   // D = 0.5 W/m²/K
 
+[[nodiscard]] planetsim::TransportGraph graph_of(const planetsim::PlanetMesh& mesh) {
+    return planetsim::mesh_transport_graph(mesh);
+}
+
 [[nodiscard]] double unit_random(std::size_t cell, std::uint32_t sample) {
     return planetsim::keyed_random_unit_double(20'260'930U, planetsim::RandomStreamId::validation,
                                                0, static_cast<std::uint32_t>(cell), sample);
@@ -91,7 +95,8 @@ void check_linear(planetsim::test::Context& test, const planetsim::PlanetMesh& m
     const planetsim::Field2D<double> floor(mesh.cell_count(),
                                            -std::numeric_limits<double>::infinity());
     const auto result =
-        planetsim::solve_implicit_transport(planetsim::mesh_transport_graph(mesh), conductance_W_K, floor, response, {}, 4U);
+        planetsim::solve_implicit_transport(graph_of(mesh), conductance_W_K, floor, response, {},
+                                            4U);
     std::cout << "linear newton=" << result.newton_iterations << " cg=" << result.cg_iterations
               << " residual_W_m2=" << result.consistency_residual_W_m2
               << " sum_ratio=" << std::abs(result.sum_W) / result.absolute_sum_W << '\n';
@@ -110,7 +115,7 @@ void check_quartic(planetsim::test::Context& test, const planetsim::PlanetMesh& 
             const auto response = quartic(mesh, a);
             const auto floor = response.floor();
             const auto result = planetsim::solve_implicit_transport(
-                planetsim::mesh_transport_graph(mesh), factor * conductance_W_K, floor, response,
+                graph_of(mesh), factor * conductance_W_K, floor, response,
                 {}, 4U);
             bool held = true;
             for (std::size_t cell = 0; cell < mesh.cell_count(); cell += 7U) {
@@ -148,11 +153,13 @@ void check_workers(planetsim::test::Context& test, const planetsim::PlanetMesh& 
     const auto response = quartic(mesh, 0.41);
     const auto floor = response.floor();
     const auto reference =
-        planetsim::solve_implicit_transport(planetsim::mesh_transport_graph(mesh), conductance_W_K, floor, response, {}, 1U);
+        planetsim::solve_implicit_transport(graph_of(mesh), conductance_W_K, floor, response, {},
+                                            1U);
     bool identical = true;
     for (const std::size_t workers : {2U, 8U, 16U}) {
         const auto result =
-            planetsim::solve_implicit_transport(planetsim::mesh_transport_graph(mesh), conductance_W_K, floor, response, {},
+            planetsim::solve_implicit_transport(graph_of(mesh), conductance_W_K, floor, response,
+                                                {},
                                                 workers);
         for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
             identical = identical && std::bit_cast<std::uint64_t>(result.source_W_m2[cell]) ==
@@ -184,7 +191,8 @@ void check_agglomeration(planetsim::test::Context& test, const planetsim::Planet
             const std::size_t other = graph.neighbour[k];
             bool found = false;
             for (std::size_t j = graph.offset[other]; j < graph.offset[other + 1U]; ++j) {
-                found = found || (graph.neighbour[j] == group && graph.weight[j] == graph.weight[k]);
+                found = found ||
+                        (graph.neighbour[j] == group && graph.weight[j] == graph.weight[k]);
             }
             symmetric = symmetric && found && other != group && graph.weight[k] > 0.0;
         }
@@ -207,10 +215,11 @@ void check_validation(planetsim::test::Context& test, const planetsim::PlanetMes
     const auto response = quartic(mesh, 0.41);
     const auto floor = response.floor();
     PLANETSIM_EXPECT_THROWS(test, std::invalid_argument,
-                            planetsim::solve_implicit_transport(planetsim::mesh_transport_graph(mesh), 0.0, floor, response));
+                            planetsim::solve_implicit_transport(graph_of(mesh), 0.0, floor,
+                                                                response));
     PLANETSIM_EXPECT_THROWS(test, std::invalid_argument,
                             planetsim::solve_implicit_transport(
-                                planetsim::mesh_transport_graph(mesh), conductance_W_K,
+                                graph_of(mesh), conductance_W_K,
                                 planetsim::Field2D<double>(3U, 0.0),
                                 response));
 }
