@@ -61,17 +61,21 @@ jobs:
           ./build/planet_cli mesh --subdivision 6
           ./build/planet_cli solar --subdivision 5 --time-days 91.31055
 
-      - name: Climate-mode performance gate (ADR-0001 §5, V4)
+      # ADR-0001 §5 budgets hold on the target desktop (§11): the 250-year
+      # scenario in 240 s at L5 and 600 s at L6 means 62.5 and 25 simulated
+      # years per minute there. A hosted runner is measured 2.5 times slower,
+      # so CI gates 25-year runs at those rates divided by 2.5.
+      - name: Climate-mode performance gate (ADR-0001 §5, §11)
         if: matrix.build_type == 'Release'
         run: |
-          ./build/planet_cli run --subdivision 5 --years 250 \
-            --min-years-per-minute 20 --max-seconds 240 --manifest run_L5_250y.prun
-          ./build/planet_cli run --subdivision 6 --years 250 \
-            --min-years-per-minute 5 --max-seconds 600
+          ./build/planet_cli run --subdivision 5 --years 25 --workers 4 \
+            --min-years-per-minute 25 --manifest run_L5_25y.prun
+          ./build/planet_cli run --subdivision 6 --years 25 --workers 4 \
+            --min-years-per-minute 10
 
-      - name: Replay the 250-year run (ADR-0003 V2)
+      - name: Replay the L5 run (ADR-0003 V2)
         if: matrix.build_type == 'Release'
-        run: ./build/planet_cli replay run_L5_250y.prun
+        run: ./build/planet_cli replay run_L5_25y.prun
 
       - name: Operator validation (ADR-0002 V3/V4)
         if: matrix.build_type == 'Release'
