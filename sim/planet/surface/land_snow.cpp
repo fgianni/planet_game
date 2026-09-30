@@ -38,7 +38,8 @@ LandSnowStepResult step_land_tile(const ColumnProperties& ground, ColumnState st
     }
     const double snow_before_melt = snow_kg_m2 + result.snowfall_kg_m2;
 
-    const ColumnSystem system = column_system(column, state, insolation_W_m2, grey_emissivity, dt_s);
+    const ColumnSystem system =
+        column_system(column, state, insolation_W_m2, grey_emissivity, dt_s);
     double surface_K = solve_column_surface(system);
     double sink_W_m2 = 0.0;
     if (snow_before_melt > 0.0 && surface_K > melting_point_K) {

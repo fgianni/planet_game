@@ -8,6 +8,7 @@
 #include "sim/core/scheduler/scheduler.hpp"
 #include "sim/planet/orbit/solar_forcing.hpp"
 #include "sim/planet/surface/column_step.hpp"
+#include "sim/planet/surface/land_snow.hpp"
 #include "sim/planet/terrain/surface_fractions.hpp"
 
 #include <algorithm>
@@ -110,7 +111,13 @@ struct BudgetPartial {
     double emitted_W = 0.0;
     double storage_change_J = 0.0;
     double stored_energy_J = 0.0;
+    double latent_heat_J = 0.0;
     double max_newton_residual_W_m2 = 0.0;
+    double snowfall_kg = 0.0;
+    double rain_kg = 0.0;
+    double melt_kg = 0.0;
+    double snow_change_kg = 0.0;
+    double snow_kg = 0.0;
     double weighted_temperature_K_m2 = 0.0;
     double area_m2 = 0.0;
     double land_temperature_K_m2 = 0.0;
@@ -126,7 +133,13 @@ struct BudgetPartial {
     a.emitted_W += b.emitted_W;
     a.storage_change_J += b.storage_change_J;
     a.stored_energy_J += b.stored_energy_J;
+    a.latent_heat_J += b.latent_heat_J;
     a.max_newton_residual_W_m2 = std::max(a.max_newton_residual_W_m2, b.max_newton_residual_W_m2);
+    a.snowfall_kg += b.snowfall_kg;
+    a.rain_kg += b.rain_kg;
+    a.melt_kg += b.melt_kg;
+    a.snow_change_kg += b.snow_change_kg;
+    a.snow_kg += b.snow_kg;
     a.weighted_temperature_K_m2 += b.weighted_temperature_K_m2;
     a.area_m2 += b.area_m2;
     a.land_temperature_K_m2 += b.land_temperature_K_m2;
@@ -160,7 +173,22 @@ void accumulate_tile(BudgetPartial& partial, const ColumnProperties& column,
 }  // namespace
 
 double SurfaceEnergyDiagnostics::closure_residual_J() const noexcept {
-    return std::abs(storage_change_J - duration_s * (absorbed_W - emitted_W));
+    return std::abs(storage_change_J + latent_heat_J - duration_s * (absorbed_W - emitted_W));
+}
+
+double SurfaceEnergyDiagnostics::closure_gate_J() const noexcept {
+    const double scale = duration_s * (absorbed_W + emitted_W) + std::abs(storage_change_J) +
+                         std::abs(latent_heat_J);
+    return 1e-9 * scale + 4.0 * std::numeric_limits<double>::epsilon() * stored_energy_J;
+}
+
+double SurfaceEnergyDiagnostics::water_residual_kg() const noexcept {
+    return std::abs(snow_change_kg - (snowfall_kg - melt_kg));
+}
+
+double SurfaceEnergyDiagnostics::water_gate_kg() const noexcept {
+    return 1e-12 * (snowfall_kg + melt_kg + snow_kg) +
+           4.0 * std::numeric_limits<double>::epsilon() * snow_kg;
 }
 
 double AnnualSurfaceSummary::relative_imbalance() const noexcept {
@@ -175,8 +203,10 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                                              std::size_t worker_count) {
     const PlanetMesh& mesh = state.mesh();
     const std::size_t cells = mesh.cell_count();
+    const Field2D<float>& precipitation = state.forcing().prescribed_precipitation_kg_m2_s;
     if (insolation_W_m2.size() != cells || fractions.land_fraction.size() != cells ||
-        fractions.ocean_fraction.size() != cells) {
+        fractions.ocean_fraction.size() != cells || precipitation.size() != cells ||
+        state.slow().land_snow_water_equivalent_kg_m2.size() != cells) {
         throw std::invalid_argument("surface energy inputs do not match the mesh");
     }
     const ColumnProperties land = column_properties(surface.land_material, parameters);
@@ -190,10 +220,12 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                 const double area_m2 = mesh.cells()[cell].area_m2;
                 const double insolation = insolation_W_m2[cell];
-                const ColumnStepResult land_step = step_column(
+                const double snow = slow.land_snow_water_equivalent_kg_m2[cell];
+                const LandSnowStepResult land_tile = step_land_tile(
                     land,
                     {slow.land_surface_temperature_K[cell], slow.land_ground_temperature_K[cell]},
-                    insolation, surface.grey_emissivity, dt_s);
+                    snow, insolation, precipitation[cell], surface.grey_emissivity, dt_s);
+                const ColumnStepResult& land_step = land_tile.column;
                 const ColumnStepResult ocean_step =
                     step_column(ocean,
                                 {slow.ocean_mixed_layer_temperature_K[cell],
@@ -206,6 +238,12 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 if (land_weight > 0.0) {
                     partial.land_temperature_K_m2 += land_weight * land_step.state.surface_K;
                     partial.land_area_m2 += land_weight;
+                    partial.latent_heat_J += land_weight * land_tile.latent_J_m2;
+                    partial.snowfall_kg += land_weight * land_tile.snowfall_kg_m2;
+                    partial.rain_kg += land_weight * land_tile.rain_kg_m2;
+                    partial.melt_kg += land_weight * land_tile.melt_kg_m2;
+                    partial.snow_change_kg += land_weight * (land_tile.snow_kg_m2 - snow);
+                    partial.snow_kg += land_weight * land_tile.snow_kg_m2;
                 }
                 if (ocean_weight > 0.0) {
                     partial.ocean_temperature_K_m2 += ocean_weight * ocean_step.state.surface_K;
@@ -214,6 +252,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 slow.land_surface_temperature_K[cell] =
                     static_cast<float>(land_step.state.surface_K);
                 slow.land_ground_temperature_K[cell] = static_cast<float>(land_step.state.lower_K);
+                slow.land_snow_water_equivalent_kg_m2[cell] = land_tile.snow_kg_m2;
                 slow.ocean_mixed_layer_temperature_K[cell] = ocean_step.state.surface_K;
                 slow.ocean_deep_temperature_K[cell] = ocean_step.state.lower_K;
             }
@@ -227,6 +266,12 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.emitted_W = total.emitted_W;
     diagnostics.storage_change_J = total.storage_change_J;
     diagnostics.stored_energy_J = total.stored_energy_J;
+    diagnostics.latent_heat_J = total.latent_heat_J;
+    diagnostics.snowfall_kg = total.snowfall_kg;
+    diagnostics.rain_kg = total.rain_kg;
+    diagnostics.melt_kg = total.melt_kg;
+    diagnostics.snow_change_kg = total.snow_change_kg;
+    diagnostics.snow_kg = total.snow_kg;
     diagnostics.max_newton_residual_W_m2 = total.max_newton_residual_W_m2;
     diagnostics.mean_surface_temperature_K = total.weighted_temperature_K_m2 / total.area_m2;
     diagnostics.land_mean_surface_temperature_K =
@@ -296,6 +341,10 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
             summary.land_mean_surface_temperature_K += dt_s * step.land_mean_surface_temperature_K;
             summary.ocean_mean_surface_temperature_K +=
                 dt_s * step.ocean_mean_surface_temperature_K;
+            summary.snowfall_kg += step.snowfall_kg;
+            summary.rain_kg += step.rain_kg;
+            summary.melt_kg += step.melt_kg;
+            summary.snow_kg = step.snow_kg;
             total_s += dt_s;
         }
         summary.absorbed_W /= total_s;

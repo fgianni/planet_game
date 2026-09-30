@@ -303,3 +303,60 @@ suppresses them. The refitted `g` shifts again at M5 and M8.
 - Land ice sheets: perennial snow accumulates without limit under
   prescribed snowfall. Current position: no cap in M4; ice-sheet flow is a
   later milestone.
+
+## 9. Implementation record (task M4-01, 2026-09-30)
+
+§4.1 (all fields), §4.2, §4.3, §4.5 (land terms) and §4.6 (schema 4) are
+implemented; §4.4 (sea ice) is task M4-02, and the sea-ice field stays zero
+until then.
+
+| Concern | Code |
+|---|---|
+| Constants (§4.2) | `sim/planet/surface/cryosphere_constants.hpp` |
+| Eliminated column system, surface solve with a constant sink | `sim/planet/surface/column_step.{hpp,cpp}` |
+| Land tile with snow (§4.3) | `sim/planet/surface/land_snow.{hpp,cpp}` |
+| Mesh step, budgets, `initialise_cryosphere`, migration hook | `sim/planet/surface/surface_energy.{hpp,cpp}` |
+| Fields, PSNAP schema 4 | `sim/core/fields/field_registry.hpp`, `sim/planet/planet_state.{hpp,cpp}`, `sim/core/serialization/snapshot_file.{hpp,cpp}` |
+| Tests | `tests/unit/test_land_snow.cpp`, `tests/physics/test_land_snow_planet.cpp`, `tests/unit/test_snapshot_file.cpp`, `tests/regression/test_golden_snapshot.cpp` |
+| `planet_cli thermal --precipitation` | `apps/planet_cli/main.cpp` |
+
+Refinements, recorded here rather than changing the decision:
+
+- **Phase of precipitation** is decided by the surface layer at the start of
+  the step (at or below `T_m`: snow), and the albedo by the snow before that
+  step's snowfall, both explicit as the forcing is.
+- **Without snow the land tile is the ADR-0007 column bit for bit**: the
+  albedo blend is skipped at zero snow, and `step_column` is rebuilt on the
+  same eliminated system (V6).
+- **The schema 3 → 4 initialiser is required**, like the 1 → 2 one: the core
+  reader refuses an older file without it rather than zero-filling
+  (ADR-0003 §3.6); `surface_energy_migration` supplies both.
+- **Closure gates live on the diagnostics** (`closure_gate_J`,
+  `water_gate_kg`), so every test applies the same V1 and V2 gates.
+
+Validation (L4, 3 × 10⁻⁵ kg/m²/s prescribed everywhere unless stated):
+
+| ID | Result |
+|---|---|
+| V1 | worst energy closure 0.027 of the gate, climate and reference steps, per tile and globally |
+| V2 | worst water closure 1.3e-5 of the gate |
+| V4 | snow ≥ 0; snow present ⇒ land surface ≤ `T_m`, per tile over a grid of cases and on the planet |
+| V5 (snow) | 50 kg/m² of snow lowers absorbed shortwave (1.47e17 → 1.31e17 W) and every cell's land temperature |
+| V6 | no snow ⇒ `step_column` bit for bit; zero precipitation ⇒ no snow and no latent heat; `planet_cli thermal` output for the three presets unchanged |
+| V8 (snow) | 1/2/8/16 workers bit-identical |
+| V9 | v4 round trip exact; v1–v3 golden files load through the chain with zero reservoirs; all four step ten years with closed budgets |
+
+**Finding: snow on land never melts without heat transport.** With
+prescribed snowfall on the Earth-like planet (L4, seed 1, after a 30-year
+spin-up), 72 % of land cells gain snow in the first year and none loses it
+again; the snow grows every year and the mean land temperature falls from
+271 K to 229 K. At the melting point, snow-covered land at 50° N in summer
+absorbs about 140 W/m² (α ≈ 0.7) but radiates about 225 W/m², so it cannot
+reach 0 °C from sunlight alone. On Earth the difference is supplied by warm
+air carried from lower latitudes and the oceans, which this planet does not
+have until M5 (atmosphere) or a reduced transport. This is the physics of
+§4.3 on a transport-free planet, not a defect of the step, and it puts the
+seasonal-experiment acceptance (§5 V7) for land snow out of reach until
+heat reaches the land. Sea ice (M4-02) has the ocean's heat beneath it and
+is expected to behave differently; the decision on transport belongs before
+M4-03.

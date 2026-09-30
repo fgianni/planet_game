@@ -78,10 +78,7 @@ template <typename T>
 // The V2 gate of the column test (ADR-0007 §9), summed over tiles: 1e-9 of
 // the flux scale plus the rounding floor of the stored energy.
 [[nodiscard]] double closure_ratio(const planetsim::SurfaceEnergyDiagnostics& step) {
-    const double scale = step.duration_s * (step.absorbed_W + step.emitted_W) +
-                         std::abs(step.storage_change_J);
-    const double floor = 4.0 * std::numeric_limits<double>::epsilon() * step.stored_energy_J;
-    return step.closure_residual_J() / (1e-9 * scale + floor);
+    return step.closure_residual_J() / step.closure_gate_J();
 }
 
 // The cell whose centre is nearest the given latitude, at longitude near 0.

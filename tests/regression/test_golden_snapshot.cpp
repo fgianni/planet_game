@@ -91,15 +91,9 @@ void step_ten_years(planetsim::test::Context& test, planetsim::PlanetState& stat
                                        &last);
     scheduler.register_process({"closure_check", planetsim::SimulationMode::climate, 0},
                                [&](const planetsim::StepContext&) {
-                                   const double scale =
-                                       last.duration_s * (last.absorbed_W + last.emitted_W) +
-                                       std::abs(last.storage_change_J);
-                                   const double floor =
-                                       4.0 * std::numeric_limits<double>::epsilon() *
-                                       last.stored_energy_J;
                                    worst_ratio = std::max(
                                        worst_ratio,
-                                       last.closure_residual_J() / (1e-9 * scale + floor));
+                                       last.closure_residual_J() / last.closure_gate_J());
                                });
     const auto steps = scheduler.run_until(
         planetsim::climate_substep(10 * planetsim::climate_substeps_per_year, parameters)
@@ -244,7 +238,8 @@ int main() {
             static_cast<void>(planetsim::read_snapshot(
                 std::filesystem::path("tests/data/golden/psnap-v3-l0.psnap"), unmigrated));
         } catch (const std::runtime_error& error) {
-            refused = std::string_view{error.what()}.find("schema 3 -> 4") != std::string_view::npos;
+            refused =
+                std::string_view{error.what()}.find("schema 3 -> 4") != std::string_view::npos;
         }
         PLANETSIM_EXPECT(test, refused);
     }

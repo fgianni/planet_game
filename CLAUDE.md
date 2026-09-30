@@ -23,11 +23,14 @@ columns with experiments A and B (M3-02, ADR-0007), and M3-03
 replay (ADR-0003 V1, V2, V5), and the ADR-0001 performance gate in CI.
 M0--M2 (mesh, orbit, terrain, drainage, scheduler and calendar) are complete.
 
+M4 (basic snow, ice and albedo feedback) is in progress under ADR-0008:
+M4-01 (cryosphere state, land snow, PSNAP schema 4) is complete.
+
 Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI
 units; - deterministic and testable implementation; - physical
 state/fluxes rather than scripted climate modifiers; - production code
-and tests together; - do not proceed to M4 unless explicitly requested.
+and tests together; - do not proceed to M5 unless explicitly requested.
 
 When starting work, first audit the repository and propose the concrete
 implementation plan for the current milestone against the specification. Then implement in

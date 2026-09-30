@@ -31,11 +31,16 @@ calendar (task M2-04). The pre-M3 seasonal decision record is accepted
 M3 tasks M3-01 (sub-step mean insolation), M3-02 (surface energy columns,
 experiments A and B, ADR-0007) and M3-03 (the ocean mixed layer in `double`,
 run manifests, state hashes and replay, the ADR-0001 performance gate) are
-complete. Most recently completed task:
-[`docs/tasks/M3-03-replay-gates-and-close.md`](docs/tasks/M3-03-replay-gates-and-close.md).
+complete.
+
+M4 (basic snow, ice and albedo feedback) has started under ADR-0008: task
+M4-01 (cryosphere state, land snow, PSNAP schema 4) is complete. Most
+recently completed task:
+[`docs/tasks/M4-01-cryosphere-state-and-land-snow.md`](docs/tasks/M4-01-cryosphere-state-and-land-snow.md).
 Task documents in `docs/tasks/` state their scope, the decisions already
-made, acceptance criteria and what to report. Do not implement M4 or later
-milestones unless explicitly requested.
+made, acceptance criteria and what to report. M4 was requested on
+2026-09-30; do not implement M5 or later milestones unless explicitly
+requested.
 
 ## Hard rules
 

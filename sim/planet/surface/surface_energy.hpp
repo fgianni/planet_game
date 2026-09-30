@@ -60,30 +60,50 @@ void initialise_cryosphere(const PlanetMesh& mesh, SlowState& slow);
 [[nodiscard]] SnapshotMigration surface_energy_migration(const PlanetParameters& parameters,
                                                          const SurfaceEnergyParameters& surface);
 
-// Global budget of one step (ADR-0007 §4.4): area- and tile-weighted sums in
-// double through the deterministic reduction. Closure compares the stored
-// energy change with the net radiative input over the step.
+// Global budget of one step (ADR-0007 §4.4, ADR-0008 §4.5): area- and
+// tile-weighted sums in double through the deterministic reduction. Energy
+// closure compares the stored energy change plus the latent heat taken by
+// phase change with the net radiative input over the step; water closure
+// compares the change of the snow reservoir with snowfall minus melt.
 struct SurfaceEnergyDiagnostics {
     double duration_s = 0.0;
     double absorbed_W = 0.0;           // Σ A f (1 − α) Q
     double emitted_W = 0.0;            // Σ A f β ε σ T_s'⁴
     double storage_change_J = 0.0;     // Σ A f (C_s ΔT_s + C_l ΔT_l)
     double stored_energy_J = 0.0;      // Σ A f (C_s T_s' + C_l T_l'), for the rounding floor
+    double latent_heat_J = 0.0;        // Σ A f L_f · melt
     double max_newton_residual_W_m2 = 0.0;
+    // Water equivalent (kg), land tiles.
+    double snowfall_kg = 0.0;
+    double rain_kg = 0.0;
+    double melt_kg = 0.0;
+    double snow_change_kg = 0.0;       // Σ A f (W' − W)
+    double snow_kg = 0.0;              // Σ A f W' after the step
     double mean_surface_temperature_K = 0.0;   // area- and tile-weighted
     double land_mean_surface_temperature_K = 0.0;
     double ocean_mean_surface_temperature_K = 0.0;
     double min_surface_temperature_K = 0.0;    // over tiles with area
     double max_surface_temperature_K = 0.0;
 
-    // |storage − Δt (absorbed − emitted)|
+    [[nodiscard]] double runoff_kg() const noexcept { return rain_kg + melt_kg; }
+
+    // |storage + latent − Δt (absorbed − emitted)|
     [[nodiscard]] double closure_residual_J() const noexcept;
+    // The V2 gate (ADR-0007 §9): 1e-9 of the flux scale plus the rounding
+    // floor 4ε of the stored energy.
+    [[nodiscard]] double closure_gate_J() const noexcept;
+    // |Δ snow − (snowfall − melt)|
+    [[nodiscard]] double water_residual_kg() const noexcept;
+    // ADR-0008 V2: 1e-12 of the moved and stored water plus the rounding
+    // floor 4ε of the stored water.
+    [[nodiscard]] double water_gate_kg() const noexcept;
 };
 
 // Advances both tiles of every cell by one backward-Euler step of length dt_s
-// under the given per-cell insolation, writes the new temperatures (land
-// float, ocean double) and returns the global budget. Bit-identical for any
-// worker count.
+// under the given per-cell insolation and the state's prescribed
+// precipitation, with snow on the land tile (ADR-0008 §4.3); writes the new
+// temperatures (land float, ocean double) and snow, and returns the global
+// budget. Bit-identical for any worker count.
 SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                                              const PlanetParameters& parameters,
                                              const SurfaceEnergyParameters& surface,
@@ -108,6 +128,11 @@ struct AnnualSurfaceSummary {
     double mean_surface_temperature_K = 0.0;
     double land_mean_surface_temperature_K = 0.0;
     double ocean_mean_surface_temperature_K = 0.0;
+    // Water equivalent over the year (kg), and the snow at its end.
+    double snowfall_kg = 0.0;
+    double rain_kg = 0.0;
+    double melt_kg = 0.0;
+    double snow_kg = 0.0;
 
     // (absorbed − emitted) / absorbed
     [[nodiscard]] double relative_imbalance() const noexcept;

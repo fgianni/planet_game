@@ -89,6 +89,7 @@ struct ThermalOptions {
     int years = 60;
     std::optional<double> grey_emissivity;
     std::optional<double> calibrate_K;   // fit g so the last spin-up year has this mean
+    double precipitation_kg_m2_s = 0.0;  // uniform prescribed precipitation (ADR-0008 §3.3 B)
     std::size_t worker_count = 0;        // 0: hardware concurrency
 };
 
@@ -122,7 +123,8 @@ void print_usage(std::ostream& output) {
            << "    presets: earth_like (default), aqua_planet, dead_rock\n"
            << "  planet_cli calendar [--year N | --from-tick T]\n"
            << "  planet_cli thermal [--subdivision LEVEL] [--seed N] [--preset NAME]"
-              " [--years N] [--grey G | --calibrate KELVIN] [--workers W]\n"
+              " [--years N] [--grey G | --calibrate KELVIN] [--precipitation KG_M2_S]"
+              " [--workers W]\n"
            << "  planet_cli run [--subdivision LEVEL] [--seed N] [--preset NAME] [--years N]"
               " [--spin-up-years N] [--initial-mode climate|reference]"
               " [--command TICK,TYPE,PAYLOAD]... [--workers W] [--manifest FILE.prun]"
@@ -340,6 +342,12 @@ void print_usage(std::ostream& output) {
             options.grey_emissivity = parse_double(value, "grey emissivity");
         } else if (argument == "--calibrate") {
             options.calibrate_K = parse_double(value, "calibration target");
+        } else if (argument == "--precipitation") {
+            options.precipitation_kg_m2_s = parse_double(value, "precipitation");
+            if (!std::isfinite(options.precipitation_kg_m2_s) ||
+                options.precipitation_kg_m2_s < 0.0) {
+                throw std::invalid_argument("precipitation must be finite and non-negative");
+            }
         } else if (argument == "--workers") {
             options.worker_count = static_cast<std::size_t>(parse_unsigned(value, "worker count"));
             if (options.worker_count == 0U) {
@@ -1146,9 +1154,14 @@ int run_thermal(const ThermalOptions& options) {
     if (options.grey_emissivity) {
         surface.grey_emissivity = *options.grey_emissivity;
     }
+    auto& precipitation = state.forcing().prescribed_precipitation_kg_m2_s;
+    for (std::size_t cell = 0; cell < precipitation.size(); ++cell) {
+        precipitation[cell] = static_cast<float>(options.precipitation_kg_m2_s);
+    }
     const auto spin_up = [&](const planetsim::SurfaceEnergyParameters& candidate) {
         planetsim::initialise_surface_temperatures(*mesh, state.slow(), parameters, candidate,
                                                    worker_count);
+        planetsim::initialise_cryosphere(*mesh, state.slow());
         return planetsim::spin_up_surface_energy(state, parameters, candidate, fractions,
                                                  options.years, worker_count);
     };
@@ -1187,6 +1200,9 @@ int run_thermal(const ThermalOptions& options) {
               << " ocean_mean_K=" << year.ocean_mean_surface_temperature_K
               << " absorbed_W=" << year.absorbed_W << " emitted_W=" << year.emitted_W
               << " relative_imbalance=" << year.relative_imbalance() << '\n'
+              << "snow precipitation_kg_m2_s=" << options.precipitation_kg_m2_s
+              << " snowfall_kg=" << year.snowfall_kg << " rain_kg=" << year.rain_kg
+              << " melt_kg=" << year.melt_kg << " snow_end_kg=" << year.snow_kg << '\n'
               << "timing workers=" << worker_count << " ms_per_substep=" << substep_ms << '\n';
     return 0;
 }

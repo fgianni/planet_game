@@ -269,6 +269,20 @@ the specification; the Earth-like `g = 0.4964` is a calibration constant
 fitted to a 288 K global mean (`--calibrate`), to be refitted when the
 atmosphere and clouds arrive.
 
+Snow lies on the land tile (ADR-0008). Until the atmosphere supplies
+moisture, precipitation is a prescribed forcing, zero by default:
+
+```bash
+./build/planet_cli thermal --precipitation 1e-5
+```
+
+falls as snow where the land surface is at or below 0 °C, raises the tile's
+albedo with snow cover, and melts with latent heat when the surface would
+warm past 0 °C. Energy (with the latent term) and water close to rounding.
+Without heat transport, snow-covered land cannot warm back to melting, so
+snow accumulates rather than cycling with the seasons (ADR-0008 §9). Sea ice
+is the next task.
+
 ## Recorded runs and replay
 
 ```bash

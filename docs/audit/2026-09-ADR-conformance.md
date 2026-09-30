@@ -157,6 +157,15 @@ schemas evolve.
 | ADR-0001 §5/§8 M3 gate | ✅ EVIDENCED | CI Release: 250 years at L5 (≥ 20 years/min, ≤ 240 s) and L6 (≥ 5 years/min, ≤ 600 s); measured 2,981 and 774 years/min on 4 workers. |
 | ADR-0001 V4 regression gate | ⚠ RUNTIME_ONLY | Absolute budget gated; the >20 % regression comparison against a baseline is not yet automated (ADR-0001 §10). |
 
+### M4-01 cryosphere state and land snow (2026-09-30)
+
+| Requirement | Status | Finding |
+|---|---|---|
+| ADR-0008 V1, V2 (land) | ✅ EVIDENCED | Energy with the latent term and water close per tile and globally in both modes (`tests/unit/test_land_snow.cpp`, `tests/physics/test_land_snow_planet.cpp`); measured values in ADR-0008 §9. |
+| ADR-0008 V4–V6, V8 (land) | ✅ EVIDENCED | Invariants, albedo-feedback sign, bit-identity with ADR-0007 without snow, 1/2/8/16 workers. |
+| ADR-0008 V9, PSNAP schema 4 | ✅ EVIDENCED | Two float64 reservoirs in the registry baseline; v1–v3 load through the required schema 3 → 4 initialiser; v4 golden exact (`tests/regression/test_golden_snapshot.cpp`). |
+| Stable seasonal land snow (specification §13 M4) | ⚠ RUNTIME_ONLY | Without heat transport, snow-covered land never melts and snow accumulates (ADR-0008 §9 finding); a transport decision is needed before M4-03. |
+
 ## Risk-register audit
 
 | Risk mitigation | Status | Finding |
