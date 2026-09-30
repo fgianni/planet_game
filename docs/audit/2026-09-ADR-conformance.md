@@ -176,6 +176,15 @@ schemas evolve.
 | ADR-0001 performance gates with transport | ✅ EVIDENCED | 250 years at L5 in 107 s and L6 in 461 s on 4 workers; L6 margin about 23 %. |
 | Deterministic executor (ADR-0002 §4.6) | ✅ EVIDENCED | Persistent worker pool with unchanged block assignment; sanitizer build green. |
 
+### M4-03 sea ice (2026-09-30)
+
+| Requirement | Status | Finding |
+|---|---|---|
+| ADR-0008 V1–V6, V8 (ocean tile) | ✅ EVIDENCED | Per-tile and global energy and water closure, Stefan growth, invariants, ice–albedo sign, bit-identity above `T_f`, worker counts (`tests/unit/test_sea_ice.cpp`, `tests/physics/test_sea_ice_planet.cpp`); values in ADR-0008 §9.1. |
+| Seawater never below freezing | ✅ EVIDENCED | `initialise_cryosphere` and the schema 3 → 4 migration raise sub-freezing ocean layers to `T_f`; the golden tests expect it. |
+| Plausible sea-ice extent (specification §23) | ⚠ RUNTIME_ONLY | About twice Earth's with constants fitted before ice existed; the refit is task M4-04. |
+| ADR-0001 performance gates with sea ice | ✅ EVIDENCED | 250 years at L5 in 176 s and L6 in 572 s on 4 workers, after ADR-0009 §11–12; the L6 margin is about 5 %. |
+
 ## Risk-register audit
 
 | Risk mitigation | Status | Finding |

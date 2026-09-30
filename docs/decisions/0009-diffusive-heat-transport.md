@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-30
 - **Accepted:** 2026-09-30
-- **Amended:** 2026-09-30 — §4.1 tiles exchange heat with their cell's air, and tiles without area take no transport; §4.4 the calibration target is the equator-to-pole temperature difference, not the peak transport (both in §10)
+- **Amended:** 2026-09-30 — §4.1 tiles exchange heat with their cell's air, and tiles without area take no transport; §4.4 the calibration target is the equator-to-pole temperature difference, not the peak transport (both in §10); §4.1 the diffused temperature is the cells' air (§11); §4.3 the transport is solved on the mesh one level coarser (§12)
 - **Milestone:** P0 / M4 (needed for ADR-0008's seasonal experiment)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §13 M3 ("optional explicitly documented reduced horizontal transport"), §13 M4, §23 (calibration lessons), §24; Planetary Civilization Simulator — Design Record v0.9, §24.2
 - **Related:** ADR-0001 (modes, budget), ADR-0002 (finite-volume operators, determinism), ADR-0006 (sub-steps), ADR-0007 (surface columns), ADR-0008 (snow and sea ice, §9 finding)
@@ -296,3 +296,65 @@ difference of the P2 fit to the annual-mean surface temperature, 42 K
 (`T₂ ≈ −28 K`; North, Cahalan and Coakley, 1981), with `g` refitted to
 288 K. The resulting transport (1.8 PW) is recorded as too weak by a factor
 of about three, a deficit M5's atmosphere must take up.
+
+## 11. Amendment: diffusing the cells' air (accepted 2026-09-30)
+
+**Finding (task M4-03).** With sea ice, a freezing ocean holds its
+temperature at `T_f` while releasing latent heat without limit. Diffusing
+the cells' surface temperature `T̄` then let the implicit solve drain a
+coastal cell (99 % ocean at `T_f`, next to ice surfaces some 30 K colder)
+of about 5,000 W/m² for a month: 38 m of new ice in one step, and the 1 %
+land tile, which receives the same source per unit area, collapsed to
+−142 K. Such cells also have zero slope, which stalled the Newton
+iteration.
+
+**Change.** The diffused temperature is the cell's air, whose balance
+with its tiles (§10) gives
+
+```text
+T_a = T̄ + h / (γ (f_land + f_ocean)),     H = K ∇² T_a
+```
+
+Heat leaves a cell only through its tiles' exchange with the air,
+`γ (T_t − T_a)`, so a freezing ocean can give at most what the air can take,
+and the slope `dT_a/dh ≥ 1/(γ s)` is never zero. For a planetary-scale
+pattern of degree `l` the air adds a series resistance: the coefficient is
+effectively `D γ / (γ + l(l+1) D)`, 0.18 instead of 0.20 for P2 at the
+calibrated `D`; at the grid scale the exchange is capped near
+`γ ΔT` (a few hundred W/m², the order of winter heat loss from open
+leads). Transport now requires `γ > 0`. The V4 test compares against
+`λ / (λ + 6 D γ / (γ + 6 D))` and agrees to 0.13 % at L5.
+
+**Consequence.** `D` and `g` of §10 were fitted with surface-temperature
+diffusion and without ice; they are refitted in task M4-04.
+
+## 12. Amendment: the transport one mesh level coarser (accepted 2026-09-30)
+
+**Finding (task M4-03).** With sea ice the 250-year CI scenarios of
+ADR-0001 took about 290 s at L5 (gate 240 s) and 1,400 s at L6 (gate
+600 s): freezing and melting make the tiles' response kinked, and each
+transport step needed 20–25 tile evaluations and about 200 ms of linear
+solves at L6.
+
+**Change (option 2 of the choice put on 2026-09-30).** The implicit
+transport is solved on the mesh one level coarser. Every fine cell belongs
+to the nearest coarse cell (about four fine cells each; a greedy walk over
+the coarse mesh, deterministic); a group's area is the sum of its cells',
+so energy stays exact, and its links are the coarse mesh's own two-point
+weights `l/d`, the ADR-0002 operator one level down, exactly symmetric. A
+group's air temperature is the area-weighted mean of its cells' air
+(§11); every cell of a group receives the group's source. The coarse mesh
+and the map are built once per mesh level and radius and cached for the
+process (`agglomerated_transport_graph`); the solver works on a
+`TransportGraph`, the mesh or its agglomeration. A first attempt grouping
+cells greedily into sevens was rejected: its two-point fluxes between
+irregular groups were inconsistent (the P2 check stayed 5 % off at every
+level).
+
+**Validation.** The P2 check converges: 3.1 %, 0.9 %, 0.31 % at L3, L4,
+L5 (gate 2 % at L5). The transport resolution is about 480 km at L5 and
+240 km at L6, adequate for a large-scale diffusion. With sea ice, on 4
+workers: 250 years at L5 in 176 s (gate 240 s) and at L6 in 572 s (gate
+600 s); the L5 run replays bit for bit. The L6 margin is about 5 % on the
+development machine, so slower CI runners may exceed it: the next
+performance work belongs there.

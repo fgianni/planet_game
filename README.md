@@ -265,12 +265,12 @@ from radiative equilibrium and prints the last year's global, land and ocean
 mean temperature, energy balance, transport, zonal means and the cost per
 sub-step.
 
-Until the atmosphere exists, heat moves between cells by diffusion of the
-cells' surface temperature (ADR-0009), solved implicitly (Newton with a
-multigrid-preconditioned conjugate-gradient solve) so that energy closes
-exactly and the monthly step stays stable. The land and ocean tiles of a
-cell also exchange heat through the cell's air at the bulk rate, so coastal
-land is maritime. Dead rock (no tilt, `g = 0`) and the aqua planet, which
+Until the atmosphere exists, heat moves by diffusion of the cells' air
+temperature (ADR-0009), on the mesh one level coarser, solved implicitly
+(Newton with a multigrid-preconditioned conjugate-gradient solve) so that
+energy closes exactly and the monthly step stays stable. Each cell's land
+and ocean tiles exchange heat with that air at the bulk rate, so coastal
+land is maritime and a freezing ocean gives only what the air can take. Dead rock (no tilt, `g = 0`) and the aqua planet, which
 have no atmosphere, are experiments A and B of the specification. The
 Earth-like `g = 0.4455` and transport coefficient `D = 0.1999 W/m²/K` are
 calibration constants fitted together to a 288 K global mean and Earth's
@@ -288,7 +288,17 @@ falls as snow where the land surface is at or below 0 °C, raises the tile's
 albedo with snow cover, and melts with latent heat when the surface would
 warm past 0 °C. Energy (with the latent term) and water close to rounding.
 With the transport, snow now clears seasonally from about 15 % of land
-cells, while high latitudes still accumulate it. Sea ice is the next task.
+cells, while high latitudes still accumulate it.
+
+Sea ice forms on the ocean tile when the mixed layer would cool below
+−1.8 °C (ADR-0008): a zero-heat-capacity slab whose surface balances
+sunlight, emission, heat conducted from the freezing water below and the
+transport, melting at 0 °C at the top and growing or melting at its base.
+Its thickness is solved implicitly, so a month-long step stays stable, and
+it raises the albedo smoothly up to half a metre. `planet_cli thermal`
+prints the year's sea-ice extent by hemisphere; with the constants fitted
+before ice existed it is currently about twice Earth's, pending the M4-04
+refit.
 
 ## Recorded runs and replay
 

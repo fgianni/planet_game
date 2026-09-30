@@ -360,3 +360,66 @@ seasonal-experiment acceptance (§5 V7) for land snow out of reach until
 heat reaches the land. Sea ice (M4-02) has the ocean's heat beneath it and
 is expected to behave differently. The decision on transport is ADR-0009
 (accepted 2026-09-30), implemented as task M4-02 before sea ice.
+
+### 9.1 Sea ice (task M4-03, 2026-09-30)
+
+§4.4 is implemented in `sim/planet/surface/sea_ice.{hpp,cpp}`; the surface
+step and the ADR-0009 cell solve use it for every ocean tile, and the ice
+surface is the tile's radiating temperature (emission, the cell's air, zonal
+and P2 means). Tests: `tests/unit/test_sea_ice.cpp`,
+`tests/physics/test_sea_ice_planet.cpp`.
+
+Refinements, recorded here rather than changing the decision:
+
+- **Growth solve.** For a trial thickness the ice surface is the ADR-0007
+  quartic with the conduction `k_i/h'` added to `a`; the growth residual
+  `ρ_i L_f (h' − h)/Δt − F_top(h') + F_o` is strictly increasing in `h'`
+  (conduction falls with thickness; with the surface held at `T_m` the
+  conduction and the top melt cancel), so a bracketed Illinois false position
+  finds the root to 4ε. When the residual is already positive as `h' → 0`,
+  all the ice melts and the step is the open-water one with the latent sink.
+- **Transport slope.** The ice tile reports `dT_i/ds` with the thickness
+  responding (implicit function theorem on the surface balance and the
+  growth equation); holding the thickness fixed underestimated it by up to
+  a few times for thin ice and slowed the transport Newton to linear
+  convergence.
+- **Transport and shared air** (ADR-0009) act on the ice surface; the ocean
+  heat flux to the base is the deep layer's exchange with the mixed layer at
+  `T_f` (plus the mixed layer's own excess if a state violates the
+  invariant).
+- **Gross terms.** Frozen and melted mass are reported gross (the base may
+  grow while the top melts); their difference is the exact change of mass.
+- **Seawater never below freezing.** ADR-0007's initial state (§4.5) holds
+  polar ocean layers at their ice-free radiative equilibrium, 220–250 K; the
+  sea-ice physics would pay for raising them with hundreds of metres of ice.
+  `initialise_cryosphere`, which is also the schema 3 → 4 migration's
+  initialiser, raises both ocean layers to at least `T_f`. A migrated v1–v3
+  state is changed accordingly (a declared repair; the golden tests expect
+  it).
+
+Validation (L4, seed 20260930, Earth-like preset with `D`, `g` of ADR-0009 §10):
+
+| ID | Result |
+|---|---|
+| V1 | energy closure 0.11 of the gate per tile over a grid of cases, 0.035 globally with ice forming (climate and reference steps) |
+| V2 | water closure 8e-5 of the gate per tile, 3e-5 globally, snow and ice together |
+| V3 | Stefan growth: the discrete backward-Euler thickness to 5e-16; after a winter from 0.1 m under an 18 K deficit, errors 7.7 %, 3.1 %, 0.39 % at 30-, 10- and 1-day steps |
+| V4 | ice ≥ 0; ice present ⇒ mixed layer = `T_f` and ice surface ≤ `T_m`; open water ≥ `T_f`; deep ocean ≥ `T_f` |
+| V5 | 1 m of extra ice on every ocean tile: absorbed shortwave 1.50e17 → 0.92e17 W, global mean a year later 283.4 → 259.9 K |
+| V6 | open water above `T_f` is the ADR-0007 column bit for bit |
+| V8 | 1/2/8/16 workers bit-identical with ice |
+
+On the calibrated Earth-like planet ice forms only poleward of about 45°,
+with a seasonal cycle: 20–26 million km² in the north and 31–35 million km²
+in the south (third year from the initial state, L4), against Earth's
+roughly 6–15 and 3–18. `D` and `g` were fitted
+before ice existed; the refit with ice is task M4-04. On the aqua planet
+(no greenhouse, no transport) perennial ice keeps thickening, as Stefan's
+law requires when nothing brings heat to its base, while the columns'
+sensible storage settles (−2e-4 of the absorbed after 60 years).
+
+Performance: sea ice made the transport step kinked and slow (the ADR-0001
+scenarios took about 290 s at L5 and 1,400 s at L6); with the exact ice
+slopes, the warm-started thickness Newton and ADR-0009 §12 (transport one
+level coarser), 250 years take 176 s at L5 and 572 s at L6 on 4 workers,
+within the gates (240 s, 600 s).
