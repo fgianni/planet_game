@@ -30,6 +30,33 @@ struct ColumnStepResult {
     double newton_residual_W_m2 = 0.0;  // of the scalar equation, after the last iteration
 };
 
+// The step with the lower layer eliminated: a·x + r·x⁴ = b for the new
+// surface temperature x, and the lower layer's update once x is known.
+struct ColumnSystem {
+    double a = 0.0;            // C_s/Δt + k_eff
+    double b = 0.0;            // C_s/Δt · T_s + (1 − α) Q + k_eff · T_l
+    double radiative = 0.0;    // r = β ε σ
+    double absorbed_W_m2 = 0.0;
+    double lower_rate = 0.0;   // C_l/Δt
+    double exchange = 0.0;     // k
+
+    // The lower layer after the step, given the new surface temperature.
+    [[nodiscard]] double lower_K(double lower_K_before, double surface_K) const noexcept {
+        return (lower_rate * lower_K_before + exchange * surface_K) / (lower_rate + exchange);
+    }
+    // b − a·x − r·x⁴: the power the surface cannot absorb at temperature x.
+    [[nodiscard]] double surplus_W_m2(double surface_K) const noexcept;
+};
+
+// Validates as step_column does and builds the system.
+[[nodiscard]] ColumnSystem column_system(const ColumnProperties& column, ColumnState state,
+                                         double insolation_W_m2, double grey_emissivity,
+                                         double dt_s);
+
+// Newton root of a·x + r·x⁴ = b − sink_W_m2, with b − sink > 0. A constant
+// sink (for example latent heat) keeps the start at or above the root.
+[[nodiscard]] double solve_column_surface(const ColumnSystem& system, double sink_W_m2 = 0.0);
+
 // Throws std::invalid_argument for a non-positive or non-finite step,
 // non-positive temperatures, negative insolation or g outside [0, 1).
 [[nodiscard]] ColumnStepResult step_column(const ColumnProperties& column, ColumnState state,
