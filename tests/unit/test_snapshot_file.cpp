@@ -248,9 +248,13 @@ int main() {
                                    static_cast<std::uint32_t>(planetsim::FieldId::hypsometry_m));
         PLANETSIM_EXPECT(test, inspected.fields[1].field_id ==
                                    static_cast<std::uint32_t>(planetsim::FieldId::sea_level_m));
-        PLANETSIM_EXPECT(test, inspected.fields[5].field_id ==
+        PLANETSIM_EXPECT(test, inspected.fields[4].field_id ==
                                    static_cast<std::uint32_t>(
                                        planetsim::FieldId::ocean_deep_temperature_K));
+        PLANETSIM_EXPECT(test, inspected.fields[5].field_id ==
+                                   static_cast<std::uint32_t>(
+                                       planetsim::FieldId::ocean_mixed_layer_temperature_K));
+        PLANETSIM_EXPECT(test, inspected.fields[5].dtype == "float64");
     }
 
     for (const std::uint32_t level : {0U, 4U, 6U}) {
@@ -320,23 +324,30 @@ int main() {
     auto truncated = canonical_bytes;
     truncated.pop_back();
     write_file(invalid_path, truncated);
-    expect_read_failure(test, invalid_path, level_zero_mesh, "field_id 196612");
+    expect_read_failure(test, invalid_path, level_zero_mesh, "field_id 196613");
 
     write_file(invalid_path,
                replace_manifest_once(canonical_bytes, "\"format\"", "\"xormat\""));
     expect_read_failure(test, invalid_path, level_zero_mesh, "expected key format");
 
     write_file(invalid_path,
-               replace_manifest_once(canonical_bytes, "\"schema_version\":2",
+               replace_manifest_once(canonical_bytes, "\"schema_version\":3",
                                      "\"schema_version\":9"));
     expect_read_failure(test, invalid_path, level_zero_mesh, "schema_version");
 
     // A file that claims schema 1 may not carry fields introduced in schema 2.
     write_file(invalid_path,
-               replace_manifest_once(canonical_bytes, "\"schema_version\":2",
+               replace_manifest_once(canonical_bytes, "\"schema_version\":3",
                                      "\"schema_version\":1"));
     expect_read_failure(test, invalid_path, level_zero_mesh,
                         "does not exist in snapshot schema_version 1");
+
+    // Nor may a schema 2 file carry the float64 mixed layer of schema 3.
+    write_file(invalid_path,
+               replace_manifest_once(canonical_bytes, "\"schema_version\":3",
+                                     "\"schema_version\":2"));
+    expect_read_failure(test, invalid_path, level_zero_mesh,
+                        "field_id 196613: field does not exist in snapshot schema_version 2");
 
     write_file(invalid_path,
                replace_manifest_once(canonical_bytes, "\"mesh_level\":0",

@@ -204,7 +204,41 @@ advance the persisted state and conservation budgets; adding an artificial
 state mutation here would not test migration compatibility.
 
 Compression remains deferred until M4, after V7 records real size and delta
-ratios. Run manifests, command logs, checkpoint hashes, and replay remain M3;
-delta chains remain M4; and the migration framework remains M5. Starting the
+ratios. Run manifests, command logs, checkpoint hashes, and replay remain M3
+(done in M3-03, below); delta chains remain M4; and the migration framework
+remains M5. Starting the
 golden corpus at M2 records the first schema early but does not pull the M5
 migration framework forward.
+
+The M3 portion was implemented on 2026-09-29 (task
+`docs/tasks/M3-03-replay-gates-and-close.md`):
+
+- **§3.3 run manifest.** A line-oriented `PRUNv1` text file
+  (`sim/core/serialization/run_manifest.{hpp,cpp}`): engine and mesh
+  generator versions, the scenario as ordered key/value pairs with their
+  hash, commands with the tick at which each took effect, yearly checkpoints
+  and the end tick. One record per line keeps it appendable for §3.7. The
+  sketch's `world_seed`, `mesh_level`, `layer_counts` and `flags` are
+  scenario entries (`seed`, `subdivision`; the layer counts are fixed by the
+  build's registry at M3).
+- **`state_hash`** is XXH3-64 over the slow-state chunks in canonical order,
+  each prefixed by field ID and byte length (`slow_state_hash`). XXH3 is
+  implemented in-tree, checked against the reference library and pinned by
+  vectors.
+- **Commands and replay** (`sim/planet/run/planet_run.{hpp,cpp}`): commands
+  take effect at step boundaries, never splitting a step; checkpoints are
+  taken at tick 0 and at the first boundary of each orbital year. Replay
+  re-simulates from the manifest alone and reports the earliest divergent
+  checkpoint or command tick. `planet_cli run` and `planet_cli replay` expose
+  both.
+- **V1 and V2** run in CI through `test_run_replay` (1/2/8/16 workers,
+  chunked pacing across a reference window, late submission; replay of the
+  manifest file, and the divergence tick of altered inputs and records) and
+  through the replay of the 250-year L5 performance run (251 checkpoints).
+  Weather windows do not exist yet, so V1's window schedules are not tested.
+- **V5**: every golden save (schemas 1–3) now loads and steps ten simulated
+  years of climate sub-steps with the energy budget closing on every step.
+- **§3.6**: PSNAP schema 3 retires the `float32` mixed layer `0x0003'0003`
+  for the `float64` field `0x0003'0005` (ADR-0007 §10). The core reader
+  keeps a table of retired persistent fields readable from the schemas that
+  stored them; the v2 → v3 step widens them exactly.

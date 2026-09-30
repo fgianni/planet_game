@@ -21,14 +21,17 @@ struct SlowState;
 // planet layer supplies the functions. Each receives the target mesh and the
 // staged slow state with every field the file did contain already decoded.
 struct SnapshotMigration {
-    // Schema 1 -> 2: the four surface-energy temperatures.
+    // Schema 1 -> 2: the four surface-energy temperatures, written in the
+    // current (schema 3) types.
     std::function<void(const PlanetMesh&, SlowState&)> initialise_schema_2_fields;
 };
 
 // Schema 1 (M2): hypsometry and sea level. Schema 2 (M3, ADR-0007 §4.6) adds
-// the four surface-energy temperatures. Older schemas load through
-// SnapshotMigration.
-inline constexpr std::uint32_t persistent_snapshot_schema_version = 2U;
+// the four surface-energy temperatures. Schema 3 (ADR-0007 §10) stores the
+// ocean mixed layer as float64 under a new field ID; the schema 2 -> 3 step
+// widens the float32 values exactly and needs no initialiser. Schema 1 loads
+// through SnapshotMigration, whose initialiser writes the current types.
+inline constexpr std::uint32_t persistent_snapshot_schema_version = 3U;
 inline constexpr std::uint32_t oldest_readable_snapshot_schema_version = 1U;
 
 struct SnapshotFieldInfo {
@@ -70,6 +73,12 @@ void write_snapshot(const std::filesystem::path& path,
                     const PlanetState& state,
                     SimulationTick tick,
                     std::string parent_snapshot_id = {});
+
+// ADR-0003 §3.3 state_hash: XXH3-64 over the slow state in canonical order,
+// the same field chunks a snapshot stores, each preceded by its field ID
+// (little-endian u32) and byte length (little-endian u64). Equal slow states
+// hash equal; the tick, manifest and mesh are not part of it.
+[[nodiscard]] std::uint64_t slow_state_hash(const PlanetState& state);
 
 [[nodiscard]] SnapshotManifest inspect_snapshot(const std::filesystem::path& path);
 // Reads any schema from oldest_readable_snapshot_schema_version to the

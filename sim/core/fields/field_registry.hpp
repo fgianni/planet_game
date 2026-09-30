@@ -14,8 +14,9 @@ enum class FieldId : std::uint32_t {
     sea_level_m = 0x0002'0002U,
     land_surface_temperature_K = 0x0003'0001U,
     land_ground_temperature_K = 0x0003'0002U,
-    ocean_mixed_layer_temperature_K = 0x0003'0003U,
+    // 0x0003'0003 is retired: the schema 2 float32 mixed layer.
     ocean_deep_temperature_K = 0x0003'0004U,
+    ocean_mixed_layer_temperature_K = 0x0003'0005U,
 };
 
 enum class FieldDataType : std::uint8_t {
@@ -107,15 +108,22 @@ inline constexpr std::array<FieldDescriptor, 8> field_registry{{
      FieldLayout::cell, FieldDataType::float32, 1U, "K"},
     {FieldId::land_ground_temperature_K, "land_ground_temperature_K", FieldPartition::slow,
      FieldLayout::cell, FieldDataType::float32, 1U, "K"},
-    // float64: a ten-minute step moves the mixed layer by a few float ulps
-    // (ADR-0007 §9.1).
-    {FieldId::ocean_mixed_layer_temperature_K, "ocean_mixed_layer_temperature_K",
-     FieldPartition::slow, FieldLayout::cell, FieldDataType::float64, 1U, "K"},
     {FieldId::ocean_deep_temperature_K, "ocean_deep_temperature_K", FieldPartition::slow,
      FieldLayout::cell, FieldDataType::float64, 1U, "K"},
+    // float64 since schema 3 (ADR-0007 §10): a float32 mixed layer cannot hold
+    // a ten-minute reference step's change without biased rounding.
+    {FieldId::ocean_mixed_layer_temperature_K, "ocean_mixed_layer_temperature_K",
+     FieldPartition::slow, FieldLayout::cell, FieldDataType::float64, 1U, "K"},
 }};
 
-inline constexpr std::array<FieldId, 0> retired_field_ids{};
+// Retired IDs are never registered again. Snapshots of the schemas that
+// stored them still load (sim/core/serialization/snapshot_file.cpp).
+inline constexpr FieldId retired_ocean_mixed_layer_temperature_float32_K =
+    static_cast<FieldId>(0x0003'0003U);  // schema 2 only
+
+inline constexpr std::array<FieldId, 1> retired_field_ids{{
+    retired_ocean_mixed_layer_temperature_float32_K,
+}};
 
 consteval bool field_registry_ids_are_unique() {
     for (std::size_t first = 0; first < field_registry.size(); ++first) {

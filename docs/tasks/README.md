@@ -12,6 +12,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [M2-04](M2-04-scheduler-and-calendar.md) | Simulation modes, scheduler skeleton and sub-step calendar (ADR-0001 §8, ADR-0006) | Complete |
 | [M3-01](M3-01-substep-mean-insolation.md) | Sub-step mean insolation (ADR-0006 §4.3) | Complete |
 | [M3-02](M3-02-surface-energy-columns.md) | Surface energy columns, experiments A and B (ADR-0007) | Complete |
+| [M3-03](M3-03-replay-gates-and-close.md) | Ocean mixed layer in `double`, run manifest and replay, performance gate; closes M3 | Complete |
 
 Completed tasks are records: they keep the specification and design versions
 they were written against, even after those files have left the tree. Read

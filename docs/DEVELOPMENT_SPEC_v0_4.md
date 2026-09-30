@@ -4,7 +4,7 @@ Version: 0.4 (reconciled with design v0.9 and accepted ADRs 0001--0005 in
 `docs/decisions/`)\
 Purpose: implementation contract for Codex / Claude Code\
 Primary target: PC/Linux, C++20 + Godot 4\
-Current phase: P0 --- Living Planet (M0 through M2 complete)
+Current phase: P0 --- Living Planet (M0 through M3 complete)
 
 Design document: `docs/planetary_civilization_simulator_design_v0_9.docx`.
 Accepted decision records take precedence over this specification where they
@@ -1173,6 +1173,9 @@ diagnostics exportable for inspection.
 
 ### M3 --- Surface energy and first thermal planet
 
+Completed (2026-09-29): tasks M3-01, M3-02 and M3-03, ADR-0006 §4.3 and
+ADR-0007; see section 26.
+
 M3 deliberately has no dynamic atmosphere so the surface/radiative model
 can be validated independently.
 
@@ -1974,7 +1977,7 @@ question is cheap there and expensive in C++:
 
 ## 26. Current implementation status and outstanding migration tasks
 
-Status as of this revision (2026-09-29): M0 through M2 complete; the ADR
+Status as of this revision (2026-09-29): M0 through M3 complete; the ADR
 migration (integer tick clock, dual mesh, field registry, keyed RNG, aligned SoA fields,
 `Field3D` layer-major layout, deterministic cell blocks, recursive cell
 ordering, `-ffp-contract=off`, presentation snapshot schema 2) is applied.
@@ -1989,9 +1992,41 @@ are reusable, field container types derive from the registry, and CI enforces
 the append-only registry contract. Plates, terrain, sub-cell hypsometry and the
 sea-level solve (task M2-02) and deterministic static drainage topology
 (task M2-03, ADR-0005 V5--V8) are complete. M2-02 amended ADR-0005 §4.1
-(the ocean is anchored at the deepest cell; ADR-0005 §9.2). No M3 work has
-started. The simulation-mode scheduler remains foundation work, and the
-seasonal-resolution ADR required by §26.1 must precede M3.
+(the ocean is anchored at the deepest cell; ADR-0005 §9.2). The
+simulation-mode scheduler and the twelve-sub-step calendar (task M2-04,
+ADR-0006) are complete.
+
+M3 is complete (2026-09-29):
+
+-   **M3-01**, sub-step mean insolation (ADR-0006 §4.3, V3, V4, V6): complete.
+-   **M3-02**, surface energy columns (ADR-0007 V1--V10): land and ocean
+    two-layer columns, T⁴ longwave through an optional grey layer,
+    backward-Euler steps in both modes, experiments A and B, the calibrated
+    Earth-like grey emissivity (§24), and PSNAP schema 2 with the first
+    migration: complete.
+-   **M3-03**, the remaining M3 obligations of accepted ADRs: complete.
+    -   Ocean mixed-layer precision (ADR-0007 §10): the mixed layer is
+        `float64`, under the new field ID `0x0003'0005` (the `float32` field
+        `0x0003'0003` is retired), with PSNAP schema 3 and an exact v2 → v3
+        step; v1, v2 and v3 golden saves load.
+    -   Run manifest (`PRUNv1`), command log, yearly XXH3 checkpoint state
+        hashes and replay (ADR-0003 §3.3), with V1 and V2 in CI;
+        `planet_cli run` and `planet_cli replay`. The P0 commands so far are
+        `set_mode` and `set_solar_luminosity_factor` (section 7); a command
+        takes effect at the next step boundary, which in climate mode is the
+        next sub-step.
+    -   Golden saves of every schema load and step ten simulated years with
+        closing budgets (ADR-0003 V5).
+    -   The first performance gate (ADR-0001 §5, §10): 250 climate years in
+        CI at L5 (≥ 20 years/min) and L6 (≥ 5 years/min); measured 2,981
+        and 774 years/min on four workers.
+
+Carried forward from M3, not blocking M4: ADR-0001 V4's > 20 % regression
+comparison against a runner baseline; weather-window schedules in ADR-0003
+V1 (weather windows are M10--M12); autosave and the continuously appended
+manifest (ADR-0003 §3.7). Without horizontal transport the equator is too
+hot and the poles too cold (ADR-0007 §6); the §23 temperature targets wait
+for M5 and M11.
 
 Foundation work completed before M2 terrain starts (task
 `docs/tasks/M2-01b-foundation-hardening.md`):

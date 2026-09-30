@@ -1,6 +1,7 @@
 #include "sim/core/serialization/snapshot_file.hpp"
 
 #include "sim/core/serialization/crc32c.hpp"
+#include "sim/core/serialization/xxh3.hpp"
 #include "sim/planet/mesh/planet_mesh.hpp"
 #include "sim/planet/planet_state.hpp"
 
@@ -140,9 +141,10 @@ void append_json_string(std::string& output, std::string_view value) {
         return 1U;
     case FieldId::land_surface_temperature_K:
     case FieldId::land_ground_temperature_K:
-    case FieldId::ocean_mixed_layer_temperature_K:
     case FieldId::ocean_deep_temperature_K:
         return 2U;
+    case FieldId::ocean_mixed_layer_temperature_K:
+        return 3U;
     case FieldId::top_of_atmosphere_insolation_W_m2:
     case FieldId::substep_mean_insolation_W_m2:
         return 0U;
@@ -531,12 +533,68 @@ class ManifestParser {
     return bytes;
 }
 
-[[nodiscard]] const FieldDescriptor* descriptor_for(std::uint32_t raw_field_id) {
-    return find_field(static_cast<FieldId>(raw_field_id));
+// A persistent field retired from the registry, as it was registered, and
+// the schema versions that store it. Files of those versions must still load.
+struct RetiredPersistentField {
+    FieldDescriptor descriptor;
+    std::uint32_t first_schema;
+    std::uint32_t last_schema;
+};
+
+inline constexpr std::array<RetiredPersistentField, 1> retired_persistent_fields{{
+    {{retired_ocean_mixed_layer_temperature_float32_K, "ocean_mixed_layer_temperature_K",
+      FieldPartition::slow, FieldLayout::cell, FieldDataType::float32, 1U, "K"},
+     2U,
+     2U},
+}};
+
+consteval bool retired_persistent_fields_are_retired() {
+    for (const auto& field : retired_persistent_fields) {
+        bool retired = false;
+        for (const auto id : retired_field_ids) {
+            retired = retired || id == field.descriptor.id;
+        }
+        if (!retired || field.last_schema >= persistent_snapshot_schema_version) {
+            return false;
+        }
+    }
+    return true;
+}
+static_assert(retired_persistent_fields_are_retired(),
+              "a retired persistent field must be retired in the registry and absent from "
+              "the current schema");
+
+// A field a snapshot may store: registered, or retired but readable from the
+// schemas that stored it. `index` numbers registered fields first.
+struct StoredField {
+    const FieldDescriptor* descriptor = nullptr;
+    std::size_t index = 0;
+    std::uint32_t first_schema = 0;
+    std::uint32_t last_schema = 0;
+};
+
+inline constexpr std::size_t stored_field_count =
+    field_registry.size() + retired_persistent_fields.size();
+
+[[nodiscard]] StoredField stored_field_at(std::size_t index) {
+    if (index < field_registry.size()) {
+        const auto& descriptor = field_registry[index];
+        return {&descriptor, index, first_schema_version(descriptor.id),
+                persistent_snapshot_schema_version};
+    }
+    const auto& retired = retired_persistent_fields[index - field_registry.size()];
+    return {&retired.descriptor, index, retired.first_schema, retired.last_schema};
 }
 
-[[nodiscard]] std::size_t descriptor_index(const FieldDescriptor& descriptor) {
-    return static_cast<std::size_t>(&descriptor - field_registry.data());
+[[nodiscard]] const StoredField* find_stored_field(std::uint32_t raw_field_id,
+                                                   StoredField& storage) {
+    for (std::size_t index = 0; index < stored_field_count; ++index) {
+        storage = stored_field_at(index);
+        if (static_cast<std::uint32_t>(storage.descriptor->id) == raw_field_id) {
+            return &storage;
+        }
+    }
+    return nullptr;
 }
 
 [[nodiscard]] std::uint64_t checked_field_byte_length(const FieldDescriptor& descriptor,
@@ -587,20 +645,21 @@ void validate_manifest_and_chunks(const SnapshotManifest& manifest,
         throw std::runtime_error("snapshot engine_version is empty");
     }
 
-    std::array<bool, field_registry.size()> seen{};
+    std::array<bool, stored_field_count> seen{};
     bool has_previous_id = false;
     std::uint32_t previous_id = 0;
 
     for (const auto& field : manifest.fields) {
-        const FieldDescriptor* descriptor = descriptor_for(field.field_id);
-        if (descriptor == nullptr) {
+        StoredField storage;
+        const StoredField* stored = find_stored_field(field.field_id, storage);
+        if (stored == nullptr) {
             field_error(field.field_id, "unknown field");
         }
-        const std::size_t registry_index = descriptor_index(*descriptor);
-        if (seen[registry_index]) {
+        const FieldDescriptor* descriptor = stored->descriptor;
+        if (seen[stored->index]) {
             field_error(field.field_id, "duplicate field");
         }
-        seen[registry_index] = true;
+        seen[stored->index] = true;
         if (has_previous_id && field.field_id <= previous_id) {
             field_error(field.field_id, "fields are not in increasing field_id order");
         }
@@ -610,7 +669,8 @@ void validate_manifest_and_chunks(const SnapshotManifest& manifest,
         if (!descriptor->persistent()) {
             field_error(field.field_id, "field is not slow state");
         }
-        if (first_schema_version(descriptor->id) > manifest.schema_version) {
+        if (stored->first_schema == 0U || stored->first_schema > manifest.schema_version ||
+            stored->last_schema < manifest.schema_version) {
             field_error(field.field_id, "field does not exist in snapshot schema_version " +
                                             std::to_string(manifest.schema_version));
         }
@@ -637,10 +697,12 @@ void validate_manifest_and_chunks(const SnapshotManifest& manifest,
         }
     }
 
-    for (std::size_t index = 0; index < field_registry.size(); ++index) {
-        if (field_registry[index].persistent() && !seen[index] &&
-            first_schema_version(field_registry[index].id) <= manifest.schema_version) {
-            field_error(static_cast<std::uint32_t>(field_registry[index].id),
+    for (std::size_t index = 0; index < stored_field_count; ++index) {
+        const StoredField stored = stored_field_at(index);
+        if (stored.descriptor->persistent() && !seen[index] && stored.first_schema != 0U &&
+            stored.first_schema <= manifest.schema_version &&
+            manifest.schema_version <= stored.last_schema) {
+            field_error(static_cast<std::uint32_t>(stored.descriptor->id),
                         "required slow field is missing");
         }
     }
@@ -866,6 +928,17 @@ void write_snapshot(const std::filesystem::path& path,
     }
 }
 
+std::uint64_t slow_state_hash(const PlanetState& state) {
+    validate_slow_state(state);
+    std::vector<std::byte> canonical;
+    for (const auto& chunk : encode_slow_state(state)) {
+        append_little_endian(canonical, static_cast<std::uint32_t>(chunk.descriptor->id));
+        append_little_endian(canonical, static_cast<std::uint64_t>(chunk.bytes.size()));
+        canonical.insert(canonical.end(), chunk.bytes.begin(), chunk.bytes.end());
+    }
+    return xxh3_64({canonical.data(), canonical.size()});
+}
+
 SnapshotManifest inspect_snapshot(const std::filesystem::path& path) {
     auto parsed = parse_snapshot(path);
     return std::move(parsed.manifest);
@@ -917,6 +990,17 @@ SnapshotManifest read_snapshot(const std::filesystem::path& path, PlanetState& t
                 "initialiser (ADR-0007 §4.6)");
         }
         migration.initialise_schema_2_fields(target_state.mesh(), staged);
+    } else if (file_schema < 3U) {
+        // Schema 2 -> 3 (ADR-0007 §10): the float32 mixed layer widens exactly
+        // into its float64 successor.
+        const auto& info =
+            require_field(parsed.manifest, retired_ocean_mixed_layer_temperature_float32_K);
+        const std::size_t cells = target_state.mesh().cell_count();
+        const Field2D<float> stored = decode_float_cells(field_chunk(parsed, info), cells);
+        staged.ocean_mixed_layer_temperature_K = Field2D<double>(cells, 0.0);
+        for (std::size_t cell = 0; cell < cells; ++cell) {
+            staged.ocean_mixed_layer_temperature_K[cell] = static_cast<double>(stored[cell]);
+        }
     }
     target_state.slow() = std::move(staged);
     return std::move(parsed.manifest);

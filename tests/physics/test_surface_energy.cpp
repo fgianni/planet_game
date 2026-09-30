@@ -13,6 +13,7 @@
 #include "tests/test_support.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -312,32 +313,52 @@ void check_experiments(planetsim::test::Context& test,
     }
 }
 
-// ADR-0007 §9.1: the stored mixed layer carries the double solution, so a
-// day of ten-minute steps through the mesh equals the same steps chained on
-// one column, bit for bit (a float field would round every step).
-void check_mixed_layer_precision(planetsim::test::Context& test,
-                                 const std::shared_ptr<const planetsim::PlanetMesh>& mesh) {
-    const auto surface = planetsim::surface_energy_parameters_for(PlanetPreset::earth_like);
-    Planet planet(mesh, PlanetPreset::earth_like, surface);
-    const std::size_t equator = cell_near(*mesh, 0.0);
-    const auto ocean =
-        planetsim::column_properties(planetsim::SurfaceMaterial::ocean, planet.parameters);
-    planetsim::ColumnState column{planet.state.slow().ocean_mixed_layer_temperature_K[equator],
-                                  planet.state.slow().ocean_deep_temperature_K[equator]};
-    for (std::int64_t step = 0; step < 144; ++step) {
-        planetsim::update_solar_forcing(planet.state, planet.parameters, 10 * step + 5, 4U);
-        const double insolation =
-            planet.state.forcing().top_of_atmosphere_insolation_W_m2[equator];
-        static_cast<void>(planetsim::step_surface_energy(
-            planet.state, planet.parameters, surface, planet.fractions,
-            planet.state.forcing().top_of_atmosphere_insolation_W_m2, 600.0, 4U));
-        column = planetsim::step_column(ocean, column, insolation, surface.grey_emissivity, 600.0)
-                     .state;
+// ADR-0007 §10: the ocean tile keeps the solver's double result, so thirty
+// days of ten-minute reference steps on the mesh equal the same column run
+// entirely in double. A float32 mixed layer drifted 0.01-0.04 K here.
+void check_reference_ocean_precision(planetsim::test::Context& test,
+                                     const std::shared_ptr<const planetsim::PlanetMesh>& mesh) {
+    Planet planet(mesh, PlanetPreset::earth_like,
+                  planetsim::surface_energy_parameters_for(PlanetPreset::earth_like));
+    const std::size_t cells = mesh->cell_count();
+    // Constant forcing, 3 W/m2 of absorbed shortwave above the initial
+    // equilibrium's, so every ocean column warms slowly (~1e-5 K per step).
+    const auto ocean = planetsim::column_properties(planetsim::SurfaceMaterial::ocean,
+                                                    planet.parameters);
+    planetsim::Field2D<float> insolation(cells, 0.0F);
+    std::vector<planetsim::ColumnState> columns(cells);
+    for (std::size_t cell = 0; cell < cells; ++cell) {
+        const double T = planet.state.slow().ocean_mixed_layer_temperature_K[cell];
+        const double emitted = (1.0 - 0.5 * planet.surface.grey_emissivity) * ocean.emissivity *
+                               planetsim::stefan_boltzmann_W_m2_K4 * T * T * T * T;
+        insolation[cell] = static_cast<float>((emitted + 3.0) / (1.0 - ocean.albedo));
+        columns[cell] = {T, planet.state.slow().ocean_deep_temperature_K[cell]};
     }
-    PLANETSIM_EXPECT(test, planet.state.slow().ocean_mixed_layer_temperature_K[equator] ==
-                               column.surface_K);
-    PLANETSIM_EXPECT(test,
-                     planet.state.slow().ocean_deep_temperature_K[equator] == column.lower_K);
+    const double dt_s = planetsim::simulation_time_s(10);
+    const int steps = 30 * 24 * 6;
+    for (int step = 0; step < steps; ++step) {
+        static_cast<void>(planetsim::step_surface_energy(planet.state, planet.parameters,
+                                                         planet.surface, planet.fractions,
+                                                         insolation, dt_s, 4U));
+        for (std::size_t cell = 0; cell < cells; ++cell) {
+            columns[cell] = planetsim::step_column(ocean, columns[cell], insolation[cell],
+                                                   planet.surface.grey_emissivity, dt_s)
+                                .state;
+        }
+    }
+    bool identical = true;
+    double largest_warming_K = 0.0;
+    for (std::size_t cell = 0; cell < cells; ++cell) {
+        const double stored = planet.state.slow().ocean_mixed_layer_temperature_K[cell];
+        identical = identical && std::bit_cast<std::uint64_t>(stored) ==
+                                     std::bit_cast<std::uint64_t>(columns[cell].surface_K);
+        largest_warming_K = std::max(
+            largest_warming_K,
+            stored - static_cast<double>(planet.state.slow().ocean_deep_temperature_K[cell]));
+    }
+    std::cout << "reference_ocean_30d mixed_minus_deep_max_K=" << largest_warming_K << '\n';
+    PLANETSIM_EXPECT(test, identical);
+    PLANETSIM_EXPECT(test, largest_warming_K > 0.0);
 }
 
 }  // namespace
@@ -347,8 +368,8 @@ int main() {
     const auto mesh = mesh_at(test_level);
     check_closure_and_workers(test, mesh);
     check_scheduler_chunking(test, mesh);
-    check_mixed_layer_precision(test, mesh);
     check_thermal_inertia(test, mesh);
     check_experiments(test, mesh);
+    check_reference_ocean_precision(test, mesh_at(2U));
     return test.result();
 }

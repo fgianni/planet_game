@@ -77,8 +77,8 @@ struct SurfaceEnergyDiagnostics {
 };
 
 // Advances both tiles of every cell by one backward-Euler step of length dt_s
-// under the given per-cell insolation, writes the new temperatures (float,
-// deep ocean double) and returns the global budget. Bit-identical for any
+// under the given per-cell insolation, writes the new temperatures (land
+// float, ocean double) and returns the global budget. Bit-identical for any
 // worker count.
 SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                                              const PlanetParameters& parameters,
