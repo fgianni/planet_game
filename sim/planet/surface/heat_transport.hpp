@@ -51,9 +51,8 @@ void diffusion_source(const PlanetMesh& mesh, double conductance_W_K,
 
 // ADR-0009 §4.3. Every Newton iterate is kept at or above `source_floor`
 // (per cell), where the caller's local solves still have a positive root.
-// `worker_count` is accepted for symmetry: the solver's own vector work is
-// serial and the response parallelises its tile solves. Bit-identical for
-// any worker count.
+// Bit-identical for any worker count: all parallel work runs over the
+// mesh's fixed blocks with block-ordered reductions.
 [[nodiscard]] ImplicitTransportResult solve_implicit_transport(
     const PlanetMesh& mesh, double conductance_W_K, const Field2D<double>& source_floor_W_m2,
     const TransportResponse& response, const ImplicitTransportSettings& settings = {},

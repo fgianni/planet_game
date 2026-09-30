@@ -1,11 +1,11 @@
 #pragma once
 
+#include "sim/core/scheduler/worker_pool.hpp"
+
 #include <algorithm>
 #include <cstddef>
-#include <exception>
 #include <span>
 #include <stdexcept>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -29,29 +29,14 @@ void for_each_deterministic_block(std::span<const Block> blocks, std::size_t wor
         return;
     }
 
-    std::vector<std::thread> workers;
-    std::vector<std::exception_ptr> failures(active_workers);
-    workers.reserve(active_workers);
-    for (std::size_t worker = 0; worker < active_workers; ++worker) {
-        workers.emplace_back([&, worker]() {
-            try {
-                for (std::size_t block_index = worker; block_index < blocks.size();
-                     block_index += active_workers) {
-                    function(block_index, blocks[block_index]);
-                }
-            } catch (...) {
-                failures[worker] = std::current_exception();
-            }
-        });
-    }
-    for (auto& worker : workers) {
-        worker.join();
-    }
-    for (const auto& failure : failures) {
-        if (failure) {
-            std::rethrow_exception(failure);
+    // Worker w handles blocks w, w + W, w + 2W, ...; each block's result
+    // depends only on the block, so the assignment never changes a result.
+    run_on_worker_pool(active_workers, [&](std::size_t worker) {
+        for (std::size_t block_index = worker; block_index < blocks.size();
+             block_index += active_workers) {
+            function(block_index, blocks[block_index]);
         }
-    }
+    });
 }
 
 template <typename Partial, typename Block, typename BlockFunction, typename CombineFunction>

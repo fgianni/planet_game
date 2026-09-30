@@ -199,11 +199,14 @@ struct CellTiles {
 // §4.1 and §10. The tiles with area share h per unit area; with air exchange
 // γ every tile also receives γ (T̄ − T_t), and T̄ is found by safeguarded
 // Newton on G(T̄) = Σ w_t T_t(T̄) − T̄, which decreases with slope in (−1, 0).
-// A tile without area receives no transport and follows the cell's air.
+// With a single tile of area, T̄ is that tile's temperature and the exchange
+// cancels, so one solve gives it. A tile without area receives no transport
+// and follows the cell's air. Without `with_tiles` only T̄ and its slope are
+// computed (the transport solve's response).
 CellTiles solve_cell(const LandSnowSystem& land_tile, const ColumnProperties& ocean,
                      const ColumnSystem& ocean_system, ColumnState ocean_before,
                      double land_fraction, double ocean_fraction, double h, double exchange,
-                     double first_guess_K) {
+                     double first_guess_K, bool with_tiles) {
     const double share = land_fraction + ocean_fraction;
     const double land_weight = land_fraction / share;
     const double ocean_weight = ocean_fraction / share;
@@ -241,10 +244,31 @@ CellTiles solve_cell(const LandSnowSystem& land_tile, const ColumnProperties& oc
         }
         return weighted - mean_K;
     };
+    double mean_K = 0.0;
+    double weighted_slope = 0.0;
+    if (land_fraction <= 0.0 || ocean_fraction <= 0.0) {
+        // T̄ = T_t: the tile's own equation with source h / share.
+        if (land_fraction > 0.0) {
+            const auto land = solve_land_tile(land_tile, land_source);
+            mean_K = land.column.state.surface_K;
+            tiles.slope_K_m2_W = land.column.surface_slope_K_m2_W / share;
+        } else {
+            const auto water = solve_column_step(ocean, ocean_system, ocean_before, ocean_source);
+            mean_K = water.state.surface_K;
+            tiles.slope_K_m2_W = water.surface_slope_K_m2_W / share;
+        }
+        tiles.mean_K = mean_K;
+        if (with_tiles) {
+            tiles.land = solve_land_tile(land_tile, land_source + exchange * mean_K, exchange);
+            tiles.ocean = solve_column_step(ocean, ocean_system, ocean_before,
+                                            ocean_source + exchange * mean_K, exchange);
+        }
+        return tiles;
+    }
+
     double low = 0.0;        // G(low) ≥ 0
     double high = 1.0e4;     // G(high) < 0
-    double mean_K = std::clamp(first_guess_K, low, high);
-    double weighted_slope = 0.0;
+    mean_K = std::clamp(first_guess_K, low, high);
     for (int iteration = 0; iteration < 60; ++iteration) {
         const double g = evaluate(mean_K, weighted_slope);
         (g > 0.0 ? low : high) = mean_K;
@@ -264,9 +288,11 @@ CellTiles solve_cell(const LandSnowSystem& land_tile, const ColumnProperties& oc
     }
     static_cast<void>(evaluate(mean_K, weighted_slope));
 
-    tiles.land = solve_land_tile(land_tile, land_source + exchange * mean_K, exchange);
-    tiles.ocean = solve_column_step(ocean, ocean_system, ocean_before,
-                                    ocean_source + exchange * mean_K, exchange);
+    if (with_tiles) {
+        tiles.land = solve_land_tile(land_tile, land_source + exchange * mean_K, exchange);
+        tiles.ocean = solve_column_step(ocean, ocean_system, ocean_before,
+                                        ocean_source + exchange * mean_K, exchange);
+    }
     tiles.mean_K = mean_K;
     // T̄ = Σ w T_t(h/share + γ T̄)  ⇒  dT̄/dh = (Σ w s_t / share) / (1 − γ Σ w s_t).
     tiles.slope_K_m2_W = weighted_slope / share / (1.0 - exchange * weighted_slope);
@@ -402,7 +428,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                         const auto tiles = solve_cell(
                             land_tiles[cell], ocean, ocean_tiles[cell], ocean_before(cell),
                             fractions.land_fraction[cell], fractions.ocean_fraction[cell],
-                            source[cell], exchange, first_guess[cell]);
+                            source[cell], exchange, first_guess[cell], false);
                         mean[cell] = tiles.mean_K;
                         slope[cell] = tiles.slope_K_m2_W;
                         // The next response's sources are close to these: its
@@ -452,7 +478,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 const auto tiles = solve_cell(land_tiles[cell], ocean, ocean_tiles[cell],
                                               ocean_before(cell), fractions.land_fraction[cell],
                                               fractions.ocean_fraction[cell], transport[cell],
-                                              exchange, first_guess[cell]);
+                                              exchange, first_guess[cell], true);
                 const LandSnowStepResult& land_tile = tiles.land;
                 const ColumnStepResult& land_step = land_tile.column;
                 const ColumnStepResult& ocean_step = tiles.ocean;

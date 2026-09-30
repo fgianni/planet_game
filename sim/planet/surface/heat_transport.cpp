@@ -7,6 +7,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <utility>
+#include <span>
 #include <vector>
 
 namespace planetsim {
@@ -256,43 +257,87 @@ void solve_dense(const Level& level, const std::vector<double>& rhs, std::vector
     }
 }
 
+// The parallel context of the finest level: the mesh's fixed blocks and a
+// worker count. Coarser levels are small and run serially.
+struct Parallel {
+    std::span<const CellBlock> blocks;
+    std::size_t workers = 1U;
+};
+
 // Symmetric Gauss–Seidel half-sweeps; forward before and backward after the
-// coarse correction keep the V-cycle a symmetric preconditioner.
+// coarse correction keep the V-cycle a symmetric preconditioner. On the
+// finest level the sweep is block-hybrid: Gauss–Seidel inside each mesh
+// block, the previous values across block boundaries. Its result depends on
+// the fixed blocks only, never on the worker count, and the backward sweep
+// is still the transpose of the forward one.
 void gauss_seidel(const Level& level, const std::vector<double>& rhs, std::vector<double>& x,
-                  bool forward) {
-    for (std::size_t step = 0; step < level.size; ++step) {
-        const std::size_t row = forward ? step : level.size - 1U - step;
-        double sum = rhs[row];
-        for (std::size_t k = level.offset[row]; k < level.offset[row + 1U]; ++k) {
-            sum -= level.value[k] * x[level.column[k]];
+                  bool forward, const Parallel* parallel) {
+    if (parallel == nullptr) {
+        for (std::size_t step = 0; step < level.size; ++step) {
+            const std::size_t row = forward ? step : level.size - 1U - step;
+            double sum = rhs[row];
+            for (std::size_t k = level.offset[row]; k < level.offset[row + 1U]; ++k) {
+                sum -= level.value[k] * x[level.column[k]];
+            }
+            x[row] = sum / level.diagonal[row];
         }
-        x[row] = sum / level.diagonal[row];
+        return;
     }
+    const std::vector<double> previous = x;
+    for_each_deterministic_block(
+        parallel->blocks, parallel->workers, [&](std::size_t, const CellBlock& block) {
+            const std::size_t length = block.end - block.begin;
+            for (std::size_t step = 0; step < length; ++step) {
+                const std::size_t row = forward ? block.begin + step : block.end - 1U - step;
+                double sum = rhs[row];
+                for (std::size_t k = level.offset[row]; k < level.offset[row + 1U]; ++k) {
+                    const std::size_t column = level.column[k];
+                    const bool inside = column >= block.begin && column < block.end;
+                    sum -= level.value[k] * (inside ? x[column] : previous[column]);
+                }
+                x[row] = sum / level.diagonal[row];
+            }
+        });
 }
 
 void v_cycle(const std::vector<Level>& levels, std::size_t index, const std::vector<double>& rhs,
-             std::vector<double>& x) {
+             std::vector<double>& x, const Parallel& parallel) {
     const Level& level = levels[index];
     if (index + 1U == levels.size()) {
         solve_dense(level, rhs, x);
         return;
     }
+    const Parallel* sweep = index == 0U ? &parallel : nullptr;
     x.assign(level.size, 0.0);
-    gauss_seidel(level, rhs, x, true);
+    gauss_seidel(level, rhs, x, true, sweep);
+    std::vector<double> residual(level.size, 0.0);
+    const auto residual_rows = [&](std::size_t begin, std::size_t end) {
+        for (std::size_t row = begin; row < end; ++row) {
+            double value = rhs[row] - level.diagonal[row] * x[row];
+            for (std::size_t k = level.offset[row]; k < level.offset[row + 1U]; ++k) {
+                value -= level.value[k] * x[level.column[k]];
+            }
+            residual[row] = value;
+        }
+    };
+    if (sweep != nullptr) {
+        for_each_deterministic_block(parallel.blocks, parallel.workers,
+                                     [&](std::size_t, const CellBlock& block) {
+                                         residual_rows(block.begin, block.end);
+                                     });
+    } else {
+        residual_rows(0U, level.size);
+    }
     std::vector<double> coarse_rhs(levels[index + 1U].size, 0.0);
     for (std::size_t row = 0; row < level.size; ++row) {
-        double residual = rhs[row] - level.diagonal[row] * x[row];
-        for (std::size_t k = level.offset[row]; k < level.offset[row + 1U]; ++k) {
-            residual -= level.value[k] * x[level.column[k]];
-        }
-        coarse_rhs[level.aggregate[row]] += residual;
+        coarse_rhs[level.aggregate[row]] += residual[row];
     }
     std::vector<double> correction;
-    v_cycle(levels, index + 1U, coarse_rhs, correction);
+    v_cycle(levels, index + 1U, coarse_rhs, correction, parallel);
     for (std::size_t row = 0; row < level.size; ++row) {
         x[row] += correction[level.aggregate[row]];
     }
-    gauss_seidel(level, rhs, x, false);
+    gauss_seidel(level, rhs, x, false, sweep);
 }
 
 // Conjugate gradients on
@@ -301,26 +346,36 @@ void v_cycle(const std::vector<Level>& levels, std::size_t index, const std::vec
 // Symmetric positive definite: a positive diagonal plus K times a graph
 // Laplacian. Preconditioned by an aggregation-multigrid V-cycle (the plain
 // Jacobi preconditioner needed hundreds of iterations at L6, where the
-// Laplacian dominates the diagonal by three orders of magnitude). Serial,
-// in cell order, so every sum has a fixed order.
+// Laplacian dominates the diagonal by three orders of magnitude). Fine-level
+// work runs over the mesh's fixed blocks with block-ordered reductions, so
+// the result is the same for any worker count.
 int solve_newton_system(const PlanetMesh& mesh, const Stencil& stencil, double conductance_W_K,
                         const Field2D<double>& slope, const Field2D<double>& rhs,
                         std::vector<Level>& levels, Field2D<double>& solution,
-                        const ImplicitTransportSettings& settings) {
+                        const ImplicitTransportSettings& settings, std::size_t worker_count) {
     const std::size_t cells = mesh.cell_count();
+    const Parallel parallel{mesh.blocks(), worker_count};
+    const auto each_block = [&](const auto& body) {
+        for_each_deterministic_block(mesh.blocks(), worker_count,
+                                     [&](std::size_t, const CellBlock& block) {
+                                         body(block.begin, block.end);
+                                     });
+    };
     // Held cells (s = 0) become decoupled identity rows; the pattern stays.
     Level& fine = levels.front();
-    for (std::size_t cell = 0; cell < cells; ++cell) {
-        const bool free = slope[cell] > 0.0;
-        fine.diagonal[cell] = free ? mesh.cells()[cell].area_m2 / slope[cell] +
-                                         conductance_W_K * stencil.weight_sum[cell]
-                                   : 1.0;
-        for (std::size_t k = stencil.offset[cell]; k < stencil.offset[cell + 1U]; ++k) {
-            fine.value[k] = free && slope[stencil.neighbour[k]] > 0.0
-                                ? -conductance_W_K * stencil.weight[k]
-                                : 0.0;
+    each_block([&](std::size_t begin, std::size_t end) {
+        for (std::size_t cell = begin; cell < end; ++cell) {
+            const bool free = slope[cell] > 0.0;
+            fine.diagonal[cell] = free ? mesh.cells()[cell].area_m2 / slope[cell] +
+                                             conductance_W_K * stencil.weight_sum[cell]
+                                       : 1.0;
+            for (std::size_t k = stencil.offset[cell]; k < stencil.offset[cell + 1U]; ++k) {
+                fine.value[k] = free && slope[stencil.neighbour[k]] > 0.0
+                                    ? -conductance_W_K * stencil.weight[k]
+                                    : 0.0;
+            }
         }
-    }
+    });
     for (std::size_t index = 0; index + 1U < levels.size(); ++index) {
         coarsen_values(levels[index], levels[index + 1U]);
     }
@@ -328,20 +383,27 @@ int solve_newton_system(const PlanetMesh& mesh, const Stencil& stencil, double c
 
     const Level& matrix = levels.front();
     const auto apply = [&](const std::vector<double>& input, std::vector<double>& output) {
-        for (std::size_t cell = 0; cell < cells; ++cell) {
-            double sum = matrix.diagonal[cell] * input[cell];
-            for (std::size_t k = matrix.offset[cell]; k < matrix.offset[cell + 1U]; ++k) {
-                sum += matrix.value[k] * input[matrix.column[k]];
+        each_block([&](std::size_t begin, std::size_t end) {
+            for (std::size_t cell = begin; cell < end; ++cell) {
+                double sum = matrix.diagonal[cell] * input[cell];
+                for (std::size_t k = matrix.offset[cell]; k < matrix.offset[cell + 1U]; ++k) {
+                    sum += matrix.value[k] * input[matrix.column[k]];
+                }
+                output[cell] = sum;
             }
-            output[cell] = sum;
-        }
+        });
     };
-    const auto dot = [cells](const std::vector<double>& first, const std::vector<double>& second) {
-        double sum = 0.0;
-        for (std::size_t cell = 0; cell < cells; ++cell) {
-            sum += first[cell] * second[cell];
-        }
-        return sum;
+    const auto dot = [&](const std::vector<double>& first, const std::vector<double>& second) {
+        return reduce_deterministic_blocks<double>(
+            mesh.blocks(), worker_count, 0.0,
+            [&](std::size_t, const CellBlock& block) {
+                double sum = 0.0;
+                for (std::size_t cell = block.begin; cell < block.end; ++cell) {
+                    sum += first[cell] * second[cell];
+                }
+                return sum;
+            },
+            [](double a, double b) { return a + b; });
     };
 
     std::vector<double> x(cells, 0.0);
@@ -350,7 +412,7 @@ int solve_newton_system(const PlanetMesh& mesh, const Stencil& stencil, double c
         residual[cell] = slope[cell] > 0.0 ? rhs[cell] : 0.0;
     }
     std::vector<double> preconditioned;
-    v_cycle(levels, 0U, residual, preconditioned);
+    v_cycle(levels, 0U, residual, preconditioned, parallel);
     std::vector<double> direction = preconditioned;
     std::vector<double> product(cells, 0.0);
     double rho = dot(residual, preconditioned);
@@ -360,17 +422,21 @@ int solve_newton_system(const PlanetMesh& mesh, const Stencil& stencil, double c
            rho > 0.0) {
         apply(direction, product);
         const double alpha = rho / dot(direction, product);
-        for (std::size_t cell = 0; cell < cells; ++cell) {
-            x[cell] += alpha * direction[cell];
-            residual[cell] -= alpha * product[cell];
-        }
-        v_cycle(levels, 0U, residual, preconditioned);
+        each_block([&](std::size_t begin, std::size_t end) {
+            for (std::size_t cell = begin; cell < end; ++cell) {
+                x[cell] += alpha * direction[cell];
+                residual[cell] -= alpha * product[cell];
+            }
+        });
+        v_cycle(levels, 0U, residual, preconditioned, parallel);
         const double next_rho = dot(residual, preconditioned);
         const double beta = next_rho / rho;
         rho = next_rho;
-        for (std::size_t cell = 0; cell < cells; ++cell) {
-            direction[cell] = preconditioned[cell] + beta * direction[cell];
-        }
+        each_block([&](std::size_t begin, std::size_t end) {
+            for (std::size_t cell = begin; cell < end; ++cell) {
+                direction[cell] = preconditioned[cell] + beta * direction[cell];
+            }
+        });
         ++iteration;
     }
     solution = Field2D<double>(x);
@@ -399,11 +465,7 @@ ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double 
                                                  const Field2D<double>& source_floor_W_m2,
                                                  const TransportResponse& response,
                                                  const ImplicitTransportSettings& settings,
-                                                 std::size_t /*worker_count*/) {
-    // The vector work here is light and called thousands of times per step;
-    // it runs on one worker, which gives the same bits as any other count
-    // (fixed block order). The response callback parallelises the tile solves.
-    constexpr std::size_t worker_count = 1U;
+                                                 std::size_t worker_count) {
     const std::size_t cells = mesh.cell_count();
     if (!std::isfinite(conductance_W_K) || !(conductance_W_K > 0.0)) {
         throw std::invalid_argument("transport conductance must be finite and positive");
@@ -461,7 +523,7 @@ ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double 
                 }
             });
         result.cg_iterations += solve_newton_system(mesh, stencil, conductance_W_K, slope, rhs,
-                                                    levels, delta_mean, settings);
+                                                    levels, delta_mean, settings, worker_count);
         diffusion_source(mesh, conductance_W_K, delta_mean, delta_source, worker_count);
         for (std::size_t cell = 0; cell < cells; ++cell) {
             delta_source[cell] -= residual[cell];

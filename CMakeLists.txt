@@ -29,6 +29,7 @@ add_library(PlanetSim STATIC
     sim/core/scheduler/orbital_calendar.cpp
     sim/core/scheduler/scheduler.cpp
     sim/core/scheduler/simulation_clock.cpp
+    sim/core/scheduler/worker_pool.cpp
     sim/planet/coordinates/local_tangent_basis.cpp
     sim/planet/geology/crust.cpp
     sim/planet/geology/geology_generator.cpp
