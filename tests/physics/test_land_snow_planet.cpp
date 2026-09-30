@@ -187,19 +187,16 @@ void check_albedo_feedback_sign(planetsim::test::Context& test,
 }
 
 // ADR-0008 V6: without precipitation the snow stays zero everywhere, however
-// cold the land gets.
+// cold the land gets (sea ice, which needs no precipitation, still forms).
 void check_no_precipitation(planetsim::test::Context& test,
                             const std::shared_ptr<const planetsim::PlanetMesh>& mesh) {
     Planet planet(mesh);
     double snow = 0.0;
-    double latent = 0.0;
     for (std::int64_t index = 0; index < 2 * planetsim::climate_substeps_per_year; ++index) {
         const auto step = planet.climate_step(index, 4U);
-        snow += step.snow_kg + step.snowfall_kg;
-        latent += step.latent_heat_J;
+        snow += step.snow_kg + step.snowfall_kg + step.melt_kg;
     }
     PLANETSIM_EXPECT(test, snow == 0.0);
-    PLANETSIM_EXPECT(test, latent == 0.0);
 }
 
 }  // namespace

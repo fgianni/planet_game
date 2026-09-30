@@ -7,6 +7,7 @@
 #include "sim/planet/planet_parameters.hpp"
 #include "sim/planet/planet_state.hpp"
 #include "sim/planet/surface/column_step.hpp"
+#include "sim/planet/surface/cryosphere_constants.hpp"
 #include "sim/planet/surface/surface_energy.hpp"
 #include "sim/planet/terrain/surface_fractions.hpp"
 #include "sim/planet/terrain/terrain_generator.hpp"
@@ -50,6 +51,7 @@ struct Planet {
         fractions = planetsim::compute_surface_fractions(*mesh, state.slow().hypsometry_m,
                                                          state.slow().sea_level_m, 4U);
         planetsim::initialise_surface_temperatures(*mesh, state.slow(), parameters, surface, 4U);
+        planetsim::initialise_cryosphere(*mesh, state.slow());
     }
 };
 
@@ -182,7 +184,9 @@ void check_thermal_inertia(planetsim::test::Context& test,
     static_cast<void>(planetsim::spin_up_surface_energy(planet.state, planet.parameters, surface,
                                                         planet.fractions, spin_up_years, 4U));
     const double pi = 3.14159265358979323846;
-    const std::size_t midlatitude = cell_near(*mesh, 45.0 * pi / 180.0);
+    // 30° N: with g = 0 the ocean freezes further poleward (ADR-0008), and a
+    // mixed layer under ice is held at T_f with no seasonal range.
+    const std::size_t midlatitude = cell_near(*mesh, 30.0 * pi / 180.0);
     const std::size_t equator = cell_near(*mesh, 0.0);
 
     auto& slow = planet.state.slow();
@@ -232,7 +236,7 @@ void check_thermal_inertia(planetsim::test::Context& test,
     }
     const double diurnal_land = day_land_max - day_land_min;
     const double diurnal_ocean = day_ocean_max - day_ocean_min;
-    std::cout << "inertia seasonal_45N land_K=" << seasonal_land << " ocean_K=" << seasonal_ocean
+    std::cout << "inertia seasonal_30N land_K=" << seasonal_land << " ocean_K=" << seasonal_ocean
               << " ratio=" << seasonal_land / seasonal_ocean << " diurnal_equator land_K="
               << diurnal_land << " ocean_K=" << diurnal_ocean
               << " ratio=" << diurnal_land / diurnal_ocean << '\n';
@@ -303,9 +307,12 @@ void check_experiments(planetsim::test::Context& test,
             largest_range = std::max(largest_range, maximum[cell] - minimum[cell]);
         }
         std::cout << "aqua_planet imbalance=" << year.relative_imbalance()
-                  << " mean_K=" << year.mean_surface_temperature_K
+                  << " storage_rate=" << year.relative_storage_rate()
+                  << " ice_kg=" << year.ice_kg << " mean_K=" << year.mean_surface_temperature_K
                   << " largest_seasonal_range_K=" << largest_range << '\n';
-        PLANETSIM_EXPECT(test, std::abs(year.relative_imbalance()) <= 1e-3);
+        // Sea ice keeps thickening on this planet without transport or greenhouse
+        // (ADR-0008 §9), so the balance that settles is the columns' storage.
+        PLANETSIM_EXPECT(test, std::abs(year.relative_storage_rate()) <= 1e-3);
         PLANETSIM_EXPECT(test, largest_range < 20.0);
     }
 }
@@ -328,12 +335,14 @@ void check_reference_ocean_precision(planetsim::test::Context& test,
                                                     planet.parameters);
     planetsim::Field2D<float> insolation(cells, 0.0F);
     std::vector<planetsim::ColumnState> columns(cells);
+    std::vector<double> initial_mixed_K(cells, 0.0);
     for (std::size_t cell = 0; cell < cells; ++cell) {
         const double T = planet.state.slow().ocean_mixed_layer_temperature_K[cell];
         const double emitted = (1.0 - 0.5 * planet.surface.grey_emissivity) * ocean.emissivity *
                                planetsim::stefan_boltzmann_W_m2_K4 * T * T * T * T;
         insolation[cell] = static_cast<float>((emitted + 3.0) / (1.0 - ocean.albedo));
         columns[cell] = {T, planet.state.slow().ocean_deep_temperature_K[cell]};
+        initial_mixed_K[cell] = T;
     }
     const double dt_s = planetsim::simulation_time_s(10);
     const int steps = 30 * 24 * 6;
@@ -347,9 +356,14 @@ void check_reference_ocean_precision(planetsim::test::Context& test,
                                 .state;
         }
     }
+    // Columns that start below the seawater freezing point freeze (ADR-0008)
+    // and leave the column comparison.
     bool identical = true;
     double largest_warming_K = 0.0;
     for (std::size_t cell = 0; cell < cells; ++cell) {
+        if (!(initial_mixed_K[cell] > planetsim::seawater_freezing_point_K)) {
+            continue;
+        }
         const double stored = planet.state.slow().ocean_mixed_layer_temperature_K[cell];
         identical = identical && std::bit_cast<std::uint64_t>(stored) ==
                                      std::bit_cast<std::uint64_t>(columns[cell].surface_K);

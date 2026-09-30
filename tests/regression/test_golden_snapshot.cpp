@@ -5,6 +5,7 @@
 #include "sim/planet/orbit/climate_calendar.hpp"
 #include "sim/planet/planet_parameters.hpp"
 #include "sim/planet/planet_state.hpp"
+#include "sim/planet/surface/cryosphere_constants.hpp"
 #include "sim/planet/surface/surface_energy.hpp"
 #include "sim/planet/terrain/surface_fractions.hpp"
 #include "tests/test_support.hpp"
@@ -62,6 +63,12 @@ void check_schema_1_fields(planetsim::test::Context& test, const planetsim::Plan
     return 220.0 + 100.0 * planetsim::keyed_random_unit_double(
                                synthetic_seed, planetsim::RandomStreamId::validation,
                                synthetic_tick, static_cast<std::uint32_t>(cell), sample);
+}
+
+// The schema 3 -> 4 migration raises ocean layers below the seawater freezing
+// point to it (ADR-0008 §9).
+[[nodiscard]] double at_least_freezing(double temperature_K) {
+    return std::max(temperature_K, planetsim::seawater_freezing_point_K);
 }
 
 // The schema 3 -> 4 migration declares no snow and no sea ice (ADR-0008 §4.6).
@@ -154,6 +161,7 @@ int main() {
 
         planetsim::SlowState expected = state.slow();
         planetsim::initialise_surface_temperatures(*mesh, expected, parameters, surface);
+        planetsim::initialise_cryosphere(*mesh, expected);
         bool migrated = true;
         for (std::size_t cell = 0; cell < mesh->cell_count(); ++cell) {
             migrated = migrated &&
@@ -187,8 +195,8 @@ int main() {
         check_schema_1_fields(test, state);
         bool exact = true;
         for (std::size_t cell = 0; cell < mesh->cell_count(); ++cell) {
-            const double widened =
-                static_cast<double>(static_cast<float>(expected_temperature(cell, 22U)));
+            const double widened = at_least_freezing(
+                static_cast<double>(static_cast<float>(expected_temperature(cell, 22U))));
             exact = exact &&
                     state.slow().land_surface_temperature_K[cell] ==
                         static_cast<float>(expected_temperature(cell, 20U)) &&
@@ -198,7 +206,8 @@ int main() {
                         state.slow().ocean_mixed_layer_temperature_K[cell]) ==
                         std::bit_cast<std::uint64_t>(widened) &&
                     std::bit_cast<std::uint64_t>(state.slow().ocean_deep_temperature_K[cell]) ==
-                        std::bit_cast<std::uint64_t>(expected_temperature(cell, 23U));
+                        std::bit_cast<std::uint64_t>(
+                            at_least_freezing(expected_temperature(cell, 23U)));
         }
         PLANETSIM_EXPECT(test, exact);
         PLANETSIM_EXPECT(test, no_cryosphere(state));
@@ -223,9 +232,11 @@ int main() {
                         static_cast<float>(expected_temperature(cell, 21U)) &&
                     std::bit_cast<std::uint64_t>(
                         state.slow().ocean_mixed_layer_temperature_K[cell]) ==
-                        std::bit_cast<std::uint64_t>(expected_temperature(cell, 22U)) &&
+                        std::bit_cast<std::uint64_t>(
+                            at_least_freezing(expected_temperature(cell, 22U))) &&
                     std::bit_cast<std::uint64_t>(state.slow().ocean_deep_temperature_K[cell]) ==
-                        std::bit_cast<std::uint64_t>(expected_temperature(cell, 23U));
+                        std::bit_cast<std::uint64_t>(
+                            at_least_freezing(expected_temperature(cell, 23U)));
         }
         PLANETSIM_EXPECT(test, exact);
         PLANETSIM_EXPECT(test, no_cryosphere(state));

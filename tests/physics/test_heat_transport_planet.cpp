@@ -8,6 +8,7 @@
 #include "sim/planet/planet_state.hpp"
 #include "sim/planet/surface/column_step.hpp"
 #include "sim/planet/surface/land_snow.hpp"
+#include "sim/planet/surface/sea_ice.hpp"
 #include "sim/planet/surface/surface_energy.hpp"
 #include "sim/planet/surface/surface_materials.hpp"
 #include "sim/planet/terrain/surface_fractions.hpp"
@@ -83,7 +84,8 @@ template <typename T>
 
 [[nodiscard]] bool same_temperatures(const planetsim::SlowState& first,
                                      const planetsim::SlowState& second) {
-    return bit_identical(first.land_surface_temperature_K, second.land_surface_temperature_K) &&
+    return bit_identical(first.sea_ice_mass_kg_m2, second.sea_ice_mass_kg_m2) &&
+           bit_identical(first.land_surface_temperature_K, second.land_surface_temperature_K) &&
            bit_identical(first.land_ground_temperature_K, second.land_ground_temperature_K) &&
            bit_identical(first.ocean_mixed_layer_temperature_K,
                          second.ocean_mixed_layer_temperature_K) &&
@@ -215,7 +217,8 @@ void check_stability(planetsim::test::Context& test) {
 }
 
 // V6: without transport and without shared air, the mesh step is the
-// independent per-tile ADR-0007/0008 step, bit for bit.
+// independent per-tile ADR-0008 step (land snow, ocean with sea ice), bit
+// for bit.
 void check_off_is_unchanged(planetsim::test::Context& test,
                             const std::shared_ptr<const planetsim::PlanetMesh>& mesh) {
     Planet planet(mesh, PlanetPreset::earth_like, 0.0);
@@ -233,17 +236,20 @@ void check_off_is_unchanged(planetsim::test::Context& test,
             land,
             {expected.land_surface_temperature_K[cell], expected.land_ground_temperature_K[cell]},
             0.0, insolation[cell], 0.0, planet.surface.grey_emissivity, dt);
-        const auto ocean_step = planetsim::step_column(
+        const auto ocean_tile = planetsim::solve_ocean_tile(planetsim::prepare_ocean_tile(
             ocean,
             {expected.ocean_mixed_layer_temperature_K[cell],
              expected.ocean_deep_temperature_K[cell]},
-            insolation[cell], planet.surface.grey_emissivity, dt);
+            expected.sea_ice_mass_kg_m2[cell], insolation[cell], planet.surface.grey_emissivity,
+            dt));
+        const auto& ocean_step = ocean_tile.column;
         expected.land_surface_temperature_K[cell] =
             static_cast<float>(land_step.column.state.surface_K);
         expected.land_ground_temperature_K[cell] =
             static_cast<float>(land_step.column.state.lower_K);
         expected.ocean_mixed_layer_temperature_K[cell] = ocean_step.state.surface_K;
         expected.ocean_deep_temperature_K[cell] = ocean_step.state.lower_K;
+        expected.sea_ice_mass_kg_m2[cell] = ocean_tile.ice_kg_m2;
     }
     static_cast<void>(planetsim::step_surface_energy(planet.state, planet.parameters,
                                                      planet.surface, planet.fractions, insolation,

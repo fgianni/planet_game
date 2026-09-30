@@ -72,7 +72,8 @@ void initialise_surface_temperatures(const PlanetMesh& mesh, SlowState& slow,
                                      const SurfaceEnergyParameters& surface,
                                      std::size_t worker_count = 1U);
 
-// ADR-0008 §4.6: no snow and no sea ice, both reservoirs zero.
+// ADR-0008 §4.6: no snow and no sea ice, both reservoirs zero; ocean layers
+// below the seawater freezing point are raised to it (ADR-0008 §9).
 void initialise_cryosphere(const PlanetMesh& mesh, SlowState& slow);
 
 // The PSNAP migrations: schema 1 -> 2 initialises the four temperatures with
@@ -100,6 +101,16 @@ struct SurfaceEnergyDiagnostics {
     double melt_kg = 0.0;
     double snow_change_kg = 0.0;       // Σ A f (W' − W)
     double snow_kg = 0.0;              // Σ A f W' after the step
+    // Sea ice (kg), ocean tiles (ADR-0008 §4.4). The net ocean freshwater
+    // flux is ice_melted − ice_frozen.
+    double ice_frozen_kg = 0.0;
+    double ice_melted_kg = 0.0;
+    double ice_change_kg = 0.0;        // Σ A f (m' − m)
+    double ice_kg = 0.0;               // Σ A f m' after the step
+    double ice_area_north_m2 = 0.0;    // ocean area with ice, by hemisphere
+    double ice_area_south_m2 = 0.0;
+    double ice_mass_north_kg = 0.0;
+    double ice_mass_south_kg = 0.0;
     // Horizontal transport (ADR-0009), zero when it is off.
     double transport_W = 0.0;          // Σ A f (source received): zero to rounding
     double transport_cell_sum_W = 0.0; // Σ A H of the diffusion itself (V1)
@@ -130,7 +141,7 @@ struct SurfaceEnergyDiagnostics {
     // The V2 gate (ADR-0007 §9): 1e-9 of the flux scale plus the rounding
     // floor 4ε of the stored energy.
     [[nodiscard]] double closure_gate_J() const noexcept;
-    // |Δ snow − (snowfall − melt)|
+    // |Δ snow + Δ ice − (snowfall − snow melt + ice frozen − ice melted)|
     [[nodiscard]] double water_residual_kg() const noexcept;
     // ADR-0008 V2: 1e-12 of the moved and stored water plus the rounding
     // floor 4ε of the stored water.
@@ -166,11 +177,18 @@ struct AnnualSurfaceSummary {
     double mean_surface_temperature_K = 0.0;
     double land_mean_surface_temperature_K = 0.0;
     double ocean_mean_surface_temperature_K = 0.0;
-    // Water equivalent over the year (kg), and the snow at its end.
+    // Water equivalent over the year (kg), and the snow and ice at its end.
     double snowfall_kg = 0.0;
     double rain_kg = 0.0;
     double melt_kg = 0.0;
     double snow_kg = 0.0;
+    double ice_kg = 0.0;
+    // Sea-ice area by hemisphere: the year's largest and smallest step-end
+    // values (m²).
+    double ice_area_north_max_m2 = 0.0;
+    double ice_area_north_min_m2 = 0.0;
+    double ice_area_south_max_m2 = 0.0;
+    double ice_area_south_min_m2 = 0.0;
     // Time means over the year (ADR-0009 §4.5).
     std::array<double, 17> northward_transport_W{};
     std::array<double, 18> zonal_mean_surface_temperature_K{};
@@ -185,8 +203,18 @@ struct AnnualSurfaceSummary {
     [[nodiscard]] double peak_poleward_transport_W() const noexcept;
     // Mean of the two equatorward bands minus mean of the two polar bands.
     [[nodiscard]] double equator_to_pole_difference_K() const noexcept;
+    // Latent heat taken by melting minus that released by freezing, as a
+    // mean rate over the year (W).
+    double latent_W = 0.0;
+
     // (absorbed − emitted) / absorbed
     [[nodiscard]] double relative_imbalance() const noexcept;
+    // The rate of change of stored sensible heat, relative to the absorbed:
+    // (absorbed − emitted − latent) / absorbed. Zero once the columns are in
+    // balance even while ice keeps growing.
+    [[nodiscard]] double relative_storage_rate() const noexcept {
+        return (absorbed_W - emitted_W - latent_W) / absorbed_W;
+    }
 };
 
 // Spin-up (ADR-0007 §4.5, ADR-0006 §4.2): runs `years` orbital years of

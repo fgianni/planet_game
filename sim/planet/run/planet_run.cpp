@@ -142,6 +142,7 @@ PlanetRun::PlanetRun(const Scenario& scenario, std::size_t worker_count)
     fractions_ = compute_surface_fractions(*mesh_, state_.slow().hypsometry_m,
                                            state_.slow().sea_level_m, worker_count_);
     initialise_surface_temperatures(*mesh_, state_.slow(), parameters_, surface_, worker_count_);
+    initialise_cryosphere(*mesh_, state_.slow());
     if (scenario_.spin_up_years > 0) {
         static_cast<void>(spin_up_surface_energy(state_, parameters_, surface_, fractions_,
                                                  scenario_.spin_up_years, worker_count_));
