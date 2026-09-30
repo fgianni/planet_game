@@ -33,10 +33,12 @@ experiments A and B, ADR-0007) and M3-03 (the ocean mixed layer in `double`,
 run manifests, state hashes and replay, the ADR-0001 performance gate) are
 complete.
 
-M4 (basic snow, ice and albedo feedback) has started under ADR-0008: task
-M4-01 (cryosphere state, land snow, PSNAP schema 4) is complete. Most
-recently completed task:
-[`docs/tasks/M4-01-cryosphere-state-and-land-snow.md`](docs/tasks/M4-01-cryosphere-state-and-land-snow.md).
+M4 (basic snow, ice and albedo feedback) is in progress under ADR-0008 and
+ADR-0009: tasks M4-01 (cryosphere state, land snow, PSNAP schema 4) and
+M4-02 (diffusive heat transport with shared cell air) are complete; M4-03
+(sea ice), M4-04 (seasonal experiment and refit) and M4-05 (ADR-0003
+history) remain. Most recently completed task:
+[`docs/tasks/M4-02-diffusive-heat-transport.md`](docs/tasks/M4-02-diffusive-heat-transport.md).
 Task documents in `docs/tasks/` state their scope, the decisions already
 made, acceptance criteria and what to report. M4 was requested on
 2026-09-30; do not implement M5 or later milestones unless explicitly

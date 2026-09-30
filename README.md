@@ -251,7 +251,7 @@ sequence. Weather windows are not implemented yet (ADR-0001 §8).
 ```bash
 ./build/planet_cli thermal --preset earth_like
 ./build/planet_cli thermal --preset dead_rock --years 20
-./build/planet_cli thermal --calibrate 288
+./build/planet_cli thermal --calibrate 288 --calibrate-gradient 42
 ```
 
 Every cell has a land tile and an ocean tile, each a two-layer column
@@ -260,14 +260,22 @@ and radiates `(1 − g/2) ε σ T⁴` to space through an optional grey layer of
 emissivity `g` (ADR-0007). Each step is backward Euler, stable for a whole
 climate sub-step, and its budget closes to rounding. The surface is the first
 scheduler process: climate steps use the sub-step mean insolation, reference
-steps the instantaneous insolation. There is no horizontal transport yet, so
-the equator is too hot and the poles too cold. The command spins a generated
-planet up from radiative equilibrium and prints the last year's global,
-land and ocean mean temperature, energy balance and the cost per sub-step.
-Dead rock (no tilt, `g = 0`) and the aqua planet are experiments A and B of
-the specification; the Earth-like `g = 0.4964` is a calibration constant
-fitted to a 288 K global mean (`--calibrate`), to be refitted when the
-atmosphere and clouds arrive.
+steps the instantaneous insolation. The command spins a generated planet up
+from radiative equilibrium and prints the last year's global, land and ocean
+mean temperature, energy balance, transport, zonal means and the cost per
+sub-step.
+
+Until the atmosphere exists, heat moves between cells by diffusion of the
+cells' surface temperature (ADR-0009), solved implicitly (Newton with a
+multigrid-preconditioned conjugate-gradient solve) so that energy closes
+exactly and the monthly step stays stable. The land and ocean tiles of a
+cell also exchange heat through the cell's air at the bulk rate, so coastal
+land is maritime. Dead rock (no tilt, `g = 0`) and the aqua planet, which
+have no atmosphere, are experiments A and B of the specification. The
+Earth-like `g = 0.4455` and transport coefficient `D = 0.1999 W/m²/K` are
+calibration constants fitted together to a 288 K global mean and Earth's
+42 K equator-to-pole difference; the transport they imply (1.8 PW) is
+about a third of Earth's, a deficit left to the atmosphere (M5).
 
 Snow lies on the land tile (ADR-0008). Until the atmosphere supplies
 moisture, precipitation is a prescribed forcing, zero by default:
@@ -279,9 +287,8 @@ moisture, precipitation is a prescribed forcing, zero by default:
 falls as snow where the land surface is at or below 0 °C, raises the tile's
 albedo with snow cover, and melts with latent heat when the surface would
 warm past 0 °C. Energy (with the latent term) and water close to rounding.
-Without heat transport, snow-covered land cannot warm back to melting, so
-snow accumulates rather than cycling with the seasons (ADR-0008 §9). Sea ice
-is the next task.
+With the transport, snow now clears seasonally from about 15 % of land
+cells, while high latitudes still accumulate it. Sea ice is the next task.
 
 ## Recorded runs and replay
 

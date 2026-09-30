@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-30
 - **Accepted:** 2026-09-30
+- **Amended:** 2026-09-30 — §4.1 tiles exchange heat with their cell's air, and tiles without area take no transport; §4.4 the calibration target is the equator-to-pole temperature difference, not the peak transport (both in §10)
 - **Milestone:** P0 / M4 (needed for ADR-0008's seasonal experiment)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §13 M3 ("optional explicitly documented reduced horizontal transport"), §13 M4, §23 (calibration lessons), §24; Planetary Civilization Simulator — Design Record v0.9, §24.2
 - **Related:** ADR-0001 (modes, budget), ADR-0002 (finite-volume operators, determinism), ADR-0006 (sub-steps), ADR-0007 (surface columns), ADR-0008 (snow and sea ice, §9 finding)
@@ -172,6 +173,9 @@ and the northward transport across every 10° latitude, in PW.
 
 ## 6. Consequences
 
+*(§4.1's equal share per unit area and §4.4's transport target are amended
+in §10.)*
+
 **Positive.** Heat reaches snow-covered land and the poles, so the seasonal
 cryosphere of ADR-0008 becomes possible. The equator–pole difference moves
 toward Earth's. Energy stays exact, the monthly step stays stable, and the
@@ -200,7 +204,95 @@ dependency explicit.
 ## 8. Open questions
 
 - Should a coastal cell's land and ocean tiles exchange heat through their
-  shared air (a mixing toward the cell mean)? Current position: no; tiles
-  receive the same source. Revisit if coastal land stays too cold.
+  shared air (a mixing toward the cell mean)? *Resolved by the §10
+  amendment: yes, at the bulk sensible-heat rate.*
 - Should `D` vary with latitude, as moisture makes transport more efficient
   in the tropics? Current position: constant, until M6.
+
+## 9. Implementation record (task M4-02, 2026-09-30)
+
+| Concern | Code |
+|---|---|
+| Implicit solve: Newton, line search, multigrid-preconditioned CG | `sim/planet/surface/heat_transport.{hpp,cpp}` |
+| Local solves with a source, an exchange term and their slope | `sim/planet/surface/column_step.{hpp,cpp}`, `sim/planet/surface/land_snow.{hpp,cpp}` |
+| Cell solve with shared air, presets, diagnostics, calibration constants | `sim/planet/surface/surface_energy.{hpp,cpp}` |
+| Persistent worker pool behind the deterministic executor | `sim/core/scheduler/worker_pool.{hpp,cpp}`, `sim/core/scheduler/deterministic_executor.hpp` |
+| Tests | `tests/unit/test_heat_transport.cpp`, `tests/physics/test_heat_transport_planet.cpp`, `tests/unit/test_land_snow.cpp` |
+| `planet_cli thermal --transport`, `--calibrate-gradient`, `--calibrate-transport` | `apps/planet_cli/main.cpp` |
+
+Refinements of §4.3, recorded here rather than changing the decision:
+
+- **Start and stopping.** Newton starts from zero transport, not the
+  explicit estimate: at Earth-like coupling the explicit estimate is
+  thousands of W/m² and far outside the local solves' range. It stops when
+  `max |F| ≤ 1e-6 W/m²` (V7's gate) or when a backtracking line search on
+  `Σ A F²` finds no descent (the rounding floor), not after a fixed count.
+  The tile response is concave in `h`, so full steps overshoot; with the
+  line search the solve converges in 4–6 iterations.
+- **Floors.** Every iterate is kept above the source at which a cell's
+  temperature would fall to 100 K, so every local solve has a positive
+  root.
+- **Precision.** Each cell's air temperature is converged to 4ε: the
+  neighbour coupling (thousands of W/m²/K at L6) multiplies any error in
+  it into the transport residual.
+- **Linear solve.** Conjugate gradients with an aggregation-multigrid
+  V-cycle preconditioner (greedy aggregation on the mesh graph weighted by
+  `l/d`, Galerkin coarse operators, block-hybrid symmetric Gauss–Seidel on
+  the finest level, serial below, dense Cholesky at the bottom), relative
+  tolerance 1e-6 (inexact Newton). Plain Jacobi needed about 300 iterations
+  per Newton step at L6; the V-cycle needs about 20. The hierarchy's
+  structure is built once per step. All fine-level work runs over the
+  mesh's fixed blocks, so results are independent of the worker count.
+- **Worker pool.** The deterministic executor now dispatches to a persistent
+  process-wide pool (task M4-02); block-to-worker assignment is unchanged.
+
+Validation (tests at L4 with `D = 0.5` unless stated; timings with 4
+workers):
+
+| ID | Result |
+|---|---|
+| V1 | `Σ A H / Σ A |H|` ≤ 9e-17 |
+| V2 | worst closure 0.025 of the ADR-0007 gate, a year of climate steps and a day of reference steps |
+| V3 | dissipation negative on every step |
+| V4 | P2 response ratio against `λ / (λ + 6 D)`: error 0.45 % (L3), 0.21 % (L4), 0.15 % (L5) |
+| V5 | ten times `D` on an aqua planet with a random ±5 K perturbation: the spread never grows, monthly or ten-minute |
+| V6 | transport and shared air off ⇒ the independent per-tile step, bit for bit; dead rock and aqua planet unchanged |
+| V7 | consistency residual ≤ 5e-7 W/m²; Newton 4–6 iterations |
+| V8 | 1/2/8/16 workers bit-identical; the 250-year L5 run replays bit for bit |
+| V9 | §10 fit: at L5 288.01 K, P2 equator-to-pole 41.7 K, peak poleward transport 1.86 PW, zonal annual means 300.7 K (equator) to 260 K and 256 K (85° S, 85° N); with 1e-5 kg/m²/s of prescribed snowfall (L4) 15 % of land cells clear their snow every summer, against 1 % without transport, while snow still accumulates at high latitudes |
+| V10 | 250 years: L5 107 s (gate 240 s), L6 461 s (gate 600 s); monthly step L5 about 40 ms, L6 about 170 ms |
+
+The L6 scenario keeps about 23 % margin on this machine; slower CI runners
+may take it closer to its gate.
+
+## 10. Amendment: shared cell air and the calibration target (2026-09-30)
+
+**Shared air (§4.1).** With every tile receiving the cell's source per unit
+area, a small tile took the whole cell's transport: a 6 % land sliver in a
+coastal cell reached 355 K in polar summer, and slivers in polar night fell
+to 135 K, because the ocean's heat capacity sets the cell's transport and a
+land surface layer cannot absorb it. The accepted change resolves the §8
+open question: every tile also exchanges heat with its cell's air at
+
+```text
+γ (T̄ − T_t),   γ = ρ c_p C_H U = 1.2 · 1005 · 1.2e-3 · 7 ≈ 10 W/m²/K
+```
+
+(bulk sensible-heat exchange), where `T̄` is the area-weighted mean of the
+tiles with area. The exchange sums to zero over a cell, so energy is
+unchanged; the cell's `T̄` solves a scalar equation (§9). A tile without
+area takes no transport and follows its cell's air. With this, tiles stay
+within 228–314 K and coastal land is maritime. Dead rock and the aqua
+planet have no air (`γ = 0`).
+
+**Calibration target (§4.4).** Fitting `D` to the 5.5 PW peak transport
+gives `D ≈ 1.98` and flattens the planet to a 14 K equator-to-pole
+difference with polar temperatures near 278 K, leaving almost no snow or
+ice: this planet's grey `T⁴` radiation damps temperature anomalies about
+twice as strongly as Earth's outgoing longwave (no water-vapour feedback),
+so carrying Earth's transport erases Earth's gradient. Since snow and ice
+depend on where temperatures lie, the accepted target is the equator-to-pole
+difference of the P2 fit to the annual-mean surface temperature, 42 K
+(`T₂ ≈ −28 K`; North, Cahalan and Coakley, 1981), with `g` refitted to
+288 K. The resulting transport (1.8 PW) is recorded as too weak by a factor
+of about three, a deficit M5's atmosphere must take up.

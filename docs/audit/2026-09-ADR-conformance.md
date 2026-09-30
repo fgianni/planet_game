@@ -164,7 +164,17 @@ schemas evolve.
 | ADR-0008 V1, V2 (land) | ✅ EVIDENCED | Energy with the latent term and water close per tile and globally in both modes (`tests/unit/test_land_snow.cpp`, `tests/physics/test_land_snow_planet.cpp`); measured values in ADR-0008 §9. |
 | ADR-0008 V4–V6, V8 (land) | ✅ EVIDENCED | Invariants, albedo-feedback sign, bit-identity with ADR-0007 without snow, 1/2/8/16 workers. |
 | ADR-0008 V9, PSNAP schema 4 | ✅ EVIDENCED | Two float64 reservoirs in the registry baseline; v1–v3 load through the required schema 3 → 4 initialiser; v4 golden exact (`tests/regression/test_golden_snapshot.cpp`). |
-| Stable seasonal land snow (specification §13 M4) | ⚠ RUNTIME_ONLY | Without heat transport, snow-covered land never melts and snow accumulates (ADR-0008 §9 finding); a transport decision is needed before M4-03. |
+| Stable seasonal land snow (specification §13 M4) | ⚠ RUNTIME_ONLY | *Updated 2026-09-30 (M4-02):* with the ADR-0009 transport, snow clears seasonally from about 15 % of land cells; high latitudes still accumulate it. The seasonal experiment is task M4-04. |
+
+### M4-02 diffusive heat transport (2026-09-30)
+
+| Requirement | Status | Finding |
+|---|---|---|
+| ADR-0009 V1–V3, V7 | ✅ EVIDENCED | Conservation ≤ 9e-17, closure, down-gradient sign, consistency ≤ 5e-7 W/m² (`tests/physics/test_heat_transport_planet.cpp`, `tests/unit/test_heat_transport.cpp`). |
+| ADR-0009 V4–V6, V8 | ✅ EVIDENCED | P2 response within 0.15 % at L5 and converging; stable at ten times `D`; off switch bit-identical; worker counts and replay bit-identical. |
+| ADR-0009 V9 calibration (specification §24) | ✅ EVIDENCED | `D` and `g` fitted to 288 K and a 42 K P2 equator-to-pole difference with their record (`sim/planet/surface/surface_energy.hpp`, ADR-0009 §9–10). |
+| ADR-0001 performance gates with transport | ✅ EVIDENCED | 250 years at L5 in 107 s and L6 in 461 s on 4 workers; L6 margin about 23 %. |
+| Deterministic executor (ADR-0002 §4.6) | ✅ EVIDENCED | Persistent worker pool with unchanged block assignment; sanitizer build green. |
 
 ## Risk-register audit
 
