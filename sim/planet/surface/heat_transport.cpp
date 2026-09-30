@@ -238,11 +238,19 @@ ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double 
                 });
             Field2D<double> trial_residual(cells, 0.0);
             trial_merit = evaluate(trial, trial_mean, trial_slope, trial_residual);
-            if (trial_merit < merit || halving == settings.max_line_search_halvings) {
+            if (trial_merit < merit) {
                 residual = std::move(trial_residual);
                 break;
             }
+            if (halving == settings.max_line_search_halvings) {
+                // No descent left: the iterate is at the rounding floor.
+                step = 0.0;
+                break;
+            }
             step *= 0.5;
+        }
+        if (step == 0.0) {
+            break;
         }
         std::swap(source, trial);
         std::swap(mean, trial_mean);

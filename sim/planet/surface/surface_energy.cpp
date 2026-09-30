@@ -250,7 +250,10 @@ CellTiles solve_cell(const LandSnowSystem& land_tile, const ColumnProperties& oc
         if (!(next > low && next < high)) {
             next = 0.5 * (low + high);
         }
-        if (std::abs(next - mean_K) <= 1e-12 * mean_K) {
+        // To full precision: the cell's T̄ error, times the neighbour
+        // coupling K Σ w / A (thousands of W/m²/K at L6), is the floor of
+        // the transport solve's residual.
+        if (std::abs(next - mean_K) <= 4.0 * std::numeric_limits<double>::epsilon() * mean_K) {
             mean_K = next;
             break;
         }
