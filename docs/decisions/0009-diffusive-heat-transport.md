@@ -4,6 +4,7 @@
 - **Date:** 2026-09-30
 - **Accepted:** 2026-09-30
 - **Amended:** 2026-09-30 — §4.1 tiles exchange heat with their cell's air, and tiles without area take no transport; §4.4 the calibration target is the equator-to-pole temperature difference, not the peak transport (both in §10)
+- **Amended:** 2026-09-30 — §4.1/§4.3 the diffused temperature is the cell's air, not its surface mean (§11); §4.3 the implicit solve runs on the mesh one level coarser (§12). Implemented in task M4-03 (`1724497`, `fcfa0ff`) and recorded here afterwards
 - **Milestone:** P0 / M4 (needed for ADR-0008's seasonal experiment)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §13 M3 ("optional explicitly documented reduced horizontal transport"), §13 M4, §23 (calibration lessons), §24; Planetary Civilization Simulator — Design Record v0.9, §24.2
 - **Related:** ADR-0001 (modes, budget), ADR-0002 (finite-volume operators, determinism), ADR-0006 (sub-steps), ADR-0007 (surface columns), ADR-0008 (snow and sea ice, §9 finding)
@@ -296,3 +297,79 @@ difference of the P2 fit to the annual-mean surface temperature, 42 K
 (`T₂ ≈ −28 K`; North, Cahalan and Coakley, 1981), with `g` refitted to
 288 K. The resulting transport (1.8 PW) is recorded as too weak by a factor
 of about three, a deficit M5's atmosphere must take up.
+
+## 11. Amendment: the cell's air is the diffused temperature (2026-09-30)
+
+*Implemented in `1724497` during task M4-03; this record was written when
+closing the task.*
+
+**Context.** §4.1 diffused the cells' mean surface temperature `T̄`, and
+the solve needs each cell's response `dT̄/dh`. A freezing ocean holds its
+surface at `T_f` while releasing unlimited latent heat, so its slope is
+zero. The implicit solve could then drain a coastal cell without limit: one
+cell lost 5,000 W/m² for a month, growing 38 m of ice and collapsing its
+land sliver. Melting snow at `T_m` has the same zero slope.
+
+**Decision.** The diffused temperature is the cell's air (§10's shared
+air), not its surface. Heat leaves or enters a cell only through its tiles'
+exchange `γ` with that air. From the air's balance, a cell receiving `h`
+has
+
+```text
+T_a = T̄ + h / (γ s),        s = f_land + f_ocean,
+dT_a/dh = dT̄/dh + 1 / (γ s) > 0
+```
+
+so the response slope is never zero and a phase change can no longer become
+an unlimited source or sink. Transport now requires `γ > 0`; the step
+throws otherwise. The sea-ice tile's slope `dT̄/dh` includes its thickness
+response (implicit-function theorem on the surface balance and the growth
+equation). This replaces task M4-03's decision 5, which set the slope to 0
+at a melting or freezing point. When a line search fails far from the
+solution, the solve now takes up to four full steps across kinks of the
+response instead of stopping. Below 1e-3 W/m² a failed search still ends
+the solve (the rounding floor).
+
+**Consequences.** At planetary scales the effective diffusivity becomes
+`D γ / (γ + 6 D)` for the P2 mode, since the air–surface exchange sits in
+series with the transport. V4 now checks that form. **The §10 fit of `D`
+and `g` predates this change** and is therefore off. It is also off
+because ice now cools the poles: at L5 after 60 spin-up years, the
+Earth-like planet averages 282.7 K (target 288 K), and its P2
+equator-to-pole difference is 64.7 K (target 42 K). The refit belongs to
+task M4-04, which ADR-0008 already scopes to refit `D` and `g` with ice.
+
+## 12. Amendment: the transport solve runs one mesh level coarser (2026-09-30)
+
+*Implemented in `fcfa0ff` during task M4-03; this record was written when
+closing the task.*
+
+**Context.** With sea ice, the Newton–CG solve of §9 at full resolution
+took the L6 scenario close to its ADR-0001 limit.
+
+**Decision.** Every fine cell joins the nearest cell of the mesh one level
+coarser (about four fine cells per group; L0 uses the mesh itself). The
+implicit solve runs on the groups:
+
+- **Group areas** are the sums of their fine cells' areas, so energy stays
+  exact.
+- **Group weights** are the coarse mesh's own two-point weights `l/d` (the
+  ADR-0002 operator one level down), exactly symmetric.
+- **Air temperature and slope** of a group are the area-weighted means of
+  its cells'.
+
+Each fine cell receives its group's source. The agglomeration is built once
+per mesh level and radius and cached for the process. The local tile
+physics and every budget stay at full resolution. Only the transport's
+spatial resolution halves, which suits a diffusive closure standing in for
+the atmosphere and ocean.
+
+**Consequences.** Accuracy: the P2 response error against `λ / (λ + 6 D)`
+(with §11's series form) is 3.1 %, 0.90 % and 0.31 % at L3, L4 and L5. At
+full resolution, §9 recorded 0.45 %, 0.21 % and 0.15 %. The convergence
+order is kept, at the cost of one level of resolution. Cost at `bd6030d`
+(with sea ice, four workers, target machine): a monthly step takes about
+39 ms at L5 and 132 ms at L6, and the 250-year scenario takes 117 s and
+395 s against ADR-0001 limits of 240 s and 600 s. V1, V2, V3 and V8 hold
+unchanged: conservation to 2e-16, closure 0.033 of the gate, dissipation
+negative, and bit-identity across worker counts.
