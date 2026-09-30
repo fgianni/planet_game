@@ -1,26 +1,25 @@
 #include "sim/planet/surface/surface_energy.hpp"
 
 #include "sim/core/scheduler/deterministic_executor.hpp"
+#include "sim/core/scheduler/scheduler.hpp"
+#include "sim/planet/coordinates/local_tangent_basis.hpp"
 #include "sim/planet/orbit/climate_calendar.hpp"
+#include "sim/planet/orbit/solar_forcing.hpp"
 #include "sim/planet/orbit/substep_forcing.hpp"
 #include "sim/planet/planet_parameters.hpp"
 #include "sim/planet/planet_state.hpp"
-#include "sim/core/scheduler/scheduler.hpp"
-#include "sim/planet/orbit/solar_forcing.hpp"
-#include "sim/planet/coordinates/local_tangent_basis.hpp"
 #include "sim/planet/surface/column_step.hpp"
 #include "sim/planet/surface/heat_transport.hpp"
 #include "sim/planet/surface/land_snow.hpp"
-
-#include <numbers>
-#include <vector>
 #include "sim/planet/terrain/surface_fractions.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <numbers>
 #include <stdexcept>
+#include <vector>
 
 namespace planetsim {
 
@@ -338,6 +337,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     std::vector<LandSnowSystem> land_tiles(cells);
     std::vector<ColumnSystem> ocean_tiles(cells);
     std::vector<double> tile_share(cells, 0.0);   // f_land + f_ocean
+    std::vector<std::uint8_t> band_of_cell(cells, 0U);   // 10° band from 90° S
     for_each_deterministic_block(
         mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
@@ -354,6 +354,10 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     insolation, surface.grey_emissivity, dt_s);
                 tile_share[cell] = static_cast<double>(fractions.land_fraction[cell]) +
                                    static_cast<double>(fractions.ocean_fraction[cell]);
+                const double latitude_deg =
+                    latitude_rad(mesh.cells()[cell].center_unit) * 180.0 / std::numbers::pi;
+                band_of_cell[cell] = static_cast<std::uint8_t>(
+                    std::clamp(std::floor((latitude_deg + 90.0) / 10.0), 0.0, 17.0));
             }
         });
     const double exchange = surface.air_exchange_W_m2_K;
@@ -394,6 +398,10 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                             source[cell], exchange, first_guess[cell]);
                         mean[cell] = tiles.mean_K;
                         slope[cell] = tiles.slope_K_m2_W;
+                        // The next response's sources are close to these: its
+                        // cell solve starts here (a deterministic sequence of
+                        // calls, one cell per writer).
+                        first_guess[cell] = tiles.mean_K;
                     }
                 });
         };
@@ -459,10 +467,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     partial.ocean_temperature_K_m2 += ocean_weight * ocean_step.state.surface_K;
                     partial.ocean_area_m2 += ocean_weight;
                 }
-                const double latitude_deg =
-                    latitude_rad(mesh.cells()[cell].center_unit) * 180.0 / std::numbers::pi;
-                const auto band = static_cast<std::size_t>(
-                    std::clamp(std::floor((latitude_deg + 90.0) / 10.0), 0.0, 17.0));
+                const std::size_t band = band_of_cell[cell];
                 partial.band_temperature_K_m2[band] +=
                     land_weight * land_step.state.surface_K +
                     ocean_weight * ocean_step.state.surface_K;
@@ -499,16 +504,19 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.transport_newton_iterations = solve.newton_iterations;
     diagnostics.transport_cg_iterations = solve.cg_iterations;
     if (coefficient > 0.0) {
-        for (std::size_t band = 0; band < diagnostics.northward_transport_W.size(); ++band) {
-            const double boundary =
-                (-80.0 + 10.0 * static_cast<double>(band)) * std::numbers::pi / 180.0;
+        // Heat delivered to each 10° band, then summed north of each
+        // boundary: the northward transport across it.
+        std::array<double, 18> delivered{};
+        for (std::size_t cell = 0; cell < cells; ++cell) {
+            delivered[band_of_cell[cell]] += mesh.cells()[cell].area_m2 * transport[cell];
+        }
+        for (std::size_t boundary = 0; boundary < diagnostics.northward_transport_W.size();
+             ++boundary) {
             double north = 0.0;
-            for (std::size_t cell = 0; cell < cells; ++cell) {
-                if (latitude_rad(mesh.cells()[cell].center_unit) > boundary) {
-                    north += mesh.cells()[cell].area_m2 * transport[cell];
-                }
+            for (std::size_t band = boundary + 1U; band < delivered.size(); ++band) {
+                north += delivered[band];
             }
-            diagnostics.northward_transport_W[band] = north;
+            diagnostics.northward_transport_W[boundary] = north;
         }
     }
     diagnostics.snowfall_kg = total.snowfall_kg;

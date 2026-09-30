@@ -29,7 +29,7 @@ struct ImplicitTransportSettings {
     // solves converge T̄ to about 1e-12 relative, so the residual cannot fall
     // much below 1e-7 W/m² at Earth-like conductance.
     double newton_tolerance_W_m2 = 1e-6;
-    double cg_relative_tolerance = 1e-10;
+    double cg_relative_tolerance = 1e-6;   // inexact Newton: the outer loop converges regardless
     int max_cg_iterations = 2'000;
 };
 

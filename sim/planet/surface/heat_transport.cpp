@@ -63,34 +63,277 @@ struct Stencil {
     }
 };
 
-// Jacobi-preconditioned conjugate gradients on
-//   (A_c / s_c) x_c + K Σ_e w_e (x_c − x_n) = rhs_c
-// over the cells with s_c > 0; the others hold x_c = 0. Symmetric positive
-// definite: a positive diagonal plus K times a graph Laplacian. Serial, in
-// cell order, so every sum has a fixed order.
-int solve_newton_system(const PlanetMesh& mesh, const Stencil& stencil, double conductance_W_K,
-                        const Field2D<double>& slope, const Field2D<double>& rhs,
-                        Field2D<double>& solution, const ImplicitTransportSettings& settings) {
-    const std::size_t cells = mesh.cell_count();
-    std::vector<double> diagonal(cells, 0.0);
-    std::vector<double> local(cells, 0.0);   // A_c / s_c, or 0 on held cells
-    for (std::size_t cell = 0; cell < cells; ++cell) {
-        if (slope[cell] > 0.0) {
-            local[cell] = mesh.cells()[cell].area_m2 / slope[cell];
-            diagonal[cell] = local[cell] + conductance_W_K * stencil.weight_sum[cell];
+// One level of the aggregation multigrid: a symmetric matrix as diagonal
+// plus off-diagonal CSR, and each row's aggregate on the next level.
+struct Level {
+    std::size_t size = 0;
+    std::vector<double> diagonal;
+    std::vector<std::size_t> offset;      // off-diagonal CSR row offsets
+    std::vector<std::size_t> column;
+    std::vector<double> value;
+    std::vector<std::size_t> aggregate;   // empty on the coarsest level
+    // For each off-diagonal entry: where its value lands on the next level,
+    // an off-diagonal index there, or `diagonal_target` for its aggregate's
+    // diagonal.
+    std::vector<std::size_t> target;
+    std::vector<double> factor;           // dense Cholesky, coarsest level only
+};
+
+constexpr auto diagonal_target = static_cast<std::size_t>(-1);
+
+// Greedy aggregation in row order: a row whose neighbours are all free
+// starts an aggregate with them; left-over rows join the aggregate of their
+// strongest aggregated neighbour, or form their own. Deterministic.
+[[nodiscard]] std::vector<std::size_t> aggregate_rows(const Level& level, std::size_t& count) {
+    constexpr auto unassigned = static_cast<std::size_t>(-1);
+    std::vector<std::size_t> aggregate(level.size, unassigned);
+    count = 0;
+    for (std::size_t row = 0; row < level.size; ++row) {
+        bool free = aggregate[row] == unassigned;
+        for (std::size_t k = level.offset[row]; free && k < level.offset[row + 1U]; ++k) {
+            free = aggregate[level.column[k]] == unassigned;
+        }
+        if (!free) {
+            continue;
+        }
+        aggregate[row] = count;
+        for (std::size_t k = level.offset[row]; k < level.offset[row + 1U]; ++k) {
+            aggregate[level.column[k]] = count;
+        }
+        ++count;
+    }
+    for (std::size_t row = 0; row < level.size; ++row) {
+        if (aggregate[row] != unassigned) {
+            continue;
+        }
+        double strongest = 0.0;
+        for (std::size_t k = level.offset[row]; k < level.offset[row + 1U]; ++k) {
+            const std::size_t other = level.column[k];
+            if (aggregate[other] != unassigned && -level.value[k] > strongest) {
+                strongest = -level.value[k];
+                aggregate[row] = aggregate[other];
+            }
+        }
+        if (aggregate[row] == unassigned) {
+            aggregate[row] = count++;
         }
     }
+    return aggregate;
+}
+
+// The sparsity of the Galerkin coarse matrix Pᵀ A P for piecewise-constant
+// aggregates, and where every fine entry lands in it. Built once per solve
+// from the mesh graph; only the values change between Newton iterations.
+[[nodiscard]] Level coarsen_pattern(Level& fine) {
+    std::size_t count = 0;
+    fine.aggregate = aggregate_rows(fine, count);
+    Level coarse;
+    coarse.size = count;
+    std::vector<std::vector<std::size_t>> columns(count);
+    for (std::size_t row = 0; row < fine.size; ++row) {
+        const std::size_t source = fine.aggregate[row];
+        for (std::size_t k = fine.offset[row]; k < fine.offset[row + 1U]; ++k) {
+            const std::size_t other = fine.aggregate[fine.column[k]];
+            if (other != source) {
+                columns[source].push_back(other);
+            }
+        }
+    }
+    coarse.offset.assign(count + 1U, 0U);
+    for (std::size_t row = 0; row < count; ++row) {
+        auto& entries = columns[row];
+        std::sort(entries.begin(), entries.end());
+        entries.erase(std::unique(entries.begin(), entries.end()), entries.end());
+        coarse.column.insert(coarse.column.end(), entries.begin(), entries.end());
+        coarse.offset[row + 1U] = coarse.column.size();
+    }
+    coarse.diagonal.assign(count, 0.0);
+    coarse.value.assign(coarse.column.size(), 0.0);
+    fine.target.assign(fine.column.size(), diagonal_target);
+    for (std::size_t row = 0; row < fine.size; ++row) {
+        const std::size_t source = fine.aggregate[row];
+        for (std::size_t k = fine.offset[row]; k < fine.offset[row + 1U]; ++k) {
+            const std::size_t other = fine.aggregate[fine.column[k]];
+            if (other != source) {
+                const auto first = coarse.column.begin() +
+                                   static_cast<std::ptrdiff_t>(coarse.offset[source]);
+                const auto last = coarse.column.begin() +
+                                  static_cast<std::ptrdiff_t>(coarse.offset[source + 1U]);
+                fine.target[k] = static_cast<std::size_t>(
+                    std::lower_bound(first, last, other) - coarse.column.begin());
+            }
+        }
+    }
+    return coarse;
+}
+
+// The Galerkin values of the next level from this one's.
+void coarsen_values(const Level& fine, Level& coarse) {
+    std::fill(coarse.diagonal.begin(), coarse.diagonal.end(), 0.0);
+    std::fill(coarse.value.begin(), coarse.value.end(), 0.0);
+    for (std::size_t row = 0; row < fine.size; ++row) {
+        const std::size_t source = fine.aggregate[row];
+        coarse.diagonal[source] += fine.diagonal[row];
+        for (std::size_t k = fine.offset[row]; k < fine.offset[row + 1U]; ++k) {
+            if (fine.target[k] == diagonal_target) {
+                coarse.diagonal[source] += fine.value[k];
+            } else {
+                coarse.value[fine.target[k]] += fine.value[k];
+            }
+        }
+    }
+}
+
+// The multigrid hierarchy's structure on the mesh graph: every cell with all
+// its neighbours, down to a dense coarsest level.
+[[nodiscard]] std::vector<Level> build_hierarchy(const Stencil& stencil, std::size_t cells) {
+    std::vector<Level> levels(1U);
+    Level& fine = levels.front();
+    fine.size = cells;
+    // Aggregation follows coupling strength, so the structure is built from
+    // the graph Laplacian's own weights (unit conductance).
+    fine.diagonal = stencil.weight_sum;
+    fine.offset = stencil.offset;
+    fine.column = stencil.neighbour;
+    fine.value.resize(stencil.weight.size());
+    for (std::size_t k = 0; k < stencil.weight.size(); ++k) {
+        fine.value[k] = -stencil.weight[k];
+    }
+    constexpr std::size_t coarsest_size = 400U;
+    while (levels.back().size > coarsest_size) {
+        Level coarse = coarsen_pattern(levels.back());
+        coarsen_values(levels.back(), coarse);
+        if (coarse.size >= levels.back().size) {
+            levels.back().aggregate.clear();
+            levels.back().target.clear();
+            break;
+        }
+        levels.push_back(std::move(coarse));
+    }
+    return levels;
+}
+
+void factor_dense(Level& level) {
+    const std::size_t n = level.size;
+    level.factor.assign(n * n, 0.0);
+    for (std::size_t row = 0; row < n; ++row) {
+        level.factor[row * n + row] = level.diagonal[row];
+        for (std::size_t k = level.offset[row]; k < level.offset[row + 1U]; ++k) {
+            level.factor[row * n + level.column[k]] = level.value[k];
+        }
+    }
+    for (std::size_t j = 0; j < n; ++j) {
+        double pivot = level.factor[j * n + j];
+        for (std::size_t k = 0; k < j; ++k) {
+            pivot -= level.factor[j * n + k] * level.factor[j * n + k];
+        }
+        pivot = std::sqrt(pivot);
+        level.factor[j * n + j] = pivot;
+        for (std::size_t i = j + 1U; i < n; ++i) {
+            double sum = level.factor[i * n + j];
+            for (std::size_t k = 0; k < j; ++k) {
+                sum -= level.factor[i * n + k] * level.factor[j * n + k];
+            }
+            level.factor[i * n + j] = sum / pivot;
+        }
+    }
+}
+
+void solve_dense(const Level& level, const std::vector<double>& rhs, std::vector<double>& x) {
+    const std::size_t n = level.size;
+    x = rhs;
+    for (std::size_t i = 0; i < n; ++i) {
+        for (std::size_t k = 0; k < i; ++k) {
+            x[i] -= level.factor[i * n + k] * x[k];
+        }
+        x[i] /= level.factor[i * n + i];
+    }
+    for (std::size_t i = n; i-- > 0U;) {
+        for (std::size_t k = i + 1U; k < n; ++k) {
+            x[i] -= level.factor[k * n + i] * x[k];
+        }
+        x[i] /= level.factor[i * n + i];
+    }
+}
+
+// Symmetric Gauss–Seidel half-sweeps; forward before and backward after the
+// coarse correction keep the V-cycle a symmetric preconditioner.
+void gauss_seidel(const Level& level, const std::vector<double>& rhs, std::vector<double>& x,
+                  bool forward) {
+    for (std::size_t step = 0; step < level.size; ++step) {
+        const std::size_t row = forward ? step : level.size - 1U - step;
+        double sum = rhs[row];
+        for (std::size_t k = level.offset[row]; k < level.offset[row + 1U]; ++k) {
+            sum -= level.value[k] * x[level.column[k]];
+        }
+        x[row] = sum / level.diagonal[row];
+    }
+}
+
+void v_cycle(const std::vector<Level>& levels, std::size_t index, const std::vector<double>& rhs,
+             std::vector<double>& x) {
+    const Level& level = levels[index];
+    if (index + 1U == levels.size()) {
+        solve_dense(level, rhs, x);
+        return;
+    }
+    x.assign(level.size, 0.0);
+    gauss_seidel(level, rhs, x, true);
+    std::vector<double> coarse_rhs(levels[index + 1U].size, 0.0);
+    for (std::size_t row = 0; row < level.size; ++row) {
+        double residual = rhs[row] - level.diagonal[row] * x[row];
+        for (std::size_t k = level.offset[row]; k < level.offset[row + 1U]; ++k) {
+            residual -= level.value[k] * x[level.column[k]];
+        }
+        coarse_rhs[level.aggregate[row]] += residual;
+    }
+    std::vector<double> correction;
+    v_cycle(levels, index + 1U, coarse_rhs, correction);
+    for (std::size_t row = 0; row < level.size; ++row) {
+        x[row] += correction[level.aggregate[row]];
+    }
+    gauss_seidel(level, rhs, x, false);
+}
+
+// Conjugate gradients on
+//   (A_c / s_c) x_c + K Σ_e w_e (x_c − x_n) = rhs_c
+// over the cells with s_c > 0; the others are decoupled rows x_c = 0.
+// Symmetric positive definite: a positive diagonal plus K times a graph
+// Laplacian. Preconditioned by an aggregation-multigrid V-cycle (the plain
+// Jacobi preconditioner needed hundreds of iterations at L6, where the
+// Laplacian dominates the diagonal by three orders of magnitude). Serial,
+// in cell order, so every sum has a fixed order.
+int solve_newton_system(const PlanetMesh& mesh, const Stencil& stencil, double conductance_W_K,
+                        const Field2D<double>& slope, const Field2D<double>& rhs,
+                        std::vector<Level>& levels, Field2D<double>& solution,
+                        const ImplicitTransportSettings& settings) {
+    const std::size_t cells = mesh.cell_count();
+    // Held cells (s = 0) become decoupled identity rows; the pattern stays.
+    Level& fine = levels.front();
+    for (std::size_t cell = 0; cell < cells; ++cell) {
+        const bool free = slope[cell] > 0.0;
+        fine.diagonal[cell] = free ? mesh.cells()[cell].area_m2 / slope[cell] +
+                                         conductance_W_K * stencil.weight_sum[cell]
+                                   : 1.0;
+        for (std::size_t k = stencil.offset[cell]; k < stencil.offset[cell + 1U]; ++k) {
+            fine.value[k] = free && slope[stencil.neighbour[k]] > 0.0
+                                ? -conductance_W_K * stencil.weight[k]
+                                : 0.0;
+        }
+    }
+    for (std::size_t index = 0; index + 1U < levels.size(); ++index) {
+        coarsen_values(levels[index], levels[index + 1U]);
+    }
+    factor_dense(levels.back());
+
+    const Level& matrix = levels.front();
     const auto apply = [&](const std::vector<double>& input, std::vector<double>& output) {
         for (std::size_t cell = 0; cell < cells; ++cell) {
-            if (!(diagonal[cell] > 0.0)) {
-                output[cell] = 0.0;
-                continue;
+            double sum = matrix.diagonal[cell] * input[cell];
+            for (std::size_t k = matrix.offset[cell]; k < matrix.offset[cell + 1U]; ++k) {
+                sum += matrix.value[k] * input[matrix.column[k]];
             }
-            double sum = 0.0;
-            for (std::size_t k = stencil.offset[cell]; k < stencil.offset[cell + 1U]; ++k) {
-                sum += (input[stencil.neighbour[k]] - input[cell]) * stencil.weight[k];
-            }
-            output[cell] = local[cell] * input[cell] - conductance_W_K * sum;
+            output[cell] = sum;
         }
     };
     const auto dot = [cells](const std::vector<double>& first, const std::vector<double>& second) {
@@ -103,13 +346,11 @@ int solve_newton_system(const PlanetMesh& mesh, const Stencil& stencil, double c
 
     std::vector<double> x(cells, 0.0);
     std::vector<double> residual(cells, 0.0);
-    std::vector<double> preconditioned(cells, 0.0);
     for (std::size_t cell = 0; cell < cells; ++cell) {
-        if (diagonal[cell] > 0.0) {
-            residual[cell] = rhs[cell];
-            preconditioned[cell] = residual[cell] / diagonal[cell];
-        }
+        residual[cell] = slope[cell] > 0.0 ? rhs[cell] : 0.0;
     }
+    std::vector<double> preconditioned;
+    v_cycle(levels, 0U, residual, preconditioned);
     std::vector<double> direction = preconditioned;
     std::vector<double> product(cells, 0.0);
     double rho = dot(residual, preconditioned);
@@ -122,8 +363,8 @@ int solve_newton_system(const PlanetMesh& mesh, const Stencil& stencil, double c
         for (std::size_t cell = 0; cell < cells; ++cell) {
             x[cell] += alpha * direction[cell];
             residual[cell] -= alpha * product[cell];
-            preconditioned[cell] = diagonal[cell] > 0.0 ? residual[cell] / diagonal[cell] : 0.0;
         }
+        v_cycle(levels, 0U, residual, preconditioned);
         const double next_rho = dot(residual, preconditioned);
         const double beta = next_rho / rho;
         rho = next_rho;
@@ -172,6 +413,7 @@ ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double 
     }
 
     const Stencil stencil(mesh);
+    std::vector<Level> levels = build_hierarchy(stencil, cells);
     ImplicitTransportResult result;
     Field2D<double> source(cells, 0.0);
     for (std::size_t cell = 0; cell < cells; ++cell) {
@@ -218,8 +460,8 @@ ImplicitTransportResult solve_implicit_transport(const PlanetMesh& mesh, double 
                     rhs[cell] = -residual[cell] * mesh.cells()[cell].area_m2;
                 }
             });
-        result.cg_iterations +=
-            solve_newton_system(mesh, stencil, conductance_W_K, slope, rhs, delta_mean, settings);
+        result.cg_iterations += solve_newton_system(mesh, stencil, conductance_W_K, slope, rhs,
+                                                    levels, delta_mean, settings);
         diffusion_source(mesh, conductance_W_K, delta_mean, delta_source, worker_count);
         for (std::size_t cell = 0; cell < cells; ++cell) {
             delta_source[cell] -= residual[cell];

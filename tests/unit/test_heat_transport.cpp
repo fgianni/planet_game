@@ -71,8 +71,8 @@ struct QuarticResponse {
     return response;
 }
 
-// A linear response makes the implicit problem linear: one Newton step
-// solves it, whatever the conductance.
+// A linear response makes the implicit problem linear: Newton solves it in
+// one step up to the inner solve's tolerance, whatever the conductance.
 void check_linear(planetsim::test::Context& test, const planetsim::PlanetMesh& mesh) {
     std::vector<double> base(mesh.cell_count());
     std::vector<double> slopes(mesh.cell_count());
@@ -95,7 +95,7 @@ void check_linear(planetsim::test::Context& test, const planetsim::PlanetMesh& m
     std::cout << "linear newton=" << result.newton_iterations << " cg=" << result.cg_iterations
               << " residual_W_m2=" << result.consistency_residual_W_m2
               << " sum_ratio=" << std::abs(result.sum_W) / result.absolute_sum_W << '\n';
-    PLANETSIM_EXPECT(test, result.newton_iterations <= 2);
+    PLANETSIM_EXPECT(test, result.newton_iterations <= 3);   // inexact inner solves
     PLANETSIM_EXPECT(test, result.consistency_residual_W_m2 <= 1e-6);
     PLANETSIM_EXPECT(test, std::abs(result.sum_W) <= 1e-13 * result.absolute_sum_W);
     PLANETSIM_EXPECT(test, result.dissipation_W_K <= 0.0);
