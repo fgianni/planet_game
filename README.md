@@ -272,10 +272,10 @@ energy closes exactly and the monthly step stays stable. Each cell's land
 and ocean tiles exchange heat with that air at the bulk rate, so coastal
 land is maritime and a freezing ocean gives only what the air can take. Dead rock (no tilt, `g = 0`) and the aqua planet, which
 have no atmosphere, are experiments A and B of the specification. The
-Earth-like `g = 0.4455` and transport coefficient `D = 0.1999 W/m²/K` are
-calibration constants fitted together to a 288 K global mean and Earth's
-42 K equator-to-pole difference; the transport they imply (1.8 PW) is
-about a third of Earth's, a deficit left to the atmosphere (M5).
+Earth-like `g = 0.4965` and transport coefficient `D = 0.64 W/m²/K` are
+calibration constants fitted together, with sea ice active, to a 288 K
+global mean and Earth's 42 K equator-to-pole difference; the transport they
+imply (3.7 PW) is about two thirds of Earth's.
 
 Snow lies on the land tile (ADR-0008). Until the atmosphere supplies
 moisture, precipitation is a prescribed forcing, zero by default:
@@ -298,7 +298,10 @@ Its thickness is solved implicitly, so a month-long step stays stable, and
 it raises the albedo smoothly up to half a metre. `planet_cli thermal`
 prints the year's sea-ice extent by hemisphere; with the constants fitted
 before ice existed it is currently about twice Earth's, pending the M4-04
-refit.
+refit. After the M4-04 refit northern sea ice spans about 5–10 million km²
+over the year; the cycle is stationary but not periodic (the summer minimum
+varies by about 6 % from year to year). The scheduler accumulates a monthly
+climatology (means and variances per month) over a run.
 
 ## Recorded runs and replay
 

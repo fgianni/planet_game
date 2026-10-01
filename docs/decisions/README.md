@@ -15,7 +15,7 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0005 | [Fractional coastlines and cell-mesh drainage](0005-coastlines-and-drainage.md) | Accepted (amended 2026-09-28, §9.2) | 2026-09-28 |
 | 0006 | [Seasonal climate-mode steps on the integer clock](0006-seasonal-climate-steps.md) | Accepted | 2026-09-29 |
 | 0007 | [Surface energy columns for the first thermal planet](0007-surface-energy-columns.md) | Accepted (amended 2026-09-29) | 2026-09-29 |
-| 0008 | [Snow, sea ice and the ice–albedo feedback](0008-snow-and-sea-ice.md) | Accepted (implementation record §9, §9.1) | 2026-09-30 |
+| 0008 | [Snow, sea ice and the ice–albedo feedback](0008-snow-and-sea-ice.md) | Accepted (implementation record §9–9.2; V7 amendment pending) | 2026-09-30 |
 | 0009 | [Diffusive horizontal heat transport before the atmosphere](0009-diffusive-heat-transport.md) | Accepted (amended 2026-09-30, §10–12) | 2026-09-30 |
 
 Records cite the design record by version and section (for example "Design

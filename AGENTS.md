@@ -35,10 +35,11 @@ complete.
 
 M4 (basic snow, ice and albedo feedback) is in progress under ADR-0008 and
 ADR-0009: tasks M4-01 (cryosphere state, land snow, PSNAP schema 4), M4-02
-(diffusive heat transport with shared cell air) and M4-03 (sea ice) are
-complete; M4-04 (seasonal experiment and refit) and M4-05 (ADR-0003
-history) remain. Most recently completed task:
-[`docs/tasks/M4-03-sea-ice.md`](docs/tasks/M4-03-sea-ice.md).
+(diffusive heat transport with shared cell air), M4-03 (sea ice)
+and M4-04 (seasonal experiment, climatology, refit; V7 amendment pending
+acceptance) are complete; M4-05 (ADR-0003 history) remains. Most recently
+completed task:
+[`docs/tasks/M4-04-seasonal-experiment-and-refit.md`](docs/tasks/M4-04-seasonal-experiment-and-refit.md).
 Task documents in `docs/tasks/` state their scope, the decisions already
 made, acceptance criteria and what to report. M4 was requested on
 2026-09-30; do not implement M5 or later milestones unless explicitly

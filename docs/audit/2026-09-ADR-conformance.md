@@ -182,8 +182,16 @@ schemas evolve.
 |---|---|---|
 | ADR-0008 V1–V6, V8 (ocean tile) | ✅ EVIDENCED | Per-tile and global energy and water closure, Stefan growth, invariants, ice–albedo sign, bit-identity above `T_f`, worker counts (`tests/unit/test_sea_ice.cpp`, `tests/physics/test_sea_ice_planet.cpp`); values in ADR-0008 §9.1. |
 | Seawater never below freezing | ✅ EVIDENCED | `initialise_cryosphere` and the schema 3 → 4 migration raise sub-freezing ocean layers to `T_f`; the golden tests expect it. |
-| Plausible sea-ice extent (specification §23) | ⚠ RUNTIME_ONLY | About twice Earth's with constants fitted before ice existed; the refit is task M4-04. |
+| Plausible sea-ice extent (specification §23) | ⚠ RUNTIME_ONLY | *Updated 2026-10-01 (M4-04):* northern extent near Earth's after the refit; the southern cap is an open polar ocean on this seed. |
 | ADR-0001 performance gates with sea ice | ✅ EVIDENCED | 250 years at L5 in 176 s and L6 in 572 s on 4 workers, after ADR-0009 §11–12; the L6 margin is about 5 %. |
+
+### M4-04 seasonal experiment, climatology and refit (2026-10-01)
+
+| Requirement | Status | Finding |
+|---|---|---|
+| Monthly climatology (ADR-0006 §7, ADR-0008 §4.6) | ✅ EVIDENCED | Welford mean and variance per cell and month, never persisted (`tests/unit/test_climatology.cpp`). |
+| Refit with sea ice (specification §24) | ✅ EVIDENCED | `g = 0.4965`, `D = 0.64` with their record; northern sea ice 4.8–10.2 million km² at L5. ADR-0001 gates: 250 years at L5 in 148 s, L6 in 508 s on 4 workers. |
+| Stable seasonal snow/ice experiment (specification §13 M4, ADR-0008 V7) | ⚠ RUNTIME_ONLY | Stationary to 0.5–0.9 % between decades; the year-to-year repeat of the original V7 is unreachable (interannual variability), and the amendment to a stationarity gate awaits acceptance. Perennial ice and land snow still drift. |
 
 ## Risk-register audit
 

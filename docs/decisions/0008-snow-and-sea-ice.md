@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-30
 - **Accepted:** 2026-09-30
+- **Amended:** 2026-10-01 — §5 V7 tests the seasonal cycle's stationarity, not its exact repetition (§9.2, pending acceptance)
 - **Milestone:** P0 / M4 (basic snow, ice and albedo feedback)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §9.6, §9.10, §13 M4, §13.1 (experiment C), §14, §15, §24; Planetary Civilization Simulator — Design Record v0.9, §24.2, §24.4
 - **Related:** ADR-0001 (modes, budget), ADR-0002 (precision), ADR-0003 (snapshots, migration, M4 history work), ADR-0005 (land and ocean tiles), ADR-0006 (sub-steps, climatology per `k mod 12`), ADR-0007 (surface columns)
@@ -423,3 +424,55 @@ scenarios took about 290 s at L5 and 1,400 s at L6); with the exact ice
 slopes, the warm-started thickness Newton and ADR-0009 §12 (transport one
 level coarser), 250 years take 176 s at L5 and 572 s at L6 on 4 workers,
 within the gates (240 s, 600 s).
+
+### 9.2 Climatology, refit and the seasonal experiment (task M4-04, 2026-10-01)
+
+**Climatology (§4.6).** `sim/planet/climatology/monthly_climatology.{hpp,cpp}`:
+per cell and sub-step `k mod 12`, the Welford running mean and population
+variance of the cell's radiating surface temperature (a derived field the
+surface step now writes) and the means of land snow and sea ice, over the
+climate steps of a run; four `climatology`-partition fields, never
+persisted; spin-up does not contribute. The scheduler's climate process
+accumulates it. Tested against the two-pass statistics
+(`tests/unit/test_climatology.cpp`).
+
+**Refit (§4.7).** With sea ice active, `D` and `g` are refitted to 288 K and
+a 42 K P2 equator-to-pole difference (ADR-0009 §10): `g = 0.4965`,
+`D = 0.6400` (record at their definition). The joint bisection alternates
+between two neighbours 0.5 K apart in the gradient, because the ice edge
+moves a cell at a time. At L5: 288.2 K, 40.9 K, peak poleward transport
+3.72 PW (Earth about 5.5; 1.8 PW before ice), northern sea ice
+4.8–10.2 million km² over the year (Earth about 6–15). The southern cover,
+33–35 million km², is the whole cap south of about 60° S: on this seed the
+south pole is open ocean, where Earth has Antarctica.
+
+**V7 amended (pending acceptance).** The planet's seasonal cycle is not
+periodic. After spin-up the northern winter maximum repeats exactly, but
+the summer minimum varies irregularly from year to year by about 6 %
+(standard deviation 0.41 of a mean 6.6 million km² at L4): thin edge ice
+either melts out completely or survives a summer, which amplifies small
+differences, much as Earth's September minimum varies. A year-to-year
+repeat within 1e-3 is therefore unreachable. V7 instead requires a
+stationary cycle: the decadal means of each year's largest and smallest
+cover (area weighted by the albedo ramps of §4.2, which the radiation sees;
+counting any cell with ice quantises the edge by whole cells, about 2 %)
+agree between two consecutive decades within 2 %, with the interannual
+spread recorded (`tests/physics/test_seasonal_experiment.cpp`):
+
+| Planet (L4, 40 spin-up years) | Decadal change | Northern ice cover, km² | Drift per decade |
+|---|---|---|---|
+| Earth-like | 0.5 % | 6.6 (sd 0.41) – 10.3 million | ice mass +3.8 % |
+| Earth-like, 1e-5 kg/m²/s snowfall | 0.9 % | 14.1 million, snow cover 36.6–37.0 million | ice +7 %, snow +17 % |
+| Aqua planet | 0 | 93 million, perennial | ice +9 % |
+
+**Findings.** Perennial sea ice keeps thickening (about 0.4 % a year):
+without ocean heat transport (M11) nothing brings heat to its base, and
+summer melt does not reach the thick interior. Under uniform prescribed
+snowfall, perennial land snow accumulates as nascent ice sheets with no flow
+to limit them, and the snowy planet settles about 6 K colder. Both drifts
+are recorded rather than gated; they belong to M11 (ocean transport) and to
+a later ice-sheet process.
+
+Performance with the refit constants, 4 workers: 250 years at L5 in 148 s
+(gate 240 s) and at L6 in 508 s (gate 600 s); the L5 run replays bit for
+bit.

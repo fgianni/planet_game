@@ -25,7 +25,8 @@ M0--M2 (mesh, orbit, terrain, drainage, scheduler and calendar) are complete.
 
 M4 (basic snow, ice and albedo feedback) is in progress under ADR-0008 and
 ADR-0009: M4-01 (cryosphere state, land snow, PSNAP schema 4), M4-02
-(diffusive heat transport) and M4-03 (sea ice) are complete.
+(diffusive heat transport), M4-03 (sea ice) and M4-04 (seasonal experiment,
+climatology, refit) are complete; M4-05 (snapshot history) remains.
 
 Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI
