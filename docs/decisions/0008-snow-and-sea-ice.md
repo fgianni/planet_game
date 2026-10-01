@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-30
 - **Accepted:** 2026-09-30
-- **Amended:** 2026-10-01 — §5 V7 tests the seasonal cycle's stationarity, not its exact repetition (§9.2, pending acceptance)
+- **Amended:** 2026-10-01 — §5 V7 tests the seasonal cycle's stationarity, not its exact repetition (§9.2)
 - **Milestone:** P0 / M4 (basic snow, ice and albedo feedback)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §9.6, §9.10, §13 M4, §13.1 (experiment C), §14, §15, §24; Planetary Civilization Simulator — Design Record v0.9, §24.2, §24.4
 - **Related:** ADR-0001 (modes, budget), ADR-0002 (precision), ADR-0003 (snapshots, migration, M4 history work), ADR-0005 (land and ocean tiles), ADR-0006 (sub-steps, climatology per `k mod 12`), ADR-0007 (surface columns)
@@ -258,7 +258,7 @@ stays zero in the fit, so the refit reflects sea ice only.
 | V4 | Invariants: snow present ⇒ surface ≤ `T_m`; ice present ⇒ mixed layer = `T_f`; masses ≥ 0 | exact |
 | V5 | Albedo-feedback sign: added snow or ice under the same forcing lowers absorbed shortwave and the next temperature; removed snow or ice raises them | exact sign |
 | V6 | Degenerate cases: no snowfall and never freezing ⇒ ADR-0007 results unchanged, bit for bit; dead rock unchanged | bit-identical |
-| V7 | Seasonal experiment: Earth-like and aqua planet after spin-up; annual cycle of ice area and volume repeats | year-to-year change ≤ 1e-3 relative; hemispheric areas recorded |
+| V7 | Seasonal experiment: Earth-like and aqua planet after spin-up; the seasonal cycle of ice and snow cover is stationary *(amended 2026-10-01, §9.2: the accepted text asked for a year-to-year repeat within 1e-3)* | decadal means of each year's largest and smallest cover agree between consecutive decades within 2 %; interannual spread and volume drift recorded |
 | V8 | Determinism: 1/2/8/16 workers, chunked runs, replay hashes (ADR-0003 V1–V2) | bit-identical |
 | V9 | Snapshots: v4 round trip; v1–v3 golden files load through the chain | exact |
 | V10 | Cost against the ADR-0001 gate | within the M3-03 gate |
@@ -446,7 +446,7 @@ moves a cell at a time. At L5: 288.2 K, 40.9 K, peak poleward transport
 33–35 million km², is the whole cap south of about 60° S: on this seed the
 south pole is open ocean, where Earth has Antarctica.
 
-**V7 amended (pending acceptance).** The planet's seasonal cycle is not
+**V7 amended (accepted 2026-10-01).** The planet's seasonal cycle is not
 periodic. After spin-up the northern winter maximum repeats exactly, but
 the summer minimum varies irregularly from year to year by about 6 %
 (standard deviation 0.41 of a mean 6.6 million km² at L4): thin edge ice
