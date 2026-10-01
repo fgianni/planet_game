@@ -1,7 +1,8 @@
 # ADR-0010 — A layered atmosphere: hydrostatic columns, grey longwave and convection
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-01
+- **Accepted:** 2026-10-01
 - **Milestone:** P0 / M5 (atmosphere and pressure)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §5 (3–5 layers), §6 (`AtmosphereState`), §9.1, §10 (vertical structure), §13 M5, §23, §24; Planetary Civilization Simulator — Design Record v0.9, §5.2–5.4, §15.1
 - **Related:** ADR-0001 (modes, budget), ADR-0002 (field layout, precision), ADR-0003 (snapshots, §3.6 migration), ADR-0006 (sub-steps), ADR-0007 (surface columns, grey layer), ADR-0008 (snow and sea ice), ADR-0009 (transport, shared cell air)
