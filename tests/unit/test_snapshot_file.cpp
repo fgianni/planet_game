@@ -205,10 +205,32 @@ void expect_states_equal(planetsim::test::Context& test,
                                        second.slow().sea_ice_mass_kg_m2));
 }
 
+// ADR-0003 §3.6, task M5-01: initialisers attach only to initialiser steps
+// of the chain, and the log line names the step and its decision.
+void check_migration_chain(planetsim::test::Context& test) {
+    const auto noop = [](const planetsim::PlanetMesh&, planetsim::SlowState&) {};
+    planetsim::SnapshotMigration migration;
+    migration.set_initialiser(2U, noop).set_initialiser(4U, noop);
+    PLANETSIM_EXPECT(test, migration.initialiser(2U) != nullptr);
+    PLANETSIM_EXPECT(test, migration.initialiser(3U) == nullptr);
+    // 2 -> 3 is a core step; schema 1 is never a target; 5 does not exist.
+    PLANETSIM_EXPECT_THROWS(test, std::invalid_argument, migration.set_initialiser(3U, noop));
+    PLANETSIM_EXPECT_THROWS(test, std::invalid_argument, migration.set_initialiser(1U, noop));
+    PLANETSIM_EXPECT_THROWS(
+        test, std::invalid_argument,
+        migration.set_initialiser(planetsim::persistent_snapshot_schema_version + 1U, noop));
+    PLANETSIM_EXPECT_THROWS(
+        test, std::invalid_argument,
+        migration.set_initialiser(2U, planetsim::SnapshotMigration::Initialiser{}));
+    const auto line = planetsim::migration_log_line(planetsim::snapshot_migration_chain[1]);
+    PLANETSIM_EXPECT(test, line == "2 -> 3 ocean mixed layer widened to float64 (ADR-0007 §10)");
+}
+
 }  // namespace
 
 int main() {
     planetsim::test::Context test;
+    check_migration_chain(test);
 
     // Unique per run, so concurrent test runs from different build trees
     // cannot interfere.

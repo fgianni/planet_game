@@ -18,6 +18,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [M4-03](M4-03-sea-ice.md) | Sea ice on the ocean tile (ADR-0008 §4.4) | Complete |
 | [M4-04](M4-04-seasonal-experiment-and-refit.md) | Seasonal experiment, climatology, refit with sea ice | Complete |
 | [M4-05](M4-05-history-deltas-and-compression.md) | Snapshot history: compression, delta chains, forks (ADR-0003) | Complete |
+| [M5-01](M5-01-migration-chain.md) | The ordered snapshot migration chain (ADR-0003 §3.6, ADR-0010 §4.7) | Complete |
 
 Completed tasks are records: they keep the specification and design versions
 they were written against, even after those files have left the tree. Read

@@ -41,8 +41,13 @@ history: zstd compression, delta chains and forks). Most recently
 completed task:
 [`docs/tasks/M4-05-history-deltas-and-compression.md`](docs/tasks/M4-05-history-deltas-and-compression.md).
 Task documents in `docs/tasks/` state their scope, the decisions already
-made, acceptance criteria and what to report. M4 was requested on
-2026-09-30; do not implement M5 or later milestones unless explicitly
+made, acceptance criteria and what to report.
+
+M5 (atmosphere and pressure) was requested on 2026-10-01 and is in progress
+under ADR-0010 (accepted 2026-10-01): M5-01 (the ordered snapshot migration
+chain) is complete; M5-02 (atmosphere state and hydrostatics), M5-03
+(column radiation and convection) and M5-04 (transport, calibration and
+close) remain. Do not implement M6 or later milestones unless explicitly
 requested.
 
 ## Hard rules

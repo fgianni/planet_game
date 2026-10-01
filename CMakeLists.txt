@@ -27,6 +27,7 @@ add_library(PlanetSim STATIC
     sim/core/serialization/crc32c.cpp
     sim/core/serialization/history_store.cpp
     sim/core/serialization/snapshot_file.cpp
+    sim/core/serialization/snapshot_migration.cpp
     sim/core/serialization/state_snapshot.cpp
     sim/core/serialization/xxh3.cpp
     sim/core/serialization/run_manifest.cpp

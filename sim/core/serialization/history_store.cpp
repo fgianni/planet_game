@@ -161,7 +161,7 @@ SnapshotManifest HistoryStore::load(std::string_view id, PlanetState& target,
                                     const SnapshotMigration& migration) const {
     SnapshotManifest manifest;
     SnapshotChunks chunks = chunks_of(id, manifest);
-    decode_snapshot_chunks(manifest, chunks, target, migration);
+    manifest.applied_migrations = decode_snapshot_chunks(manifest, chunks, target, migration);
     cache_.emplace(std::string(id), std::move(chunks));
     return manifest;
 }

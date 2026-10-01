@@ -1219,8 +1219,38 @@ SnapshotChunks read_snapshot_chunks(const std::filesystem::path& path,
     return chunks;
 }
 
-void decode_snapshot_chunks(const SnapshotManifest& manifest, const SnapshotChunks& chunks,
-                            PlanetState& target_state, const SnapshotMigration& migration) {
+namespace {
+
+// The core steps of the chain. `raw` returns a stored chunk of the file.
+template <typename RawChunk>
+void apply_core_migration_step(const SnapshotMigrationStep& step, std::uint32_t file_schema,
+                               const RawChunk& raw, std::size_t cells, SlowState& staged) {
+    switch (step.from_schema) {
+    case 2U:
+        // Schema 2 -> 3 (ADR-0007 §10): the float32 mixed layer of a schema 2
+        // file widens exactly into its float64 successor. From an older file
+        // the schema 1 -> 2 initialiser already wrote the float64 field.
+        if (file_schema == 2U) {
+            const Field2D<float> stored =
+                decode_float_cells(raw(retired_ocean_mixed_layer_temperature_float32_K), cells);
+            staged.ocean_mixed_layer_temperature_K = Field2D<double>(cells, 0.0);
+            for (std::size_t cell = 0; cell < cells; ++cell) {
+                staged.ocean_mixed_layer_temperature_K[cell] = static_cast<double>(stored[cell]);
+            }
+        }
+        return;
+    default:
+        throw std::logic_error("no core implementation of migration step " +
+                               migration_log_line(step));
+    }
+}
+
+}  // namespace
+
+std::vector<std::string> decode_snapshot_chunks(const SnapshotManifest& manifest,
+                                                const SnapshotChunks& chunks,
+                                                PlanetState& target_state,
+                                                const SnapshotMigration& migration) {
     if (manifest.mesh_level != target_state.mesh().subdivision()) {
         throw std::runtime_error("snapshot mesh_level " + std::to_string(manifest.mesh_level) +
                                  " does not match target mesh level " +
@@ -1259,41 +1289,40 @@ void decode_snapshot_chunks(const SnapshotManifest& manifest, const SnapshotChun
         }
         decode_chunk(descriptor, raw(descriptor.id), cells, staged);
     }
-    if (file_schema < 2U) {
-        if (!migration.initialise_schema_2_fields) {
-            throw std::runtime_error(
-                "snapshot schema_version " + std::to_string(file_schema) +
-                " lacks the surface-energy fields and needs the schema 1 -> 2 migration "
-                "initialiser (ADR-0007 §4.6)");
+    // The chain from the file's schema on (ADR-0003 §3.6).
+    std::vector<std::string> log;
+    for (const auto& step : snapshot_migration_chain) {
+        if (step.from_schema < file_schema) {
+            continue;
         }
-        migration.initialise_schema_2_fields(target_state.mesh(), staged);
-    } else if (file_schema < 3U) {
-        // Schema 2 -> 3 (ADR-0007 §10): the float32 mixed layer widens exactly
-        // into its float64 successor.
-        const Field2D<float> stored =
-            decode_float_cells(raw(retired_ocean_mixed_layer_temperature_float32_K), cells);
-        staged.ocean_mixed_layer_temperature_K = Field2D<double>(cells, 0.0);
-        for (std::size_t cell = 0; cell < cells; ++cell) {
-            staged.ocean_mixed_layer_temperature_K[cell] = static_cast<double>(stored[cell]);
+        switch (step.kind) {
+        case MigrationStepKind::initialiser: {
+            const auto* initialise = migration.initialiser(step.from_schema + 1U);
+            if (initialise == nullptr) {
+                throw std::runtime_error(
+                    "snapshot schema_version " + std::to_string(file_schema) +
+                    " needs the migration step " + migration_log_line(step) +
+                    ", whose initialiser was not supplied");
+            }
+            (*initialise)(target_state.mesh(), staged);
+            break;
         }
-    }
-    if (file_schema < 4U) {
-        if (!migration.initialise_schema_4_fields) {
-            throw std::runtime_error(
-                "snapshot schema_version " + std::to_string(file_schema) +
-                " lacks the cryosphere fields and needs the schema 3 -> 4 migration "
-                "initialiser (ADR-0008 §4.6)");
+        case MigrationStepKind::core:
+            apply_core_migration_step(step, file_schema, raw, cells, staged);
+            break;
         }
-        migration.initialise_schema_4_fields(target_state.mesh(), staged);
+        log.push_back(migration_log_line(step));
     }
     target_state.slow() = std::move(staged);
+    return log;
 }
 
 SnapshotManifest read_snapshot(const std::filesystem::path& path, PlanetState& target_state,
                                const SnapshotMigration& migration) {
     SnapshotManifest manifest;
     const SnapshotChunks chunks = read_snapshot_chunks(path, nullptr, manifest);
-    decode_snapshot_chunks(manifest, chunks, target_state, migration);
+    manifest.applied_migrations =
+        decode_snapshot_chunks(manifest, chunks, target_state, migration);
     return manifest;
 }
 

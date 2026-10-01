@@ -24,11 +24,14 @@ history with zstd compression, delta chains and forks, V6--V7).
 M0--M3 (mesh, orbit, terrain, drainage, scheduler and calendar, sub-step
 insolation, surface energy columns, replay) are complete.
 
+M5 (atmosphere and pressure) is in progress under ADR-0010: M5-01 (the
+ordered snapshot migration chain) is complete; M5-02 to M5-04 remain.
+
 Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI
 units; - deterministic and testable implementation; - physical
 state/fluxes rather than scripted climate modifiers; - production code
-and tests together; - do not proceed to M5 unless explicitly requested.
+and tests together; - do not proceed to M6 unless explicitly requested.
 
 When starting work, first audit the repository and propose the concrete
 implementation plan for the current milestone against the specification. Then implement in

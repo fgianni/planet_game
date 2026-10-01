@@ -2,10 +2,10 @@
 
 #include "sim/core/fields/field_registry.hpp"
 #include "sim/core/scheduler/simulation_clock.hpp"
+#include "sim/core/serialization/snapshot_migration.hpp"
 
 #include <cstdint>
 #include <filesystem>
-#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -15,27 +15,6 @@ namespace planetsim {
 class PlanetMesh;
 class PlanetState;
 struct SlowState;
-
-// Initialisers for slow fields that an older schema lacks (ADR-0003 §3.6:
-// missing data is never silently zero). Core code stays domain-agnostic: the
-// planet layer supplies the functions. Each receives the target mesh and the
-// staged slow state with every field the file did contain already decoded.
-struct SnapshotMigration {
-    // Schema 1 -> 2: the four surface-energy temperatures, written in the
-    // current (schema 3) types.
-    std::function<void(const PlanetMesh&, SlowState&)> initialise_schema_2_fields;
-    // Schema 3 -> 4: the cryosphere reservoirs (ADR-0008 §4.6).
-    std::function<void(const PlanetMesh&, SlowState&)> initialise_schema_4_fields;
-};
-
-// Schema 1 (M2): hypsometry and sea level. Schema 2 (M3, ADR-0007 §4.6) adds
-// the four surface-energy temperatures. Schema 3 (ADR-0007 §10) stores the
-// ocean mixed layer as float64 under a new field ID; the schema 2 -> 3 step
-// widens the float32 values exactly and needs no initialiser. Schema 4
-// (ADR-0008 §4.6) adds the snow and sea-ice reservoirs. Schemas 1 and 3 load
-// through SnapshotMigration, whose initialisers write the current types.
-inline constexpr std::uint32_t persistent_snapshot_schema_version = 4U;
-inline constexpr std::uint32_t oldest_readable_snapshot_schema_version = 1U;
 
 struct SnapshotFieldInfo {
     std::uint32_t field_id = 0;
@@ -64,6 +43,9 @@ struct SnapshotManifest {
     // §3.5); its manifest carries "kind":"delta".
     bool delta = false;
     std::vector<SnapshotFieldInfo> fields;
+    // Filled by the readers, never stored: one migration_log_line per chain
+    // step applied while loading, in order (ADR-0003 §3.6).
+    std::vector<std::string> applied_migrations;
 };
 
 // Chunk codecs (ADR-0003 §3.4, task M4-05): "none"; "shuffle-zstd", the
@@ -116,12 +98,14 @@ std::size_t write_delta_snapshot(const std::filesystem::path& path,
                                                   const SnapshotChunks* parent,
                                                   SnapshotManifest& manifest);
 
-// Decodes chunks into the target's slow state, migrating older schemas as
-// read_snapshot does; checks the mesh identity first. The target is left
-// untouched on failure.
-void decode_snapshot_chunks(const SnapshotManifest& manifest, const SnapshotChunks& chunks,
-                            PlanetState& target_state,
-                            const SnapshotMigration& migration = {});
+// Decodes chunks into the target's slow state, migrating older schemas
+// through the chain as read_snapshot does; checks the mesh identity first.
+// Returns the log of the steps applied. The target is left untouched on
+// failure.
+std::vector<std::string> decode_snapshot_chunks(const SnapshotManifest& manifest,
+                                                const SnapshotChunks& chunks,
+                                                PlanetState& target_state,
+                                                const SnapshotMigration& migration = {});
 
 // ADR-0003 §3.3 state_hash: XXH3-64 over the slow state in canonical order,
 // the same field chunks a snapshot stores, each preceded by its field ID
@@ -132,8 +116,10 @@ void decode_snapshot_chunks(const SnapshotManifest& manifest, const SnapshotChun
 [[nodiscard]] SnapshotManifest inspect_snapshot(const std::filesystem::path& path);
 // Reads a full snapshot of any schema from
 // oldest_readable_snapshot_schema_version to the current one, and of any
-// codec. An older file is migrated in the staged copy; reading one without
-// the initialiser it needs throws, and the target is left untouched. A delta
+// codec. An older file is migrated in the staged copy through every step of
+// snapshot_migration_chain from its schema on, and the manifest's
+// applied_migrations lists them; reading one without an initialiser it
+// needs throws, naming the step, and the target is left untouched. A delta
 // needs its chain (HistoryStore) and is refused.
 [[nodiscard]] SnapshotManifest read_snapshot(const std::filesystem::path& path,
                                              PlanetState& target_state,

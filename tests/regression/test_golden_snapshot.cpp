@@ -20,7 +20,9 @@
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -131,6 +133,10 @@ int main() {
     const auto parameters = planetsim::PlanetParameters::earth_development();
     const auto surface =
         planetsim::surface_energy_parameters_for(planetsim::PlanetPreset::earth_like);
+    // The migration chain's log lines (ADR-0003 §3.6, task M5-01).
+    const std::string step_1_2 = "1 -> 2 surface-energy temperatures (ADR-0007 §4.6)";
+    const std::string step_2_3 = "2 -> 3 ocean mixed layer widened to float64 (ADR-0007 §10)";
+    const std::string step_3_4 = "3 -> 4 snow and sea-ice reservoirs (ADR-0008 §4.6)";
 
     // Schema 1 (M2): loads only through the schema 1 -> 2 migration, which
     // initialises the surface temperatures at their closed-form equilibrium.
@@ -150,6 +156,8 @@ int main() {
         const auto manifest = planetsim::read_snapshot(
             golden_path, state, planetsim::surface_energy_migration(parameters, surface));
         PLANETSIM_EXPECT(test, manifest.schema_version == 1U);
+        PLANETSIM_EXPECT(test, (manifest.applied_migrations ==
+                                std::vector<std::string>{step_1_2, step_2_3, step_3_4}));
         PLANETSIM_EXPECT(test, manifest.tick == synthetic_tick);
         PLANETSIM_EXPECT(test, manifest.mesh_level == 0U);
         PLANETSIM_EXPECT(test, manifest.cell_count == 12U);
@@ -188,6 +196,8 @@ int main() {
             std::filesystem::path("tests/data/golden/psnap-v2-l0.psnap"), state,
             planetsim::surface_energy_migration(parameters, surface));
         PLANETSIM_EXPECT(test, manifest.schema_version == 2U);
+        PLANETSIM_EXPECT(test, (manifest.applied_migrations ==
+                                std::vector<std::string>{step_2_3, step_3_4}));
         PLANETSIM_EXPECT(test, manifest.fields.size() == 6U);
         PLANETSIM_EXPECT(test, manifest.fields.size() == 6U &&
                                    manifest.fields[4].field_id == 0x0003'0003U &&
@@ -221,6 +231,8 @@ int main() {
             std::filesystem::path("tests/data/golden/psnap-v3-l0.psnap"), state,
             planetsim::surface_energy_migration(parameters, surface));
         PLANETSIM_EXPECT(test, manifest.schema_version == 3U);
+        PLANETSIM_EXPECT(test, (manifest.applied_migrations ==
+                                std::vector<std::string>{step_3_4}));
         PLANETSIM_EXPECT(test, manifest.fields.size() == 6U);
         check_schema_1_fields(test, state);
         bool exact = true;
@@ -250,7 +262,7 @@ int main() {
                 std::filesystem::path("tests/data/golden/psnap-v3-l0.psnap"), unmigrated));
         } catch (const std::runtime_error& error) {
             refused =
-                std::string_view{error.what()}.find("schema 3 -> 4") != std::string_view::npos;
+                std::string_view{error.what()}.find(step_3_4) != std::string_view::npos;
         }
         PLANETSIM_EXPECT(test, refused);
     }
@@ -292,6 +304,8 @@ int main() {
         const auto manifest = planetsim::read_snapshot(
             std::filesystem::path("tests/data/golden/psnap-v4-l0.psnap"), state);
         PLANETSIM_EXPECT(test, manifest.schema_version == 4U);
+        PLANETSIM_EXPECT(test, (manifest.applied_migrations ==
+                                std::vector<std::string>{}));
         PLANETSIM_EXPECT(test, manifest.fields.size() == 8U);
         check_schema_1_fields(test, state);
         PLANETSIM_EXPECT(test, schema_4_exact(state, false));
