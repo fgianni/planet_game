@@ -2,6 +2,7 @@
 #include "sim/core/random/counter_rng.hpp"
 #include "sim/core/scheduler/simulation_clock.hpp"
 #include "sim/core/serialization/run_manifest.hpp"
+#include "sim/core/serialization/history_store.hpp"
 #include "sim/core/serialization/snapshot_file.hpp"
 #include "sim/planet/mesh/icosphere.hpp"
 #include "sim/planet/mesh/mesh_diagnostics.hpp"
@@ -69,6 +70,9 @@ struct SolarOptions {
 struct SnapshotWriteOptions {
     std::uint32_t subdivision = 5;
     std::filesystem::path output_path;
+    planetsim::SnapshotCompression compression = planetsim::SnapshotCompression::shuffle_zstd;
+    // With a parent: a delta of the perturbed synthetic state against it.
+    std::filesystem::path delta_of;
 };
 
 struct TerrainOptions {
@@ -80,6 +84,16 @@ struct TerrainOptions {
     std::size_t worker_count = 0;  // 0: hardware concurrency
     std::filesystem::path map_path;
     std::filesystem::path snapshot_path;
+};
+
+struct HistoryOptions {
+    std::uint32_t subdivision = 6;
+    std::uint64_t seed = 1;
+    int spin_up_years = 30;
+    int decades = 10;
+    std::uint32_t base_interval = 8;
+    std::size_t worker_count = 0;   // 0: hardware concurrency
+    std::filesystem::path directory;
 };
 
 struct ThermalOptions {
@@ -125,6 +139,8 @@ void print_usage(std::ostream& output) {
               " [--snapshot FILE.psnap]\n"
            << "    presets: earth_like (default), aqua_planet, dead_rock\n"
            << "  planet_cli calendar [--year N | --from-tick T]\n"
+           << "  planet_cli history [--subdivision LEVEL] [--seed N] [--spin-up-years N]"
+              " [--decades N] [--base-interval N] [--workers W] [--out DIRECTORY]\n"
            << "  planet_cli thermal [--subdivision LEVEL] [--seed N] [--preset NAME]"
               " [--years N] [--grey G | --calibrate KELVIN]"
               " [--transport D | --calibrate-gradient KELVIN | --calibrate-transport PW]"
@@ -380,6 +396,39 @@ void print_usage(std::ostream& output) {
     return options;
 }
 
+[[nodiscard]] HistoryOptions parse_history_options(int argument_count, char** arguments) {
+    HistoryOptions options;
+    for (int index = 2; index < argument_count; ++index) {
+        const std::string_view argument{arguments[index]};
+        if (++index >= argument_count) {
+            throw std::invalid_argument(std::string(argument) + " requires a value");
+        }
+        const std::string_view value{arguments[index]};
+        if (argument == "--subdivision") {
+            options.subdivision = parse_subdivision(value);
+        } else if (argument == "--seed") {
+            options.seed = parse_unsigned(value, "seed");
+        } else if (argument == "--spin-up-years") {
+            options.spin_up_years = static_cast<int>(parse_int64(value, "spin-up years"));
+        } else if (argument == "--decades") {
+            options.decades = static_cast<int>(parse_int64(value, "decade count"));
+        } else if (argument == "--base-interval") {
+            options.base_interval =
+                static_cast<std::uint32_t>(parse_unsigned(value, "base interval"));
+        } else if (argument == "--workers") {
+            options.worker_count = static_cast<std::size_t>(parse_unsigned(value, "worker count"));
+        } else if (argument == "--out") {
+            options.directory = std::filesystem::path(value);
+        } else {
+            throw std::invalid_argument("unknown history option: " + std::string(argument));
+        }
+    }
+    if (options.spin_up_years < 0 || options.decades <= 0) {
+        throw std::invalid_argument("history needs a non-negative spin-up and at least a decade");
+    }
+    return options;
+}
+
 [[nodiscard]] std::string_view boundary_class_name(planetsim::BoundaryClass boundary_class) {
     switch (boundary_class) {
     case planetsim::BoundaryClass::none:
@@ -577,6 +626,16 @@ int run_terrain(const TerrainOptions& options) {
             options.subdivision = parse_subdivision(value);
         } else if (argument == "--out") {
             options.output_path = std::filesystem::path(value);
+        } else if (argument == "--compression") {
+            if (value == "none") {
+                options.compression = planetsim::SnapshotCompression::none;
+            } else if (value == "zstd") {
+                options.compression = planetsim::SnapshotCompression::shuffle_zstd;
+            } else {
+                throw std::invalid_argument("unknown compression: " + std::string(value));
+            }
+        } else if (argument == "--delta-of") {
+            options.delta_of = std::filesystem::path(value);
         } else {
             throw std::invalid_argument("unknown snapshot write option: " +
                                         std::string(argument));
@@ -1055,15 +1114,36 @@ int run_snapshot_write(const SnapshotWriteOptions& options) {
         planetsim::make_icosphere(options.subdivision, 6'371'000.0));
     planetsim::PlanetState state(mesh);
     populate_snapshot_synthetic_state(state);
+    planetsim::SimulationTick tick = snapshot_synthetic_tick;
     const auto start = std::chrono::steady_clock::now();
-    planetsim::write_snapshot(options.output_path, state, snapshot_synthetic_tick);
+    if (options.delta_of.empty()) {
+        planetsim::write_snapshot(options.output_path, state, tick, {}, options.compression);
+    } else {
+        // The golden delta (task M4-05): every third cell's land surface
+        // 0.5 K warmer and every second cell's sea ice 1 kg/m² heavier, a
+        // tick later; terrain and the other fields unchanged.
+        planetsim::SnapshotManifest parent_manifest;
+        const auto parent =
+            planetsim::read_snapshot_chunks(options.delta_of, nullptr, parent_manifest);
+        for (std::size_t cell = 0; cell < mesh->cell_count(); ++cell) {
+            if (cell % 3U == 0U) {
+                state.slow().land_surface_temperature_K[cell] += 0.5F;
+            }
+            if (cell % 2U == 0U) {
+                state.slow().sea_ice_mass_kg_m2[cell] += 1.0;
+            }
+        }
+        tick += 1;
+        static_cast<void>(planetsim::write_delta_snapshot(
+            options.output_path, state, tick, options.delta_of.stem().string(), parent));
+    }
     const auto finish = std::chrono::steady_clock::now();
 
     std::cout << std::setprecision(17)
               << "snapshot_written: " << options.output_path.string() << '\n'
               << "subdivision: " << options.subdivision << '\n'
               << "cell_count: " << mesh->cell_count() << '\n'
-              << "simulation_tick: " << snapshot_synthetic_tick << '\n'
+              << "simulation_tick: " << tick << '\n'
               << "size_bytes: " << std::filesystem::file_size(options.output_path) << '\n'
               << "write_time_ms: "
               << std::chrono::duration<double, std::milli>(finish - start).count() << '\n';
@@ -1073,6 +1153,7 @@ int run_snapshot_write(const SnapshotWriteOptions& options) {
 int run_snapshot_inspect(const std::filesystem::path& path) {
     const auto manifest = planetsim::inspect_snapshot(path);
     std::cout << "format: " << manifest.format << '\n'
+              << "kind: " << (manifest.delta ? "delta" : "full") << '\n'
               << "schema_version: " << manifest.schema_version << '\n'
               << "engine_version: " << manifest.engine_version << '\n'
               << "tick: " << manifest.tick << '\n'
@@ -1149,6 +1230,90 @@ int run_calendar(int argument_count, char** arguments) {
 // The surface energy columns of ADR-0007 on a generated planet: spin-up from
 // the equilibrium initial state, the last year's budget, per-sub-step cost
 // (V10) and, with --calibrate, the bisection fit of g (specification §24).
+// ADR-0003 V7: a decade history of the Earth-like planet. Prints the full
+// snapshot's raw and compressed size and its write time, every decade's
+// delta size against the full snapshot's, and the time to reconstruct the
+// deepest snapshot of the chain.
+int run_history(const HistoryOptions& options) {
+    const std::size_t worker_count =
+        options.worker_count != 0U ? options.worker_count
+                                   : std::max<std::size_t>(1U, std::thread::hardware_concurrency());
+    const auto parameters = planetsim::PlanetParameters::earth_development();
+    auto mesh = std::make_shared<const planetsim::PlanetMesh>(
+        planetsim::make_icosphere(options.subdivision, 6'371'000.0));
+    planetsim::PlanetState state(mesh);
+    static_cast<void>(planetsim::generate_terrain(
+        state, options.seed, planetsim::geology_parameters_for(planetsim::PlanetPreset::earth_like),
+        worker_count));
+    const auto fractions = planetsim::compute_surface_fractions(
+        *mesh, state.slow().hypsometry_m, state.slow().sea_level_m, worker_count);
+    const auto surface = planetsim::surface_energy_parameters_for(planetsim::PlanetPreset::earth_like);
+    planetsim::initialise_surface_temperatures(*mesh, state.slow(), parameters, surface,
+                                               worker_count);
+    planetsim::initialise_cryosphere(*mesh, state.slow());
+    if (options.spin_up_years > 0) {
+        static_cast<void>(planetsim::spin_up_surface_energy(state, parameters, surface, fractions,
+                                                            options.spin_up_years, worker_count));
+    }
+
+    const auto directory = options.directory.empty()
+                               ? std::filesystem::temp_directory_path() / "planetsim_history"
+                               : options.directory;
+    std::filesystem::remove_all(directory);
+    planetsim::HistoryStore store(directory, options.base_interval);
+    const auto milliseconds = [](auto from, auto to) {
+        return std::chrono::duration<double, std::milli>(to - from).count();
+    };
+    std::cout << std::setprecision(6) << "history subdivision=" << options.subdivision
+              << " cells=" << mesh->cell_count() << " spin_up_years=" << options.spin_up_years
+              << " decades=" << options.decades << " base_interval=" << options.base_interval
+              << " raw_bytes=" << planetsim::encode_snapshot_chunks(state).size_bytes() << '\n';
+    std::string parent;
+    double fastest_full_ms = 1e300;
+    for (int decade = 0; decade <= options.decades; ++decade) {
+        if (decade > 0) {
+            static_cast<void>(planetsim::spin_up_surface_energy(state, parameters, surface,
+                                                                fractions, 10, worker_count));
+        }
+        const auto tick = static_cast<planetsim::SimulationTick>(decade) * 5'259'487;
+        // The full snapshot's write time, best of three (the gate measures the
+        // writer, not the file system's first touch).
+        const auto full_path = directory / "full_probe.psnap";
+        for (int repeat = 0; repeat < 3; ++repeat) {
+            const auto start = std::chrono::steady_clock::now();
+            planetsim::write_snapshot(full_path, state, tick);
+            fastest_full_ms =
+                std::min(fastest_full_ms, milliseconds(start, std::chrono::steady_clock::now()));
+        }
+        const auto full_bytes = std::filesystem::file_size(full_path);
+        const auto start = std::chrono::steady_clock::now();
+        parent = store.save(state, tick, parent);
+        const double save_ms = milliseconds(start, std::chrono::steady_clock::now());
+        const auto& entry = store.entry(parent);
+        std::cout << "decade=" << decade << " kind=" << (entry.delta ? "delta" : "full")
+                  << " depth=" << entry.depth << " bytes=" << entry.file_bytes
+                  << " full_bytes=" << full_bytes << " ratio="
+                  << static_cast<double>(entry.file_bytes) / static_cast<double>(full_bytes)
+                  << " save_ms=" << save_ms << '\n';
+    }
+    // Reconstruct the deepest snapshot from a fresh store (no cache).
+    std::string deepest = parent;
+    std::uint32_t depth = 0;
+    for (const auto& entry : store.entries()) {
+        if (entry.depth >= depth) {
+            depth = entry.depth;
+            deepest = entry.id;
+        }
+    }
+    planetsim::HistoryStore reopened(directory, options.base_interval);
+    planetsim::PlanetState loaded(mesh);
+    const auto start = std::chrono::steady_clock::now();
+    static_cast<void>(reopened.load(deepest, loaded));
+    std::cout << "full_write_ms=" << fastest_full_ms << " load_depth=" << depth
+              << " load_ms=" << milliseconds(start, std::chrono::steady_clock::now()) << '\n';
+    return 0;
+}
+
 int run_thermal(const ThermalOptions& options) {
     const std::size_t worker_count =
         options.worker_count != 0U ? options.worker_count
@@ -1431,6 +1596,9 @@ int main(int argument_count, char** arguments) {
         }
         if (command == "terrain") {
             return run_terrain(parse_terrain_options(argument_count, arguments));
+        }
+        if (command == "history") {
+            return run_history(parse_history_options(argument_count, arguments));
         }
         if (command == "thermal") {
             return run_thermal(parse_thermal_options(argument_count, arguments));

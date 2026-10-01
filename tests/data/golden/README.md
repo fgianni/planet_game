@@ -11,11 +11,20 @@ committed once and never regenerated after its schema version is released;
 
 | File | Schema | Mesh generator | Produced by |
 |---|---|---|---|
-| `psnap-v1-l0.psnap` | 1 | 2 | `planet_cli snapshot write --subdivision 0 --out psnap-v1-l0.psnap` |
+| `psnap-v1-l0.psnap` | 1 | 2 | `planet_cli snapshot write --subdivision 0 --out psnap-v1-l0.psnap` (uncompressed; the writer of the time) |
 | `psnap-v2-l0.psnap` | 2 | 2 | `planet_cli snapshot write --subdivision 0 --out psnap-v2-l0.psnap` |
 | `psnap-v3-l0.psnap` | 3 | 2 | `planet_cli snapshot write --subdivision 0 --out psnap-v3-l0.psnap` |
-| `psnap-v4-l0.psnap` | 4 | 2 | `planet_cli snapshot write --subdivision 0 --out psnap-v4-l0.psnap` |
+| `psnap-v4-l0.psnap` | 4 | 2 | `planet_cli snapshot write --subdivision 0 --compression none --out psnap-v4-l0.psnap` |
+| `psnap-v4-l0-zstd.psnap` | 4 | 2 | `planet_cli snapshot write --subdivision 0 --compression zstd --out psnap-v4-l0-zstd.psnap` |
+| `psnap-v4-l0-delta.psnap` | 4 (delta of the zstd file) | 2 | `planet_cli snapshot write --subdivision 0 --delta-of psnap-v4-l0-zstd.psnap --out psnap-v4-l0-delta.psnap` |
 
 A golden file stops loading when the mesh generator version changes, by
 design; that change needs a migration or remap decision (ADR-0003 §3.6,
 ADR-0002 §4.7), not a regenerated file.
+
+Since task M4-05 the corpus also pins the codecs (ADR-0003 §3.4): the
+v1–v4 files are uncompressed (`none`); `psnap-v4-l0-zstd.psnap` is the
+`shuffle-zstd` codec and `psnap-v4-l0-delta.psnap` a delta of it
+(`xor-shuffle-zstd`, `"kind":"delta"`) whose parent id is the base file's
+stem. A zstd release that changes compressed bytes does not invalidate them:
+the reader decompresses any conforming frame.

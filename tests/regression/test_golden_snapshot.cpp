@@ -255,22 +255,24 @@ int main() {
         PLANETSIM_EXPECT(test, refused);
     }
 
-    // Schema 4 (M4-01): the cryosphere reservoirs; every field stored.
-    {
-        planetsim::PlanetState state(mesh);
-        const auto manifest = planetsim::read_snapshot(
-            std::filesystem::path("tests/data/golden/psnap-v4-l0.psnap"), state);
-        PLANETSIM_EXPECT(test, manifest.schema_version == 4U);
-        PLANETSIM_EXPECT(test, manifest.fields.size() == 8U);
-        check_schema_1_fields(test, state);
+    // The schema 4 synthetic state, optionally with the golden delta's
+    // perturbation (every third land surface +0.5 K, every second cell's sea
+    // ice +1 kg/m², apps/planet_cli snapshot write --delta-of).
+    const auto schema_4_exact = [&](const planetsim::PlanetState& state, bool perturbed) {
+        const auto same = [](double first, double second) {
+            return std::bit_cast<std::uint64_t>(first) == std::bit_cast<std::uint64_t>(second);
+        };
         bool exact = true;
         for (std::size_t cell = 0; cell < mesh->cell_count(); ++cell) {
-            const auto same = [](double first, double second) {
-                return std::bit_cast<std::uint64_t>(first) == std::bit_cast<std::uint64_t>(second);
-            };
-            exact = exact &&
-                    state.slow().land_surface_temperature_K[cell] ==
-                        static_cast<float>(expected_temperature(cell, 20U)) &&
+            float land = static_cast<float>(expected_temperature(cell, 20U));
+            double ice = 20.0 * (expected_temperature(cell, 25U) - 220.0);
+            if (perturbed && cell % 3U == 0U) {
+                land += 0.5F;
+            }
+            if (perturbed && cell % 2U == 0U) {
+                ice += 1.0;
+            }
+            exact = exact && state.slow().land_surface_temperature_K[cell] == land &&
                     state.slow().land_ground_temperature_K[cell] ==
                         static_cast<float>(expected_temperature(cell, 21U)) &&
                     same(state.slow().ocean_mixed_layer_temperature_K[cell],
@@ -279,11 +281,56 @@ int main() {
                          expected_temperature(cell, 23U)) &&
                     same(state.slow().land_snow_water_equivalent_kg_m2[cell],
                          2.0 * (expected_temperature(cell, 24U) - 220.0)) &&
-                    same(state.slow().sea_ice_mass_kg_m2[cell],
-                         20.0 * (expected_temperature(cell, 25U) - 220.0));
+                    same(state.slow().sea_ice_mass_kg_m2[cell], ice);
         }
-        PLANETSIM_EXPECT(test, exact);
+        return exact;
+    };
+
+    // Schema 4 (M4-01): the cryosphere reservoirs; every field stored.
+    {
+        planetsim::PlanetState state(mesh);
+        const auto manifest = planetsim::read_snapshot(
+            std::filesystem::path("tests/data/golden/psnap-v4-l0.psnap"), state);
+        PLANETSIM_EXPECT(test, manifest.schema_version == 4U);
+        PLANETSIM_EXPECT(test, manifest.fields.size() == 8U);
+        check_schema_1_fields(test, state);
+        PLANETSIM_EXPECT(test, schema_4_exact(state, false));
         step_ten_years(test, state, parameters, surface, "psnap-v4");
+    }
+
+    // Schema 4, compressed (M4-05, ADR-0003 §3.4): every chunk shuffle-zstd.
+    {
+        planetsim::PlanetState state(mesh);
+        const auto manifest = planetsim::read_snapshot(
+            std::filesystem::path("tests/data/golden/psnap-v4-l0-zstd.psnap"), state);
+        bool compressed = manifest.fields.size() == 8U && !manifest.delta;
+        for (const auto& field : manifest.fields) {
+            compressed = compressed && field.compression == "shuffle-zstd";
+        }
+        PLANETSIM_EXPECT(test, compressed);
+        check_schema_1_fields(test, state);
+        PLANETSIM_EXPECT(test, schema_4_exact(state, false));
+    }
+
+    // A delta against the compressed snapshot (M4-05, ADR-0003 §3.5): only
+    // the two changed fields, reconstructed bit for bit through the chain;
+    // read_snapshot alone refuses it.
+    {
+        const std::filesystem::path base("tests/data/golden/psnap-v4-l0-zstd.psnap");
+        const std::filesystem::path delta("tests/data/golden/psnap-v4-l0-delta.psnap");
+        planetsim::PlanetState lone(mesh);
+        PLANETSIM_EXPECT_THROWS(test, std::runtime_error, planetsim::read_snapshot(delta, lone));
+        planetsim::SnapshotManifest base_manifest;
+        const auto base_chunks = planetsim::read_snapshot_chunks(base, nullptr, base_manifest);
+        planetsim::SnapshotManifest delta_manifest;
+        const auto chunks = planetsim::read_snapshot_chunks(delta, &base_chunks, delta_manifest);
+        PLANETSIM_EXPECT(test, delta_manifest.delta && delta_manifest.fields.size() == 2U &&
+                                   delta_manifest.parent_snapshot_id == "psnap-v4-l0-zstd" &&
+                                   delta_manifest.tick == synthetic_tick + 1);
+        planetsim::PlanetState state(mesh);
+        planetsim::decode_snapshot_chunks(delta_manifest, chunks, state);
+        check_schema_1_fields(test, state);
+        PLANETSIM_EXPECT(test, schema_4_exact(state, true));
     }
     return test.result();
 }
