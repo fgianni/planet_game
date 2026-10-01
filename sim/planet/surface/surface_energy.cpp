@@ -145,6 +145,12 @@ struct BudgetPartial {
     double ice_area_south_m2 = 0.0;
     double ice_mass_north_kg = 0.0;
     double ice_mass_south_kg = 0.0;
+    double snow_area_north_m2 = 0.0;
+    double snow_area_south_m2 = 0.0;
+    double ice_cover_north_m2 = 0.0;
+    double ice_cover_south_m2 = 0.0;
+    double snow_cover_north_m2 = 0.0;
+    double snow_cover_south_m2 = 0.0;
     double weighted_temperature_K_m2 = 0.0;
     double area_m2 = 0.0;
     std::array<double, 18> band_temperature_K_m2{};
@@ -180,6 +186,12 @@ struct BudgetPartial {
     a.ice_area_south_m2 += b.ice_area_south_m2;
     a.ice_mass_north_kg += b.ice_mass_north_kg;
     a.ice_mass_south_kg += b.ice_mass_south_kg;
+    a.snow_area_north_m2 += b.snow_area_north_m2;
+    a.snow_area_south_m2 += b.snow_area_south_m2;
+    a.ice_cover_north_m2 += b.ice_cover_north_m2;
+    a.ice_cover_south_m2 += b.ice_cover_south_m2;
+    a.snow_cover_north_m2 += b.snow_cover_north_m2;
+    a.snow_cover_south_m2 += b.snow_cover_south_m2;
     a.weighted_temperature_K_m2 += b.weighted_temperature_K_m2;
     a.area_m2 += b.area_m2;
     a.p2_temperature_K_m2 += b.p2_temperature_K_m2;
@@ -573,6 +585,14 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     partial.melt_kg += land_weight * land_tile.melt_kg_m2;
                     partial.snow_change_kg += land_weight * (land_tile.snow_kg_m2 - snow);
                     partial.snow_kg += land_weight * land_tile.snow_kg_m2;
+                    const bool north = mesh.cells()[cell].center_unit.z > 0.0;
+                    if (land_tile.snow_kg_m2 > 0.0) {
+                        (north ? partial.snow_area_north_m2 : partial.snow_area_south_m2) +=
+                            land_weight;
+                    }
+                    (north ? partial.snow_cover_north_m2 : partial.snow_cover_south_m2) +=
+                        land_weight * land_tile.snow_kg_m2 /
+                        (land_tile.snow_kg_m2 + snow_masking_kg_m2);
                 }
                 if (ocean_weight > 0.0) {
                     const double ice = slow.sea_ice_mass_kg_m2[cell];
@@ -583,6 +603,10 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     partial.ice_melted_kg += ocean_weight * ocean_tile.melted_kg_m2;
                     partial.ice_change_kg += ocean_weight * (ocean_tile.ice_kg_m2 - ice);
                     partial.ice_kg += ocean_weight * ocean_tile.ice_kg_m2;
+                    const double thickness_m = ocean_tile.ice_kg_m2 / sea_ice_density_kg_m3;
+                    (mesh.cells()[cell].center_unit.z > 0.0 ? partial.ice_cover_north_m2
+                                                            : partial.ice_cover_south_m2) +=
+                        ocean_weight * std::min(1.0, thickness_m / sea_ice_albedo_ramp_m);
                     if (ocean_tile.ice_kg_m2 > 0.0) {
                         const bool north = mesh.cells()[cell].center_unit.z > 0.0;
                         (north ? partial.ice_area_north_m2 : partial.ice_area_south_m2) +=
@@ -665,6 +689,12 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.ice_area_south_m2 = total.ice_area_south_m2;
     diagnostics.ice_mass_north_kg = total.ice_mass_north_kg;
     diagnostics.ice_mass_south_kg = total.ice_mass_south_kg;
+    diagnostics.snow_area_north_m2 = total.snow_area_north_m2;
+    diagnostics.snow_area_south_m2 = total.snow_area_south_m2;
+    diagnostics.ice_cover_north_m2 = total.ice_cover_north_m2;
+    diagnostics.ice_cover_south_m2 = total.ice_cover_south_m2;
+    diagnostics.snow_cover_north_m2 = total.snow_cover_north_m2;
+    diagnostics.snow_cover_south_m2 = total.snow_cover_south_m2;
     diagnostics.max_newton_residual_W_m2 = total.max_newton_residual_W_m2;
     diagnostics.mean_surface_temperature_K = total.weighted_temperature_K_m2 / total.area_m2;
     diagnostics.land_mean_surface_temperature_K =
@@ -746,7 +776,27 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
                     step.ice_area_north_m2;
                 summary.ice_area_south_max_m2 = summary.ice_area_south_min_m2 =
                     step.ice_area_south_m2;
+                summary.snow_area_north_max_m2 = summary.snow_area_north_min_m2 =
+                    step.snow_area_north_m2;
+                summary.snow_area_south_max_m2 = summary.snow_area_south_min_m2 =
+                    step.snow_area_south_m2;
             }
+            const std::array<double, 4> cover{step.ice_cover_north_m2, step.ice_cover_south_m2,
+                                              step.snow_cover_north_m2, step.snow_cover_south_m2};
+            for (std::size_t index = 0; index < cover.size(); ++index) {
+                summary.cover_max_m2[index] =
+                    month == 0 ? cover[index] : std::max(summary.cover_max_m2[index], cover[index]);
+                summary.cover_min_m2[index] =
+                    month == 0 ? cover[index] : std::min(summary.cover_min_m2[index], cover[index]);
+            }
+            summary.snow_area_north_max_m2 =
+                std::max(summary.snow_area_north_max_m2, step.snow_area_north_m2);
+            summary.snow_area_north_min_m2 =
+                std::min(summary.snow_area_north_min_m2, step.snow_area_north_m2);
+            summary.snow_area_south_max_m2 =
+                std::max(summary.snow_area_south_max_m2, step.snow_area_south_m2);
+            summary.snow_area_south_min_m2 =
+                std::min(summary.snow_area_south_min_m2, step.snow_area_south_m2);
             summary.ice_area_north_max_m2 =
                 std::max(summary.ice_area_north_max_m2, step.ice_area_north_m2);
             summary.ice_area_north_min_m2 =

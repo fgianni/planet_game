@@ -50,11 +50,11 @@ void check_statistics(planetsim::test::Context& test) {
                 variance += d * d;
             }
             variance /= years;
-            worst_mean = std::max(
-                worst_mean, std::abs(climatology.surface_temperature_mean_K.layer(month)[cell] - mean));
-            worst_variance = std::max(
-                worst_variance,
-                std::abs(climatology.surface_temperature_variance_K2.layer(month)[cell] - variance));
+            const double stored_mean = climatology.surface_temperature_mean_K.layer(month)[cell];
+            worst_mean = std::max(worst_mean, std::abs(stored_mean - mean));
+            const double stored_variance =
+                climatology.surface_temperature_variance_K2.layer(month)[cell];
+            worst_variance = std::max(worst_variance, std::abs(stored_variance - variance));
             worst_ice = std::max(worst_ice,
                                  std::abs(climatology.sea_ice_mean_kg_m2.layer(month)[cell] -
                                           (40.0 + static_cast<double>(month))));

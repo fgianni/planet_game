@@ -1289,6 +1289,10 @@ int run_thermal(const ThermalOptions& options) {
               << year.ice_area_north_max_m2 / 1e6
               << " south_area_min_max_km2=" << year.ice_area_south_min_m2 / 1e6 << ' '
               << year.ice_area_south_max_m2 / 1e6 << '\n'
+              << "snow_cover north_area_min_max_km2=" << year.snow_area_north_min_m2 / 1e6
+              << ' ' << year.snow_area_north_max_m2 / 1e6
+              << " south_area_min_max_km2=" << year.snow_area_south_min_m2 / 1e6 << ' '
+              << year.snow_area_south_max_m2 / 1e6 << '\n'
               << "timing workers=" << worker_count << " ms_per_substep=" << substep_ms << '\n';
     return 0;
 }

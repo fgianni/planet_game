@@ -37,22 +37,27 @@ struct SurfaceEnergyParameters {
 inline constexpr double bulk_air_exchange_W_m2_K = 10.0;
 
 // Earth-like grey-layer emissivity g and transport coefficient D:
-// calibration constants (ADR-0007 §3.2 C, ADR-0009 §4.4 and §10,
-// specification §24), fitted together and refitted when sea ice (M4-04),
-// the atmosphere (M5) and clouds (M8) arrive.
+// calibration constants (ADR-0007 §3.2 C, ADR-0008 §4.7, ADR-0009 §4.4 and
+// §10–12, specification §24), refitted when the atmosphere (M5), clouds (M8)
+// and ocean transport (M11) arrive.
 //
-// Fit (2026-09-30): alternating bisection over the last of 150 spin-up
-// years, earth_like preset, L4, seed 1, no precipitation and no sea ice,
-// to a 288 K length-weighted global mean surface temperature and a 42 K
+// Fit (2026-10-01, task M4-04): alternating bisection over the last of 150
+// spin-up years, earth_like preset, L4, seed 1, sea ice active, no
+// precipitation, air diffusion on the mesh one level coarser, to a 288 K
+// length-weighted global mean surface temperature and a 42 K
 // equator-to-pole difference of the P2 fit (North et al., 1981)
 // (`planet_cli thermal --subdivision 4 --years 150 --calibrate 288
-// --calibrate-gradient 42`): g = 0.44551, D = 0.19994. Peak poleward
-// transport 1.83 PW (Earth about 5.5), relative imbalance −1.2e-3 after
-// 150 years. The ADR-0007 fit without transport was g = 0.4964.
-inline constexpr double earth_like_grey_emissivity = 0.4455;
+// --calibrate-gradient 42`). The ice edge moves a cell at a time, so the
+// fit alternates between (g, D) = (0.4965, 0.6400): 287.93 K, 42.08 K and
+// (0.4971, 0.6559): 288.03 K, 41.58 K; the first is kept. At L5: 288.20 K,
+// 40.9 K, peak poleward transport 3.72 PW, sea ice 4.8–10.2 million km² in
+// the north and 33.3–33.8 in the south (an open polar ocean), relative
+// imbalance −2.2e-3 after 150 years (perennial ice still thickening). The
+// fit before sea ice (2026-09-30) was g = 0.4455, D = 0.1999.
+inline constexpr double earth_like_grey_emissivity = 0.4965;
 
 // See earth_like_grey_emissivity for the joint fit record.
-inline constexpr double earth_like_transport_coefficient_W_m2_K = 0.1999;
+inline constexpr double earth_like_transport_coefficient_W_m2_K = 0.6400;
 
 // dead_rock: rock, g = 0, no transport. aqua_planet: g = 0, no transport
 // (experiments A and B have no atmosphere and no currents; only the ocean
@@ -112,6 +117,14 @@ struct SurfaceEnergyDiagnostics {
     double ice_area_south_m2 = 0.0;
     double ice_mass_north_kg = 0.0;
     double ice_mass_south_kg = 0.0;
+    double snow_area_north_m2 = 0.0;   // land area with snow, by hemisphere
+    double snow_area_south_m2 = 0.0;
+    // Cover as the radiation sees it (ADR-0008 §4.2): ocean area weighted by
+    // min(1, h / h_r) and land area by W / (W + W_m), by hemisphere.
+    double ice_cover_north_m2 = 0.0;
+    double ice_cover_south_m2 = 0.0;
+    double snow_cover_north_m2 = 0.0;
+    double snow_cover_south_m2 = 0.0;
     // Horizontal transport (ADR-0009), zero when it is off.
     double transport_W = 0.0;          // Σ A f (source received): zero to rounding
     double transport_cell_sum_W = 0.0; // Σ A H of the diffusion itself (V1)
@@ -190,6 +203,14 @@ struct AnnualSurfaceSummary {
     double ice_area_north_min_m2 = 0.0;
     double ice_area_south_max_m2 = 0.0;
     double ice_area_south_min_m2 = 0.0;
+    // The covers' largest and smallest step-end values, likewise.
+    std::array<double, 4> cover_max_m2{};   // ice north, ice south, snow north, snow south
+    std::array<double, 4> cover_min_m2{};
+    // Snow-covered land area by hemisphere, likewise.
+    double snow_area_north_max_m2 = 0.0;
+    double snow_area_north_min_m2 = 0.0;
+    double snow_area_south_max_m2 = 0.0;
+    double snow_area_south_min_m2 = 0.0;
     // Time means over the year (ADR-0009 §4.5).
     std::array<double, 17> northward_transport_W{};
     std::array<double, 18> zonal_mean_surface_temperature_K{};
