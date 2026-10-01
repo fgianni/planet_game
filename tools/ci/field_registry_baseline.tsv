@@ -9,4 +9,9 @@
 262145	land_snow_water_equivalent_kg_m2	slow	cell	float64	1	kg/m2
 262146	sea_ice_mass_kg_m2	slow	cell	float64	1	kg/m2
 262147	prescribed_precipitation_kg_m2_s	derived	cell	float32	1	kg/m2/s
+262148	surface_temperature_K	derived	cell	float32	1	K
+262149	climatology_surface_temperature_mean_K	climatology	cell_layers	float32	12	K
+262150	climatology_surface_temperature_variance_K2	climatology	cell_layers	float32	12	K2
+262151	climatology_land_snow_mean_kg_m2	climatology	cell_layers	float32	12	kg/m2
+262152	climatology_sea_ice_mean_kg_m2	climatology	cell_layers	float32	12	kg/m2
 # retired_field_id	196611

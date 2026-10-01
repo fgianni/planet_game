@@ -151,6 +151,11 @@ void append_json_string(std::string& output, std::string_view value) {
     case FieldId::top_of_atmosphere_insolation_W_m2:
     case FieldId::substep_mean_insolation_W_m2:
     case FieldId::prescribed_precipitation_kg_m2_s:
+    case FieldId::surface_temperature_K:
+    case FieldId::climatology_surface_temperature_mean_K:
+    case FieldId::climatology_surface_temperature_variance_K2:
+    case FieldId::climatology_land_snow_mean_kg_m2:
+    case FieldId::climatology_sea_ice_mean_kg_m2:
         return 0U;
     }
     return 0U;
@@ -211,6 +216,11 @@ void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& fi
     case FieldId::top_of_atmosphere_insolation_W_m2:
     case FieldId::substep_mean_insolation_W_m2:
     case FieldId::prescribed_precipitation_kg_m2_s:
+    case FieldId::surface_temperature_K:
+    case FieldId::climatology_surface_temperature_mean_K:
+    case FieldId::climatology_surface_temperature_variance_K2:
+    case FieldId::climatology_land_snow_mean_kg_m2:
+    case FieldId::climatology_sea_ice_mean_kg_m2:
         throw std::logic_error("derived forcing field cannot be persisted");
     }
 
@@ -876,6 +886,11 @@ void decode_chunk(const FieldDescriptor& descriptor,
     case FieldId::top_of_atmosphere_insolation_W_m2:
     case FieldId::substep_mean_insolation_W_m2:
     case FieldId::prescribed_precipitation_kg_m2_s:
+    case FieldId::surface_temperature_K:
+    case FieldId::climatology_surface_temperature_mean_K:
+    case FieldId::climatology_surface_temperature_variance_K2:
+    case FieldId::climatology_land_snow_mean_kg_m2:
+    case FieldId::climatology_sea_ice_mean_kg_m2:
         break;
     }
     field_error(static_cast<std::uint32_t>(descriptor.id), "field has no persistent decoder");

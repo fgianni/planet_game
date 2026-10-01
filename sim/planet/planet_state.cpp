@@ -25,6 +25,14 @@ PlanetState::PlanetState(std::shared_ptr<const PlanetMesh> mesh) : mesh_(std::mo
         make_field<FieldId::substep_mean_insolation_W_m2>(*mesh_);
     forcing_.prescribed_precipitation_kg_m2_s =
         make_field<FieldId::prescribed_precipitation_kg_m2_s>(*mesh_);
+    forcing_.surface_temperature_K = make_field<FieldId::surface_temperature_K>(*mesh_);
+    climatology_.surface_temperature_mean_K =
+        make_field<FieldId::climatology_surface_temperature_mean_K>(*mesh_);
+    climatology_.surface_temperature_variance_K2 =
+        make_field<FieldId::climatology_surface_temperature_variance_K2>(*mesh_);
+    climatology_.land_snow_mean_kg_m2 =
+        make_field<FieldId::climatology_land_snow_mean_kg_m2>(*mesh_);
+    climatology_.sea_ice_mean_kg_m2 = make_field<FieldId::climatology_sea_ice_mean_kg_m2>(*mesh_);
 }
 
 FastState& PlanetState::open_fast_state() {

@@ -20,6 +20,11 @@ enum class FieldId : std::uint32_t {
     land_snow_water_equivalent_kg_m2 = 0x0004'0001U,
     sea_ice_mass_kg_m2 = 0x0004'0002U,
     prescribed_precipitation_kg_m2_s = 0x0004'0003U,
+    surface_temperature_K = 0x0004'0004U,
+    climatology_surface_temperature_mean_K = 0x0004'0005U,
+    climatology_surface_temperature_variance_K2 = 0x0004'0006U,
+    climatology_land_snow_mean_kg_m2 = 0x0004'0007U,
+    climatology_sea_ice_mean_kg_m2 = 0x0004'0008U,
 };
 
 enum class FieldDataType : std::uint8_t {
@@ -97,7 +102,7 @@ struct FieldDescriptor {
     return {};
 }
 
-inline constexpr std::array<FieldDescriptor, 11> field_registry{{
+inline constexpr std::array<FieldDescriptor, 16> field_registry{{
     {FieldId::top_of_atmosphere_insolation_W_m2, "top_of_atmosphere_insolation_W_m2",
      FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
     {FieldId::substep_mean_insolation_W_m2, "substep_mean_insolation_W_m2",
@@ -125,6 +130,23 @@ inline constexpr std::array<FieldDescriptor, 11> field_registry{{
      FieldDataType::float64, 1U, "kg/m2"},
     {FieldId::prescribed_precipitation_kg_m2_s, "prescribed_precipitation_kg_m2_s",
      FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "kg/m2/s"},
+    // The cell's radiating surface temperature, area-weighted over its tiles
+    // (the sea-ice surface over ice), written by every surface step.
+    {FieldId::surface_temperature_K, "surface_temperature_K", FieldPartition::derived,
+     FieldLayout::cell, FieldDataType::float32, 1U, "K"},
+    // Monthly climatology (ADR-0001 §4.1, ADR-0006 §7): one layer per
+    // sub-step k mod 12, accumulated over the climate steps of a run.
+    {FieldId::climatology_surface_temperature_mean_K, "climatology_surface_temperature_mean_K",
+     FieldPartition::climatology, FieldLayout::cell_layers, FieldDataType::float32, 12U, "K"},
+    {FieldId::climatology_surface_temperature_variance_K2,
+     "climatology_surface_temperature_variance_K2", FieldPartition::climatology,
+     FieldLayout::cell_layers, FieldDataType::float32, 12U, "K2"},
+    {FieldId::climatology_land_snow_mean_kg_m2, "climatology_land_snow_mean_kg_m2",
+     FieldPartition::climatology, FieldLayout::cell_layers, FieldDataType::float32, 12U,
+     "kg/m2"},
+    {FieldId::climatology_sea_ice_mean_kg_m2, "climatology_sea_ice_mean_kg_m2",
+     FieldPartition::climatology, FieldLayout::cell_layers, FieldDataType::float32, 12U,
+     "kg/m2"},
 }};
 
 // Retired IDs are never registered again. Snapshots of the schemas that

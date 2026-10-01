@@ -3,7 +3,9 @@
 #include "sim/planet/field_factory.hpp"
 #include "sim/planet/orbit/orbit_state.hpp"
 
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 
 namespace planetsim {
@@ -25,7 +27,17 @@ struct SlowState {
 
 struct FastState {};
 
-struct Climatology {};
+// Monthly statistics (ADR-0001 §4.1): one layer per sub-step k mod 12,
+// derived and never persisted; `samples` counts the climate steps
+// accumulated into each month.
+struct Climatology {
+    field_container_t<FieldId::climatology_surface_temperature_mean_K> surface_temperature_mean_K;
+    field_container_t<FieldId::climatology_surface_temperature_variance_K2>
+        surface_temperature_variance_K2;
+    field_container_t<FieldId::climatology_land_snow_mean_kg_m2> land_snow_mean_kg_m2;
+    field_container_t<FieldId::climatology_sea_ice_mean_kg_m2> sea_ice_mean_kg_m2;
+    std::array<std::uint32_t, 12> samples{};
+};
 
 struct ForcingState {
     OrbitState orbit;
@@ -38,6 +50,8 @@ struct ForcingState {
     // ADR-0008 §3.3 B: zero unless a scenario or test sets it; M6 replaces it
     // with model precipitation.
     field_container_t<FieldId::prescribed_precipitation_kg_m2_s> prescribed_precipitation_kg_m2_s;
+    // The cells' radiating surface temperature after the last surface step.
+    field_container_t<FieldId::surface_temperature_K> surface_temperature_K;
 };
 
 class PlanetState {

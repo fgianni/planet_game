@@ -2,6 +2,7 @@
 
 #include "sim/core/scheduler/deterministic_executor.hpp"
 #include "sim/core/scheduler/scheduler.hpp"
+#include "sim/planet/climatology/monthly_climatology.hpp"
 #include "sim/planet/coordinates/local_tangent_basis.hpp"
 #include "sim/planet/orbit/climate_calendar.hpp"
 #include "sim/planet/orbit/solar_forcing.hpp"
@@ -605,6 +606,10 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 slow.ocean_mixed_layer_temperature_K[cell] = ocean_step.state.surface_K;
                 slow.ocean_deep_temperature_K[cell] = ocean_step.state.lower_K;
                 slow.sea_ice_mass_kg_m2[cell] = ocean_tile.ice_kg_m2;
+                state.forcing().surface_temperature_K[cell] = static_cast<float>(
+                    (fractions.land_fraction[cell] * land_step.state.surface_K +
+                     fractions.ocean_fraction[cell] * ocean_K) /
+                    tile_share[cell]);
             }
             return partial;
         },
@@ -684,6 +689,7 @@ void register_surface_energy(Scheduler& scheduler, PlanetState& state,
                 state, parameters, surface, fractions,
                 state.forcing().substep_mean_insolation_W_m2,
                 simulation_time_s(context.length_ticks()), worker_count);
+            accumulate_climatology(state, context.substep->index, worker_count);
             if (last != nullptr) {
                 *last = diagnostics;
             }
