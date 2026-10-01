@@ -18,10 +18,10 @@ documents keep the version citations they were written against.
 
 P0 --- Living Planet.
 
-Most recently completed milestone: **M3 --- Surface energy and first thermal
-planet**.
+Most recently completed milestone: **M4 --- Basic snow, ice and albedo
+feedback**.
 
-M0 through M3 are complete. M2 includes gate G2-M2 (finite-volume
+M0 through M4 are complete. M2 includes gate G2-M2 (finite-volume
 operators), the state-partition/persistent-snapshot foundation, foundation
 hardening, plate-scale terrain with sub-cell hypsometry and sea level, static
 cell-mesh drainage, and the simulation modes, scheduler skeleton and sub-step
@@ -33,12 +33,13 @@ experiments A and B, ADR-0007) and M3-03 (the ocean mixed layer in `double`,
 run manifests, state hashes and replay, the ADR-0001 performance gate) are
 complete.
 
-M4 (basic snow, ice and albedo feedback) is in progress under ADR-0008 and
+M4 (basic snow, ice and albedo feedback) is complete under ADR-0008 and
 ADR-0009: tasks M4-01 (cryosphere state, land snow, PSNAP schema 4), M4-02
-(diffusive heat transport with shared cell air), M4-03 (sea ice)
-and M4-04 (seasonal experiment, climatology, refit) are complete; M4-05 (ADR-0003 history) remains. Most recently
+(diffusive heat transport with shared cell air), M4-03 (sea ice), M4-04
+(seasonal experiment, climatology, refit) and M4-05 (ADR-0003 snapshot
+history: zstd compression, delta chains and forks). Most recently
 completed task:
-[`docs/tasks/M4-04-seasonal-experiment-and-refit.md`](docs/tasks/M4-04-seasonal-experiment-and-refit.md).
+[`docs/tasks/M4-05-history-deltas-and-compression.md`](docs/tasks/M4-05-history-deltas-and-compression.md).
 Task documents in `docs/tasks/` state their scope, the decisions already
 made, acceptance criteria and what to report. M4 was requested on
 2026-09-30; do not implement M5 or later milestones unless explicitly

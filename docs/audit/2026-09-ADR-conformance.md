@@ -109,7 +109,7 @@ schemas evolve.
 | G3-M1 | ✅ EVIDENCED | Field layout, fixed blocks, fixed block-index reductions, 1/2/8/16-worker forcing equality, memory gates, and V7 are green. |
 | G3-M3 | ✅ EVIDENCED | *Updated 2026-09-29 (task M3-03):* run manifest (`PRUNv1`), command log, yearly XXH3 checkpoint state hashes and replay are implemented; ADR-0003 V1 and V2 run in CI (`tests/regression/test_run_replay.cpp`, `planet_cli replay`). Weather-window schedules await weather windows. |
 | G4 | ✅ EVIDENCED | The slow/fast/climatology state partition, lazy fast-state lifecycle, simulation modes and the multi-rate scheduler skeleton (task M2-04) are implemented. *Updated 2026-09-29 (task M3-03):* the years-per-minute harness and the ADR-0001 §5 250-year CI gate at L5 and L6 run in CI Release jobs (ADR-0001 §10); the >20 % regression comparison is deferred until cost approaches the budget. |
-| G5 | ⚠ RUNTIME_ONLY | The M2 base snapshot writer/reader, canonical ordering, CRC-32C validation, corruption tests, V4 round trips, CLI inspection, and initial golden save are complete. *Updated 2026-09-29 (task M3-02):* schema v2 with a declared v1 → v2 migration hook is implemented. Schema v3 (ADR-0007 §10) adds the first retired field and an exact v2 → v3 step. *Updated (task M3-03):* manifests and replay are implemented, and every golden save steps ten years (V5). Delta chains/compression (M4) and general migration machinery (M5) are not yet implemented. |
+| G5 | ⚠ RUNTIME_ONLY | The M2 base snapshot writer/reader, canonical ordering, CRC-32C validation, corruption tests, V4 round trips, CLI inspection, and initial golden save are complete. *Updated 2026-09-29 (task M3-02):* schema v2 with a declared v1 → v2 migration hook is implemented. Schema v3 (ADR-0007 §10) adds the first retired field and an exact v2 → v3 step. *Updated (task M3-03):* manifests and replay are implemented, and every golden save steps ten years (V5). *Updated 2026-10-01 (task M4-05):* zstd compression, delta chains, base rewrites and forks (ADR-0003 V6, V7). General migration machinery (M5) is not yet implemented. |
 
 ### M2-02 terrain (2026-09-28)
 
@@ -192,6 +192,14 @@ schemas evolve.
 | Monthly climatology (ADR-0006 §7, ADR-0008 §4.6) | ✅ EVIDENCED | Welford mean and variance per cell and month, never persisted (`tests/unit/test_climatology.cpp`). |
 | Refit with sea ice (specification §24) | ✅ EVIDENCED | `g = 0.4965`, `D = 0.64` with their record; northern sea ice 4.8–10.2 million km² at L5. ADR-0001 gates: 250 years at L5 in 148 s, L6 in 508 s on 4 workers. |
 | Stable seasonal snow/ice experiment (specification §13 M4, ADR-0008 V7 as amended) | ✅ EVIDENCED | Stationary to 0.5–0.9 % between decades (`tests/physics/test_seasonal_experiment.cpp`); interannual variability of the summer minimum and the drift of perennial ice and land snow recorded (ADR-0008 §9.2). |
+
+### M4-05 snapshot history (2026-10-01)
+
+| Requirement | Status | Finding |
+|---|---|---|
+| ADR-0003 V4, V8 with compression | ✅ EVIDENCED | Byte-identical round trips for both codecs at L0, L4, L6; a flipped byte in any compressed chunk is reported for its field (`tests/unit/test_snapshot_file.cpp`). |
+| ADR-0003 V6 | ✅ EVIDENCED | A main line across a base rewrite and a fork reconstruct bit for bit, also after reopening the store (`tests/regression/test_history.cpp`); golden compressed and delta files checked exactly. |
+| ADR-0003 V7 | ✅ EVIDENCED | L6: full snapshot about 1.9 MB (gate 6 MB), written in about 8 ms (gate 15 ms); decade deltas about 33 % of a full snapshot (expected 10–25 %, revisit above 40 %) (`planet_cli history`, ADR-0003 §8). |
 
 ## Risk-register audit
 

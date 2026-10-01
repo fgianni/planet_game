@@ -15,18 +15,14 @@ The specification defines the architecture, physical design, P0 roadmap,
 validation strategy, and current implementation task for the Planetary
 Civilization Simulator.
 
-Most recently completed milestone: **P0 / M3 --- Surface energy and first
-thermal planet**: sub-step mean insolation (M3-01, ADR-0006), surface energy
-columns with experiments A and B (M3-02, ADR-0007), and M3-03
-(`docs/tasks/M3-03-replay-gates-and-close.md`): the ocean mixed layer in
-`double` (ADR-0007 §10, PSNAP schema 3), run manifests, state hashes and
-replay (ADR-0003 V1, V2, V5), and the ADR-0001 performance gate in CI.
-M0--M2 (mesh, orbit, terrain, drainage, scheduler and calendar) are complete.
-
-M4 (basic snow, ice and albedo feedback) is in progress under ADR-0008 and
-ADR-0009: M4-01 (cryosphere state, land snow, PSNAP schema 4), M4-02
-(diffusive heat transport), M4-03 (sea ice) and M4-04 (seasonal experiment,
-climatology, refit) are complete; M4-05 (snapshot history) remains.
+Most recently completed milestone: **P0 / M4 --- Basic snow, ice and
+albedo feedback** (ADR-0008, ADR-0009): M4-01 (cryosphere state, land snow,
+PSNAP schema 4), M4-02 (diffusive heat transport), M4-03 (sea ice), M4-04
+(seasonal experiment, climatology, refit) and M4-05
+(`docs/tasks/M4-05-history-deltas-and-compression.md`: ADR-0003 snapshot
+history with zstd compression, delta chains and forks, V6--V7).
+M0--M3 (mesh, orbit, terrain, drainage, scheduler and calendar, sub-step
+insolation, surface energy columns, replay) are complete.
 
 Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI

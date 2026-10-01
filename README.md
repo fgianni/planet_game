@@ -165,11 +165,13 @@ second order in L2; see ADR-0002 §9 for the full record.
 ```bash
 ./build/planet_cli snapshot write --subdivision 0 --out planet.psnap
 ./build/planet_cli snapshot inspect planet.psnap
+./build/planet_cli history --subdivision 6 --decades 10
 ```
 
-The `PSNAP` format (schema v3: M3 added the surface temperatures and then
-stored the ocean mixed layer as `double`; v1 and v2 files load through the
-migration chain, ADR-0007 §4.6 and §10) stores only
+The `PSNAP` format (schema v4: M3 added the surface temperatures and the
+`double` ocean mixed layer, M4 the snow and sea-ice reservoirs; older files
+load through the migration chain, ADR-0007 §4.6 and §10, ADR-0008 §4.6)
+stores only
 authoritative slow state, in stable
 field-ID order and layer-major/cell-major order within each field. Its fixed
 little-endian representation, canonical manifest, per-field CRC-32C checksums,
@@ -178,10 +180,16 @@ incompatible files before mutating the destination state. The manifest
 records the mesh generator version and a checksum of the cell centres, so a
 snapshot never loads onto different mesh geometry, and writes go through a
 `.partial` file renamed into place. `tests/data/golden/` holds one snapshot
-per schema version. M2 currently writes
-uncompressed chunks (`"none"`); compression is deliberately deferred until the
-M4 size/ratio measurements in ADR-0003. This persistent format is distinct
-from the small in-process `StateSnapshot` used by the presentation adapter.
+per schema version and one per codec. Chunks are compressed with zstd after
+grouping each float's bytes (`shuffle-zstd`; the system `libzstd` is the
+project's one third-party library); uncompressed files still load. A
+*history* (ADR-0003 §3.5) is a directory of snapshots in which most are
+deltas: only the fields that changed since the parent, as compressed XOR, so
+the static terrain is never repeated; a full snapshot is rewritten every
+eight deltas, and a fork is simply a save from an earlier snapshot. At L6 a
+full snapshot is about 1.9 MB and writes in about 8 ms, a decade delta about
+a third of that. This persistent format is distinct from the small
+in-process `StateSnapshot` used by the presentation adapter.
 
 ## Procedural terrain
 

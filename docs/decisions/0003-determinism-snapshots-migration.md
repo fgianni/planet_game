@@ -242,3 +242,65 @@ The M3 portion was implemented on 2026-09-29 (task
   for the `float64` field `0x0003'0005` (ADR-0007 §10). The core reader
   keeps a table of retired persistent fields readable from the schemas that
   stored them; the v2 → v3 step widens them exactly.
+
+The M4 portion was implemented on 2026-10-01 (task
+`docs/tasks/M4-05-history-deltas-and-compression.md`):
+
+- **§3.4 compression.** zstd at level 3, single-threaded, from the system
+  `libzstd` found with `pkg-config`. This is the project's first third-party
+  library; CI installs `libzstd-dev`. A chunk's existing `compression` key
+  names one of three codecs:
+  - `none` is still read, and the canonical manipulation tests use it.
+  - `shuffle-zstd` groups the bytes by their position within each 4- or
+    8-byte element before compressing. It is the default for
+    `write_snapshot`.
+  - `xor-shuffle-zstd` XORs with the parent's raw bytes before shuffling.
+
+  The manifest's byte range and CRC-32C cover the stored bytes. The
+  decompressed length must equal the registry's and the zstd frame's
+  declared content size. `state_hash` is taken over the uncompressed chunks
+  and never depends on the codec.
+- **§3.5 deltas.** A delta's manifest carries the optional key
+  `"kind":"delta"` after `format` and a non-empty `parent_snapshot_id`. Full
+  snapshots keep their manifest unchanged, so no schema bump was needed.
+  - A delta lists only the fields whose raw bytes differ from the parent's.
+    The per-field threshold of the §3.5 sketch is zero, because V6 requires
+    bit-identical reconstruction.
+  - A missing field means the field is unchanged.
+  - `read_snapshot` refuses a delta, which needs its chain.
+- **History store** (`sim/core/serialization/history_store.{hpp,cpp}`). A
+  history is a directory of `<id>.psnap` files and an appendable `PHISTv1`
+  index (id, parent, kind, tick, depth, bytes).
+  - Ids are 16 hex digits of XXH3-64 over the kind, parent, tick and
+    `state_hash`.
+  - A save with a parent writes a delta unless that chain already holds
+    `base_interval` (8) deltas since its last full snapshot. In that case it
+    writes a full snapshot, which bounds the cost of reconstruction.
+  - A fork is a save whose parent is not the latest snapshot.
+  - Loading walks the chain from its full snapshot forward.
+- **V4, V8** hold for both codecs at L0/L4/L6. Golden files anchor a
+  compressed snapshot and a delta.
+- **V6** (`test_history`) checks an L3 main line of eleven yearly saves with
+  base interval 4, so it includes two base rewrites. It adds a six-save fork
+  with a stronger greenhouse from the third save. After the store is
+  reopened from disk, every snapshot reconstructs to its saved
+  `state_hash`.
+- **V7** (`planet_cli history`, L6, earth-like, 30-year spin-up, ten
+  decadal saves, Release, development machine):
+  - A full snapshot is 1.86 MB, against 3.11 MB raw and the 6 MB gate. It is
+    written in 8 ms, against the 15 ms gate. A history save, including
+    the state hash and the cached chunks for the next delta, takes 10–11 ms.
+  - Writing it took 21 ms before encoding switched to whole-field copies
+    and CRC-32C to slicing-by-8.
+  - A load at depth 8 takes about 22 ms. No gate applies to loads.
+  - **The decadal delta ratio is 0.32–0.34.** That is above the 10–25 %
+    expected, but below the 40 % revisit threshold. Every evolving field
+    (temperatures, snow, ice and the climatology) changes in nearly every
+    cell over a decade. Only the terrain is omitted from the delta. The XOR
+    leaves the sign, exponent and leading mantissa bytes mostly zero, so
+    deltas compress about three times better than full snapshots.
+  - Excluding the regenerable climatology (§5 risks) is the next lever if a
+    later release crosses 40 %.
+
+Autosave (§3.7) and history pruning (§7) remain open. The migration
+framework remains M5.
