@@ -229,8 +229,11 @@ int main() {
     first.open_fast_state();
     first.forcing().top_of_atmosphere_insolation_W_m2[0] = 777.0F;
 
-    planetsim::write_snapshot(first_path, first, synthetic_tick, "parent-0");
-    planetsim::write_snapshot(second_path, second, synthetic_tick, "parent-0");
+    // Uncompressed: the manifest edits below rely on its fixed lengths.
+    planetsim::write_snapshot(first_path, first, synthetic_tick, "parent-0",
+                              planetsim::SnapshotCompression::none);
+    planetsim::write_snapshot(second_path, second, synthetic_tick, "parent-0",
+                              planetsim::SnapshotCompression::none);
     const auto canonical_bytes = read_file(first_path);
     PLANETSIM_EXPECT(test, canonical_bytes == read_file(second_path));
 
@@ -273,31 +276,41 @@ int main() {
     for (const std::uint32_t level : {0U, 4U, 6U}) {
         const auto mesh = make_mesh(level);
         planetsim::PlanetState original(mesh);
-        planetsim::PlanetState loaded(mesh);
         populate_synthetic_state(original);
-        const auto input_path =
-            temporary_directory / ("round_trip_" + std::to_string(level) + "_input.psnap");
-        const auto output_path =
-            temporary_directory / ("round_trip_" + std::to_string(level) + "_output.psnap");
+        // V4 for both codecs: snapshot -> load -> snapshot is byte-identical.
+        for (const auto compression : {planetsim::SnapshotCompression::none,
+                                       planetsim::SnapshotCompression::shuffle_zstd}) {
+            const std::string codec =
+                compression == planetsim::SnapshotCompression::none ? "none" : "zstd";
+            const auto input_path = temporary_directory / ("round_trip_" + std::to_string(level) +
+                                                           "_" + codec + "_input.psnap");
+            const auto output_path = temporary_directory / ("round_trip_" + std::to_string(level) +
+                                                            "_" + codec + "_output.psnap");
+            planetsim::PlanetState reloaded(mesh);
+            const auto write_start = std::chrono::steady_clock::now();
+            planetsim::write_snapshot(input_path, original, synthetic_tick, "round-trip-parent",
+                                      compression);
+            const auto write_finish = std::chrono::steady_clock::now();
+            const auto loaded_manifest = planetsim::read_snapshot(input_path, reloaded);
+            expect_states_equal(test, original, reloaded);
+            PLANETSIM_EXPECT(test, !reloaded.has_fast_state());
+            PLANETSIM_EXPECT_NEAR(test, reloaded.forcing().incident_solar_flux_W_m2, 0.0, 0.0);
+            PLANETSIM_EXPECT(test, planetsim::slow_state_hash(reloaded) ==
+                                       planetsim::slow_state_hash(original));
 
-        const auto write_start = std::chrono::steady_clock::now();
-        planetsim::write_snapshot(input_path, original, synthetic_tick, "round-trip-parent");
-        const auto write_finish = std::chrono::steady_clock::now();
-        const auto loaded_manifest = planetsim::read_snapshot(input_path, loaded);
-        expect_states_equal(test, original, loaded);
-        PLANETSIM_EXPECT(test, !loaded.has_fast_state());
-        PLANETSIM_EXPECT_NEAR(test, loaded.forcing().incident_solar_flux_W_m2, 0.0, 0.0);
+            planetsim::write_snapshot(output_path, reloaded, loaded_manifest.tick,
+                                      loaded_manifest.parent_snapshot_id, compression);
+            PLANETSIM_EXPECT(test, read_file(input_path) == read_file(output_path));
 
-        planetsim::write_snapshot(output_path, loaded, loaded_manifest.tick,
-                                  loaded_manifest.parent_snapshot_id);
-        PLANETSIM_EXPECT(test, read_file(input_path) == read_file(output_path));
-
-        if (level == 6U) {
-            const double write_time_ms =
-                std::chrono::duration<double, std::milli>(write_finish - write_start).count();
-            std::cout << "l6_snapshot_size_bytes: " << std::filesystem::file_size(input_path)
-                      << '\n'
-                      << "l6_snapshot_write_time_ms: " << write_time_ms << '\n';
+            if (level == 6U) {
+                const double write_time_ms =
+                    std::chrono::duration<double, std::milli>(write_finish - write_start)
+                        .count();
+                std::cout << "l6_snapshot_" << codec
+                          << "_size_bytes: " << std::filesystem::file_size(input_path) << '\n'
+                          << "l6_snapshot_" << codec << "_write_time_ms: " << write_time_ms
+                          << '\n';
+            }
         }
     }
 
@@ -315,6 +328,29 @@ int main() {
         write_file(corrupt_path, corrupted);
         expect_read_failure(test, corrupt_path, level_zero_mesh,
                             "field_id " + std::to_string(field.field_id));
+    }
+
+    // V8 on compressed chunks: the checksum covers the stored bytes.
+    {
+        const auto compressed_path = temporary_directory / "canonical_compressed.psnap";
+        planetsim::write_snapshot(compressed_path, first, synthetic_tick, "parent-0");
+        const auto compressed_bytes = read_file(compressed_path);
+        const auto compressed = planetsim::inspect_snapshot(compressed_path);
+        const std::size_t area = 16U + static_cast<std::size_t>(manifest_length(compressed_bytes));
+        for (const auto& field : compressed.fields) {
+            PLANETSIM_EXPECT(test, field.compression == "shuffle-zstd");
+            auto corrupted = compressed_bytes;
+            const std::size_t corrupt_offset = area + static_cast<std::size_t>(field.byte_offset) +
+                                               static_cast<std::size_t>(field.byte_length / 2U);
+            corrupted[corrupt_offset] =
+                static_cast<char>(static_cast<unsigned char>(corrupted[corrupt_offset]) ^ 0x01U);
+            const auto corrupt_path = temporary_directory / ("corrupt_compressed_" +
+                                                             std::to_string(field.field_id) +
+                                                             ".psnap");
+            write_file(corrupt_path, corrupted);
+            expect_read_failure(test, corrupt_path, level_zero_mesh,
+                                "field_id " + std::to_string(field.field_id));
+        }
     }
 
     const auto invalid_path = temporary_directory / "invalid.psnap";

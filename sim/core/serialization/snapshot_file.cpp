@@ -5,6 +5,9 @@
 #include "sim/planet/mesh/planet_mesh.hpp"
 #include "sim/planet/planet_state.hpp"
 
+#include <zstd.h>
+
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstddef>
@@ -36,6 +39,7 @@ struct EncodedChunk {
     std::uint64_t offset = 0;
     std::vector<std::byte> bytes;
     std::uint32_t checksum = 0;
+    std::string_view codec = "none";
 };
 
 struct ParsedSnapshot {
@@ -43,6 +47,89 @@ struct ParsedSnapshot {
     std::vector<std::byte> file_bytes;
     std::size_t chunk_area_offset = 0;
 };
+
+constexpr std::string_view codec_none = "none";
+constexpr std::string_view codec_shuffle_zstd = "shuffle-zstd";
+constexpr std::string_view codec_xor_shuffle_zstd = "xor-shuffle-zstd";
+constexpr int zstd_level = 3;
+
+[[nodiscard]] std::size_t element_size(FieldDataType data_type) noexcept {
+    return data_type == FieldDataType::float32 ? sizeof(float) : sizeof(double);
+}
+
+// Byte k of every element first, element order kept: floats' exponent and
+// high mantissa bytes, which change slowly across neighbouring cells, end up
+// together, which is what zstd needs.
+[[nodiscard]] std::vector<std::byte> shuffle(std::span<const std::byte> bytes,
+                                             std::size_t element) {
+    const std::size_t count = bytes.size() / element;
+    std::vector<std::byte> out(bytes.size());
+    for (std::size_t index = 0; index < count; ++index) {
+        for (std::size_t byte = 0; byte < element; ++byte) {
+            out[byte * count + index] = bytes[index * element + byte];
+        }
+    }
+    return out;
+}
+
+[[nodiscard]] std::vector<std::byte> unshuffle(std::span<const std::byte> bytes,
+                                               std::size_t element) {
+    const std::size_t count = bytes.size() / element;
+    std::vector<std::byte> out(bytes.size());
+    for (std::size_t index = 0; index < count; ++index) {
+        for (std::size_t byte = 0; byte < element; ++byte) {
+            out[index * element + byte] = bytes[byte * count + index];
+        }
+    }
+    return out;
+}
+
+[[nodiscard]] std::vector<std::byte> zstd_compress(std::span<const std::byte> bytes) {
+    std::vector<std::byte> out(ZSTD_compressBound(bytes.size()));
+    const std::size_t written =
+        ZSTD_compress(out.data(), out.size(), bytes.data(), bytes.size(), zstd_level);
+    if (ZSTD_isError(written) != 0U) {
+        throw std::runtime_error(std::string("zstd compression failed: ") +
+                                 ZSTD_getErrorName(written));
+    }
+    out.resize(written);
+    return out;
+}
+
+[[noreturn]] void field_error(std::uint32_t field_id, std::string_view message);
+
+[[nodiscard]] std::vector<std::byte> zstd_decompress(std::span<const std::byte> bytes,
+                                                     std::size_t expected,
+                                                     std::uint32_t field_id) {
+    const unsigned long long declared = ZSTD_getFrameContentSize(bytes.data(), bytes.size());
+    if (declared != expected) {
+        field_error(field_id, "compressed chunk does not declare the registry's length");
+    }
+    std::vector<std::byte> out(expected);
+    const std::size_t read = ZSTD_decompress(out.data(), out.size(), bytes.data(), bytes.size());
+    if (ZSTD_isError(read) != 0U || read != expected) {
+        field_error(field_id, "compressed chunk does not decompress");
+    }
+    return out;
+}
+
+// Stored bytes of a raw chunk under a codec; `parent` is the parent's raw
+// chunk for a delta.
+[[nodiscard]] std::vector<std::byte> store_bytes(const std::vector<std::byte>& raw,
+                                                 std::string_view codec, std::size_t element,
+                                                 const std::vector<std::byte>* parent) {
+    if (codec == codec_none) {
+        return raw;
+    }
+    if (codec == codec_shuffle_zstd) {
+        return zstd_compress(shuffle(raw, element));
+    }
+    std::vector<std::byte> difference(raw.size());
+    for (std::size_t index = 0; index < raw.size(); ++index) {
+        difference[index] = raw[index] ^ (*parent)[index];
+    }
+    return zstd_compress(shuffle(difference, element));
+}
 
 template <typename UInt>
 void append_little_endian(std::vector<std::byte>& output, UInt value) {
@@ -248,10 +335,14 @@ void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& fi
 [[nodiscard]] std::string build_manifest(const PlanetState& state,
                                          SimulationTick tick,
                                          std::string_view parent_snapshot_id,
-                                         const std::vector<EncodedChunk>& chunks) {
+                                         const std::vector<EncodedChunk>& chunks, bool delta) {
     std::string manifest;
     manifest.reserve(512U + chunks.size() * 256U);
-    manifest += "{\"format\":\"PSNAPv1\",\"schema_version\":";
+    manifest += "{\"format\":\"PSNAPv1\"";
+    if (delta) {
+        manifest += ",\"kind\":\"delta\"";
+    }
+    manifest += ",\"schema_version\":";
     manifest += std::to_string(persistent_snapshot_schema_version);
     manifest += ",\"engine_version\":";
     append_json_string(manifest, PLANETSIM_ENGINE_VERSION);
@@ -287,7 +378,9 @@ void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& fi
         append_json_string(manifest, data_type_name(descriptor.data_type));
         manifest += ",\"layers\":";
         manifest += std::to_string(descriptor.layers);
-        manifest += ",\"compression\":\"none\",\"byte_range\":[";
+        manifest += ",\"compression\":";
+        append_json_string(manifest, chunk.codec);
+        manifest += ",\"byte_range\":[";
         manifest += std::to_string(chunk.offset);
         manifest.push_back(',');
         manifest += std::to_string(chunk.bytes.size());
@@ -360,6 +453,13 @@ class ManifestParser {
         expect('{');
         expect_key("format");
         manifest.format = parse_string();
+        if (text_.substr(position_).starts_with(",\"kind\"")) {
+            expect_next_key("kind");
+            if (parse_string() != "delta") {
+                fail("unknown snapshot kind");
+            }
+            manifest.delta = true;
+        }
         expect_next_key("schema_version");
         manifest.schema_version = parse_u32("schema_version");
         expect_next_key("engine_version");
@@ -707,18 +807,27 @@ void validate_manifest_and_chunks(const SnapshotManifest& manifest,
         if (field.layers != descriptor->layers) {
             field_error(field.field_id, "layer count does not match registry");
         }
-        if (field.compression != "none") {
+        const bool known_codec =
+            field.compression == codec_none || field.compression == codec_shuffle_zstd ||
+            (manifest.delta && field.compression == codec_xor_shuffle_zstd);
+        if (!known_codec) {
             field_error(field.field_id, "unsupported compression " + field.compression);
         }
 
+        // A compressed chunk's length is checked against the registry when it
+        // is decompressed.
         const std::uint64_t expected_length =
             checked_field_byte_length(*descriptor, manifest.cell_count);
-        if (field.byte_length != expected_length) {
+        if (field.compression == codec_none && field.byte_length != expected_length) {
             field_error(field.field_id, "byte length does not match registry and cell count");
         }
     }
 
-    for (std::size_t index = 0; index < stored_field_count; ++index) {
+    if (manifest.delta && manifest.parent_snapshot_id.empty()) {
+        throw std::runtime_error("snapshot delta has no parent_snapshot_id");
+    }
+    // A delta omits the fields that did not change.
+    for (std::size_t index = 0; !manifest.delta && index < stored_field_count; ++index) {
         const StoredField stored = stored_field_at(index);
         if (stored.descriptor->persistent() && !seen[index] && stored.first_schema != 0U &&
             stored.first_schema <= manifest.schema_version &&
@@ -780,17 +889,6 @@ void validate_manifest_and_chunks(const SnapshotManifest& manifest,
     const auto chunk_area = file_span.subspan(parsed.chunk_area_offset);
     validate_manifest_and_chunks(parsed.manifest, chunk_area);
     return parsed;
-}
-
-[[nodiscard]] const SnapshotFieldInfo& require_field(const SnapshotManifest& manifest,
-                                                     FieldId id) {
-    const auto raw_id = static_cast<std::uint32_t>(id);
-    for (const auto& field : manifest.fields) {
-        if (field.field_id == raw_id) {
-            return field;
-        }
-    }
-    field_error(raw_id, "required slow field is missing");
 }
 
 // Rejects a slow state whose containers do not match the registry and mesh,
@@ -918,21 +1016,12 @@ std::uint32_t mesh_geometry_checksum(const PlanetMesh& mesh) {
     return crc32c({bytes.data(), bytes.size()});
 }
 
-void write_snapshot(const std::filesystem::path& path,
-                    const PlanetState& state,
-                    SimulationTick tick,
-                    std::string parent_snapshot_id) {
-    if (tick < 0) {
-        throw std::invalid_argument("snapshot tick must be non-negative");
-    }
-    validate_slow_state(state);
+namespace {
 
-    const auto chunks = encode_slow_state(state);
-    const auto manifest = build_manifest(state, tick, parent_snapshot_id, chunks);
-    if (manifest.size() > std::numeric_limits<std::uint64_t>::max()) {
-        throw std::length_error("snapshot manifest is too large");
-    }
-
+// Writes header, manifest and stored chunks to `path` through a `.partial`
+// file renamed into place.
+void write_snapshot_file(const std::filesystem::path& path, const std::string& manifest,
+                         const std::vector<EncodedChunk>& chunks) {
     std::vector<std::byte> header(snapshot_magic.begin(), snapshot_magic.end());
     append_little_endian(header, static_cast<std::uint64_t>(manifest.size()));
 
@@ -964,6 +1053,97 @@ void write_snapshot(const std::filesystem::path& path,
     }
 }
 
+// Replaces each raw chunk's bytes by its stored bytes under `codec` (for a
+// delta, against the parent's raw chunk) and lays the chunks out back to back.
+void store_chunks(std::vector<EncodedChunk>& chunks, std::string_view codec,
+                  const SnapshotChunks* parent) {
+    std::uint64_t offset = 0;
+    for (auto& chunk : chunks) {
+        const std::vector<std::byte>* parent_raw =
+            parent != nullptr ? parent->find(static_cast<std::uint32_t>(chunk.descriptor->id))
+                              : nullptr;
+        chunk.bytes = store_bytes(chunk.bytes, codec, element_size(chunk.descriptor->data_type),
+                                  parent_raw);
+        chunk.codec = codec;
+        chunk.offset = offset;
+        chunk.checksum = crc32c({chunk.bytes.data(), chunk.bytes.size()});
+        offset += static_cast<std::uint64_t>(chunk.bytes.size());
+    }
+}
+
+}  // namespace
+
+const std::vector<std::byte>* SnapshotChunks::find(std::uint32_t field_id) const noexcept {
+    const auto it = std::lower_bound(field_ids.begin(), field_ids.end(), field_id);
+    if (it == field_ids.end() || *it != field_id) {
+        return nullptr;
+    }
+    return &bytes[static_cast<std::size_t>(it - field_ids.begin())];
+}
+
+std::size_t SnapshotChunks::size_bytes() const noexcept {
+    std::size_t total = 0;
+    for (const auto& chunk : bytes) {
+        total += chunk.size();
+    }
+    return total;
+}
+
+SnapshotChunks encode_snapshot_chunks(const PlanetState& state) {
+    validate_slow_state(state);
+    SnapshotChunks chunks;
+    for (auto& chunk : encode_slow_state(state)) {
+        chunks.field_ids.push_back(static_cast<std::uint32_t>(chunk.descriptor->id));
+        chunks.bytes.push_back(std::move(chunk.bytes));
+    }
+    return chunks;
+}
+
+void write_snapshot(const std::filesystem::path& path,
+                    const PlanetState& state,
+                    SimulationTick tick,
+                    std::string parent_snapshot_id,
+                    SnapshotCompression compression) {
+    if (tick < 0) {
+        throw std::invalid_argument("snapshot tick must be non-negative");
+    }
+    validate_slow_state(state);
+    auto chunks = encode_slow_state(state);
+    store_chunks(chunks,
+                 compression == SnapshotCompression::none ? codec_none : codec_shuffle_zstd,
+                 nullptr);
+    write_snapshot_file(path, build_manifest(state, tick, parent_snapshot_id, chunks, false),
+                        chunks);
+}
+
+std::size_t write_delta_snapshot(const std::filesystem::path& path,
+                                 const PlanetState& state,
+                                 SimulationTick tick,
+                                 std::string parent_snapshot_id,
+                                 const SnapshotChunks& parent) {
+    if (tick < 0) {
+        throw std::invalid_argument("snapshot tick must be non-negative");
+    }
+    if (parent_snapshot_id.empty()) {
+        throw std::invalid_argument("a snapshot delta needs its parent's id");
+    }
+    validate_slow_state(state);
+    std::vector<EncodedChunk> changed;
+    for (auto& chunk : encode_slow_state(state)) {
+        const auto* parent_raw = parent.find(static_cast<std::uint32_t>(chunk.descriptor->id));
+        if (parent_raw == nullptr || parent_raw->size() != chunk.bytes.size()) {
+            throw std::invalid_argument("snapshot delta parent does not match the state's fields");
+        }
+        if (*parent_raw != chunk.bytes) {
+            changed.push_back(std::move(chunk));
+        }
+    }
+    store_chunks(changed, codec_xor_shuffle_zstd, &parent);
+    write_snapshot_file(path, build_manifest(state, tick, parent_snapshot_id, changed, true),
+                        changed);
+    return changed.size();
+}
+
 std::uint64_t slow_state_hash(const PlanetState& state) {
     validate_slow_state(state);
     std::vector<std::byte> canonical;
@@ -980,43 +1160,90 @@ SnapshotManifest inspect_snapshot(const std::filesystem::path& path) {
     return std::move(parsed.manifest);
 }
 
-SnapshotManifest read_snapshot(const std::filesystem::path& path, PlanetState& target_state,
-                               const SnapshotMigration& migration) {
+SnapshotChunks read_snapshot_chunks(const std::filesystem::path& path,
+                                    const SnapshotChunks* parent, SnapshotManifest& manifest) {
     auto parsed = parse_snapshot(path);
-    if (parsed.manifest.mesh_level != target_state.mesh().subdivision()) {
-        throw std::runtime_error("snapshot mesh_level " +
-                                 std::to_string(parsed.manifest.mesh_level) +
+    if (parsed.manifest.delta && parent == nullptr) {
+        throw std::runtime_error("snapshot " + path.string() +
+                                 " is a delta and needs its parent's chunks (HistoryStore)");
+    }
+    SnapshotChunks chunks;
+    if (parsed.manifest.delta) {
+        chunks = *parent;
+    }
+    for (const auto& info : parsed.manifest.fields) {
+        StoredField storage;
+        const StoredField* stored = find_stored_field(info.field_id, storage);
+        const std::size_t element = element_size(stored->descriptor->data_type);
+        const std::size_t expected = static_cast<std::size_t>(
+            checked_field_byte_length(*stored->descriptor, parsed.manifest.cell_count));
+        const auto chunk = field_chunk(parsed, info);
+        std::vector<std::byte> raw;
+        if (info.compression == codec_none) {
+            raw.assign(chunk.begin(), chunk.end());
+        } else {
+            raw = unshuffle(zstd_decompress(chunk, expected, info.field_id), element);
+        }
+        if (info.compression == codec_xor_shuffle_zstd) {
+            const auto* parent_raw = parent->find(info.field_id);
+            if (parent_raw == nullptr || parent_raw->size() != raw.size()) {
+                field_error(info.field_id, "delta field is missing from the parent");
+            }
+            for (std::size_t index = 0; index < raw.size(); ++index) {
+                raw[index] ^= (*parent_raw)[index];
+            }
+            const auto it =
+                std::lower_bound(chunks.field_ids.begin(), chunks.field_ids.end(), info.field_id);
+            chunks.bytes[static_cast<std::size_t>(it - chunks.field_ids.begin())] =
+                std::move(raw);
+        } else {
+            chunks.field_ids.push_back(info.field_id);
+            chunks.bytes.push_back(std::move(raw));
+        }
+    }
+    manifest = std::move(parsed.manifest);
+    return chunks;
+}
+
+void decode_snapshot_chunks(const SnapshotManifest& manifest, const SnapshotChunks& chunks,
+                            PlanetState& target_state, const SnapshotMigration& migration) {
+    if (manifest.mesh_level != target_state.mesh().subdivision()) {
+        throw std::runtime_error("snapshot mesh_level " + std::to_string(manifest.mesh_level) +
                                  " does not match target mesh level " +
                                  std::to_string(target_state.mesh().subdivision()));
     }
-    if (parsed.manifest.cell_count != target_state.mesh().cell_count()) {
-        throw std::runtime_error("snapshot cell_count " +
-                                 std::to_string(parsed.manifest.cell_count) +
+    if (manifest.cell_count != target_state.mesh().cell_count()) {
+        throw std::runtime_error("snapshot cell_count " + std::to_string(manifest.cell_count) +
                                  " does not match target mesh cell count " +
                                  std::to_string(target_state.mesh().cell_count()));
     }
-
-    if (parsed.manifest.mesh_generator_version != mesh_generator_version) {
+    if (manifest.mesh_generator_version != mesh_generator_version) {
         throw std::runtime_error("snapshot mesh_generator_version " +
-                                 std::to_string(parsed.manifest.mesh_generator_version) +
+                                 std::to_string(manifest.mesh_generator_version) +
                                  " does not match this build's mesh generator version " +
                                  std::to_string(mesh_generator_version));
     }
-    if (parsed.manifest.mesh_checksum != mesh_geometry_checksum(target_state.mesh())) {
+    if (manifest.mesh_checksum != mesh_geometry_checksum(target_state.mesh())) {
         throw std::runtime_error(
             "snapshot mesh_checksum does not match the target mesh geometry");
     }
+    const auto raw = [&](FieldId id) -> std::span<const std::byte> {
+        const auto* bytes = chunks.find(static_cast<std::uint32_t>(id));
+        if (bytes == nullptr) {
+            field_error(static_cast<std::uint32_t>(id), "required slow field is missing");
+        }
+        return {bytes->data(), bytes->size()};
+    };
 
     // Decode into a staged copy so a failure leaves the target untouched.
     SlowState staged = target_state.slow();
-    const std::uint32_t file_schema = parsed.manifest.schema_version;
+    const std::uint32_t file_schema = manifest.schema_version;
+    const std::size_t cells = target_state.mesh().cell_count();
     for (const auto& descriptor : field_registry) {
         if (!descriptor.persistent() || first_schema_version(descriptor.id) > file_schema) {
             continue;
         }
-        const auto& info = require_field(parsed.manifest, descriptor.id);
-        decode_chunk(descriptor, field_chunk(parsed, info), target_state.mesh().cell_count(),
-                     staged);
+        decode_chunk(descriptor, raw(descriptor.id), cells, staged);
     }
     if (file_schema < 2U) {
         if (!migration.initialise_schema_2_fields) {
@@ -1029,10 +1256,8 @@ SnapshotManifest read_snapshot(const std::filesystem::path& path, PlanetState& t
     } else if (file_schema < 3U) {
         // Schema 2 -> 3 (ADR-0007 §10): the float32 mixed layer widens exactly
         // into its float64 successor.
-        const auto& info =
-            require_field(parsed.manifest, retired_ocean_mixed_layer_temperature_float32_K);
-        const std::size_t cells = target_state.mesh().cell_count();
-        const Field2D<float> stored = decode_float_cells(field_chunk(parsed, info), cells);
+        const Field2D<float> stored =
+            decode_float_cells(raw(retired_ocean_mixed_layer_temperature_float32_K), cells);
         staged.ocean_mixed_layer_temperature_K = Field2D<double>(cells, 0.0);
         for (std::size_t cell = 0; cell < cells; ++cell) {
             staged.ocean_mixed_layer_temperature_K[cell] = static_cast<double>(stored[cell]);
@@ -1048,7 +1273,14 @@ SnapshotManifest read_snapshot(const std::filesystem::path& path, PlanetState& t
         migration.initialise_schema_4_fields(target_state.mesh(), staged);
     }
     target_state.slow() = std::move(staged);
-    return std::move(parsed.manifest);
+}
+
+SnapshotManifest read_snapshot(const std::filesystem::path& path, PlanetState& target_state,
+                               const SnapshotMigration& migration) {
+    SnapshotManifest manifest;
+    const SnapshotChunks chunks = read_snapshot_chunks(path, nullptr, manifest);
+    decode_snapshot_chunks(manifest, chunks, target_state, migration);
+    return manifest;
 }
 
 }  // namespace planetsim

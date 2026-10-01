@@ -18,6 +18,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(cmake/CompilerWarnings.cmake)
 find_package(Threads REQUIRED)
+# Snapshot compression (ADR-0003 §3.4): the system libzstd.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(ZSTD REQUIRED IMPORTED_TARGET libzstd)
 
 add_library(PlanetSim STATIC
     sim/core/random/noise.cpp
@@ -70,7 +73,7 @@ target_include_directories(PlanetSim
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 )
 target_compile_definitions(PlanetSim PRIVATE PLANETSIM_ENGINE_VERSION="${PROJECT_VERSION}")
-target_link_libraries(PlanetSim PUBLIC Threads::Threads)
+target_link_libraries(PlanetSim PUBLIC Threads::Threads PRIVATE PkgConfig::ZSTD)
 set_target_properties(PlanetSim PROPERTIES POSITION_INDEPENDENT_CODE ON)
 planetsim_set_project_warnings(PlanetSim)
 planetsim_enable_sanitizers(PlanetSim)

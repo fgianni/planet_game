@@ -30,8 +30,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Install Ninja and libzstd
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libzstd-dev pkg-config
 
       - name: Configure
         run: >
@@ -95,8 +95,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Install Ninja and libzstd
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libzstd-dev pkg-config
 
       # ASan runtimes before LLVM 18 hang or crash at startup when the kernel
       # uses 32 bits of mmap randomization, as recent Ubuntu kernels do.
