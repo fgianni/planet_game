@@ -12,6 +12,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <span>
@@ -156,7 +157,7 @@ template <typename UInt>
     return value;
 }
 
-void append_float32(std::vector<std::byte>& output, float value) {
+[[maybe_unused]] void append_float32(std::vector<std::byte>& output, float value) {
     append_little_endian(output, std::bit_cast<std::uint32_t>(value));
 }
 
@@ -248,18 +249,32 @@ void append_json_string(std::string& output, std::string_view value) {
     return 0U;
 }
 
-void append_cell_field(std::vector<std::byte>& output, const Field2D<float>& field) {
-    output.reserve(field.size() * sizeof(float));
-    for (const float value : field.values()) {
-        append_float32(output, value);
+// Little-endian IEEE-754 values: on a little-endian host the field's memory
+// already is the canonical encoding and is copied whole.
+template <typename T>
+void append_values(std::vector<std::byte>& output, std::span<const T> values) {
+    if constexpr (std::endian::native == std::endian::little) {
+        const std::size_t offset = output.size();
+        output.resize(offset + values.size_bytes());
+        std::memcpy(output.data() + offset, values.data(), values.size_bytes());
+    } else {
+        output.reserve(output.size() + values.size_bytes());
+        for (const T value : values) {
+            if constexpr (std::is_same_v<T, float>) {
+                append_float32(output, value);
+            } else {
+                append_float64(output, value);
+            }
+        }
     }
 }
 
+void append_cell_field(std::vector<std::byte>& output, const Field2D<float>& field) {
+    append_values<float>(output, field.values());
+}
+
 void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& field) {
-    output.reserve(field.size() * sizeof(double));
-    for (const double value : field.values()) {
-        append_float64(output, value);
-    }
+    append_values<double>(output, field.values());
 }
 
 [[nodiscard]] EncodedChunk encode_chunk(const FieldDescriptor& descriptor,
@@ -273,9 +288,8 @@ void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& fi
     case FieldId::hypsometry_m:
         chunk.bytes.reserve(state.slow().hypsometry_m.size() * sizeof(float));
         for (std::size_t layer = 0; layer < state.slow().hypsometry_m.layer_count(); ++layer) {
-            for (const float value : state.slow().hypsometry_m.layer(layer)) {
-                append_float32(chunk.bytes, value);
-            }
+            const auto values = state.slow().hypsometry_m.layer(layer);
+            append_values<float>(chunk.bytes, {values.data(), values.size()});
         }
         break;
     case FieldId::sea_level_m:
@@ -311,7 +325,7 @@ void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& fi
         throw std::logic_error("derived forcing field cannot be persisted");
     }
 
-    chunk.checksum = crc32c({chunk.bytes.data(), chunk.bytes.size()});
+    // The checksum is taken over the stored bytes (store_chunks).
     return chunk;
 }
 
