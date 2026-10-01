@@ -1247,7 +1247,8 @@ int run_history(const HistoryOptions& options) {
         worker_count));
     const auto fractions = planetsim::compute_surface_fractions(
         *mesh, state.slow().hypsometry_m, state.slow().sea_level_m, worker_count);
-    const auto surface = planetsim::surface_energy_parameters_for(planetsim::PlanetPreset::earth_like);
+    const auto surface =
+        planetsim::surface_energy_parameters_for(planetsim::PlanetPreset::earth_like);
     planetsim::initialise_surface_temperatures(*mesh, state.slow(), parameters, surface,
                                                worker_count);
     planetsim::initialise_cryosphere(*mesh, state.slow());
