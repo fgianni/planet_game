@@ -25,7 +25,8 @@ constexpr std::uint64_t synthetic_seed = 0x9B97'F4A7'C150'0011ULL;
 constexpr planetsim::SimulationTick synthetic_tick = 123'456;
 constexpr double test_radius_m = 6'371'000.0;
 
-void populate_synthetic_state(planetsim::PlanetState& state) {
+void populate_synthetic_state(planetsim::PlanetState& state,
+                              std::size_t atmosphere_layers = 3U) {
     for (std::size_t cell = 0; cell < state.mesh().cell_count(); ++cell) {
         std::array<float, planetsim::hypsometry_layer_count> quantiles{};
         for (std::size_t layer = 0; layer < quantiles.size(); ++layer) {
@@ -56,6 +57,17 @@ void populate_synthetic_state(planetsim::PlanetState& state) {
         slow.ocean_deep_temperature_K[cell] = temperature(cell, 23U);
         slow.land_snow_water_equivalent_kg_m2[cell] = 2.0 * (temperature(cell, 24U) - 220.0);
         slow.sea_ice_mass_kg_m2[cell] = 20.0 * (temperature(cell, 25U) - 220.0);
+    }
+    // Schema 5 atmosphere (ADR-0010 §4.1): p_s 52-102 kPa, layers 170-270 K.
+    auto& slow = state.slow();
+    slow.atmosphere_temperature_K =
+        planetsim::Field3D<double>(atmosphere_layers, state.mesh().cell_count(), 0.0);
+    for (std::size_t cell = 0; cell < state.mesh().cell_count(); ++cell) {
+        slow.atmosphere_surface_pressure_Pa[cell] = 500.0 * (temperature(cell, 26U) - 116.0);
+        for (std::size_t layer = 0; layer < atmosphere_layers; ++layer) {
+            slow.atmosphere_temperature_K.layer(layer)[cell] =
+                temperature(cell, 30U + static_cast<std::uint32_t>(layer)) - 50.0;
+        }
     }
 }
 
@@ -203,6 +215,20 @@ void expect_states_equal(planetsim::test::Context& test,
                                        second.slow().land_snow_water_equivalent_kg_m2));
     PLANETSIM_EXPECT(test, same_double(first.slow().sea_ice_mass_kg_m2,
                                        second.slow().sea_ice_mass_kg_m2));
+    PLANETSIM_EXPECT(test, same_double(first.slow().atmosphere_surface_pressure_Pa,
+                                       second.slow().atmosphere_surface_pressure_Pa));
+    const auto& first_air = first.slow().atmosphere_temperature_K;
+    const auto& second_air = second.slow().atmosphere_temperature_K;
+    bool same_air = first_air.layer_count() == second_air.layer_count() &&
+                    first_air.cell_count() == second_air.cell_count();
+    for (std::size_t layer = 0; same_air && layer < first_air.layer_count(); ++layer) {
+        const auto a = first_air.layer(layer);
+        const auto b = second_air.layer(layer);
+        same_air = std::equal(a.begin(), a.end(), b.begin(), b.end(), [](double x, double y) {
+            return std::bit_cast<std::uint64_t>(x) == std::bit_cast<std::uint64_t>(y);
+        });
+    }
+    PLANETSIM_EXPECT(test, same_air);
 }
 
 // ADR-0003 §3.6, task M5-01: initialisers attach only to initialiser steps
@@ -273,8 +299,8 @@ int main() {
     PLANETSIM_EXPECT(test, inspected.mesh_level == 0U);
     PLANETSIM_EXPECT(test, inspected.cell_count == 12U);
     PLANETSIM_EXPECT(test, inspected.parent_snapshot_id == "parent-0");
-    PLANETSIM_EXPECT(test, inspected.fields.size() == 8U);
-    if (inspected.fields.size() == 8U) {
+    PLANETSIM_EXPECT(test, inspected.fields.size() == 10U);
+    if (inspected.fields.size() == 10U) {
         PLANETSIM_EXPECT(test, inspected.fields[0].field_id ==
                                    static_cast<std::uint32_t>(planetsim::FieldId::hypsometry_m));
         PLANETSIM_EXPECT(test, inspected.fields[1].field_id ==
@@ -293,6 +319,15 @@ int main() {
                                    static_cast<std::uint32_t>(
                                        planetsim::FieldId::sea_ice_mass_kg_m2));
         PLANETSIM_EXPECT(test, inspected.fields[7].dtype == "float64");
+        PLANETSIM_EXPECT(test, inspected.fields[8].field_id ==
+                                   static_cast<std::uint32_t>(
+                                       planetsim::FieldId::atmosphere_surface_pressure_Pa));
+        PLANETSIM_EXPECT(test, inspected.fields[9].field_id ==
+                                   static_cast<std::uint32_t>(
+                                       planetsim::FieldId::atmosphere_temperature_K));
+        // The scenario's layer count, not the registry's (ADR-0010 §4.1).
+        PLANETSIM_EXPECT(test, inspected.fields[9].layers == 3U);
+        PLANETSIM_EXPECT(test, inspected.fields[9].byte_length == 3U * 12U * sizeof(double));
     }
 
     for (const std::uint32_t level : {0U, 4U, 6U}) {
@@ -333,6 +368,27 @@ int main() {
                           << "l6_snapshot_" << codec << "_write_time_ms: " << write_time_ms
                           << '\n';
             }
+        }
+    }
+
+    // V4 with no atmosphere and with five layers (ADR-0010 V8).
+    for (const std::size_t layers : {0U, 5U}) {
+        planetsim::PlanetState original(level_zero_mesh);
+        populate_synthetic_state(original, layers);
+        for (const auto compression : {planetsim::SnapshotCompression::none,
+                                       planetsim::SnapshotCompression::shuffle_zstd}) {
+            const auto input_path = temporary_directory / ("layers_" + std::to_string(layers) +
+                                                           "_input.psnap");
+            const auto output_path = temporary_directory / ("layers_" + std::to_string(layers) +
+                                                            "_output.psnap");
+            planetsim::write_snapshot(input_path, original, synthetic_tick, {}, compression);
+            planetsim::PlanetState reloaded(level_zero_mesh);
+            const auto manifest = planetsim::read_snapshot(input_path, reloaded);
+            expect_states_equal(test, original, reloaded);
+            PLANETSIM_EXPECT(test, reloaded.slow().atmosphere_layer_count() == layers);
+            PLANETSIM_EXPECT(test, manifest.fields.back().layers == layers);
+            planetsim::write_snapshot(output_path, reloaded, manifest.tick, {}, compression);
+            PLANETSIM_EXPECT(test, read_file(input_path) == read_file(output_path));
         }
     }
 
@@ -395,37 +451,57 @@ int main() {
     auto truncated = canonical_bytes;
     truncated.pop_back();
     write_file(invalid_path, truncated);
-    expect_read_failure(test, invalid_path, level_zero_mesh, "field_id 262146");
+    expect_read_failure(test, invalid_path, level_zero_mesh, "field_id 327682");
 
     write_file(invalid_path,
                replace_manifest_once(canonical_bytes, "\"format\"", "\"xormat\""));
     expect_read_failure(test, invalid_path, level_zero_mesh, "expected key format");
 
     write_file(invalid_path,
-               replace_manifest_once(canonical_bytes, "\"schema_version\":4",
+               replace_manifest_once(canonical_bytes, "\"schema_version\":5",
                                      "\"schema_version\":9"));
     expect_read_failure(test, invalid_path, level_zero_mesh, "schema_version");
 
     // A file that claims schema 1 may not carry fields introduced in schema 2.
     write_file(invalid_path,
-               replace_manifest_once(canonical_bytes, "\"schema_version\":4",
+               replace_manifest_once(canonical_bytes, "\"schema_version\":5",
                                      "\"schema_version\":1"));
     expect_read_failure(test, invalid_path, level_zero_mesh,
                         "does not exist in snapshot schema_version 1");
 
     // Nor may a schema 2 file carry the float64 mixed layer of schema 3.
     write_file(invalid_path,
-               replace_manifest_once(canonical_bytes, "\"schema_version\":4",
+               replace_manifest_once(canonical_bytes, "\"schema_version\":5",
                                      "\"schema_version\":2"));
     expect_read_failure(test, invalid_path, level_zero_mesh,
                         "field_id 196613: field does not exist in snapshot schema_version 2");
 
     // Nor may a schema 3 file carry the cryosphere reservoirs of schema 4.
     write_file(invalid_path,
-               replace_manifest_once(canonical_bytes, "\"schema_version\":4",
+               replace_manifest_once(canonical_bytes, "\"schema_version\":5",
                                      "\"schema_version\":3"));
     expect_read_failure(test, invalid_path, level_zero_mesh,
                         "field_id 262145: field does not exist in snapshot schema_version 3");
+
+    // Nor may a schema 4 file carry the atmosphere of schema 5.
+    write_file(invalid_path,
+               replace_manifest_once(canonical_bytes, "\"schema_version\":5",
+                                     "\"schema_version\":4"));
+    expect_read_failure(test, invalid_path, level_zero_mesh,
+                        "field_id 327681: field does not exist in snapshot schema_version 4");
+
+    // A scenario-layered field's stored layer count must match its bytes and
+    // stay within the bound (ADR-0010 §4.1).
+    write_file(invalid_path, replace_manifest_once(canonical_bytes,
+                                                   "\"dtype\":\"float64\",\"layers\":3",
+                                                   "\"dtype\":\"float64\",\"layers\":2"));
+    expect_read_failure(test, invalid_path, level_zero_mesh,
+                        "field_id 327682: byte length does not match");
+    write_file(invalid_path, replace_manifest_once(canonical_bytes,
+                                                   "\"dtype\":\"float64\",\"layers\":3",
+                                                   "\"dtype\":\"float64\",\"layers\":65"));
+    expect_read_failure(test, invalid_path, level_zero_mesh,
+                        "field_id 327682: scenario layer count is too large");
 
     write_file(invalid_path,
                replace_manifest_once(canonical_bytes, "\"mesh_level\":0",

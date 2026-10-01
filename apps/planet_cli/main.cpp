@@ -4,6 +4,7 @@
 #include "sim/core/serialization/run_manifest.hpp"
 #include "sim/core/serialization/history_store.hpp"
 #include "sim/core/serialization/snapshot_file.hpp"
+#include "sim/planet/atmosphere/atmosphere.hpp"
 #include "sim/planet/mesh/icosphere.hpp"
 #include "sim/planet/mesh/mesh_diagnostics.hpp"
 #include "sim/planet/operators/operator_validation.hpp"
@@ -96,6 +97,13 @@ struct HistoryOptions {
     std::filesystem::path directory;
 };
 
+struct AtmosphereOptions {
+    std::uint32_t subdivision = 5;
+    std::uint64_t seed = 1;
+    std::uint32_t layers = 3;
+    std::size_t worker_count = 0;   // 0: hardware concurrency
+};
+
 struct ThermalOptions {
     std::uint32_t subdivision = 5;
     std::uint64_t seed = 1;
@@ -139,6 +147,8 @@ void print_usage(std::ostream& output) {
               " [--snapshot FILE.psnap]\n"
            << "    presets: earth_like (default), aqua_planet, dead_rock\n"
            << "  planet_cli calendar [--year N | --from-tick T]\n"
+           << "  planet_cli atmosphere [--subdivision LEVEL] [--seed N] [--layers N]"
+              " [--workers W]\n"
            << "  planet_cli history [--subdivision LEVEL] [--seed N] [--spin-up-years N]"
               " [--decades N] [--base-interval N] [--workers W] [--out DIRECTORY]\n"
            << "  planet_cli thermal [--subdivision LEVEL] [--seed N] [--preset NAME]"
@@ -429,6 +439,29 @@ void print_usage(std::ostream& output) {
     return options;
 }
 
+[[nodiscard]] AtmosphereOptions parse_atmosphere_options(int argument_count, char** arguments) {
+    AtmosphereOptions options;
+    for (int index = 2; index < argument_count; ++index) {
+        const std::string_view argument{arguments[index]};
+        if (++index >= argument_count) {
+            throw std::invalid_argument(std::string(argument) + " requires a value");
+        }
+        const std::string_view value{arguments[index]};
+        if (argument == "--subdivision") {
+            options.subdivision = parse_subdivision(value);
+        } else if (argument == "--seed") {
+            options.seed = parse_unsigned(value, "seed");
+        } else if (argument == "--layers") {
+            options.layers = static_cast<std::uint32_t>(parse_unsigned(value, "layer count"));
+        } else if (argument == "--workers") {
+            options.worker_count = static_cast<std::size_t>(parse_unsigned(value, "worker count"));
+        } else {
+            throw std::invalid_argument("unknown atmosphere option: " + std::string(argument));
+        }
+    }
+    return options;
+}
+
 [[nodiscard]] std::string_view boundary_class_name(planetsim::BoundaryClass boundary_class) {
     switch (boundary_class) {
     case planetsim::BoundaryClass::none:
@@ -682,6 +715,18 @@ void populate_snapshot_synthetic_state(planetsim::PlanetState& state) {
         slow.ocean_deep_temperature_K[cell] = temperature(cell, 23U);
         slow.land_snow_water_equivalent_kg_m2[cell] = 2.0 * (temperature(cell, 24U) - 220.0);
         slow.sea_ice_mass_kg_m2[cell] = 20.0 * (temperature(cell, 25U) - 220.0);
+    }
+    // Schema 5 atmosphere (ADR-0010 §4.1): three layers, p_s 52-102 kPa,
+    // layers 170-270 K.
+    auto& slow = state.slow();
+    slow.atmosphere_temperature_K =
+        planetsim::Field3D<double>(3U, state.mesh().cell_count(), 0.0);
+    for (std::size_t cell = 0; cell < state.mesh().cell_count(); ++cell) {
+        slow.atmosphere_surface_pressure_Pa[cell] = 500.0 * (temperature(cell, 26U) - 116.0);
+        for (std::size_t layer = 0; layer < 3U; ++layer) {
+            slow.atmosphere_temperature_K.layer(layer)[cell] =
+                temperature(cell, 30U + static_cast<std::uint32_t>(layer)) - 50.0;
+        }
     }
 }
 
@@ -1101,7 +1146,9 @@ int run_registry_dump() {
                   << planetsim::field_partition_name(descriptor.partition) << '\t'
                   << planetsim::field_layout_name(descriptor.layout) << '\t'
                   << planetsim::field_data_type_name(descriptor.data_type) << '\t'
-                  << descriptor.layers << '\t' << descriptor.units << '\n';
+                  << (descriptor.scenario_layered() ? std::string("scenario")
+                                                    : std::to_string(descriptor.layers))
+                  << '\t' << descriptor.units << '\n';
     }
     for (const auto retired_id : planetsim::retired_field_ids) {
         std::cout << "# retired_field_id\t" << static_cast<std::uint32_t>(retired_id) << '\n';
@@ -1234,6 +1281,51 @@ int run_calendar(int argument_count, char** arguments) {
 // snapshot's raw and compressed size and its write time, every decade's
 // delta size against the full snapshot's, and the time to reconstruct the
 // deepest snapshot of the chain.
+// The atmosphere at hydrostatic rest over a generated Earth-like planet
+// (ADR-0010 §4.3, task M5-02): mass, surface and sea-level pressure, and the
+// mean temperature, pressure and height of every layer.
+int run_atmosphere(const AtmosphereOptions& options) {
+    const std::size_t worker_count =
+        options.worker_count != 0U ? options.worker_count
+                                   : std::max<std::size_t>(1U, std::thread::hardware_concurrency());
+    const auto parameters = planetsim::PlanetParameters::earth_development();
+    auto mesh = std::make_shared<const planetsim::PlanetMesh>(
+        planetsim::make_icosphere(options.subdivision, 6'371'000.0));
+    planetsim::PlanetState state(mesh);
+    static_cast<void>(planetsim::generate_terrain(
+        state, options.seed, planetsim::geology_parameters_for(planetsim::PlanetPreset::earth_like),
+        worker_count));
+    planetsim::initialise_surface_temperatures(
+        *mesh, state.slow(), parameters,
+        planetsim::surface_energy_parameters_for(planetsim::PlanetPreset::earth_like),
+        worker_count);
+    planetsim::initialise_cryosphere(*mesh, state.slow());
+    auto atmosphere = planetsim::atmosphere_parameters_for(planetsim::PlanetPreset::earth_like);
+    atmosphere.layer_count = options.layers;
+    planetsim::initialise_atmosphere(*mesh, state.slow(), parameters, atmosphere);
+    const auto diagnostics = planetsim::diagnose_atmosphere(*mesh, state.slow(), parameters,
+                                                            atmosphere, worker_count);
+    std::cout << std::setprecision(10) << "atmosphere subdivision=" << options.subdivision
+              << " seed=" << options.seed << " layers=" << diagnostics.layer_count
+              << " gravity_m_s2=" << planetsim::surface_gravity_m_s2(parameters) << '\n'
+              << "mass_kg=" << diagnostics.mass_kg
+              << " surface_pressure_Pa mean=" << diagnostics.mean_surface_pressure_Pa
+              << " min=" << diagnostics.min_surface_pressure_Pa
+              << " max=" << diagnostics.max_surface_pressure_Pa << '\n'
+              << "sea_level_pressure_Pa mean=" << diagnostics.mean_sea_level_pressure_Pa
+              << " min=" << diagnostics.min_sea_level_pressure_Pa
+              << " max=" << diagnostics.max_sea_level_pressure_Pa
+              << " surface_air_K=" << diagnostics.mean_surface_air_temperature_K << '\n';
+    for (std::size_t layer = 0; layer < diagnostics.layer_count; ++layer) {
+        std::cout << "layer=" << layer
+                  << " sigma=" << planetsim::layer_sigma(layer, diagnostics.layer_count)
+                  << " pressure_Pa=" << diagnostics.mean_layer_pressure_Pa[layer]
+                  << " temperature_K=" << diagnostics.mean_layer_temperature_K[layer]
+                  << " height_m=" << diagnostics.mean_layer_height_m[layer] << '\n';
+    }
+    return 0;
+}
+
 int run_history(const HistoryOptions& options) {
     const std::size_t worker_count =
         options.worker_count != 0U ? options.worker_count
@@ -1597,6 +1689,9 @@ int main(int argument_count, char** arguments) {
         }
         if (command == "terrain") {
             return run_terrain(parse_terrain_options(argument_count, arguments));
+        }
+        if (command == "atmosphere") {
+            return run_atmosphere(parse_atmosphere_options(argument_count, arguments));
         }
         if (command == "history") {
             return run_history(parse_history_options(argument_count, arguments));

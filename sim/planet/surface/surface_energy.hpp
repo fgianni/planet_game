@@ -82,12 +82,6 @@ void initialise_surface_temperatures(const PlanetMesh& mesh, SlowState& slow,
 // below the seawater freezing point are raised to it (ADR-0008 §9).
 void initialise_cryosphere(const PlanetMesh& mesh, SlowState& slow);
 
-// The PSNAP migrations: schema 1 -> 2 initialises the four temperatures with
-// initialise_surface_temperatures (ADR-0007 §4.6); schema 3 -> 4 the
-// cryosphere with initialise_cryosphere (ADR-0008 §4.6).
-[[nodiscard]] SnapshotMigration surface_energy_migration(const PlanetParameters& parameters,
-                                                         const SurfaceEnergyParameters& surface);
-
 // Global budget of one step (ADR-0007 §4.4, ADR-0008 §4.5): area- and
 // tile-weighted sums in double through the deterministic reduction. Energy
 // closure compares the stored energy change plus the latent heat taken by

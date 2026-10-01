@@ -35,6 +35,7 @@ add_library(PlanetSim STATIC
     sim/core/scheduler/scheduler.cpp
     sim/core/scheduler/simulation_clock.cpp
     sim/core/scheduler/worker_pool.cpp
+    sim/planet/atmosphere/atmosphere.cpp
     sim/planet/climatology/monthly_climatology.cpp
     sim/planet/coordinates/local_tangent_basis.cpp
     sim/planet/geology/crust.cpp
@@ -59,6 +60,7 @@ add_library(PlanetSim STATIC
     sim/planet/surface/surface_energy.cpp
     sim/planet/surface/surface_materials.cpp
     sim/planet/planet_parameters.cpp
+    sim/planet/planet_migration.cpp
     sim/planet/planet_state.cpp
     sim/planet/run/planet_run.cpp
     sim/planet/terrain/drainage.cpp

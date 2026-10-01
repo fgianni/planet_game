@@ -109,18 +109,6 @@ void initialise_cryosphere(const PlanetMesh& mesh, SlowState& slow) {
     }
 }
 
-SnapshotMigration surface_energy_migration(const PlanetParameters& parameters,
-                                           const SurfaceEnergyParameters& surface) {
-    SnapshotMigration migration;
-    migration.set_initialiser(2U, [parameters, surface](const PlanetMesh& mesh, SlowState& staged) {
-        initialise_surface_temperatures(mesh, staged, parameters, surface);
-    });
-    migration.set_initialiser(4U, [](const PlanetMesh& mesh, SlowState& staged) {
-        initialise_cryosphere(mesh, staged);
-    });
-    return migration;
-}
-
 namespace {
 
 struct BudgetPartial {

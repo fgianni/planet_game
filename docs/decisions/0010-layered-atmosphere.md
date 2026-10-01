@@ -368,3 +368,24 @@ ten years with closing budgets (ADR-0003 V5).
 4. **M5-04 Transport, calibration and close**: θ̄_c diffusion, the τ₀ and D
    refit, the plateau experiment, the performance gates and the records.
    V6, V9, V10.
+
+## 10. Implementation record
+
+- **M5-01 (2026-10-01).** The migration chain of §4.7 is the core table
+  `snapshot_migration_chain`. Each step is named and is either an
+  initialiser step or a core step, and the log of applied steps is returned
+  in `SnapshotManifest::applied_migrations`. The scenario-layered fields of
+  §4.1 moved to M5-02, because nothing could test them earlier.
+- **M5-02 (2026-10-01).** Covers §4.1–4.3, PSNAP schema 5 and V1, with V8
+  for snapshots.
+  - Scenario-layered fields: the registry declares 0 layers, the manifest
+    states the count, and the reader checks it against the bytes and the
+    bound.
+  - Clarification of §4.3: every column reduces to exactly `p₀` at sea
+    level, so the "single global factor" is identically one and is not
+    applied.
+  - Layer heights use the trapezoidal hypsometric rule from the surface air
+    temperature, within 0.23 % of the analytic Γ_c profile.
+  - At L5 (seed 1, N = 3) the atmosphere holds 5.135 × 10¹⁸ kg with a mean
+    surface pressure of 98.9 kPa.
+  - Details are in `docs/tasks/M5-02-atmosphere-state-and-hydrostatics.md`.

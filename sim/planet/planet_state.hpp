@@ -23,6 +23,14 @@ struct SlowState {
     // sea ice on the ocean tile.
     field_container_t<FieldId::land_snow_water_equivalent_kg_m2> land_snow_water_equivalent_kg_m2;
     field_container_t<FieldId::sea_ice_mass_kg_m2> sea_ice_mass_kg_m2;
+    // Atmosphere (ADR-0010 §4.1): zero pressure and no layers until
+    // initialise_atmosphere, which sets the scenario's layer count.
+    field_container_t<FieldId::atmosphere_surface_pressure_Pa> atmosphere_surface_pressure_Pa;
+    field_container_t<FieldId::atmosphere_temperature_K> atmosphere_temperature_K;
+
+    [[nodiscard]] std::size_t atmosphere_layer_count() const noexcept {
+        return atmosphere_temperature_K.layer_count();
+    }
 };
 
 struct FastState {};

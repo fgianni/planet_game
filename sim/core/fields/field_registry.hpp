@@ -25,6 +25,8 @@ enum class FieldId : std::uint32_t {
     climatology_surface_temperature_variance_K2 = 0x0004'0006U,
     climatology_land_snow_mean_kg_m2 = 0x0004'0007U,
     climatology_sea_ice_mean_kg_m2 = 0x0004'0008U,
+    atmosphere_surface_pressure_Pa = 0x0005'0001U,
+    atmosphere_temperature_K = 0x0005'0002U,
 };
 
 enum class FieldDataType : std::uint8_t {
@@ -48,6 +50,13 @@ enum class FieldLayout : std::uint8_t {
 
 inline constexpr std::uint32_t hypsometry_layer_count = 9U;
 
+// A cell_layers field whose layer count is a scenario parameter rather than a
+// property of the build (ADR-0010 §4.1): the registry declares 0 layers, each
+// snapshot's manifest states the stored count, and every scenario-layered
+// field of one snapshot has the same count.
+inline constexpr std::uint32_t scenario_layer_count = 0U;
+inline constexpr std::uint32_t max_scenario_layer_count = 64U;
+
 struct FieldDescriptor {
     FieldId id;
     std::string_view name;
@@ -59,6 +68,9 @@ struct FieldDescriptor {
 
     [[nodiscard]] constexpr bool persistent() const noexcept {
         return partition == FieldPartition::slow;
+    }
+    [[nodiscard]] constexpr bool scenario_layered() const noexcept {
+        return layout == FieldLayout::cell_layers && layers == scenario_layer_count;
     }
 };
 
@@ -102,7 +114,7 @@ struct FieldDescriptor {
     return {};
 }
 
-inline constexpr std::array<FieldDescriptor, 16> field_registry{{
+inline constexpr std::array<FieldDescriptor, 18> field_registry{{
     {FieldId::top_of_atmosphere_insolation_W_m2, "top_of_atmosphere_insolation_W_m2",
      FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
     {FieldId::substep_mean_insolation_W_m2, "substep_mean_insolation_W_m2",
@@ -147,6 +159,13 @@ inline constexpr std::array<FieldDescriptor, 16> field_registry{{
     {FieldId::climatology_sea_ice_mean_kg_m2, "climatology_sea_ice_mean_kg_m2",
      FieldPartition::climatology, FieldLayout::cell_layers, FieldDataType::float32, 12U,
      "kg/m2"},
+    // Atmosphere (ADR-0010 §4.1): the column's surface pressure, and the
+    // temperature of each of its N equal-mass sigma layers from the bottom,
+    // N a scenario parameter (0: no atmosphere). float64 reservoirs.
+    {FieldId::atmosphere_surface_pressure_Pa, "atmosphere_surface_pressure_Pa",
+     FieldPartition::slow, FieldLayout::cell, FieldDataType::float64, 1U, "Pa"},
+    {FieldId::atmosphere_temperature_K, "atmosphere_temperature_K", FieldPartition::slow,
+     FieldLayout::cell_layers, FieldDataType::float64, scenario_layer_count, "K"},
 }};
 
 // Retired IDs are never registered again. Snapshots of the schemas that
@@ -201,6 +220,17 @@ consteval bool registered_field_ids_are_not_retired() {
     return true;
 }
 
+consteval bool field_registry_layer_counts_are_valid() {
+    for (const auto& descriptor : field_registry) {
+        if (descriptor.layers == scenario_layer_count && !descriptor.scenario_layered()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static_assert(field_registry_layer_counts_are_valid(),
+              "only cell_layers fields may have a scenario layer count");
 static_assert(field_registry_persistence_matches_partition(),
               "only slow-state fields may be persistent");
 static_assert(registered_field_ids_are_not_retired(),

@@ -19,6 +19,9 @@ PlanetState::PlanetState(std::shared_ptr<const PlanetMesh> mesh) : mesh_(std::mo
     slow_.land_snow_water_equivalent_kg_m2 =
         make_field<FieldId::land_snow_water_equivalent_kg_m2>(*mesh_);
     slow_.sea_ice_mass_kg_m2 = make_field<FieldId::sea_ice_mass_kg_m2>(*mesh_);
+    slow_.atmosphere_surface_pressure_Pa =
+        make_field<FieldId::atmosphere_surface_pressure_Pa>(*mesh_);
+    slow_.atmosphere_temperature_K = make_field<FieldId::atmosphere_temperature_K>(*mesh_);
     forcing_.top_of_atmosphere_insolation_W_m2 =
         make_field<FieldId::top_of_atmosphere_insolation_W_m2>(*mesh_);
     forcing_.substep_mean_insolation_W_m2 =

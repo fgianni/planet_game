@@ -25,7 +25,8 @@ M0--M3 (mesh, orbit, terrain, drainage, scheduler and calendar, sub-step
 insolation, surface energy columns, replay) are complete.
 
 M5 (atmosphere and pressure) is in progress under ADR-0010: M5-01 (the
-ordered snapshot migration chain) is complete; M5-02 to M5-04 remain.
+ordered snapshot migration chain) and M5-02 (atmosphere state,
+hydrostatics, PSNAP schema 5) are complete; M5-03 and M5-04 remain.
 
 Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI

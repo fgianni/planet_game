@@ -44,12 +44,16 @@ def read_registry(path: Path) -> tuple[dict[int, tuple[str, ...]], set[int]]:
         field_id = parse_id(columns[0], path, line_number)
         if field_id in fields:
             raise ValueError(f"{path}:{line_number}: duplicate field ID {field_id}")
-        try:
-            layers = int(columns[5], 10)
-        except ValueError as error:
-            raise ValueError(f"{path}:{line_number}: invalid layer count {columns[5]!r}") from error
-        if layers <= 0:
-            raise ValueError(f"{path}:{line_number}: layer count must be positive")
+        # "scenario": a layer count set per scenario (ADR-0010 §4.1).
+        if columns[5] != "scenario":
+            try:
+                layers = int(columns[5], 10)
+            except ValueError as error:
+                raise ValueError(
+                    f"{path}:{line_number}: invalid layer count {columns[5]!r}"
+                ) from error
+            if layers <= 0:
+                raise ValueError(f"{path}:{line_number}: layer count must be positive")
         fields[field_id] = tuple(columns[1:])
     return fields, retired
 

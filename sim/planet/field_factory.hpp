@@ -55,7 +55,8 @@ template <FieldId Id> [[nodiscard]] field_container_t<Id> make_field(const Plane
         static_assert(descriptor.layers == 1U, "cell fields must have exactly one layer");
         return Container(mesh.cell_count(), Value{});
     } else if constexpr (descriptor.layout == FieldLayout::cell_layers) {
-        static_assert(descriptor.layers > 0U, "layered fields must have at least one layer");
+        // A scenario-layered field starts with no layers; its initialiser
+        // sizes it (ADR-0010 §4.1).
         return Container(descriptor.layers, mesh.cell_count(), Value{});
     } else if constexpr (descriptor.layout == FieldLayout::edge) {
         static_assert(descriptor.layers == 1U, "edge fields must have exactly one layer");

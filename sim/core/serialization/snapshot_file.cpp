@@ -15,6 +15,7 @@
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -41,6 +42,9 @@ struct EncodedChunk {
     std::vector<std::byte> bytes;
     std::uint32_t checksum = 0;
     std::string_view codec = "none";
+    // The stored layer count: the registry's, or the state's for a
+    // scenario-layered field.
+    std::uint32_t layers = 0;
 };
 
 struct ParsedSnapshot {
@@ -236,6 +240,9 @@ void append_json_string(std::string& output, std::string_view value) {
     case FieldId::land_snow_water_equivalent_kg_m2:
     case FieldId::sea_ice_mass_kg_m2:
         return 4U;
+    case FieldId::atmosphere_surface_pressure_Pa:
+    case FieldId::atmosphere_temperature_K:
+        return 5U;
     case FieldId::top_of_atmosphere_insolation_W_m2:
     case FieldId::substep_mean_insolation_W_m2:
     case FieldId::prescribed_precipitation_kg_m2_s:
@@ -283,6 +290,7 @@ void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& fi
     EncodedChunk chunk;
     chunk.descriptor = &descriptor;
     chunk.offset = offset;
+    chunk.layers = descriptor.layers;
 
     switch (descriptor.id) {
     case FieldId::hypsometry_m:
@@ -314,6 +322,19 @@ void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& fi
     case FieldId::sea_ice_mass_kg_m2:
         append_cell_field(chunk.bytes, state.slow().sea_ice_mass_kg_m2);
         break;
+    case FieldId::atmosphere_surface_pressure_Pa:
+        append_cell_field(chunk.bytes, state.slow().atmosphere_surface_pressure_Pa);
+        break;
+    case FieldId::atmosphere_temperature_K: {
+        const auto& temperature = state.slow().atmosphere_temperature_K;
+        chunk.layers = static_cast<std::uint32_t>(temperature.layer_count());
+        chunk.bytes.reserve(temperature.size() * sizeof(double));
+        for (std::size_t layer = 0; layer < temperature.layer_count(); ++layer) {
+            const auto values = temperature.layer(layer);
+            append_values<double>(chunk.bytes, {values.data(), values.size()});
+        }
+        break;
+    }
     case FieldId::top_of_atmosphere_insolation_W_m2:
     case FieldId::substep_mean_insolation_W_m2:
     case FieldId::prescribed_precipitation_kg_m2_s:
@@ -391,7 +412,7 @@ void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& fi
         manifest += ",\"dtype\":";
         append_json_string(manifest, data_type_name(descriptor.data_type));
         manifest += ",\"layers\":";
-        manifest += std::to_string(descriptor.layers);
+        manifest += std::to_string(chunk.layers);
         manifest += ",\"compression\":";
         append_json_string(manifest, chunk.codec);
         manifest += ",\"byte_range\":[";
@@ -732,19 +753,21 @@ inline constexpr std::size_t stored_field_count =
     return nullptr;
 }
 
+// `layers` is the stored layer count, the registry's except for a
+// scenario-layered field.
 [[nodiscard]] std::uint64_t checked_field_byte_length(const FieldDescriptor& descriptor,
-                                                      std::uint64_t cell_count) {
+                                                      std::uint64_t cell_count,
+                                                      std::uint32_t layers) {
     std::uint64_t element_count = 0;
     switch (descriptor.layout) {
     case FieldLayout::cell:
         element_count = cell_count;
         break;
     case FieldLayout::cell_layers:
-        if (descriptor.layers != 0U &&
-            cell_count > std::numeric_limits<std::uint64_t>::max() / descriptor.layers) {
+        if (layers != 0U && cell_count > std::numeric_limits<std::uint64_t>::max() / layers) {
             throw std::runtime_error("snapshot field dimensions overflow");
         }
-        element_count = cell_count * descriptor.layers;
+        element_count = cell_count * layers;
         break;
     case FieldLayout::global:
         element_count = descriptor.layers;
@@ -781,6 +804,7 @@ void validate_manifest_and_chunks(const SnapshotManifest& manifest,
     }
 
     std::array<bool, stored_field_count> seen{};
+    std::optional<std::uint32_t> scenario_layers;
     bool has_previous_id = false;
     std::uint32_t previous_id = 0;
 
@@ -818,7 +842,16 @@ void validate_manifest_and_chunks(const SnapshotManifest& manifest,
         if (field.dtype != data_type_name(descriptor->data_type)) {
             field_error(field.field_id, "dtype does not match registry");
         }
-        if (field.layers != descriptor->layers) {
+        if (descriptor->scenario_layered()) {
+            if (field.layers > max_scenario_layer_count) {
+                field_error(field.field_id, "scenario layer count is too large");
+            }
+            if (scenario_layers.has_value() && *scenario_layers != field.layers) {
+                field_error(field.field_id,
+                            "scenario-layered fields disagree on the layer count");
+            }
+            scenario_layers = field.layers;
+        } else if (field.layers != descriptor->layers) {
             field_error(field.field_id, "layer count does not match registry");
         }
         const bool known_codec =
@@ -831,7 +864,7 @@ void validate_manifest_and_chunks(const SnapshotManifest& manifest,
         // A compressed chunk's length is checked against the registry when it
         // is decompressed.
         const std::uint64_t expected_length =
-            checked_field_byte_length(*descriptor, manifest.cell_count);
+            checked_field_byte_length(*descriptor, manifest.cell_count, field.layers);
         if (field.compression == codec_none && field.byte_length != expected_length) {
             field_error(field.field_id, "byte length does not match registry and cell count");
         }
@@ -931,6 +964,13 @@ void validate_slow_state(const PlanetState& state) {
     check_cells(state.slow().land_snow_water_equivalent_kg_m2.size(),
                 FieldId::land_snow_water_equivalent_kg_m2);
     check_cells(state.slow().sea_ice_mass_kg_m2.size(), FieldId::sea_ice_mass_kg_m2);
+    check_cells(state.slow().atmosphere_surface_pressure_Pa.size(),
+                FieldId::atmosphere_surface_pressure_Pa);
+    const auto& atmosphere = state.slow().atmosphere_temperature_K;
+    if (atmosphere.cell_count() != cells || atmosphere.layer_count() > max_scenario_layer_count) {
+        field_error(static_cast<std::uint32_t>(FieldId::atmosphere_temperature_K),
+                    "slow-state dimensions do not match the registry and mesh");
+    }
 }
 
 [[nodiscard]] Field2D<float> decode_float_cells(std::span<const std::byte> bytes,
@@ -995,6 +1035,26 @@ void decode_chunk(const FieldDescriptor& descriptor,
     case FieldId::sea_ice_mass_kg_m2:
         staged.sea_ice_mass_kg_m2 = decode_double_cells(bytes, cell_count);
         return;
+    case FieldId::atmosphere_surface_pressure_Pa:
+        staged.atmosphere_surface_pressure_Pa = decode_double_cells(bytes, cell_count);
+        return;
+    case FieldId::atmosphere_temperature_K: {
+        // The validated length fixes the scenario's layer count (a delta's
+        // unchanged chunk comes from its parent, not from this manifest).
+        const std::size_t layers =
+            cell_count == 0U ? 0U : bytes.size() / (cell_count * sizeof(double));
+        Field3D<double> values(layers, cell_count, 0.0);
+        std::size_t offset = 0;
+        for (std::size_t layer = 0; layer < layers; ++layer) {
+            for (double& value : values.layer(layer)) {
+                value = std::bit_cast<double>(
+                    read_little_endian<std::uint64_t>(bytes, offset, "atmosphere value"));
+                offset += sizeof(std::uint64_t);
+            }
+        }
+        staged.atmosphere_temperature_K = std::move(values);
+        return;
+    }
     case FieldId::top_of_atmosphere_insolation_W_m2:
     case FieldId::substep_mean_insolation_W_m2:
     case FieldId::prescribed_precipitation_kg_m2_s:
@@ -1190,7 +1250,8 @@ SnapshotChunks read_snapshot_chunks(const std::filesystem::path& path,
         const StoredField* stored = find_stored_field(info.field_id, storage);
         const std::size_t element = element_size(stored->descriptor->data_type);
         const std::size_t expected = static_cast<std::size_t>(
-            checked_field_byte_length(*stored->descriptor, parsed.manifest.cell_count));
+            checked_field_byte_length(*stored->descriptor, parsed.manifest.cell_count,
+                                      info.layers));
         const auto chunk = field_chunk(parsed, info);
         std::vector<std::byte> raw;
         if (info.compression == codec_none) {

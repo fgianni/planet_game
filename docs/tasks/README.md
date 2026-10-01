@@ -19,6 +19,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [M4-04](M4-04-seasonal-experiment-and-refit.md) | Seasonal experiment, climatology, refit with sea ice | Complete |
 | [M4-05](M4-05-history-deltas-and-compression.md) | Snapshot history: compression, delta chains, forks (ADR-0003) | Complete |
 | [M5-01](M5-01-migration-chain.md) | The ordered snapshot migration chain (ADR-0003 §3.6, ADR-0010 §4.7) | Complete |
+| [M5-02](M5-02-atmosphere-state-and-hydrostatics.md) | Atmosphere state, hydrostatic initialisation, PSNAP schema 5 (ADR-0010) | Complete |
 
 Completed tasks are records: they keep the specification and design versions
 they were written against, even after those files have left the tree. Read

@@ -1,7 +1,9 @@
 #include "sim/core/random/counter_rng.hpp"
 #include "sim/core/scheduler/scheduler.hpp"
 #include "sim/core/serialization/snapshot_file.hpp"
+#include "sim/planet/atmosphere/atmosphere.hpp"
 #include "sim/planet/mesh/icosphere.hpp"
+#include "sim/planet/planet_migration.hpp"
 #include "sim/planet/orbit/climate_calendar.hpp"
 #include "sim/planet/planet_parameters.hpp"
 #include "sim/planet/planet_state.hpp"
@@ -133,10 +135,25 @@ int main() {
     const auto parameters = planetsim::PlanetParameters::earth_development();
     const auto surface =
         planetsim::surface_energy_parameters_for(planetsim::PlanetPreset::earth_like);
+    const auto atmosphere =
+        planetsim::atmosphere_parameters_for(planetsim::PlanetPreset::earth_like);
+    const auto migration = planetsim::planet_snapshot_migration(parameters, surface, atmosphere);
     // The migration chain's log lines (ADR-0003 §3.6, task M5-01).
     const std::string step_1_2 = "1 -> 2 surface-energy temperatures (ADR-0007 §4.6)";
     const std::string step_2_3 = "2 -> 3 ocean mixed layer widened to float64 (ADR-0007 §10)";
     const std::string step_3_4 = "3 -> 4 snow and sea-ice reservoirs (ADR-0008 §4.6)";
+    const std::string step_4_5 = "4 -> 5 atmosphere at hydrostatic rest (ADR-0010 §4.3)";
+
+    // The schema 4 -> 5 initialiser: the preset's three layers at rest, every
+    // column reducing to the reference sea-level pressure.
+    const auto atmosphere_at_rest = [&](const planetsim::PlanetState& state) {
+        const auto diagnostics = planetsim::diagnose_atmosphere(*mesh, state.slow(), parameters,
+                                                                atmosphere);
+        const double p0 = atmosphere.reference_pressure_Pa;
+        return state.slow().atmosphere_layer_count() == 3U && diagnostics.mass_kg > 0.0 &&
+               std::abs(diagnostics.min_sea_level_pressure_Pa - p0) <= 1e-9 * p0 &&
+               std::abs(diagnostics.max_sea_level_pressure_Pa - p0) <= 1e-9 * p0;
+    };
 
     // Schema 1 (M2): loads only through the schema 1 -> 2 migration, which
     // initialises the surface temperatures at their closed-form equilibrium.
@@ -154,10 +171,10 @@ int main() {
 
         planetsim::PlanetState state(mesh);
         const auto manifest = planetsim::read_snapshot(
-            golden_path, state, planetsim::surface_energy_migration(parameters, surface));
+            golden_path, state, migration);
         PLANETSIM_EXPECT(test, manifest.schema_version == 1U);
         PLANETSIM_EXPECT(test, (manifest.applied_migrations ==
-                                std::vector<std::string>{step_1_2, step_2_3, step_3_4}));
+                                std::vector<std::string>{step_1_2, step_2_3, step_3_4, step_4_5}));
         PLANETSIM_EXPECT(test, manifest.tick == synthetic_tick);
         PLANETSIM_EXPECT(test, manifest.mesh_level == 0U);
         PLANETSIM_EXPECT(test, manifest.cell_count == 12U);
@@ -182,6 +199,7 @@ int main() {
         }
         PLANETSIM_EXPECT(test, migrated);
         PLANETSIM_EXPECT(test, no_cryosphere(state));
+        PLANETSIM_EXPECT(test, atmosphere_at_rest(state));
         PLANETSIM_EXPECT(test, !state.has_fast_state());
         PLANETSIM_EXPECT_NEAR(test, state.forcing().incident_solar_flux_W_m2, 0.0, 0.0);
         step_ten_years(test, state, parameters, surface, "psnap-v1");
@@ -194,10 +212,10 @@ int main() {
         planetsim::PlanetState state(mesh);
         const auto manifest = planetsim::read_snapshot(
             std::filesystem::path("tests/data/golden/psnap-v2-l0.psnap"), state,
-            planetsim::surface_energy_migration(parameters, surface));
+            migration);
         PLANETSIM_EXPECT(test, manifest.schema_version == 2U);
         PLANETSIM_EXPECT(test, (manifest.applied_migrations ==
-                                std::vector<std::string>{step_2_3, step_3_4}));
+                                std::vector<std::string>{step_2_3, step_3_4, step_4_5}));
         PLANETSIM_EXPECT(test, manifest.fields.size() == 6U);
         PLANETSIM_EXPECT(test, manifest.fields.size() == 6U &&
                                    manifest.fields[4].field_id == 0x0003'0003U &&
@@ -229,10 +247,10 @@ int main() {
         planetsim::PlanetState state(mesh);
         const auto manifest = planetsim::read_snapshot(
             std::filesystem::path("tests/data/golden/psnap-v3-l0.psnap"), state,
-            planetsim::surface_energy_migration(parameters, surface));
+            migration);
         PLANETSIM_EXPECT(test, manifest.schema_version == 3U);
         PLANETSIM_EXPECT(test, (manifest.applied_migrations ==
-                                std::vector<std::string>{step_3_4}));
+                                std::vector<std::string>{step_3_4, step_4_5}));
         PLANETSIM_EXPECT(test, manifest.fields.size() == 6U);
         check_schema_1_fields(test, state);
         bool exact = true;
@@ -302,10 +320,11 @@ int main() {
     {
         planetsim::PlanetState state(mesh);
         const auto manifest = planetsim::read_snapshot(
-            std::filesystem::path("tests/data/golden/psnap-v4-l0.psnap"), state);
+            std::filesystem::path("tests/data/golden/psnap-v4-l0.psnap"), state, migration);
         PLANETSIM_EXPECT(test, manifest.schema_version == 4U);
         PLANETSIM_EXPECT(test, (manifest.applied_migrations ==
-                                std::vector<std::string>{}));
+                                std::vector<std::string>{step_4_5}));
+        PLANETSIM_EXPECT(test, atmosphere_at_rest(state));
         PLANETSIM_EXPECT(test, manifest.fields.size() == 8U);
         check_schema_1_fields(test, state);
         PLANETSIM_EXPECT(test, schema_4_exact(state, false));
@@ -316,7 +335,7 @@ int main() {
     {
         planetsim::PlanetState state(mesh);
         const auto manifest = planetsim::read_snapshot(
-            std::filesystem::path("tests/data/golden/psnap-v4-l0-zstd.psnap"), state);
+            std::filesystem::path("tests/data/golden/psnap-v4-l0-zstd.psnap"), state, migration);
         bool compressed = manifest.fields.size() == 8U && !manifest.delta;
         for (const auto& field : manifest.fields) {
             compressed = compressed && field.compression == "shuffle-zstd";
@@ -342,9 +361,38 @@ int main() {
                                    delta_manifest.parent_snapshot_id == "psnap-v4-l0-zstd" &&
                                    delta_manifest.tick == synthetic_tick + 1);
         planetsim::PlanetState state(mesh);
-        planetsim::decode_snapshot_chunks(delta_manifest, chunks, state);
+        const auto applied =
+            planetsim::decode_snapshot_chunks(delta_manifest, chunks, state, migration);
+        PLANETSIM_EXPECT(test, (applied == std::vector<std::string>{step_4_5}));
         check_schema_1_fields(test, state);
         PLANETSIM_EXPECT(test, schema_4_exact(state, true));
+    }
+
+    // Schema 5 (M5-02, ADR-0010 §4.1): a three-layer atmosphere, stored as
+    // written; no migration.
+    {
+        planetsim::PlanetState state(mesh);
+        const auto manifest = planetsim::read_snapshot(
+            std::filesystem::path("tests/data/golden/psnap-v5-l0.psnap"), state);
+        PLANETSIM_EXPECT(test, manifest.schema_version == 5U);
+        PLANETSIM_EXPECT(test, manifest.applied_migrations.empty());
+        PLANETSIM_EXPECT(test, manifest.fields.size() == 10U &&
+                                   manifest.fields.back().layers == 3U);
+        check_schema_1_fields(test, state);
+        PLANETSIM_EXPECT(test, schema_4_exact(state, false));
+        bool exact = state.slow().atmosphere_layer_count() == 3U;
+        for (std::size_t cell = 0; exact && cell < mesh->cell_count(); ++cell) {
+            exact = state.slow().atmosphere_surface_pressure_Pa[cell] ==
+                    500.0 * (expected_temperature(cell, 26U) - 116.0);
+            for (std::size_t layer = 0; layer < 3U; ++layer) {
+                exact = exact && state.slow().atmosphere_temperature_K.layer(layer)[cell] ==
+                                     expected_temperature(
+                                         cell, 30U + static_cast<std::uint32_t>(layer)) -
+                                         50.0;
+            }
+        }
+        PLANETSIM_EXPECT(test, exact);
+        step_ten_years(test, state, parameters, surface, "psnap-v5");
     }
     return test.result();
 }
