@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-02
 - **Accepted:** 2026-10-02
-- **Amendment proposed:** 2026-10-02 — §11: V2 gates for the TRiSK operators, as measured in M6-01
+- **Amended:** 2026-10-02 — §12: V2 gates for the TRiSK operators, as measured in M6-01
 - **Milestone:** P0 / M6 (wind and Coriolis)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §6 (`AtmosphereState`), §8 (multi-rate), §9.2, §13 M6, §15.5 (zero-rotation experiment), §23, §24; Planetary Civilization Simulator — Design Record v0.9, §5.4, §15.2–15.5, §25 (M5 row: "planetary circulation direction and latitude dependence"), §28
 - **Related:** ADR-0001 (modes, partition, budget, §8 milestone mapping), ADR-0002 (mesh, operators, §4.2 advection, field layout), ADR-0003 (determinism, replay), ADR-0006 (sub-steps), ADR-0009 (implicit transport, coarse graph), ADR-0010 (layered atmosphere; its §7 M6 row)
@@ -48,7 +48,7 @@ Available to M6:
   rotation rate is used anywhere in the physics yet; `PlanetParameters`
   carries the sidereal period.
 - **Transport.** ADR-0009's implicit Newton, with a multigrid-preconditioned
-  conjugate-gradient inner solve, on the graph one level coarser (§12). It
+  conjugate-gradient inner solve, on the graph one level coarser (§12, accepted). It
   carries the column-mean θ_c with the heat entering the bottom layer
   (ADR-0010 §11).
 - **Modes.** The scheduler runs climate sub-steps and 10-tick reference
@@ -624,7 +624,7 @@ amendment.
     (§12).
   - Details are in `docs/tasks/M6-01-c-grid-geometry-and-operators.md`.
 
-## 12. Amendment: V2 as measured for the TRiSK operators (proposed 2026-10-02)
+## 12. Amendment: V2 as measured for the TRiSK operators (accepted 2026-10-02)
 
 **Finding (task M6-01).** On the analytic field `u = ∇g + r × ∇h`, L3–L7:
 
@@ -651,7 +651,7 @@ amendment.
   for the three consistent operators. It fails for the vorticity (0.93),
   and for the other two it holds now but not in the limit.
 
-**Change (proposed).**
+**Change.**
 - **Consistent operators** (reconstruction, normal and tangential
   gradient): L2 order ≥ 1.5 and maximum order ≥ 0.9 at every step from
   L3 to L6.

@@ -95,7 +95,7 @@
     is the normalised cross product of two differences of length h, so it
     is accurate to ε/h. A cell area recomputed accurately from the same
     corners agrees with the stored one, which rules out the area formula.
-    The gate is `1e-15 · 4ᴸ` (ADR-0011 §12, proposed).
+    The gate is `1e-15 · 4ᴸ` (ADR-0011 §12).
   - The kite triangles use the triple product of differences, which keeps
     their relative precision for small triangles.
 - **Barycentric corner values.** The kite-weighted corner value sits at
@@ -112,7 +112,7 @@
     1.89, 1.70 and 1.40 at L4→L5, L5→L6 and L6→L7.
   - The vorticity is first order (0.93).
   - The seams carry no more error than the interior.
-  - The gates are those of ADR-0011 §12 (proposed). Whether this accuracy
+  - The gates are those of ADR-0011 §12. Whether this accuracy
     is acceptable is decided by Williamson test 2 in M6-02.
 - **Determinism:** every operator is bit-identical on 1, 2 and 8 workers
   at L5.
