@@ -541,15 +541,15 @@ M2 provides the finite-volume operators, state partitions, persistent
 snapshots, procedural plate-scale terrain with sea level, and static drainage
 topology; M3 surface temperatures from radiative columns, with recorded,
 replayable runs; M4 snow, sea ice and their albedo feedback; M5 a layered
-atmosphere with pressure, grey longwave and convection. The atmosphere has
-no winds, water vapour or clouds yet: heat still moves by a calibrated
-diffusion, sunlight reaches the surface unabsorbed, and precipitation is a
-prescribed forcing. Dynamic runoff, discharge and lake water balance,
+atmosphere with pressure, grey longwave and convection; M6 (in progress)
+winds in reference mode. Climate mode has no winds yet, so heat there still
+moves by a calibrated diffusion. There is no water vapour or cloud: sunlight
+reaches the surface unabsorbed, and precipitation is a prescribed forcing. Dynamic runoff, discharge and lake water balance,
 orbital precession and perturbations are not yet computed. Geology and
 drainage are generated once and are not time-evolving, and `GeologyState` is
-not persisted. Autosaves remain assigned to a later milestone. Tracer
-advection and the placement of vector fields (cell centres or edge normals)
-are left to the first milestone that transports them. The two-point
+not persisted. Autosaves remain assigned to a later milestone. Velocities
+live normal to the edges (ADR-0011); tracer advection arrives with
+humidity (M7). The two-point
 Laplacian's pointwise truncation error does not converge next to the pentagons
 or along the icosahedron's edges, although discrete solutions do (ADR-0002
 §9). The
