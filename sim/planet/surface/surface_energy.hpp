@@ -203,12 +203,15 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
 // Registers the surface as a climate-mode process (sub-step mean forcing,
 // ADR-0006 §4.3) and a reference-mode process (instantaneous forcing at the
 // step's midpoint tick). The references must outlive the scheduler; `last`,
-// if given, receives each step's diagnostics.
+// if given, receives each step's diagnostics. With `reference_diffusion`
+// false the reference-mode steps run without ADR-0009's diffusion, because
+// resolved winds carry the transport there (ADR-0011 §4.3).
 void register_surface_energy(Scheduler& scheduler, PlanetState& state,
                              const PlanetParameters& parameters,
                              const SurfaceEnergyParameters& surface,
                              const SurfaceFractions& fractions, std::size_t worker_count = 1U,
-                             SurfaceEnergyDiagnostics* last = nullptr);
+                             SurfaceEnergyDiagnostics* last = nullptr,
+                             bool reference_diffusion = true);
 
 // Annual summary of a run of climate sub-steps, length-weighted.
 struct AnnualSurfaceSummary {

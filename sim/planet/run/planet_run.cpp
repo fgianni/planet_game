@@ -178,8 +178,18 @@ PlanetRun::PlanetRun(const Scenario& scenario, std::size_t worker_count)
 
     scheduler_ = std::make_unique<Scheduler>(clock_, make_orbital_calendar(parameters_),
                                              scenario_.initial_mode);
+    // With an atmosphere, reference mode resolves the winds, which replace
+    // ADR-0009's diffusion there (ADR-0011 §4.3); climate mode keeps it.
+    const bool winds = surface_.atmosphere.layer_count > 0U;
     register_surface_energy(*scheduler_, state_, parameters_, surface_, fractions_, worker_count_,
-                            &last_);
+                            &last_, !winds);
+    if (winds) {
+        dynamics_ = std::make_unique<AtmosphereDynamics>(*mesh_, state_.slow(), parameters_,
+                                                         surface_.atmosphere, fractions_,
+                                                         AtmosphereDynamicsParameters{},
+                                                         worker_count_);
+        register_atmosphere_dynamics(*scheduler_, state_, *dynamics_);
+    }
 
     manifest_.engine_version = std::string(snapshot_engine_version());
     manifest_.mesh_generator_version = mesh_generator_version;

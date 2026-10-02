@@ -27,6 +27,7 @@ enum class FieldId : std::uint32_t {
     climatology_sea_ice_mean_kg_m2 = 0x0004'0008U,
     atmosphere_surface_pressure_Pa = 0x0005'0001U,
     atmosphere_temperature_K = 0x0005'0002U,
+    atmosphere_edge_normal_wind_m_s = 0x0006'0001U,
 };
 
 enum class FieldDataType : std::uint8_t {
@@ -46,11 +47,12 @@ enum class FieldLayout : std::uint8_t {
     cell_layers,
     edge,
     global,
+    edge_layers,   // layer-major [layer][edge] (ADR-0011 §4.1)
 };
 
 inline constexpr std::uint32_t hypsometry_layer_count = 9U;
 
-// A cell_layers field whose layer count is a scenario parameter rather than a
+// A cell_layers or edge_layers field whose layer count is a scenario parameter rather than a
 // property of the build (ADR-0010 §4.1): the registry declares 0 layers, each
 // snapshot's manifest states the stored count, and every scenario-layered
 // field of one snapshot has the same count.
@@ -70,7 +72,8 @@ struct FieldDescriptor {
         return partition == FieldPartition::slow;
     }
     [[nodiscard]] constexpr bool scenario_layered() const noexcept {
-        return layout == FieldLayout::cell_layers && layers == scenario_layer_count;
+        return (layout == FieldLayout::cell_layers || layout == FieldLayout::edge_layers) &&
+               layers == scenario_layer_count;
     }
 };
 
@@ -99,6 +102,8 @@ struct FieldDescriptor {
         return "edge";
     case FieldLayout::global:
         return "global";
+    case FieldLayout::edge_layers:
+        return "edge_layers";
     }
     return {};
 }
@@ -114,7 +119,7 @@ struct FieldDescriptor {
     return {};
 }
 
-inline constexpr std::array<FieldDescriptor, 18> field_registry{{
+inline constexpr std::array<FieldDescriptor, 19> field_registry{{
     {FieldId::top_of_atmosphere_insolation_W_m2, "top_of_atmosphere_insolation_W_m2",
      FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
     {FieldId::substep_mean_insolation_W_m2, "substep_mean_insolation_W_m2",
@@ -166,6 +171,12 @@ inline constexpr std::array<FieldDescriptor, 18> field_registry{{
      FieldPartition::slow, FieldLayout::cell, FieldDataType::float64, 1U, "Pa"},
     {FieldId::atmosphere_temperature_K, "atmosphere_temperature_K", FieldPartition::slow,
      FieldLayout::cell_layers, FieldDataType::float64, scenario_layer_count, "K"},
+    // Winds (ADR-0011 §4.1): the reference-mode velocity normal to each edge,
+    // per atmospheric layer, along the edge's normal (first cell to second).
+    // Fast state: never persisted, never needed to rebuild the slow state.
+    {FieldId::atmosphere_edge_normal_wind_m_s, "atmosphere_edge_normal_wind_m_s",
+     FieldPartition::fast, FieldLayout::edge_layers, FieldDataType::float64,
+     scenario_layer_count, "m/s"},
 }};
 
 // Retired IDs are never registered again. Snapshots of the schemas that
@@ -230,7 +241,7 @@ consteval bool field_registry_layer_counts_are_valid() {
 }
 
 static_assert(field_registry_layer_counts_are_valid(),
-              "only cell_layers fields may have a scenario layer count");
+              "only cell_layers and edge_layers fields may have a scenario layer count");
 static_assert(field_registry_persistence_matches_partition(),
               "only slow-state fields may be persistent");
 static_assert(registered_field_ids_are_not_retired(),

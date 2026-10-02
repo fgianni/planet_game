@@ -38,6 +38,7 @@ add_library(PlanetSim STATIC
     sim/planet/atmosphere/atmosphere.cpp
     sim/planet/climatology/monthly_climatology.cpp
     sim/planet/coordinates/local_tangent_basis.cpp
+    sim/planet/dynamics/atmosphere_dynamics.cpp
     sim/planet/dynamics/orography.cpp
     sim/planet/dynamics/primitive_equations.cpp
     sim/planet/dynamics/shallow_water.cpp

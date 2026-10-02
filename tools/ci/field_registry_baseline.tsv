@@ -16,4 +16,5 @@
 262152	climatology_sea_ice_mean_kg_m2	climatology	cell_layers	float32	12	kg/m2
 327681	atmosphere_surface_pressure_Pa	slow	cell	float64	1	Pa
 327682	atmosphere_temperature_K	slow	cell_layers	float64	scenario	K
+393217	atmosphere_edge_normal_wind_m_s	fast	edge_layers	float64	scenario	m/s
 # retired_field_id	196611

@@ -953,7 +953,11 @@ void register_surface_energy(Scheduler& scheduler, PlanetState& state,
                              const PlanetParameters& parameters,
                              const SurfaceEnergyParameters& surface,
                              const SurfaceFractions& fractions, std::size_t worker_count,
-                             SurfaceEnergyDiagnostics* last) {
+                             SurfaceEnergyDiagnostics* last, bool reference_diffusion) {
+    SurfaceEnergyParameters reference_surface = surface;
+    if (!reference_diffusion) {
+        reference_surface.transport_coefficient_W_m2_K = 0.0;
+    }
     scheduler.register_process(
         {"surface_energy_climate", SimulationMode::climate, 0},
         [&state, &parameters, surface, &fractions, worker_count, last](const StepContext& context) {
@@ -969,11 +973,12 @@ void register_surface_energy(Scheduler& scheduler, PlanetState& state,
         });
     scheduler.register_process(
         {"surface_energy_reference", SimulationMode::reference, 0},
-        [&state, &parameters, surface, &fractions, worker_count, last](const StepContext& context) {
+        [&state, &parameters, reference_surface, &fractions, worker_count,
+         last](const StepContext& context) {
             update_solar_forcing(state, parameters,
                                  context.begin_tick + context.length_ticks() / 2, worker_count);
             const auto diagnostics = step_surface_energy(
-                state, parameters, surface, fractions,
+                state, parameters, reference_surface, fractions,
                 state.forcing().top_of_atmosphere_insolation_W_m2,
                 simulation_time_s(context.length_ticks()), worker_count);
             if (last != nullptr) {

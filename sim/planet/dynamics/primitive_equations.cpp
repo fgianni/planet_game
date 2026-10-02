@@ -106,6 +106,18 @@ PrimitiveEquationModel::PrimitiveEquationModel(const PlanetMesh& mesh, const CGr
     }
 }
 
+void PrimitiveEquationModel::set_surface_drag(std::vector<double> drag_coefficient) {
+    if (!drag_coefficient.empty() && drag_coefficient.size() != mesh_->edge_count()) {
+        throw std::invalid_argument("drag coefficients must be one per edge");
+    }
+    for (const double value : drag_coefficient) {
+        if (!(value >= 0.0) || !std::isfinite(value)) {
+            throw std::invalid_argument("drag coefficients must be finite and non-negative");
+        }
+    }
+    drag_coefficient_ = std::move(drag_coefficient);
+}
+
 void PrimitiveEquationModel::column_structure(const PrimitiveEquationState& state,
                                               std::vector<double>& theta,
                                               std::vector<double>& exner_mean,
@@ -389,7 +401,8 @@ void PrimitiveEquationModel::tendency(const PrimitiveEquationState& state,
     // energy they remove returns as heat to the edge's two cells.
     const auto& hs = parameters_.held_suarez;
     const bool viscous = parameters_.hyperviscosity_m4_s > 0.0;
-    if (viscous || hs.enabled) {
+    const bool drag = !drag_coefficient_.empty();
+    if (viscous || hs.enabled || drag) {
         std::vector<double> dissipation(n * edges, 0.0);
         if (viscous) {
             std::vector<double> once(edges);
@@ -442,6 +455,33 @@ void PrimitiveEquationModel::tendency(const PrimitiveEquationState& state,
                     }
                 }
             }
+        }
+        if (drag) {
+            // Bottom layer: |V| from u and TRiSK's tangential component, T_0
+            // the mean of the edge's cells' bottom-layer temperatures.
+            const auto u = state.normal_velocity_m_s.layer(0);
+            const double factor =
+                parameters_.gravity_m_s2 * n_d / parameters_.gas_constant_J_kg_K;
+            for_each_deterministic_block(
+                grid.edge_blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+                    for (std::size_t e = block.begin; e < block.end; ++e) {
+                        const EdgeId id = edge_id(e);
+                        const auto& edge = mesh.edge(id);
+                        const auto terms = grid.tangential_weight_edges(id);
+                        const auto weights = grid.tangential_weights(id);
+                        double tangential = 0.0;
+                        for (std::size_t t = 0; t < terms.size(); ++t) {
+                            tangential += weights[t] * mesh.edge(terms[t]).length_m *
+                                          u[terms[t].to_index()];
+                        }
+                        tangential /= edge.centroid_distance_m;
+                        const std::size_t a = edge.first_cell.to_index();
+                        const std::size_t b = edge.second_cell.to_index();
+                        const double t0 = 0.5 * (theta[a] * exner_mean[a] + theta[b] * exner_mean[b]);
+                        const double speed = std::sqrt(u[e] * u[e] + tangential * tangential);
+                        dissipation[e] -= drag_coefficient_[e] * speed * u[e] * factor / t0;
+                    }
+                });
         }
         for (std::size_t k = 0; k < n; ++k) {
             auto du = rate.normal_velocity_m_s.layer(k);

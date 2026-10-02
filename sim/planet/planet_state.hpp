@@ -33,7 +33,12 @@ struct SlowState {
     }
 };
 
-struct FastState {};
+// Weather (ADR-0001 §4.1): allocated only in reference mode (or a weather
+// window), never needed to rebuild the slow state.
+struct FastState {
+    // Edge-normal winds per atmospheric layer (ADR-0011 §4.1, §4.3).
+    field_container_t<FieldId::atmosphere_edge_normal_wind_m_s> atmosphere_edge_normal_wind_m_s;
+};
 
 // Monthly statistics (ADR-0001 §4.1): one layer per sub-step k mod 12,
 // derived and never persisted; `samples` counts the climate steps

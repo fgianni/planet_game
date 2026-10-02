@@ -175,7 +175,9 @@ void print_usage(std::ostream& output) {
               " [--workers W] [--damping-hours H] [--reference-subdivision LEVEL]\n"
            << "  planet_cli dynamics [--test rest|held-suarez] [--subdivision LEVEL]"
               " [--layers N] [--days D] [--average-days D] [--damping-hours H] [--seed N]"
-              " [--lapse-rate K_PER_KM] [--orography-passes P | --orography-step M] [--workers W]\n";
+              " [--lapse-rate K_PER_KM] [--orography-passes P | --orography-step M] [--workers W]\n"
+           << "  planet_cli reference [--subdivision LEVEL] [--seed N] [--layers N]"
+              " [--spin-up-years N] [--days D] [--average-days D] [--workers W]\n";
 }
 
 [[nodiscard]] std::uint32_t parse_subdivision(std::string_view text) {
@@ -1389,6 +1391,164 @@ int run_dynamics(const DynamicsOptions& options) {
     return 0;
 }
 
+struct ReferenceOptions {
+    std::uint32_t subdivision = 4;
+    std::uint64_t seed = 1;
+    std::optional<std::uint32_t> layers;
+    int spin_up_years = 2;
+    double days = 30.0;
+    double average_days = 0.0;
+    std::size_t workers = 0;
+};
+
+[[nodiscard]] ReferenceOptions parse_reference_options(int argument_count, char** arguments) {
+    ReferenceOptions options;
+    for (int index = 2; index < argument_count; ++index) {
+        const std::string_view argument{arguments[index]};
+        if (++index >= argument_count) {
+            throw std::invalid_argument(std::string(argument) + " requires a value");
+        }
+        const std::string_view value{arguments[index]};
+        if (argument == "--subdivision") {
+            options.subdivision = parse_subdivision(value);
+        } else if (argument == "--seed") {
+            options.seed = parse_unsigned(value, "seed");
+        } else if (argument == "--layers") {
+            options.layers = static_cast<std::uint32_t>(parse_unsigned(value, "layers"));
+        } else if (argument == "--spin-up-years") {
+            options.spin_up_years = static_cast<int>(parse_unsigned(value, "spin-up years"));
+        } else if (argument == "--days") {
+            options.days = parse_double(value, "days");
+        } else if (argument == "--average-days") {
+            options.average_days = parse_double(value, "average days");
+        } else if (argument == "--workers") {
+            options.workers = static_cast<std::size_t>(parse_unsigned(value, "workers"));
+        } else {
+            throw std::invalid_argument("unknown reference option: " + std::string(argument));
+        }
+    }
+    if (!(options.days >= 1.0) || options.average_days < 0.0 ||
+        options.average_days > options.days) {
+        throw std::invalid_argument("invalid reference options");
+    }
+    return options;
+}
+
+// ADR-0011 V6: the Earth-like planet in reference mode, the column physics
+// and the winds together. Energy: the column budget closes every step
+// (ADR-0007 V2), so the drift of the coupled system is what the dynamics
+// adds; it is accumulated over the run and reported per year relative to
+// the atmosphere's total energy.
+int run_reference(const ReferenceOptions& options) {
+    const std::size_t workers =
+        options.workers != 0U ? options.workers
+                              : std::max<std::size_t>(1U, std::thread::hardware_concurrency());
+    planetsim::Scenario scenario;
+    scenario.seed = options.seed;
+    scenario.subdivision = options.subdivision;
+    scenario.spin_up_years = options.spin_up_years;
+    scenario.initial_mode = planetsim::SimulationMode::reference;
+    scenario.atmosphere_layers = options.layers;
+    planetsim::PlanetRun run(scenario, workers);
+    const auto& mesh = run.state().mesh();
+    const auto& dynamics = *run.dynamics();
+    const std::size_t n = dynamics.model().layer_count();
+    const std::size_t cells = mesh.cell_count();
+    const auto mass = [&] {
+        double sum = 0.0;
+        for (const auto& cell : mesh.cells()) {
+            sum += cell.area_m2 * run.state().slow().atmosphere_surface_pressure_Pa[cell.id];
+        }
+        return sum;
+    };
+    const double initial_mass = mass();
+    const double initial_energy =
+        dynamics.model().diagnose(dynamics.model_state(run.state()), workers).energy_J();
+
+    std::cout << std::setprecision(6) << std::scientific << "reference subdivision="
+              << options.subdivision << " layers=" << n
+              << " orography_passes=" << dynamics.orography_passes()
+              << " spin_up_years=" << options.spin_up_years << '\n';
+    std::vector<double> mean_east(n * cells, 0.0);
+    std::size_t samples = 0;
+    double dynamics_energy_change = 0.0;
+    planetsim::EdgeField<double> layer_u(mesh.edge_count());
+    planetsim::Field2D<double> east(cells);
+    planetsim::Field2D<double> north(cells);
+    const auto start = std::chrono::steady_clock::now();
+    const auto whole_days = static_cast<std::int64_t>(std::ceil(options.days));
+    for (std::int64_t day = 1; day <= whole_days; ++day) {
+        // Ten-minute steps: accumulate the dynamics' energy change of each.
+        const planetsim::SimulationTick end = day * 1'440;
+        while (run.tick() < end) {
+            run.run_until(std::min<planetsim::SimulationTick>(run.tick() + 10, end));
+            dynamics_energy_change += dynamics.last().energy_change_J;
+        }
+        if (static_cast<double>(day) > options.days - options.average_days + 1e-9) {
+            const auto winds = run.state().fast_state();
+            for (std::size_t k = 0; k < n; ++k) {
+                std::copy(winds->atmosphere_edge_normal_wind_m_s.layer(k).begin(),
+                          winds->atmosphere_edge_normal_wind_m_s.layer(k).end(),
+                          layer_u.values().begin());
+                planetsim::reconstruct_cell_vector(mesh, dynamics.grid(), layer_u, east, north,
+                                                   workers);
+                for (std::size_t i = 0; i < cells; ++i) {
+                    mean_east[k * cells + i] += east[i];
+                }
+            }
+            ++samples;
+        }
+        if (day % 30 == 0 || day == whole_days) {
+            std::cout << "day=" << day
+                      << " surface_K=" << run.last_step().mean_surface_temperature_K
+                      << " kinetic_J=" << dynamics.last().kinetic_energy_J
+                      << " max_wind_m_s=" << dynamics.last().max_wind_m_s
+                      << " relative_mass_change=" << (mass() - initial_mass) / initial_mass
+                      << " dynamics_energy_change_J=" << dynamics_energy_change << '\n';
+        }
+    }
+    const double seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    const double years = options.days / 365.25;
+    std::cout << "wall_s=" << seconds << " atmosphere_energy_J=" << initial_energy
+              << " dynamics_energy_drift_per_year="
+              << dynamics_energy_change / initial_energy / years << '\n';
+    if (samples > 0U) {
+        constexpr int bands = 18;
+        std::vector<double> band_area(bands, 0.0);
+        std::vector<double> band_u(n * bands, 0.0);
+        for (const auto& cell : mesh.cells()) {
+            const double latitude = planetsim::latitude_rad(cell.center_unit);
+            const int band = std::clamp(
+                static_cast<int>((latitude + std::numbers::pi_v<double> / 2.0) /
+                                 (std::numbers::pi_v<double> / bands)),
+                0, bands - 1);
+            band_area[static_cast<std::size_t>(band)] += cell.area_m2;
+            for (std::size_t k = 0; k < n; ++k) {
+                band_u[k * bands + static_cast<std::size_t>(band)] +=
+                    cell.area_m2 * mean_east[k * cells + cell.id.to_index()] /
+                    static_cast<double>(samples);
+            }
+        }
+        std::cout << std::fixed << std::setprecision(2) << "averaged_days=" << samples
+                  << "\nlatitude_deg";
+        for (std::size_t k = 0; k < n; ++k) {
+            std::cout << " u_layer" << k;
+        }
+        std::cout << '\n';
+        for (int band = 0; band < bands; ++band) {
+            std::cout << -90.0 + 10.0 * (band + 0.5);
+            for (std::size_t k = 0; k < n; ++k) {
+                std::cout << ' '
+                          << band_u[k * bands + static_cast<std::size_t>(band)] /
+                                 band_area[static_cast<std::size_t>(band)];
+            }
+            std::cout << '\n';
+        }
+    }
+    return 0;
+}
+
 int run_mesh(const MeshOptions& options) {
     const auto start = std::chrono::steady_clock::now();
     const auto mesh = planetsim::make_icosphere(options.subdivision, options.radius_m);
@@ -2173,6 +2333,9 @@ int main(int argument_count, char** arguments) {
         }
         if (command == "run") {
             return run_scenario(parse_run_options(argument_count, arguments));
+        }
+        if (command == "reference") {
+            return run_reference(parse_reference_options(argument_count, arguments));
         }
         if (command == "dynamics") {
             return run_dynamics(parse_dynamics_options(argument_count, arguments));

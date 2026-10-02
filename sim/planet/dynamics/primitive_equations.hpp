@@ -75,6 +75,12 @@ class PrimitiveEquationModel {
     }
     [[nodiscard]] std::size_t layer_count() const noexcept { return parameters_.layer_count; }
 
+    // Bulk surface drag on the bottom layer, τ = ρ C_D |V| V with the
+    // bottom layer's wind and density ρ = p_s / (R T_0), per edge drag
+    // coefficient C_D ≥ 0 (empty: no drag). The acceleration
+    // −g τ / (p_s / N) = −C_D |V| u g N / (R T_0) is independent of p_s.
+    void set_surface_drag(std::vector<double> drag_coefficient);
+
     // A state at rest with the given p_s and layer temperatures T_k
     // (layer × cell).
     [[nodiscard]] PrimitiveEquationState state_at_rest(const Field2D<double>& surface_pressure_Pa,
@@ -117,6 +123,7 @@ class PrimitiveEquationModel {
     Field2D<double> surface_geopotential_;   // Φ_s = g z_s
     Field2D<double> f_corner_;
     Field2D<double> latitude_rad_;
+    std::vector<double> drag_coefficient_;   // per edge; empty: no drag
 };
 
 }  // namespace planetsim

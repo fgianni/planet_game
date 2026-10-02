@@ -2,6 +2,7 @@
 
 #include "sim/core/scheduler/scheduler.hpp"
 #include "sim/core/serialization/run_manifest.hpp"
+#include "sim/planet/dynamics/atmosphere_dynamics.hpp"
 #include "sim/planet/geology/geology_parameters.hpp"
 #include "sim/planet/planet_parameters.hpp"
 #include "sim/planet/planet_state.hpp"
@@ -80,6 +81,8 @@ class PlanetRun {
     [[nodiscard]] const SurfaceFractions& fractions() const noexcept { return fractions_; }
     [[nodiscard]] const Scheduler& scheduler() const noexcept { return *scheduler_; }
     [[nodiscard]] const SurfaceEnergyDiagnostics& last_step() const noexcept { return last_; }
+    // The winds of reference mode (ADR-0011 §4.3); null without an atmosphere.
+    [[nodiscard]] const AtmosphereDynamics* dynamics() const noexcept { return dynamics_.get(); }
     [[nodiscard]] std::uint64_t state_hash() const;
 
     // The inputs so far and the checkpoints, with end_tick set to the
@@ -99,6 +102,7 @@ class PlanetRun {
     PlanetState state_;
     SurfaceFractions fractions_;
     SimulationClock clock_;
+    std::unique_ptr<AtmosphereDynamics> dynamics_;
     std::unique_ptr<Scheduler> scheduler_;
     SurfaceEnergyDiagnostics last_;
     std::deque<RunCommand> pending_;

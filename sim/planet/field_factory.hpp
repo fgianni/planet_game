@@ -25,6 +25,9 @@ template <typename Value> struct FieldContainer<FieldLayout::cell_layers, Value>
 template <typename Value> struct FieldContainer<FieldLayout::edge, Value> {
     using type = EdgeField<Value>;
 };
+template <typename Value> struct FieldContainer<FieldLayout::edge_layers, Value> {
+    using type = Field3D<Value>;   // layer × edge, indexed by EdgeId
+};
 template <typename Value> struct FieldContainer<FieldLayout::global, Value> {
     using type = Value;
 };
@@ -61,6 +64,9 @@ template <FieldId Id> [[nodiscard]] field_container_t<Id> make_field(const Plane
     } else if constexpr (descriptor.layout == FieldLayout::edge) {
         static_assert(descriptor.layers == 1U, "edge fields must have exactly one layer");
         return Container(mesh.edge_count(), Value{});
+    } else if constexpr (descriptor.layout == FieldLayout::edge_layers) {
+        // Scenario-layered: sized by its initialiser, like cell_layers.
+        return Container(descriptor.layers, mesh.edge_count(), Value{});
     } else {
         static_assert(descriptor.layout == FieldLayout::global);
         static_assert(descriptor.layers == 1U, "global fields must have exactly one layer");

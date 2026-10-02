@@ -193,6 +193,8 @@ void append_float64(std::vector<std::byte>& output, double value) {
         return "edge";
     case FieldLayout::global:
         return "global";
+    case FieldLayout::edge_layers:
+        return "edge_layers";
     }
     throw std::logic_error("unknown field layout");
 }
@@ -251,6 +253,7 @@ void append_json_string(std::string& output, std::string_view value) {
     case FieldId::climatology_surface_temperature_variance_K2:
     case FieldId::climatology_land_snow_mean_kg_m2:
     case FieldId::climatology_sea_ice_mean_kg_m2:
+    case FieldId::atmosphere_edge_normal_wind_m_s:
         return 0U;
     }
     return 0U;
@@ -343,6 +346,7 @@ void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& fi
     case FieldId::climatology_surface_temperature_variance_K2:
     case FieldId::climatology_land_snow_mean_kg_m2:
     case FieldId::climatology_sea_ice_mean_kg_m2:
+    case FieldId::atmosphere_edge_normal_wind_m_s:
         throw std::logic_error("derived forcing field cannot be persisted");
     }
 
@@ -773,6 +777,7 @@ inline constexpr std::size_t stored_field_count =
         element_count = descriptor.layers;
         break;
     case FieldLayout::edge:
+    case FieldLayout::edge_layers:
         throw std::runtime_error("persistent edge fields require an edge count in the manifest");
     }
 
@@ -1063,6 +1068,7 @@ void decode_chunk(const FieldDescriptor& descriptor,
     case FieldId::climatology_surface_temperature_variance_K2:
     case FieldId::climatology_land_snow_mean_kg_m2:
     case FieldId::climatology_sea_ice_mean_kg_m2:
+    case FieldId::atmosphere_edge_normal_wind_m_s:
         break;
     }
     field_error(static_cast<std::uint32_t>(descriptor.id), "field has no persistent decoder");
