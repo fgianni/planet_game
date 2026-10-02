@@ -5,6 +5,7 @@
 #include "sim/core/serialization/history_store.hpp"
 #include "sim/core/serialization/snapshot_file.hpp"
 #include "sim/planet/atmosphere/atmosphere.hpp"
+#include "sim/planet/dynamics/primitive_equations.hpp"
 #include "sim/planet/dynamics/shallow_water.hpp"
 #include "sim/planet/dynamics/williamson_cases.hpp"
 #include "sim/planet/mesh/icosphere.hpp"
@@ -170,7 +171,10 @@ void print_usage(std::ostream& output) {
            << "    commands: set_mode,climate|reference; set_solar_luminosity_factor,F\n"
            << "  planet_cli replay FILE.prun [--workers W]\n"
            << "  planet_cli shallow-water [--case 2|5] [--subdivision LEVEL] [--days D]"
-              " [--workers W] [--damping-hours H] [--reference-subdivision LEVEL]\n";
+              " [--workers W] [--damping-hours H] [--reference-subdivision LEVEL]\n"
+           << "  planet_cli dynamics [--test rest|held-suarez] [--subdivision LEVEL]"
+              " [--layers N] [--days D] [--average-days D] [--damping-hours H] [--seed N]"
+              " [--lapse-rate K_PER_KM] [--workers W]\n";
 }
 
 [[nodiscard]] std::uint32_t parse_subdivision(std::string_view text) {
@@ -1139,6 +1143,226 @@ int run_shallow_water(const ShallowWaterOptions& options) {
     return 0;
 }
 
+struct DynamicsOptions {
+    std::string test = "held-suarez";
+    std::uint32_t subdivision = 5;
+    std::size_t layers = 3;
+    double days = 10.0;
+    double average_days = 0.0;
+    std::optional<double> damping_hours;
+    std::uint64_t seed = 1;
+    std::size_t workers = 0;
+    double lapse_rate_K_m = 0.0;   // rest test: 0 isothermal (250 K), else T(z) = 288 − Γ z
+};
+
+[[nodiscard]] DynamicsOptions parse_dynamics_options(int argument_count, char** arguments) {
+    DynamicsOptions options;
+    for (int index = 2; index < argument_count; ++index) {
+        const std::string_view argument{arguments[index]};
+        if (++index >= argument_count) {
+            throw std::invalid_argument(std::string(argument) + " requires a value");
+        }
+        const std::string_view value{arguments[index]};
+        if (argument == "--test") {
+            options.test = std::string(value);
+            if (options.test != "rest" && options.test != "held-suarez") {
+                throw std::invalid_argument("dynamics tests are rest and held-suarez");
+            }
+        } else if (argument == "--subdivision") {
+            options.subdivision = parse_subdivision(value);
+        } else if (argument == "--layers") {
+            options.layers = static_cast<std::size_t>(parse_unsigned(value, "layers"));
+        } else if (argument == "--days") {
+            options.days = parse_double(value, "days");
+        } else if (argument == "--average-days") {
+            options.average_days = parse_double(value, "average days");
+        } else if (argument == "--damping-hours") {
+            options.damping_hours = parse_double(value, "damping hours");
+        } else if (argument == "--seed") {
+            options.seed = parse_unsigned(value, "seed");
+        } else if (argument == "--workers") {
+            options.workers = static_cast<std::size_t>(parse_unsigned(value, "workers"));
+        } else if (argument == "--lapse-rate") {
+            options.lapse_rate_K_m = parse_double(value, "lapse rate") / 1000.0;
+        } else {
+            throw std::invalid_argument("unknown dynamics option: " + std::string(argument));
+        }
+    }
+    if (options.layers == 0U || !(options.days > 0.0) || options.average_days < 0.0 ||
+        options.average_days > options.days) {
+        throw std::invalid_argument("invalid dynamics options");
+    }
+    return options;
+}
+
+// ADR-0011 V4 (rest over terrain) and V5 (Held–Suarez) for the dry core.
+int run_dynamics(const DynamicsOptions& options) {
+    const std::size_t workers =
+        options.workers != 0U ? options.workers
+                              : std::max<std::size_t>(1U, std::thread::hardware_concurrency());
+    const auto planet = planetsim::PlanetParameters::earth_development();
+    auto mesh = std::make_shared<const planetsim::PlanetMesh>(
+        planetsim::make_icosphere(options.subdivision, planet.radius_m));
+    const auto grid = planetsim::CGridGeometry::build(*mesh);
+    const std::size_t cells = mesh->cell_count();
+    const std::size_t n = options.layers;
+    const bool rest = options.test == "rest";
+
+    planetsim::PrimitiveEquationParameters parameters;
+    parameters.layer_count = n;
+    parameters.gravity_m_s2 = planetsim::surface_gravity_m_s2(planet);
+    parameters.rotation_rate_rad_s =
+        2.0 * std::numbers::pi_v<double> / planet.sidereal_rotation_period_s;
+    parameters.held_suarez.enabled = !rest;
+    if (options.damping_hours) {
+        parameters.hyperviscosity_m4_s =
+            planetsim::hyperviscosity_for_damping_time(*mesh, *options.damping_hours * 3600.0);
+    }
+
+    planetsim::Field2D<double> height(cells, 0.0);
+    planetsim::Field2D<double> surface_pressure(cells, parameters.reference_pressure_Pa);
+    planetsim::Field3D<double> temperature(n, cells, 0.0);
+    if (rest) {
+        // Isothermal (250 K) at rest over the Earth-like terrain: hydrostatic
+        // p_s = p₀ exp(−g z_s / (R T)) is the exact continuous rest state.
+        planetsim::PlanetState state(mesh);
+        static_cast<void>(planetsim::generate_terrain(
+            state, options.seed,
+            planetsim::geology_parameters_for(planetsim::PlanetPreset::earth_like), workers));
+        const auto fractions = planetsim::compute_surface_fractions(
+            *mesh, state.slow().hypsometry_m, state.slow().sea_level_m);
+        planetsim::compute_surface_height(*mesh, state.slow(), fractions, height);
+        const double g = parameters.gravity_m_s2;
+        const double r = parameters.gas_constant_J_kg_K;
+        const double p0 = parameters.reference_pressure_Pa;
+        const double lapse = options.lapse_rate_K_m;
+        for (std::size_t i = 0; i < cells; ++i) {
+            if (lapse == 0.0) {
+                surface_pressure[i] = p0 * std::exp(-g * height[i] / (r * 250.0));
+                for (std::size_t k = 0; k < n; ++k) {
+                    temperature.layer(k)[i] = 250.0;
+                }
+                continue;
+            }
+            // T(z) = 288 − Γ z, so T = 288 (p/p₀)^a with a = R Γ / g; a
+            // layer's T is the exact mass mean over its pressure range.
+            const double a = r * lapse / g;
+            surface_pressure[i] = p0 * std::pow(1.0 - lapse * height[i] / 288.0, 1.0 / a);
+            for (std::size_t k = 0; k < n; ++k) {
+                const double nd = static_cast<double>(n);
+                const double pb = surface_pressure[i] * (1.0 - static_cast<double>(k) / nd);
+                const double pt = surface_pressure[i] * (1.0 - static_cast<double>(k + 1U) / nd);
+                temperature.layer(k)[i] =
+                    288.0 * (std::pow(pb / p0, a + 1.0) - std::pow(pt / p0, a + 1.0)) * p0 /
+                    ((a + 1.0) * (pb - pt));
+            }
+        }
+    } else {
+        // Held–Suarez: rest at 300 K with a keyed 0.1 K perturbation to break
+        // the symmetry.
+        for (std::size_t i = 0; i < cells; ++i) {
+            for (std::size_t k = 0; k < n; ++k) {
+                temperature.layer(k)[i] =
+                    300.0 + 0.2 * (planetsim::keyed_random_unit_double(
+                                       options.seed, planetsim::RandomStreamId::validation,
+                                       static_cast<std::uint32_t>(k),
+                                       static_cast<std::uint32_t>(i)) -
+                                   0.5);
+            }
+        }
+    }
+    const planetsim::PrimitiveEquationModel model(*mesh, grid, parameters, height);
+    auto state = model.state_at_rest(surface_pressure, temperature);
+    const auto initial = model.diagnose(state, workers);
+    const planetsim::SubstepRule rule;
+
+    // Time means of the cell winds over the averaging window, for zonal
+    // means and transient eddy kinetic energy.
+    std::vector<double> mean_east(n * cells, 0.0);
+    std::vector<double> mean_square(n * cells, 0.0);
+    std::size_t samples = 0;
+    planetsim::EdgeField<double> layer_u(mesh->edge_count());
+    planetsim::Field2D<double> east(cells);
+    planetsim::Field2D<double> north(cells);
+
+    std::cout << std::setprecision(6) << std::scientific << "dynamics test=" << options.test
+              << " subdivision=" << options.subdivision << " layers=" << n
+              << " steps_per_10_min=" << planetsim::substep_count(*mesh, 600.0, rule)
+              << " hyperviscosity_m4_s=" << parameters.hyperviscosity_m4_s << '\n';
+    const auto start = std::chrono::steady_clock::now();
+    const auto whole_days = static_cast<std::size_t>(std::ceil(options.days));
+    for (std::size_t day = 0; day < whole_days; ++day) {
+        const double span = std::min(1.0, options.days - static_cast<double>(day)) * 86'400.0;
+        model.advance(state, span, rule, workers);
+        const double elapsed = static_cast<double>(day + 1U);
+        if (elapsed > options.days - options.average_days + 1e-9) {
+            for (std::size_t k = 0; k < n; ++k) {
+                std::copy(state.normal_velocity_m_s.layer(k).begin(),
+                          state.normal_velocity_m_s.layer(k).end(), layer_u.values().begin());
+                planetsim::reconstruct_cell_vector(*mesh, grid, layer_u, east, north, workers);
+                for (std::size_t i = 0; i < cells; ++i) {
+                    mean_east[k * cells + i] += east[i];
+                    mean_square[k * cells + i] += east[i] * east[i] + north[i] * north[i];
+                }
+            }
+            ++samples;
+        }
+        if (rest || (day + 1U) % 50U == 0U || day + 1U == whole_days) {
+            const auto now = model.diagnose(state, workers);
+            std::cout << "day=" << day + 1U << " max_wind_m_s=" << now.max_wind_m_s
+                      << " kinetic_J=" << now.kinetic_energy_J << '\n';
+        }
+    }
+    const double seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    const auto final = model.diagnose(state, workers);
+    std::cout << "wall_s=" << seconds << " relative_mass_change="
+              << (final.mass_kg - initial.mass_kg) / initial.mass_kg
+              << " relative_energy_change="
+              << (final.energy_J() - initial.energy_J()) / initial.energy_J() << '\n';
+
+    if (samples > 0U) {
+        // Zonal means in 5° bands, area-weighted, of the time-mean eastward
+        // wind and the transient eddy kinetic energy ½(|u|² mean − ū²).
+        constexpr int bands = 36;
+        std::vector<double> band_area(bands, 0.0);
+        std::vector<double> band_u(n * bands, 0.0);
+        std::vector<double> band_eke(n * bands, 0.0);
+        for (const auto& cell : mesh->cells()) {
+            const double latitude = planetsim::latitude_rad(cell.center_unit);
+            const int band = std::clamp(
+                static_cast<int>((latitude + std::numbers::pi_v<double> / 2.0) /
+                                 (std::numbers::pi_v<double> / bands)),
+                0, bands - 1);
+            band_area[static_cast<std::size_t>(band)] += cell.area_m2;
+            for (std::size_t k = 0; k < n; ++k) {
+                const std::size_t index = k * cells + cell.id.to_index();
+                const double mean = mean_east[index] / static_cast<double>(samples);
+                const double square = mean_square[index] / static_cast<double>(samples);
+                band_u[k * bands + static_cast<std::size_t>(band)] += cell.area_m2 * mean;
+                band_eke[k * bands + static_cast<std::size_t>(band)] +=
+                    cell.area_m2 * 0.5 * std::max(0.0, square - mean * mean);
+            }
+        }
+        std::cout << std::fixed << std::setprecision(2) << "averaged_days=" << samples << '\n'
+                  << "latitude_deg";
+        for (std::size_t k = 0; k < n; ++k) {
+            std::cout << " u_layer" << k << " eke_layer" << k;
+        }
+        std::cout << '\n';
+        for (int band = 0; band < bands; ++band) {
+            std::cout << -90.0 + 5.0 * (band + 0.5);
+            for (std::size_t k = 0; k < n; ++k) {
+                const double area = band_area[static_cast<std::size_t>(band)];
+                std::cout << ' ' << band_u[k * bands + static_cast<std::size_t>(band)] / area
+                          << ' ' << band_eke[k * bands + static_cast<std::size_t>(band)] / area;
+            }
+            std::cout << '\n';
+        }
+    }
+    return 0;
+}
+
 int run_mesh(const MeshOptions& options) {
     const auto start = std::chrono::steady_clock::now();
     const auto mesh = planetsim::make_icosphere(options.subdivision, options.radius_m);
@@ -1923,6 +2147,9 @@ int main(int argument_count, char** arguments) {
         }
         if (command == "run") {
             return run_scenario(parse_run_options(argument_count, arguments));
+        }
+        if (command == "dynamics") {
+            return run_dynamics(parse_dynamics_options(argument_count, arguments));
         }
         if (command == "shallow-water") {
             return run_shallow_water(parse_shallow_water_options(argument_count, arguments));
