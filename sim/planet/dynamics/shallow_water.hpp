@@ -50,7 +50,9 @@ struct ShallowWaterDiagnostics {
 // bounds only.
 struct SubstepRule {
     double wave_speed_m_s = 350.0;
-    double max_wind_m_s = 100.0;
+    // Earth's jets exceed 100 m/s at times; ADR-0011 §13 raised the bound
+    // from 100 to 150 m/s after a Held–Suarez spin-up reached 100.85 m/s.
+    double max_wind_m_s = 150.0;
     double courant = 0.5;
 };
 

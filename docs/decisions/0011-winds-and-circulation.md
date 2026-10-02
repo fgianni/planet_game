@@ -4,6 +4,7 @@
 - **Date:** 2026-10-02
 - **Accepted:** 2026-10-02
 - **Amended:** 2026-10-02 — §12: V2 gates for the TRiSK operators, as measured in M6-01
+- **Amended:** 2026-10-02 — §13: the orography the winds see; the sub-step rule's wind bound
 - **Milestone:** P0 / M6 (wind and Coriolis)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §6 (`AtmosphereState`), §8 (multi-rate), §9.2, §13 M6, §15.5 (zero-rotation experiment), §23, §24; Planetary Civilization Simulator — Design Record v0.9, §5.4, §15.2–15.5, §25 (M5 row: "planetary circulation direction and latitude dependence"), §28
 - **Related:** ADR-0001 (modes, partition, budget, §8 milestone mapping), ADR-0002 (mesh, operators, §4.2 advection, field layout), ADR-0003 (determinism, replay), ADR-0006 (sub-steps), ADR-0009 (implicit transport, coarse graph), ADR-0010 (layered atmosphere; its §7 M6 row)
@@ -682,4 +683,59 @@ amendment.
     misfit then grows as 4ᴸ: 3.7e-13 at L5, 1.7e-12 at L6.
   - The TRiSK weights take their kite fractions over the kite sum, so
     they stay antisymmetric to 4e-16 regardless.
+
+## 13. Amendment: the orography the winds see, and the wind bound (accepted 2026-10-02)
+
+**Finding (task M6-03, step A).** The isothermal rest state is exact (V4).
+A stratified atmosphere at rest (T = 288 K − 6.5 K/km) over the generated
+Earth-like terrain is not:
+- At L5 with N = 3 the wind reaches 10.9 m/s after one day and 20.5 m/s
+  after ten.
+- N = 5 and L4 are no better. The residual is second order in the jump in
+  ln p_s between neighbouring cells, the σ-coordinate pressure-gradient
+  error.
+- The generated terrain is steep at the grid scale. Neighbouring cells
+  differ by up to 5.9, 5.0 and 3.3 km at L4, L5 and L6, mostly where an
+  ocean cell meets a mountain cell.
+
+**Change (option 1 of the three put on 2026-10-02).**
+- **What sees the smoothed heights.** The dynamics (§4.3, and the
+  balanced circulation of §4.4–4.6) uses a smoothed copy of the surface
+  height, while the column physics, the surface tiles and ADR-0010's
+  hydrostatic initialisation keep the true heights. This is the standard
+  practice of GCMs, whose dynamics see filtered orography.
+- **The filter.** Conservative two-point averaging passes,
+  `z_i ← z_i + (1/A_i) Σ_e (1/8) l_e d_e (z_j − z_i)`.
+  - Each pass is a convex combination, so it creates no new extremes.
+  - The coefficients are symmetric, so the area-weighted mean height is
+    exact.
+- **How many passes.** As few as leave no two neighbouring cells more than
+  800 m apart (`limit_dynamics_orography_steps`), at most 256. The rule
+  depends on the terrain and the level only, so it is deterministic.
+
+| Level | Passes | Highest peak seen | RMS change | Stratified rest, max wind after 10 days |
+|---|---|---|---|---|
+| L4 | 8 | 2,595 m (true 6,337) | 378 m | 0.20 m/s |
+| L5 | 13 | 2,906 m (true 6,616) | 297 m | 0.25 m/s |
+| L6 | 19 | 3,916 m (true 6,842) | 221 m | 0.55 m/s |
+
+**Consequences.**
+- The winds feel mountains at most about 3–4 km high. The generated
+  peaks are narrow, often one cell, and resolved relief survives better at
+  finer levels.
+- Orographic effects of later milestones (rain shadows, M8) act on the
+  smoothed heights for the flow, but the true heights for the columns.
+- In reference mode, `p_s` adjusts from ADR-0010's true-height
+  hydrostatic initial state towards balance with the smoothed orography.
+  Task M6-03 step B measures that adjustment.
+- **Gate.** The stratified rest state may reach at most 1 m/s after 10 days
+  at L4–L6 (recorded with `planet_cli dynamics`). The isothermal V4 gate is
+  unchanged.
+
+**The wind bound of the sub-step rule (§4.3)** rises from 100 to
+150 m/s:
+- A 5-layer Held–Suarez spin-up at L5 reached 100.85 m/s in its first
+  baroclinic burst, and the rule stopped it, as designed.
+- Earth's jets exceed 100 m/s at times.
+- The cost is about 11 % more steps.
 

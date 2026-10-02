@@ -5,6 +5,7 @@
 #include "sim/core/serialization/history_store.hpp"
 #include "sim/core/serialization/snapshot_file.hpp"
 #include "sim/planet/atmosphere/atmosphere.hpp"
+#include "sim/planet/dynamics/orography.hpp"
 #include "sim/planet/dynamics/primitive_equations.hpp"
 #include "sim/planet/dynamics/shallow_water.hpp"
 #include "sim/planet/dynamics/williamson_cases.hpp"
@@ -174,7 +175,7 @@ void print_usage(std::ostream& output) {
               " [--workers W] [--damping-hours H] [--reference-subdivision LEVEL]\n"
            << "  planet_cli dynamics [--test rest|held-suarez] [--subdivision LEVEL]"
               " [--layers N] [--days D] [--average-days D] [--damping-hours H] [--seed N]"
-              " [--lapse-rate K_PER_KM] [--workers W]\n";
+              " [--lapse-rate K_PER_KM] [--orography-passes P | --orography-step M] [--workers W]\n";
 }
 
 [[nodiscard]] std::uint32_t parse_subdivision(std::string_view text) {
@@ -1153,6 +1154,8 @@ struct DynamicsOptions {
     std::uint64_t seed = 1;
     std::size_t workers = 0;
     double lapse_rate_K_m = 0.0;   // rest test: 0 isothermal (250 K), else T(z) = 288 − Γ z
+    std::size_t orography_passes = 0;
+    std::optional<double> orography_step_m;
 };
 
 [[nodiscard]] DynamicsOptions parse_dynamics_options(int argument_count, char** arguments) {
@@ -1182,6 +1185,11 @@ struct DynamicsOptions {
             options.seed = parse_unsigned(value, "seed");
         } else if (argument == "--workers") {
             options.workers = static_cast<std::size_t>(parse_unsigned(value, "workers"));
+        } else if (argument == "--orography-step") {
+            options.orography_step_m = parse_double(value, "orography step");
+        } else if (argument == "--orography-passes") {
+            options.orography_passes =
+                static_cast<std::size_t>(parse_unsigned(value, "orography passes"));
         } else if (argument == "--lapse-rate") {
             options.lapse_rate_K_m = parse_double(value, "lapse rate") / 1000.0;
         } else {
@@ -1232,6 +1240,24 @@ int run_dynamics(const DynamicsOptions& options) {
         const auto fractions = planetsim::compute_surface_fractions(
             *mesh, state.slow().hypsometry_m, state.slow().sea_level_m);
         planetsim::compute_surface_height(*mesh, state.slow(), fractions, height);
+        if (options.orography_step_m) {
+            auto limited = planetsim::limit_dynamics_orography_steps(
+                *mesh, height, *options.orography_step_m,
+                planetsim::dynamics_orography_max_passes, workers);
+            height = std::move(limited.height_m);
+            std::cout << "orography_step_limit_m=" << *options.orography_step_m
+                      << " passes=" << limited.passes << '\n';
+        } else {
+            height = planetsim::smooth_dynamics_orography(*mesh, height,
+                                                          options.orography_passes, workers);
+        }
+        double steepest = 0.0;
+        for (const auto& edge : mesh->edges()) {
+            steepest = std::max(steepest,
+                                std::abs(height[edge.first_cell] - height[edge.second_cell]));
+        }
+        std::cout << "orography_passes=" << options.orography_passes
+                  << " max_neighbour_step_m=" << steepest << '\n';
         const double g = parameters.gravity_m_s2;
         const double r = parameters.gas_constant_J_kg_K;
         const double p0 = parameters.reference_pressure_Pa;

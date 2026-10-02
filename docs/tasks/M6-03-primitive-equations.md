@@ -171,10 +171,19 @@
 - **Tests:** the CI tests run at L3 and L4, and take 11 s each in Debug.
   The larger levels are recorded with the CLI.
 
-## 4. Open for step B
+## 4. Decided for step B (ADR-0011 §13, 2026-10-02)
 
-- **Terrain the winds see.** A stratified atmosphere over the generated
-  terrain makes spurious winds of up to about 20 m/s at L5 (§3). The
-  standard remedy is to give the dynamics a smoothed orography, with the
-  column physics keeping the true heights. That would be recorded in
-  ADR-0011 before step B couples the core to the planet.
+- **Terrain the winds see.**
+  - The dynamics uses `limit_dynamics_orography_steps`: conservative
+    averaging passes until no two neighbouring cells differ by more than
+    800 m. That takes 8, 13 and 19 passes at L4, L5 and L6.
+  - The column physics keeps the true heights.
+  - A stratified atmosphere at rest then reaches 0.20, 0.25 and 0.55 m/s
+    after 10 days, against 20.5 m/s unsmoothed at L5.
+  - `tests/unit/test_dynamics_orography.cpp` checks the exact mean, that no
+    new extremes appear, the fewest-passes rule and determinism.
+- **The sub-step rule's wind bound** is 150 m/s. The first 5-layer
+  Held–Suarez run at L5 stopped at 100.85 m/s in its spin-up burst. A trace
+  at L4 showed ordinary baroclinic spin-up, with eddies gusting to
+  60–80 m/s and nothing numerically unstable. The 5-layer gate run is
+  repeated with the new bound.
