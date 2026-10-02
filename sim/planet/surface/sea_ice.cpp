@@ -31,6 +31,8 @@ OceanTileResult open_water(const OceanTileSystem& tile, double source_W_m2,
                                          source_W_m2 - exchange_W_m2_K * surface_K);
     result.column.surface_slope_K_m2_W = held ? 0.0 : system.slope_K_m2_W(surface_K);
     result.radiating_K = surface_K;
+    result.emitted_slope = 4.0 * system.radiative * surface_K * surface_K * surface_K *
+                           result.column.surface_slope_K_m2_W;
     result.melted_kg_m2 = sink_W_m2 * tile.dt_s / latent_heat_of_fusion_J_kg;
     result.frozen_kg_m2 = released_W_m2 * tile.dt_s / latent_heat_of_fusion_J_kg;
     result.ice_kg_m2 = tile.ice_kg_m2 - result.melted_kg_m2 + result.frozen_kg_m2;
@@ -62,7 +64,7 @@ struct IceSurface {
     const double conductance = sea_ice_conductivity_W_m_K / thickness_m;
     ice.system.radiative = tile.open.radiative;
     ice.system.a = exchange_W_m2_K + conductance;
-    ice.system.b = tile.open.absorbed_W_m2 + source_W_m2 + conductance * seawater_freezing_point_K;
+    ice.system.b = tile.floe_absorbed_W_m2 + source_W_m2 + conductance * seawater_freezing_point_K;
     ice.surface_K = solve_column_surface(ice.system);
     if (ice.surface_K > melting_point_K) {
         ice.top_melt_W_m2 = ice.system.surplus_W_m2(melting_point_K);
@@ -97,6 +99,11 @@ OceanTileSystem prepare_ocean_tile(const ColumnProperties& ocean, ColumnState st
     tile.before = state;
     tile.ice_kg_m2 = ice_kg_m2;
     tile.dt_s = dt_s;
+    // ADR-0008 §10: the cover that also sets the albedo; floes and leads
+    // absorb with their own albedos, which average to the tile's.
+    tile.cover = std::min(1.0, ice_kg_m2 / (sea_ice_density_kg_m3 * sea_ice_albedo_ramp_m));
+    tile.floe_absorbed_W_m2 = (1.0 - sea_ice_albedo) * insolation_W_m2;
+    tile.lead_absorbed_W_m2 = (1.0 - ocean.albedo) * insolation_W_m2;
     return tile;
 }
 
@@ -112,109 +119,128 @@ OceanTileResult solve_ocean_tile(const OceanTileSystem& tile, double source_W_m2
     const double surface_rate = tile.column.surface_heat_capacity_J_m2_K / tile.dt_s;
     const double ocean_flux_W_m2 = tile.open.exchange * (deep_K - freezing_K) +
                                    surface_rate * (tile.before.surface_K - freezing_K);
-    const double thickness_m = tile.ice_kg_m2 / sea_ice_density_kg_m3;
-    const double latent_rate = sea_ice_density_kg_m3 * latent_heat_of_fusion_J_kg / tile.dt_s;
+    const double latent_rate = latent_heat_of_fusion_J_kg / tile.dt_s;   // per kg/m²
+    const double cover = tile.cover;
+    const double floe_m = sea_ice_albedo_ramp_m;
+    const double radiative = tile.open.radiative;
+    const double freezing_emission_W_m2 = radiative * std::pow(freezing_K, 4);
+    // Net heat into the leads at T_f, per unit lead area.
+    const double lead_W_m2 = tile.lead_absorbed_W_m2 + source_W_m2 -
+                             exchange_W_m2_K * freezing_K - freezing_emission_W_m2;
 
-    // R(h') = ρ L (h' − h) / Δt − F_top(h') + F_o, strictly increasing. As
-    // h' → 0 the surface tends to T_f and F_top to its balance there.
-    const double balance_at_freezing_W_m2 =
-        tile.open.radiative * std::pow(freezing_K, 4) + exchange_W_m2_K * freezing_K -
-        tile.open.absorbed_W_m2 - source_W_m2;
-    if (-latent_rate * thickness_m - balance_at_freezing_W_m2 + ocean_flux_W_m2 >= 0.0) {
-        // No positive thickness balances the step: all the ice melts, and
-        // what is left warms (or refreezes) the open water.
-        return open_water(tile, source_W_m2, exchange_W_m2_K,
-                          latent_heat_of_fusion_J_kg * tile.ice_kg_m2 / tile.dt_s);
-    }
+    // R(m') = L (m' − m)/Δt − c₀ F_top(h_f') + (1 − c₀) Q_L + F_o with
+    // h_f' = max(h_r, m'/ρ): increasing in m' (ADR-0008 §10).
+    const auto thickness_of = [&](double mass) {
+        return std::max(floe_m, mass / sea_ice_density_kg_m3);
+    };
+    const auto residual = [&](double mass, IceSurface& ice) {
+        ice = ice_surface(tile, thickness_of(mass), source_W_m2, exchange_W_m2_K);
+        return latent_rate * (mass - tile.ice_kg_m2) - cover * ice.top_loss_W_m2() +
+               (1.0 - cover) * lead_W_m2 + ocean_flux_W_m2;
+    };
 
-    // Start from the previous solve of this tile, or else from the discrete
-    // Stefan estimate with the surface temperature at the current thickness
-    // (thin ice on a monthly step grows far from it).
-    double root = std::max(thickness_m, 1e-3);
-    if (tile.thickness_guess_m > 0.0) {
-        root = tile.thickness_guess_m;
-    } else {
-        const double deficit_K = freezing_K - ice_surface(tile, root, source_W_m2,
-                                                          exchange_W_m2_K).surface_K;
-        if (deficit_K > 0.0) {
-            const double growth = sea_ice_conductivity_W_m_K * deficit_K / latent_rate;
-            root = 0.5 * (root + std::sqrt(root * root + 4.0 * growth));
-        }
-    }
-
-    // Safeguarded Newton. With the surface free, A dT + B dh' = 0 at fixed
-    // source gives dF_top/dh' = −(4 r T³ + γ) B / A (A = 4 r T³ + γ + k/h',
-    // B = k (T_f − T) / h'²); held at T_m, F_top does not depend on h'. A step
-    // that leaves the bracket bisects instead. The residual is known to about
-    // 1e-10 of its terms, so a step below 1e-13 of the thickness ends the
-    // solve, keeping the last evaluated thickness (energy error < 1e-4 J/m²).
-    double low = 0.0;          // R(low) < 0 (the h' → 0 limit)
-    double high = std::numeric_limits<double>::infinity();   // R(high) > 0
     IceSurface ice;
-    double value = 0.0;
-    for (int iteration = 0; iteration < 100; ++iteration) {
-        ice = ice_surface(tile, root, source_W_m2, exchange_W_m2_K);
-        value = latent_rate * (root - thickness_m) - ice.top_loss_W_m2() + ocean_flux_W_m2;
-        (value < 0.0 ? low : high) = root;
-        double derivative = latent_rate;
-        if (!ice.held) {
-            const double conductance = sea_ice_conductivity_W_m_K / root;
-            const double radiative_slope =
-                4.0 * ice.system.radiative * std::pow(ice.surface_K, 3) + exchange_W_m2_K;
-            const double b = conductance * (freezing_K - ice.surface_K) / root;
-            derivative += radiative_slope * b / (radiative_slope + conductance);
+    double value = residual(0.0, ice);
+    double root = 0.0;
+    const bool melts_away = value >= 0.0;
+    if (!melts_away) {
+        // Safeguarded Newton on the mass. Below ρ h_r the floe thickness is
+        // fixed and R is linear (one step); above it dF_top/dh' =
+        // −(4 r T³ + γ) B / A with A = 4 r T³ + γ + k/h', B = k (T_f − T)/h'²
+        // while the surface is free, and 0 while it is held at T_m. A step
+        // that leaves the bracket bisects instead; a step below 1e-13 of the
+        // mass ends the solve, keeping the last evaluated mass.
+        double low = 0.0;                                          // R(low) < 0
+        double high = std::numeric_limits<double>::infinity();     // R(high) > 0
+        root = std::max(tile.ice_kg_m2, tile.thickness_guess_m * sea_ice_density_kg_m3);
+        for (int iteration = 0; iteration < 100; ++iteration) {
+            value = residual(root, ice);
+            (value < 0.0 ? low : high) = root;
+            double derivative = latent_rate;
+            const double thickness = thickness_of(root);
+            if (!ice.held && root > sea_ice_density_kg_m3 * floe_m) {
+                const double conductance = sea_ice_conductivity_W_m_K / thickness;
+                const double radiative_slope =
+                    4.0 * radiative * std::pow(ice.surface_K, 3) + exchange_W_m2_K;
+                const double b = conductance * (freezing_K - ice.surface_K) / thickness;
+                derivative += cover * radiative_slope * b / (radiative_slope + conductance) /
+                              sea_ice_density_kg_m3;
+            }
+            double next = root - value / derivative;
+            if (!(next > low && next < high)) {
+                next = std::isfinite(high) ? 0.5 * (low + high) : 2.0 * root + 1.0;
+            }
+            if (value == 0.0 || std::abs(next - root) <= 1e-13 * root) {
+                break;
+            }
+            root = next;
         }
-        double next = root - value / derivative;
-        if (!(next > low && next < high)) {
-            next = std::isfinite(high) ? 0.5 * (low + high) : 2.0 * root;
-        }
-        if (value == 0.0 || std::abs(next - root) <= 1e-13 * root) {
-            break;
-        }
-        root = next;
+        tile.thickness_guess_m = root / sea_ice_density_kg_m3;
     }
-    tile.thickness_guess_m = root;
 
     OceanTileResult result;
-    result.radiating_K = ice.surface_K;
+    const double surface_K = cover * ice.surface_K + (1.0 - cover) * freezing_K;
+    result.radiating_K = surface_K;
     result.ocean_heat_flux_W_m2 = ocean_flux_W_m2;
-    result.ice_kg_m2 = sea_ice_density_kg_m3 * root;
-    // Gross terms: the top melts, the base grows or melts; their difference
-    // is exactly the change of mass.
-    const double top_melt_kg_m2 = ice.top_melt_W_m2 * tile.dt_s / latent_heat_of_fusion_J_kg;
-    const double base_kg_m2 = (ice.conduction_W_m2 - ocean_flux_W_m2) * tile.dt_s /
-                              latent_heat_of_fusion_J_kg;
-    const double change_kg_m2 = result.ice_kg_m2 - tile.ice_kg_m2;
-    result.frozen_kg_m2 =
-        std::max(0.0, change_kg_m2 + top_melt_kg_m2 + std::max(0.0, -base_kg_m2));
-    result.melted_kg_m2 = result.frozen_kg_m2 - change_kg_m2;
+    result.ice_kg_m2 = root;
+    // Heat left over once all the ice has melted warms the mixed layer.
+    const double leftover_J_m2 = melts_away ? value * tile.dt_s : 0.0;
+    if (melts_away) {
+        result.melted_kg_m2 = tile.ice_kg_m2;
+    } else {
+        // Gross terms: the floes' top melts, their base grows or melts, the
+        // leads freeze or melt; their sum is exactly the change of mass.
+        const double top_melt_kg_m2 = cover * ice.top_melt_W_m2 / latent_rate;
+        const double base_kg_m2 = (cover * ice.conduction_W_m2 - ocean_flux_W_m2) / latent_rate;
+        const double lead_kg_m2 = -(1.0 - cover) * lead_W_m2 / latent_rate;
+        result.frozen_kg_m2 = std::max(0.0, base_kg_m2) + std::max(0.0, lead_kg_m2);
+        result.melted_kg_m2 =
+            top_melt_kg_m2 + std::max(0.0, -base_kg_m2) + std::max(0.0, -lead_kg_m2);
+        // The Newton root carries the residual's rounding; the gross terms
+        // are adjusted to the stored change.
+        const double change_kg_m2 = result.ice_kg_m2 - tile.ice_kg_m2;
+        const double gross_change = result.frozen_kg_m2 - result.melted_kg_m2;
+        if (change_kg_m2 >= gross_change) {
+            result.frozen_kg_m2 += change_kg_m2 - gross_change;
+        } else {
+            result.melted_kg_m2 += gross_change - change_kg_m2;
+        }
+    }
     result.latent_J_m2 = latent_heat_of_fusion_J_kg * (result.melted_kg_m2 - result.frozen_kg_m2);
     result.albedo = tile.column.albedo;
 
     ColumnStepResult& column = result.column;
-    column.state = {freezing_K, deep_K};
+    const double mixed_K = freezing_K + leftover_J_m2 / tile.column.surface_heat_capacity_J_m2_K;
+    column.state = {mixed_K, deep_K};
     column.absorbed_W_m2 = tile.open.absorbed_W_m2;
-    column.emitted_W_m2 = tile.open.radiative * std::pow(ice.surface_K, 4);
+    column.emitted_W_m2 = cover * radiative * std::pow(ice.surface_K, 4) +
+                          (1.0 - cover) * freezing_emission_W_m2;
     column.storage_change_J_m2 =
-        tile.column.surface_heat_capacity_J_m2_K * (freezing_K - tile.before.surface_K) +
+        tile.column.surface_heat_capacity_J_m2_K * (mixed_K - tile.before.surface_K) +
         tile.column.lower_heat_capacity_J_m2_K * (deep_K - tile.before.lower_K);
-    column.source_W_m2 = source_W_m2 - exchange_W_m2_K * ice.surface_K;
-    column.newton_residual_W_m2 = value;
-    // dT_i/ds with the thickness responding too (implicit function theorem on
-    // the surface balance and the growth equation):
-    //   A dT + B dh' = ds,   (ρL/Δt + B) dh' + (k/h') dT = 0,
-    //   A = 4 r T³ + γ + k/h',  B = k (T_f − T) / h'²,
-    // so dT/ds = 1 / (A − (k/h') B / (ρL/Δt + B)) > 1 / (4 r T³ + γ) > 0.
-    // Holding h' fixed underestimates it by up to a factor of a few for thin
-    // ice on a monthly step, which slowed the transport Newton to linear.
-    if (ice.held) {
-        column.surface_slope_K_m2_W = 0.0;
-    } else {
-        const double conductance = sea_ice_conductivity_W_m_K / root;
-        const double a = ice.system.a + 4.0 * ice.system.radiative * std::pow(ice.surface_K, 3);
-        const double b = conductance * (freezing_K - ice.surface_K) / root;
-        column.surface_slope_K_m2_W = 1.0 / (a - conductance * b / (latent_rate + b));
+    column.source_W_m2 = source_W_m2 - exchange_W_m2_K * surface_K;
+    column.newton_residual_W_m2 = melts_away ? 0.0 : value;
+    // dT_i/ds of the floes, with the thickness responding where it is free
+    // to (implicit function theorem on the surface balance and the growth
+    // equation): A dT + B dh' = ds, (ρL/Δt + B) dh' + (k/h') dT = 0 gives
+    // dT/ds = 1 / (A − (k/h') B / (ρL/Δt + B)), A = 4 r T³ + γ + k/h',
+    // B = k (T_f − T)/h'². At the fixed floe thickness, or after complete
+    // melt, dT/ds = 1 / A. The leads stay at T_f.
+    double floe_slope = 0.0;
+    if (!ice.held) {
+        const double thickness = thickness_of(root);
+        const double conductance = sea_ice_conductivity_W_m_K / thickness;
+        const double a = ice.system.a + 4.0 * radiative * std::pow(ice.surface_K, 3);
+        floe_slope = 1.0 / a;
+        if (!melts_away && root > sea_ice_density_kg_m3 * floe_m) {
+            const double b = conductance * (freezing_K - ice.surface_K) / thickness;
+            const double rho_latent = sea_ice_density_kg_m3 * latent_rate / cover;
+            floe_slope = 1.0 / (a - conductance * b / (rho_latent + b));
+        }
     }
+    column.surface_slope_K_m2_W = cover * floe_slope;
+    result.emitted_slope =
+        cover * 4.0 * radiative * std::pow(ice.surface_K, 3) * floe_slope;
     return result;
 }
 
@@ -222,13 +248,15 @@ double ocean_tile_source_floor_W_m2(const OceanTileSystem& tile, double lowest_K
     if (!(tile.ice_kg_m2 > 0.0)) {
         return -tile.open.surplus_W_m2(lowest_K);
     }
-    // Over ice, the surface at the start-of-step thickness.
+    // Over ice, the floes' surface at the start-of-step thickness (the
+    // leads stay at T_f).
     const double conductance =
-        sea_ice_conductivity_W_m_K / (tile.ice_kg_m2 / sea_ice_density_kg_m3);
+        sea_ice_conductivity_W_m_K /
+        std::max(sea_ice_albedo_ramp_m, tile.ice_kg_m2 / sea_ice_density_kg_m3);
     ColumnSystem system;
     system.radiative = tile.open.radiative;
     system.a = conductance;
-    system.b = tile.open.absorbed_W_m2 + conductance * seawater_freezing_point_K;
+    system.b = tile.floe_absorbed_W_m2 + conductance * seawater_freezing_point_K;
     return -system.surplus_W_m2(lowest_K);
 }
 

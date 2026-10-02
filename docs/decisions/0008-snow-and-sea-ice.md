@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-30
 - **Accepted:** 2026-09-30
-- **Amended:** 2026-10-01 — §5 V7 tests the seasonal cycle's stationarity, not its exact repetition (§9.2)
+- **Amended:** 2026-10-01 — §5 V7 tests the seasonal cycle's stationarity, not its exact repetition (§9.2); §4.4 thin ice is floes of fixed thickness over a fractional cover, with leads at `T_f` (§10)
 - **Milestone:** P0 / M4 (basic snow, ice and albedo feedback)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §9.6, §9.10, §13 M4, §13.1 (experiment C), §14, §15, §24; Planetary Civilization Simulator — Design Record v0.9, §24.2, §24.4
 - **Related:** ADR-0001 (modes, budget), ADR-0002 (precision), ADR-0003 (snapshots, migration, M4 history work), ADR-0005 (land and ocean tiles), ADR-0006 (sub-steps, climatology per `k mod 12`), ADR-0007 (surface columns)
@@ -476,3 +476,69 @@ a later ice-sheet process.
 Performance with the refit constants, 4 workers: 250 years at L5 in 148 s
 (gate 240 s) and at L6 in 508 s (gate 600 s); the L5 run replays bit for
 bit.
+
+## 10. Amendment: floes, leads and a continuous ice tile (accepted 2026-10-01)
+
+**Finding (task M5-03).** Under ADR-0010's atmosphere, every cell's tiles
+sit under a column with heat capacity, and the column's implicit solve needs
+the tiles to respond continuously to their source. §4.4's tile does not:
+
+- **A jump at complete melt.** Ice melting from the top radiates from a
+  surface held at `T_m` = 273.15 K. When the last ice goes, the tile becomes
+  open water at `T_f` = 271.35 K. At the same inputs the tile's longwave
+  jumps by about 8 W/m² and its sensible heat by about 20 W/m².
+- **A fold for thin ice.** As the ice thins, its surface cools towards
+  `T_f`, so it radiates less and melts faster. On a monthly step the growth
+  residual first falls with the new thickness and then rises, so a step can
+  have two roots or none. §4.4 also assumed the residual increases, and so
+  sometimes melted 0.2 m of ice that a root would have kept.
+
+A column above such a cell has no exact solution. Its response jitters, and
+the transport, coupling neighbours at thousands of W/m² per K, turned the
+jitter into local inconsistencies of 100–1,700 W/m² and steps that did not
+converge. The grey path of ADR-0009 escaped only because its massless cell
+air never coupled single-tile cells.
+
+**Change (§4.4).** Ice thinner than `h_r` = 0.5 m (§4.2's albedo ramp) is
+floes of thickness `h_r` covering the fraction `c = m / (ρ_i h_r)` of the
+tile; thicker ice covers it fully. The rest is **leads**: open water over
+the mixed layer, which stays at `T_f` while any ice remains. Within a step:
+
+- The cover is that at the start, `c₀`, which already sets the albedo.
+  Floes absorb with the ice albedo and leads with the ocean's, so the
+  tile's absorbed sunlight is unchanged.
+- The floes' surface balance is §4.4's, at the floe thickness
+  `h_f' = max(h_r, m'/ρ_i)`.
+- The leads lose or gain `Q_L = (1 − α_ocean) Q + s − γ T_f − ε σ T_f⁴` per
+  unit area (`s` is the external source of ADR-0009 and ADR-0010). That heat
+  freezes or melts ice, as heat lost from leads does in nature.
+- The growth equation, in mass per unit tile area, is
+
+  ```text
+  L_f (m' − m) / Δt = c₀ F_top(h_f') − (1 − c₀) Q_L − F_ocean
+  ```
+
+  where `F_top` is the floes' conduction minus their top melt. Its residual
+  increases with `m'`. Below `ρ_i h_r` the floe thickness is fixed, so the
+  dependence is linear. Above it, the thick-ice terms change by less than
+  the latent term (`k_i ΔT / h_r²` with `ΔT` at most 1.8 K above `T_f`).
+  So there is exactly one root and no fold.
+- **Complete melt** occurs where that root is not positive. The floes and
+  leads keep the step's surface balance, and the heat left over after
+  melting all the ice warms the mixed layer. The tile's response is then
+  continuous at the threshold, and flat beyond it within the step, like a
+  phase change.
+- The tile radiates `c₀ ε σ T_i⁴ + (1 − c₀) ε σ T_f⁴`. Its surface
+  temperature, which sets the sensible exchange and the diagnostics, is
+  `c₀ T_i + (1 − c₀) T_f`.
+
+Ice at least `h_r` thick (`c₀ = 1`) behaves as before, apart from the
+amended root. Open water without ice is unchanged.
+
+**Consequences.**
+- M4's calibrated constants were fitted with the old tile. ADR-0010 §4.6
+  refits the greenhouse and transport in M5-04 anyway.
+- The ADR-0008 tests that pin sea-ice behaviour are rechecked against the
+  amended tile, and the changes are recorded in the M5-03 task record.
+- The water and energy budgets are unchanged in form: floes, leads and the
+  ocean exchange are each counted once.

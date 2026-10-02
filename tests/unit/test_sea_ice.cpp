@@ -81,7 +81,9 @@ void check_freezing_onset(planetsim::test::Context& test) {
 // ADR-0008 V3: Stefan growth. The surface is pinned near T_s by a very
 // large exchange, there is no sunlight and no ocean heat flux, so each step
 // solves ρ L (h' − h) / Δt = k ΔT / h' exactly; over a winter the discrete
-// solution converges at first order to h² = h₀² + 2 k ΔT t / (ρ L).
+// solution converges at first order to h² = h₀² + 2 k ΔT t / (ρ L). The ice
+// starts at full cover (h₀ ≥ h_r): thinner ice is floes with leads, which
+// the pinning exchange would freeze at once (ADR-0008 §10).
 void check_stefan(planetsim::test::Context& test) {
     auto column = ocean();
     column.exchange_W_m2_K = 0.0;   // no ocean heat flux
@@ -90,7 +92,7 @@ void check_stefan(planetsim::test::Context& test) {
     const double rho_l = planetsim::sea_ice_density_kg_m3 * planetsim::latent_heat_of_fusion_J_kg;
     const double k = planetsim::sea_ice_conductivity_W_m_K;
     const double winter_s = 180.0 * 86'400.0;
-    const double h0 = 0.1;
+    const double h0 = 0.6;
 
     double worst_discrete = 0.0;
     double previous_error = 1.0;
