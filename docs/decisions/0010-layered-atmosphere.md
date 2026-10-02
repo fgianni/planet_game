@@ -389,3 +389,16 @@ ten years with closing budgets (ADR-0003 V5).
   - At L5 (seed 1, N = 3) the atmosphere holds 5.135 × 10¹⁸ kg with a mean
     surface pressure of 98.9 kPa.
   - Details are in `docs/tasks/M5-02-atmosphere-state-and-hydrostatics.md`.
+- **M5-03 (2026-10-02).** Covers §4.4–4.5, V2–V5 and V7.
+  - The column solver works through a linearised surface interface, with
+    an exact Jacobian.
+  - The transport slope includes the convective adjustment, which is
+    linear for a fixed set of pools.
+  - The surface tiles needed a continuous response: ADR-0008 was amended
+    (§10, floes and leads) after its sea ice was found to jump at complete
+    melt and to fold for thin ice.
+  - All columns converge, and the budget closes within 1.4e-5 of the gate
+    in climate mode.
+  - The atmosphere costs no more than the grey layer: 327 against 330 ms
+    per sub-step at L6.
+  - Details are in `docs/tasks/M5-03-column-radiation-and-convection.md`.

@@ -23,6 +23,14 @@ struct AtmosphereParameters {
     std::uint32_t layer_count = 0U;
     double reference_pressure_Pa = 101'325.0;   // p₀, sea-level pressure at rest
     double critical_lapse_rate_K_m = 6.5e-3;    // Γ_c (ADR-0010 §3.3)
+    // Grey longwave (ADR-0010 §3.2 B): the optical depth τ₀ of the column at
+    // p₀ (a calibration constant, §4.6; the diffusivity factor is folded
+    // in) and the share f_l of its well-mixed, linear-in-pressure part.
+    double longwave_optical_depth = 0.0;
+    double linear_optical_depth_fraction = 0.1;
+    // Convective adjustment to Γ_c (§3.3 B); off only in tests of pure
+    // radiative equilibrium (V2, V3).
+    bool convection = true;
 };
 
 inline constexpr std::uint32_t max_atmosphere_layer_count = 8U;
@@ -36,8 +44,9 @@ inline constexpr double gravitational_constant_m3_kg_s2 = 6.67430e-11;
 // specification §13.1). earth_like: three layers (design record §15.1).
 [[nodiscard]] AtmosphereParameters atmosphere_parameters_for(PlanetPreset preset) noexcept;
 
-// Throws std::invalid_argument for N above max_atmosphere_layer_count or a
-// non-positive or non-finite p₀ or Γ_c.
+// Throws std::invalid_argument for N above max_atmosphere_layer_count, a
+// non-positive or non-finite p₀ or Γ_c, a negative or non-finite τ₀, or f_l
+// outside [0, 1].
 void validate_atmosphere_parameters(const AtmosphereParameters& parameters);
 
 // g = G M / R².

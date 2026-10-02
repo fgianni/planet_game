@@ -115,6 +115,10 @@ struct ThermalOptions {
     std::optional<double> transport_W_m2_K;           // D (ADR-0009)
     std::optional<double> calibrate_transport_PW;     // fit D to this peak transport
     std::optional<double> calibrate_gradient_K;       // fit D to this P2 equator-to-pole ΔT
+    // ADR-0010: a layered atmosphere of N layers and optical depth τ₀
+    // (replaces the grey layer; --calibrate then fits τ₀).
+    std::optional<std::uint32_t> atmosphere_layers;
+    std::optional<double> optical_depth;
     std::size_t worker_count = 0;        // 0: hardware concurrency
 };
 
@@ -152,7 +156,8 @@ void print_usage(std::ostream& output) {
            << "  planet_cli history [--subdivision LEVEL] [--seed N] [--spin-up-years N]"
               " [--decades N] [--base-interval N] [--workers W] [--out DIRECTORY]\n"
            << "  planet_cli thermal [--subdivision LEVEL] [--seed N] [--preset NAME]"
-              " [--years N] [--grey G | --calibrate KELVIN]"
+              " [--years N] [--grey G | --layers N [--optical-depth TAU]]"
+              " [--calibrate KELVIN]"
               " [--transport D | --calibrate-gradient KELVIN | --calibrate-transport PW]"
               " [--precipitation KG_M2_S]"
               " [--workers W]\n"
@@ -371,6 +376,11 @@ void print_usage(std::ostream& output) {
             options.years = static_cast<int>(years);
         } else if (argument == "--grey") {
             options.grey_emissivity = parse_double(value, "grey emissivity");
+        } else if (argument == "--layers") {
+            options.atmosphere_layers =
+                static_cast<std::uint32_t>(parse_unsigned(value, "atmosphere layer count"));
+        } else if (argument == "--optical-depth") {
+            options.optical_depth = parse_double(value, "optical depth");
         } else if (argument == "--calibrate") {
             options.calibrate_K = parse_double(value, "calibration target");
         } else if (argument == "--transport") {
@@ -396,6 +406,9 @@ void print_usage(std::ostream& output) {
     }
     if (options.grey_emissivity && options.calibrate_K) {
         throw std::invalid_argument("--grey and --calibrate are exclusive");
+    }
+    if (options.atmosphere_layers && options.grey_emissivity) {
+        throw std::invalid_argument("--layers replaces the grey layer; drop --grey");
     }
     if ((options.transport_W_m2_K ? 1 : 0) + (options.calibrate_transport_PW ? 1 : 0) +
             (options.calibrate_gradient_K ? 1 : 0) >
@@ -1432,6 +1445,14 @@ int run_thermal(const ThermalOptions& options) {
     if (options.transport_W_m2_K) {
         surface.transport_coefficient_W_m2_K = *options.transport_W_m2_K;
     }
+    if (options.atmosphere_layers) {
+        surface.grey_emissivity = 0.0;
+        surface.atmosphere.layer_count = *options.atmosphere_layers;
+    }
+    if (options.optical_depth) {
+        surface.atmosphere.longwave_optical_depth = *options.optical_depth;
+    }
+    const bool layered = surface.atmosphere.layer_count > 0U;
     auto& precipitation = state.forcing().prescribed_precipitation_kg_m2_s;
     for (std::size_t cell = 0; cell < precipitation.size(); ++cell) {
         precipitation[cell] = static_cast<float>(options.precipitation_kg_m2_s);
@@ -1440,6 +1461,7 @@ int run_thermal(const ThermalOptions& options) {
         planetsim::initialise_surface_temperatures(*mesh, state.slow(), parameters, candidate,
                                                    worker_count);
         planetsim::initialise_cryosphere(*mesh, state.slow());
+        planetsim::initialise_atmosphere(*mesh, state.slow(), parameters, candidate.atmosphere);
         return planetsim::spin_up_surface_energy(state, parameters, candidate, fractions,
                                                  options.years, worker_count);
     };
@@ -1452,21 +1474,30 @@ int run_thermal(const ThermalOptions& options) {
 
     // Bisection of one parameter so that a spin-up statistic reaches its
     // target; the statistic increases with the parameter.
+    // `parameter` returns the fitted member of a parameter set.
     const auto bisect = [&](double low, double high, double target, double tolerance,
-                            double planetsim::SurfaceEnergyParameters::*member,
-                            const auto& statistic, std::string_view name) {
+                            const auto& parameter, const auto& statistic, std::string_view name) {
         for (int iteration = 0; iteration < 40; ++iteration) {
             auto candidate = surface;
-            candidate.*member = 0.5 * (low + high);
+            parameter(candidate) = 0.5 * (low + high);
             const double value = statistic(spin_up(candidate));
-            std::cout << "calibrate " << name << "=" << candidate.*member << " value=" << value
-                      << '\n';
-            (value < target ? low : high) = candidate.*member;
+            std::cout << "calibrate " << name << "=" << parameter(candidate)
+                      << " value=" << value << '\n';
+            (value < target ? low : high) = parameter(candidate);
             if (std::abs(value - target) <= tolerance) {
                 break;
             }
         }
-        surface.*member = 0.5 * (low + high);
+        parameter(surface) = 0.5 * (low + high);
+    };
+    const auto transport = [](planetsim::SurfaceEnergyParameters& p) -> double& {
+        return p.transport_coefficient_W_m2_K;
+    };
+    const auto grey = [](planetsim::SurfaceEnergyParameters& p) -> double& {
+        return p.grey_emissivity;
+    };
+    const auto optical_depth = [](planetsim::SurfaceEnergyParameters& p) -> double& {
+        return p.atmosphere.longwave_optical_depth;
     };
     const auto mean_K = [](const planetsim::AnnualSurfaceSummary& year) {
         return year.mean_surface_temperature_K;
@@ -1484,18 +1515,18 @@ int run_thermal(const ThermalOptions& options) {
                                       options.calibrate_gradient_K);
          ++round) {
         if (options.calibrate_transport_PW) {
-            bisect(0.3, 2.5, *options.calibrate_transport_PW, 0.02,
-                   &planetsim::SurfaceEnergyParameters::transport_coefficient_W_m2_K, peak_PW,
-                   "D");
+            bisect(0.3, 2.5, *options.calibrate_transport_PW, 0.02, transport, peak_PW, "D");
         }
         if (options.calibrate_gradient_K) {
-            bisect(0.02, 1.5, -*options.calibrate_gradient_K, 0.05,
-                   &planetsim::SurfaceEnergyParameters::transport_coefficient_W_m2_K,
+            bisect(0.02, 1.5, -*options.calibrate_gradient_K, 0.05, transport,
                    negative_gradient, "D");
         }
         if (options.calibrate_K) {
-            bisect(0.2, 0.8, *options.calibrate_K, 0.02,
-                   &planetsim::SurfaceEnergyParameters::grey_emissivity, mean_K, "g");
+            if (layered) {
+                bisect(0.2, 12.0, *options.calibrate_K, 0.02, optical_depth, mean_K, "tau");
+            } else {
+                bisect(0.2, 0.8, *options.calibrate_K, 0.02, grey, mean_K, "g");
+            }
         }
         const auto year = spin_up(surface);
         const bool transport_fits =
@@ -1507,6 +1538,7 @@ int run_thermal(const ThermalOptions& options) {
             !options.calibrate_K || std::abs(mean_K(year) - *options.calibrate_K) <= 0.05;
         std::cout << "calibrated round=" << round << std::setprecision(6)
                   << " g=" << surface.grey_emissivity
+                  << " tau=" << surface.atmosphere.longwave_optical_depth
                   << " D=" << surface.transport_coefficient_W_m2_K << std::setprecision(9)
                   << " mean_K=" << mean_K(year) << " peak_PW=" << peak_PW(year)
                   << " p2_equator_to_pole_K=" << year.p2_equator_to_pole_K() << '\n';
@@ -1522,6 +1554,8 @@ int run_thermal(const ThermalOptions& options) {
         std::chrono::duration<double, std::milli>(spin_finish - spin_start).count() /
         static_cast<double>(options.years * planetsim::climate_substeps_per_year);
     std::cout << "g=" << surface.grey_emissivity
+              << " layers=" << surface.atmosphere.layer_count
+              << " tau=" << surface.atmosphere.longwave_optical_depth
               << " D=" << surface.transport_coefficient_W_m2_K
               << " mean_K=" << year.mean_surface_temperature_K
               << " land_mean_K=" << year.land_mean_surface_temperature_K
@@ -1551,7 +1585,25 @@ int run_thermal(const ThermalOptions& options) {
               << ' ' << year.snow_area_north_max_m2 / 1e6
               << " south_area_min_max_km2=" << year.snow_area_south_min_m2 / 1e6 << ' '
               << year.snow_area_south_max_m2 / 1e6 << '\n'
-              << "timing workers=" << worker_count << " ms_per_substep=" << substep_ms << '\n';
+              << "closure worst_ratio=" << year.worst_closure_ratio << '\n';
+    if (layered) {
+        std::cout << "atmosphere layer_mean_K";
+        for (std::size_t layer = 0; layer < surface.atmosphere.layer_count; ++layer) {
+            std::cout << ' ' << std::setprecision(5) << year.mean_layer_temperature_K[layer];
+        }
+        const double area = 4.0 * std::numbers::pi * mesh->radius_m() * mesh->radius_m();
+        std::cout << std::setprecision(6) << " olr_W_m2=" << year.emitted_W / area
+                  << " surface_up_W_m2=" << year.surface_upward_longwave_W / area
+                  << " down_W_m2=" << year.downward_longwave_W / area
+                  << " sensible_W_m2=" << year.sensible_heat_W / area
+                  << " convective_fraction=" << year.convective_area_fraction
+                  << " max_column_residual_W_m2=" << year.max_column_residual_W_m2
+                  << " max_column_correction_K=" << year.max_column_correction_K
+                  << " max_column_iterations=" << year.max_column_iterations
+                  << " unconverged=" << year.unconverged_columns << '\n';
+    }
+    std::cout << std::setprecision(9) << "timing workers=" << worker_count
+              << " ms_per_substep=" << substep_ms << '\n';
     return 0;
 }
 

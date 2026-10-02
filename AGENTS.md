@@ -45,9 +45,10 @@ made, acceptance criteria and what to report.
 
 M5 (atmosphere and pressure) was requested on 2026-10-01 and is in progress
 under ADR-0010 (accepted 2026-10-01): M5-01 (the ordered snapshot migration
-chain) and M5-02 (atmosphere state, hydrostatics, PSNAP schema 5) are
-complete; M5-03 (column radiation and convection) and M5-04 (transport,
-calibration and close) remain. Do not implement M6 or later milestones unless explicitly
+chain), M5-02 (atmosphere state, hydrostatics, PSNAP schema 5) and M5-03
+(column radiation and convection; ADR-0008 §10 sea-ice floes and leads)
+are complete; M5-04 (calibration, preset switch, gates and close)
+remains. Do not implement M6 or later milestones unless explicitly
 requested.
 
 ## Hard rules

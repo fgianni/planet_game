@@ -2,6 +2,7 @@
 
 #include "sim/core/fields/field.hpp"
 #include "sim/core/serialization/snapshot_file.hpp"
+#include "sim/planet/atmosphere/atmosphere.hpp"
 #include "sim/planet/geology/geology_parameters.hpp"
 #include "sim/planet/surface/surface_materials.hpp"
 
@@ -19,7 +20,8 @@ struct SurfaceFractions;
 
 // Surface energy of ADR-0007: a land tile and an ocean tile per cell, each a
 // two-layer column, radiating εσT⁴ to space through an optional single-layer
-// grey atmosphere of longwave emissivity g.
+// grey atmosphere of longwave emissivity g, or, with ADR-0010's layered
+// atmosphere (N > 0, g = 0), into the cell's atmospheric column.
 struct SurfaceEnergyParameters {
     SurfaceMaterial land_material = SurfaceMaterial::dry_soil;
     double grey_emissivity = 0.0;   // g in [0, 1)
@@ -27,9 +29,12 @@ struct SurfaceEnergyParameters {
     // cells' air temperature (§11); the conductance is K = D R². Zero
     // switches horizontal transport off; non-zero needs air exchange.
     double transport_coefficient_W_m2_K = 0.0;
-    // ADR-0009 §10: exchange γ (W/m²/K) of every tile with its cell's air.
+    // ADR-0009 §10: exchange γ (W/m²/K) of every tile with its cell's air,
+    // or with N > 0 with the surface air of its column (ADR-0010 §4.4).
     // Zero: no shared air.
     double air_exchange_W_m2_K = 0.0;
+    // ADR-0010: the layered atmosphere; N = 0 keeps the grey layer.
+    AtmosphereParameters atmosphere;
 };
 
 // ADR-0009 §10: the bulk sensible-heat exchange ρ c_p C_H U with
@@ -127,6 +132,22 @@ struct SurfaceEnergyDiagnostics {
     double transport_consistency_W_m2 = 0.0;  // max |H − h| of the implicit solve
     int transport_newton_iterations = 0;
     int transport_cg_iterations = 0;
+    // The atmosphere (ADR-0010 §4.4), zero without one. emitted_W is then the
+    // outgoing longwave at the top, storage_change_J and stored_energy_J
+    // include the layers, and transport_W is the heat the columns received.
+    std::size_t atmosphere_layers = 0;
+    double atmosphere_storage_change_J = 0.0;   // Σ A C Σ_k ΔT_k
+    double surface_upward_longwave_W = 0.0;     // emission and reflection into the base
+    double downward_longwave_W = 0.0;           // Σ A D at the surface
+    double sensible_heat_W = 0.0;               // Σ A H, surface to air
+    double max_column_residual_W_m2 = 0.0;      // of the layer equations
+    double max_column_correction_K = 0.0;       // ColumnSolveResult::max_correction_K
+    int max_column_iterations = 0;
+    std::size_t unconverged_columns = 0;
+    double convective_area_m2 = 0.0;            // columns the adjustment changed
+    // Area-weighted mean temperature of each layer after the step, bottom
+    // first (layers beyond N are 0).
+    std::array<double, max_atmosphere_layer_count> mean_layer_temperature_K{};
     // Northward transport (W) across 80° S, 70° S, ..., 80° N: the heat the
     // transport delivers north of each latitude.
     std::array<double, 17> northward_transport_W{};
@@ -222,6 +243,22 @@ struct AnnualSurfaceSummary {
     // Latent heat taken by melting minus that released by freezing, as a
     // mean rate over the year (W).
     double latent_W = 0.0;
+    // The worst step of the year against the V2 closure gate (residual/gate).
+    double worst_closure_ratio = 0.0;
+    // The atmosphere (ADR-0010), time means over the year: layer
+    // temperatures (bottom first), the surface's longwave streams and
+    // sensible heat (W), and the share of the planet's area whose columns
+    // convective adjustment changed; the year's largest column residual and
+    // iteration count, and the number of unconverged column solves.
+    std::array<double, max_atmosphere_layer_count> mean_layer_temperature_K{};
+    double surface_upward_longwave_W = 0.0;
+    double downward_longwave_W = 0.0;
+    double sensible_heat_W = 0.0;
+    double convective_area_fraction = 0.0;
+    double max_column_residual_W_m2 = 0.0;
+    double max_column_correction_K = 0.0;
+    int max_column_iterations = 0;
+    std::size_t unconverged_columns = 0;
 
     // (absorbed − emitted) / absorbed
     [[nodiscard]] double relative_imbalance() const noexcept;

@@ -2,6 +2,7 @@
 
 #include "sim/core/scheduler/deterministic_executor.hpp"
 #include "sim/core/scheduler/scheduler.hpp"
+#include "sim/planet/atmosphere/atmosphere_column.hpp"
 #include "sim/planet/climatology/monthly_climatology.hpp"
 #include "sim/planet/coordinates/local_tangent_basis.hpp"
 #include "sim/planet/orbit/climate_calendar.hpp"
@@ -23,6 +24,7 @@
 #include <numbers>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace planetsim {
@@ -30,12 +32,12 @@ namespace planetsim {
 SurfaceEnergyParameters surface_energy_parameters_for(PlanetPreset preset) noexcept {
     switch (preset) {
     case PlanetPreset::dead_rock:
-        return {SurfaceMaterial::rock, 0.0};
+        return {SurfaceMaterial::rock, 0.0, 0.0, 0.0, {}};
     case PlanetPreset::aqua_planet:
-        return {SurfaceMaterial::dry_soil, 0.0};
+        return {SurfaceMaterial::dry_soil, 0.0, 0.0, 0.0, {}};
     case PlanetPreset::earth_like:
         return {SurfaceMaterial::dry_soil, earth_like_grey_emissivity,
-                earth_like_transport_coefficient_W_m2_K, bulk_air_exchange_W_m2_K};
+                earth_like_transport_coefficient_W_m2_K, bulk_air_exchange_W_m2_K, {}};
     }
     return {};
 }
@@ -150,6 +152,17 @@ struct BudgetPartial {
     double ocean_area_m2 = 0.0;
     double min_K = std::numeric_limits<double>::infinity();
     double max_K = -std::numeric_limits<double>::infinity();
+    // The atmosphere (ADR-0010).
+    double atmosphere_storage_change_J = 0.0;
+    double surface_upward_W = 0.0;
+    double downward_W = 0.0;
+    double sensible_W = 0.0;
+    double max_column_residual_W_m2 = 0.0;
+    double max_column_correction_K = 0.0;
+    int max_column_iterations = 0;
+    std::size_t unconverged_columns = 0;
+    double convective_area_m2 = 0.0;
+    std::array<double, max_atmosphere_layer_count> layer_temperature_K_m2{};
 };
 
 [[nodiscard]] BudgetPartial combine(BudgetPartial a, const BudgetPartial& b) {
@@ -193,19 +206,37 @@ struct BudgetPartial {
     a.ocean_area_m2 += b.ocean_area_m2;
     a.min_K = std::min(a.min_K, b.min_K);
     a.max_K = std::max(a.max_K, b.max_K);
+    a.atmosphere_storage_change_J += b.atmosphere_storage_change_J;
+    a.surface_upward_W += b.surface_upward_W;
+    a.downward_W += b.downward_W;
+    a.sensible_W += b.sensible_W;
+    a.max_column_residual_W_m2 = std::max(a.max_column_residual_W_m2, b.max_column_residual_W_m2);
+    a.max_column_correction_K = std::max(a.max_column_correction_K, b.max_column_correction_K);
+    a.max_column_iterations = std::max(a.max_column_iterations, b.max_column_iterations);
+    a.unconverged_columns += b.unconverged_columns;
+    a.convective_area_m2 += b.convective_area_m2;
+    for (std::size_t layer = 0; layer < a.layer_temperature_K_m2.size(); ++layer) {
+        a.layer_temperature_K_m2[layer] += b.layer_temperature_K_m2[layer];
+    }
     return a;
 }
 
 // `radiating_K` is the tile's surface temperature: the land surface layer,
 // the mixed layer, or the sea-ice surface.
+// Under an atmosphere (`to_space` false) the tile's emission goes into its
+// column and its source is the exchange with it, both internal to the cell;
+// the column accounts for what leaves the planet.
 void accumulate_tile(BudgetPartial& partial, const ColumnProperties& column,
-                     const ColumnStepResult& result, double radiating_K, double weight_m2) {
+                     const ColumnStepResult& result, double radiating_K, double weight_m2,
+                     bool to_space = true) {
     if (!(weight_m2 > 0.0)) {
         return;
     }
     partial.absorbed_W += weight_m2 * result.absorbed_W_m2;
-    partial.emitted_W += weight_m2 * result.emitted_W_m2;
-    partial.transport_W += weight_m2 * result.source_W_m2;
+    if (to_space) {
+        partial.emitted_W += weight_m2 * result.emitted_W_m2;
+        partial.transport_W += weight_m2 * result.source_W_m2;
+    }
     partial.storage_change_J += weight_m2 * result.storage_change_J_m2;
     partial.stored_energy_J +=
         weight_m2 * (column.surface_heat_capacity_J_m2_K * result.state.surface_K +
@@ -329,6 +360,61 @@ CellTiles solve_cell(const LandSnowSystem& land_tile, const OceanTileSystem& oce
     return tiles;
 }
 
+// A cell's tiles as the surface below its atmospheric column (ADR-0010
+// §4.4): for the downward longwave D and the surface air temperature A,
+// each tile with area solves its step with the source ε_t D + γ A and the
+// exchange γ, and the cell returns the longwave sent up (emission plus
+// reflection; area not covered by a tile reflects) and the sensible heat
+// given to the air, linearised through the tiles' slopes. The last call's
+// tile results are kept.
+struct CellSurface {
+    const LandSnowSystem* land = nullptr;
+    const OceanTileSystem* ocean = nullptr;
+    double land_fraction = 0.0;
+    double ocean_fraction = 0.0;
+    double exchange = 0.0;
+    LandSnowStepResult land_result;
+    OceanTileResult ocean_result;
+
+    SurfaceExchange operator()(double downward_W_m2, double air_K) {
+        SurfaceExchange x;
+        // `emitted_slope` is d(emitted)/d(source): one surface's 4 r T³ dT/ds,
+        // or the floes' share of it under ice (ADR-0008 §10).
+        const auto add = [&](double fraction, double emissivity, const ColumnStepResult& step,
+                             double surface_K, double emitted_slope) {
+            const double slope = step.surface_slope_K_m2_W;
+            x.upward_W_m2 += fraction * (step.emitted_W_m2 + (1.0 - emissivity) * downward_W_m2);
+            x.d_upward_d_downward += fraction * (emitted_slope * emissivity + 1.0 - emissivity);
+            x.d_upward_d_air += fraction * emitted_slope * exchange;
+            x.sensible_W_m2 += fraction * exchange * (surface_K - air_K);
+            x.d_sensible_d_downward += fraction * exchange * slope * emissivity;
+            x.d_sensible_d_air += fraction * exchange * (slope * exchange - 1.0);
+        };
+        if (land_fraction > 0.0) {
+            const double emissivity = land->column.emissivity;
+            land_result =
+                solve_land_tile(*land, emissivity * downward_W_m2 + exchange * air_K, exchange);
+            const ColumnStepResult& step = land_result.column;
+            add(land_fraction, emissivity, step, step.state.surface_K,
+                4.0 * step.emitted_W_m2 / step.state.surface_K * step.surface_slope_K_m2_W);
+        }
+        if (ocean_fraction > 0.0) {
+            const double emissivity = ocean->column.emissivity;
+            ocean_result =
+                solve_ocean_tile(*ocean, emissivity * downward_W_m2 + exchange * air_K, exchange);
+            add(ocean_fraction, emissivity, ocean_result.column, ocean_result.radiating_K,
+                ocean_result.emitted_slope);
+        }
+        // Not clamped: where the float fractions sum to slightly more than
+        // one, the tiles receive D over Σ f and the column gives D over its
+        // area; the small negative remainder keeps the exchange exact.
+        const double uncovered = 1.0 - land_fraction - ocean_fraction;
+        x.upward_W_m2 += uncovered * downward_W_m2;
+        x.d_upward_d_downward += uncovered;
+        return x;
+    }
+};
+
 }  // namespace
 
 double SurfaceEnergyDiagnostics::closure_residual_J() const noexcept {
@@ -337,7 +423,10 @@ double SurfaceEnergyDiagnostics::closure_residual_J() const noexcept {
 }
 
 double SurfaceEnergyDiagnostics::closure_gate_J() const noexcept {
-    const double scale = duration_s * (absorbed_W + emitted_W + transport_absolute_W) +
+    // The atmosphere's internal streams are computed and rounded too.
+    const double scale = duration_s * (absorbed_W + emitted_W + transport_absolute_W +
+                                       surface_upward_longwave_W + downward_longwave_W +
+                                       std::abs(sensible_heat_W)) +
                          std::abs(storage_change_J) + std::abs(latent_heat_J);
     return 1e-9 * scale + 4.0 * std::numeric_limits<double>::epsilon() * stored_energy_J;
 }
@@ -430,9 +519,59 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     if (!std::isfinite(exchange) || exchange < 0.0) {
         throw std::invalid_argument("air exchange must be finite and non-negative");
     }
-    if (coefficient > 0.0 && !(exchange > 0.0)) {
+    // ADR-0010: with a layered atmosphere every cell's tiles sit under an
+    // atmospheric column that receives the transport; the grey layer is
+    // retired (§4.2).
+    const AtmosphereParameters& atmosphere = surface.atmosphere;
+    const std::size_t layers = atmosphere.layer_count;
+    if (coefficient > 0.0 && layers == 0U && !(exchange > 0.0)) {
         throw std::invalid_argument("horizontal transport needs air exchange (ADR-0009 §11)");
     }
+    std::vector<ColumnRadiation> columns;
+    std::vector<double> layers_before;   // cell-major, layer 0 first
+    std::vector<double> layers_guess;    // first guess of each column solve, then its result
+    if (layers > 0U) {
+        validate_atmosphere_parameters(atmosphere);
+        if (surface.grey_emissivity != 0.0) {
+            throw std::invalid_argument(
+                "the grey layer is retired under a layered atmosphere (ADR-0010 §4.2)");
+        }
+        if (slow.atmosphere_layer_count() != layers ||
+            slow.atmosphere_surface_pressure_Pa.size() != cells) {
+            throw std::invalid_argument(
+                "the state's atmosphere has " + std::to_string(slow.atmosphere_layer_count()) +
+                " layers, the surface parameters " + std::to_string(layers) +
+                " (initialise_atmosphere)");
+        }
+        const double gravity = surface_gravity_m_s2(parameters);
+        columns.resize(cells);
+        layers_before.resize(cells * layers);
+        for_each_deterministic_block(
+            mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+                for (std::size_t cell = block.begin; cell < block.end; ++cell) {
+                    columns[cell] = column_radiation(
+                        atmosphere, slow.atmosphere_surface_pressure_Pa[cell], gravity);
+                    for (std::size_t layer = 0; layer < layers; ++layer) {
+                        layers_before[cell * layers + layer] =
+                            slow.atmosphere_temperature_K.layer(layer)[cell];
+                    }
+                }
+            });
+        layers_guess = layers_before;
+    }
+    // One cell's column under the transport source h (W/m² of cell area);
+    // the solution is left in layers_guess.
+    const auto solve_column = [&](std::size_t cell, double h, CellSurface& cell_surface) {
+        cell_surface.land = &land_tiles[cell];
+        cell_surface.ocean = &ocean_tiles[cell];
+        cell_surface.land_fraction = fractions.land_fraction[cell];
+        cell_surface.ocean_fraction = fractions.ocean_fraction[cell];
+        cell_surface.exchange = exchange;
+        return solve_atmosphere_column(
+            columns[cell], std::span<const double>(layers_before.data() + cell * layers, layers),
+            dt_s, h, atmosphere.convection, cell_surface,
+            std::span<double>(layers_guess.data() + cell * layers, layers));
+    };
     // The start-of-step cell temperature: the first guess of each cell solve.
     std::vector<double> first_guess(cells, 0.0);
     for_each_deterministic_block(
@@ -481,6 +620,15 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
                     for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                         const double h = source[group_of_cell[cell]];
+                        if (layers > 0U) {
+                            // The diffused temperature is the column's mean
+                            // θ_c (ADR-0010 §3.4 C).
+                            CellSurface cell_surface;
+                            const auto column = solve_column(cell, h, cell_surface);
+                            cell_air[cell] = column.theta_K;
+                            cell_slope[cell] = column.theta_slope_K_m2_W;
+                            continue;
+                        }
                         const auto tiles = solve_cell(
                             land_tiles[cell], ocean_tiles[cell],
                             fractions.land_fraction[cell], fractions.ocean_fraction[cell], h,
@@ -521,7 +669,26 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
         // Below this source a cell's mean surface temperature would fall under
         // 100 K; a group takes the highest floor of its cells.
         Field2D<double> floor(groups, -std::numeric_limits<double>::infinity());
-        for (std::size_t cell = 0; cell < cells; ++cell) {
+        for (std::size_t cell = 0; cell < cells && layers > 0U; ++cell) {
+            // Under an atmosphere, the source at which a layer would lose
+            // its heat above 100 K without any radiative input; below it a
+            // layer's positive root is not guaranteed.
+            const ColumnRadiation& column = columns[cell];
+            double exner_sum = 0.0;
+            for (std::size_t layer = 0; layer < layers; ++layer) {
+                exner_sum += column.exner[layer];
+            }
+            double cell_floor = -std::numeric_limits<double>::infinity();
+            for (std::size_t layer = 0; layer < layers; ++layer) {
+                const double layer_floor = -column.layer_heat_capacity_J_m2_K / dt_s *
+                                           (layers_before[cell * layers + layer] - 100.0) *
+                                           exner_sum / column.exner[layer];
+                cell_floor = std::max(cell_floor, layer_floor);
+            }
+            auto& group_floor = floor[group_of_cell[cell]];
+            group_floor = std::max(group_floor, cell_floor);
+        }
+        for (std::size_t cell = 0; cell < cells && layers == 0U; ++cell) {
             constexpr double lowest_K = 100.0;
             // Only tiles with area take part; the exchange terms cancel when
             // all tiles are equal.
@@ -549,10 +716,63 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                 const double area_m2 = mesh.cells()[cell].area_m2;
                 const double snow = slow.land_snow_water_equivalent_kg_m2[cell];
-                const auto tiles = solve_cell(land_tiles[cell], ocean_tiles[cell],
-                                              fractions.land_fraction[cell],
-                                              fractions.ocean_fraction[cell], transport[cell],
-                                              exchange, first_guess[cell], true);
+                const bool to_space = layers == 0U;
+                CellTiles tiles;
+                if (layers > 0U) {
+                    CellSurface cell_surface;
+                    const auto column = solve_column(cell, transport[cell], cell_surface);
+                    tiles.land = cell_surface.land_result;
+                    tiles.ocean = cell_surface.ocean_result;
+                    // A tile without area follows the surface air.
+                    const double air_K = column.air_K;
+                    const double down = column.downward_surface_W_m2;
+                    if (!(fractions.land_fraction[cell] > 0.0)) {
+                        tiles.land = solve_land_tile(
+                            land_tiles[cell],
+                            land_tiles[cell].column.emissivity * down + exchange * air_K,
+                            exchange);
+                    }
+                    if (!(fractions.ocean_fraction[cell] > 0.0)) {
+                        tiles.ocean = solve_ocean_tile(
+                            ocean_tiles[cell],
+                            ocean_tiles[cell].column.emissivity * down + exchange * air_K,
+                            exchange);
+                    }
+                    const ColumnRadiation& radiation = columns[cell];
+                    double change = 0.0;
+                    for (std::size_t layer = 0; layer < layers; ++layer) {
+                        const double after = layers_guess[cell * layers + layer];
+                        change += after - layers_before[cell * layers + layer];
+                        partial.stored_energy_J +=
+                            area_m2 * radiation.layer_heat_capacity_J_m2_K * after;
+                        partial.layer_temperature_K_m2[layer] += area_m2 * after;
+                        slow.atmosphere_temperature_K.layer(layer)[cell] = after;
+                    }
+                    const double storage_J =
+                        area_m2 * radiation.layer_heat_capacity_J_m2_K * change;
+                    partial.storage_change_J += storage_J;
+                    partial.atmosphere_storage_change_J += storage_J;
+                    partial.emitted_W += area_m2 * column.outgoing_W_m2;
+                    partial.transport_W += area_m2 * transport[cell];
+                    partial.surface_upward_W += area_m2 * column.upward_surface_W_m2;
+                    partial.downward_W += area_m2 * down;
+                    partial.sensible_W += area_m2 * column.sensible_W_m2;
+                    partial.max_column_residual_W_m2 =
+                        std::max(partial.max_column_residual_W_m2, column.max_residual_W_m2);
+                    partial.max_column_correction_K =
+                        std::max(partial.max_column_correction_K, column.max_correction_K);
+                    partial.max_column_iterations =
+                        std::max(partial.max_column_iterations, column.iterations);
+                    partial.unconverged_columns += column.converged ? 0U : 1U;
+                    if (column.adjusted) {
+                        partial.convective_area_m2 += area_m2;
+                    }
+                } else {
+                    tiles = solve_cell(land_tiles[cell], ocean_tiles[cell],
+                                       fractions.land_fraction[cell],
+                                       fractions.ocean_fraction[cell], transport[cell], exchange,
+                                       first_guess[cell], true);
+                }
                 const LandSnowStepResult& land_tile = tiles.land;
                 const ColumnStepResult& land_step = land_tile.column;
                 const OceanTileResult& ocean_tile = tiles.ocean;
@@ -560,9 +780,10 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 const double ocean_K = ocean_tile.radiating_K;
                 const double land_weight = area_m2 * fractions.land_fraction[cell];
                 const double ocean_weight = area_m2 * fractions.ocean_fraction[cell];
-                accumulate_tile(partial, land, land_step, land_step.state.surface_K, land_weight);
+                accumulate_tile(partial, land, land_step, land_step.state.surface_K, land_weight,
+                                to_space);
                 accumulate_tile(partial, ocean_tiles[cell].column, ocean_step, ocean_K,
-                                ocean_weight);
+                                ocean_weight, to_space);
                 if (land_weight > 0.0) {
                     partial.land_temperature_K_m2 += land_weight * land_step.state.surface_K;
                     partial.land_area_m2 += land_weight;
@@ -690,6 +911,24 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
         total.ocean_area_m2 > 0.0 ? total.ocean_temperature_K_m2 / total.ocean_area_m2 : 0.0;
     diagnostics.min_surface_temperature_K = total.min_K;
     diagnostics.max_surface_temperature_K = total.max_K;
+    diagnostics.atmosphere_layers = layers;
+    diagnostics.atmosphere_storage_change_J = total.atmosphere_storage_change_J;
+    diagnostics.surface_upward_longwave_W = total.surface_upward_W;
+    diagnostics.downward_longwave_W = total.downward_W;
+    diagnostics.sensible_heat_W = total.sensible_W;
+    diagnostics.max_column_residual_W_m2 = total.max_column_residual_W_m2;
+    diagnostics.max_column_correction_K = total.max_column_correction_K;
+    diagnostics.max_column_iterations = total.max_column_iterations;
+    diagnostics.unconverged_columns = total.unconverged_columns;
+    diagnostics.convective_area_m2 = total.convective_area_m2;
+    double planet_area_m2 = 0.0;
+    for (std::size_t cell = 0; cell < cells && layers > 0U; ++cell) {
+        planet_area_m2 += mesh.cells()[cell].area_m2;
+    }
+    for (std::size_t layer = 0; layer < layers; ++layer) {
+        diagnostics.mean_layer_temperature_K[layer] =
+            total.layer_temperature_K_m2[layer] / planet_area_m2;
+    }
     return diagnostics;
 }
 
@@ -792,6 +1031,25 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
                 std::max(summary.ice_area_south_max_m2, step.ice_area_south_m2);
             summary.ice_area_south_min_m2 =
                 std::min(summary.ice_area_south_min_m2, step.ice_area_south_m2);
+            summary.worst_closure_ratio = std::max(
+                summary.worst_closure_ratio, step.closure_residual_J() / step.closure_gate_J());
+            for (std::size_t layer = 0; layer < step.atmosphere_layers; ++layer) {
+                summary.mean_layer_temperature_K[layer] +=
+                    dt_s * step.mean_layer_temperature_K[layer];
+            }
+            summary.surface_upward_longwave_W += dt_s * step.surface_upward_longwave_W;
+            summary.downward_longwave_W += dt_s * step.downward_longwave_W;
+            summary.sensible_heat_W += dt_s * step.sensible_heat_W;
+            summary.convective_area_fraction +=
+                dt_s * step.convective_area_m2 / (4.0 * std::numbers::pi * state.mesh().radius_m() *
+                                                  state.mesh().radius_m());
+            summary.max_column_residual_W_m2 =
+                std::max(summary.max_column_residual_W_m2, step.max_column_residual_W_m2);
+            summary.max_column_correction_K =
+                std::max(summary.max_column_correction_K, step.max_column_correction_K);
+            summary.max_column_iterations =
+                std::max(summary.max_column_iterations, step.max_column_iterations);
+            summary.unconverged_columns += step.unconverged_columns;
             summary.p2_surface_temperature_K += dt_s * step.p2_surface_temperature_K;
             for (std::size_t band = 0; band < summary.northward_transport_W.size(); ++band) {
                 summary.northward_transport_W[band] += dt_s * step.northward_transport_W[band];
@@ -810,6 +1068,13 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
         summary.land_mean_surface_temperature_K /= total_s;
         summary.ocean_mean_surface_temperature_K /= total_s;
         summary.p2_surface_temperature_K /= total_s;
+        for (auto& value : summary.mean_layer_temperature_K) {
+            value /= total_s;
+        }
+        summary.surface_upward_longwave_W /= total_s;
+        summary.downward_longwave_W /= total_s;
+        summary.sensible_heat_W /= total_s;
+        summary.convective_area_fraction /= total_s;
         for (auto& value : summary.northward_transport_W) {
             value /= total_s;
         }

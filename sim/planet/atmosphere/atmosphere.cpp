@@ -43,6 +43,14 @@ void validate_atmosphere_parameters(const AtmosphereParameters& parameters) {
         parameters.critical_lapse_rate_K_m <= 0.0) {
         throw std::invalid_argument("atmosphere critical lapse rate must be positive");
     }
+    if (!std::isfinite(parameters.longwave_optical_depth) ||
+        parameters.longwave_optical_depth < 0.0) {
+        throw std::invalid_argument("longwave optical depth must be finite and non-negative");
+    }
+    if (!(parameters.linear_optical_depth_fraction >= 0.0 &&
+          parameters.linear_optical_depth_fraction <= 1.0)) {
+        throw std::invalid_argument("linear optical depth fraction must lie in [0, 1]");
+    }
 }
 
 double surface_gravity_m_s2(const PlanetParameters& parameters) {
