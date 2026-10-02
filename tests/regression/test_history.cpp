@@ -36,8 +36,7 @@ struct Planet {
             state, 1U, planetsim::geology_parameters_for(PlanetPreset::earth_like), 4U));
         fractions = planetsim::compute_surface_fractions(*mesh, state.slow().hypsometry_m,
                                                          state.slow().sea_level_m, 4U);
-        planetsim::initialise_surface_temperatures(*mesh, state.slow(), parameters, surface, 4U);
-        planetsim::initialise_cryosphere(*mesh, state.slow());
+        planetsim::initialise_climate(*mesh, state.slow(), parameters, surface, 4U);
     }
 
     void years(int count) {
@@ -75,10 +74,10 @@ void check_chain_and_fork(planetsim::test::Context& test) {
             main_line.push_back(parent);
             planet.years(1);
         }
-        // A fork at the third save, with a warmer greenhouse.
+        // A fork at the third save, with a stronger greenhouse.
         Planet fork(mesh);
         static_cast<void>(store.load(main_line[2], fork.state));
-        fork.surface.grey_emissivity += 0.05;
+        fork.surface.atmosphere.longwave_optical_depth += 0.2;
         std::string fork_parent = main_line[2];
         for (int save = 0; save < 6; ++save) {
             fork.years(1);

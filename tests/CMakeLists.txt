@@ -41,6 +41,7 @@ add_planetsim_test(test_heat_transport_planet physics/test_heat_transport_planet
 add_planetsim_test(test_sea_ice_planet physics/test_sea_ice_planet.cpp)
 add_planetsim_test(test_atmosphere_state physics/test_atmosphere_state.cpp)
 add_planetsim_test(test_atmosphere_planet physics/test_atmosphere_planet.cpp)
+add_planetsim_test(test_atmosphere_plateau physics/test_atmosphere_plateau.cpp)
 add_planetsim_test(test_seasonal_experiment physics/test_seasonal_experiment.cpp)
 add_planetsim_test(test_icosphere physics/test_icosphere.cpp)
 add_planetsim_test(test_centroidal_voronoi physics/test_centroidal_voronoi.cpp)

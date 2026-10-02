@@ -302,5 +302,28 @@ The M4 portion was implemented on 2026-10-01 (task
   - Excluding the regenerable climatology (§5 risks) is the next lever if a
     later release crosses 40 %.
 
-Autosave (§3.7) and history pruning (§7) remain open. The migration
-framework remains M5.
+Autosave (§3.7) and history pruning (§7) remain open.
+
+The M5 portion was implemented on 2026-10-01 and 2026-10-02 (tasks
+`docs/tasks/M5-01-migration-chain.md` and
+`docs/tasks/M5-02-atmosphere-state-and-hydrostatics.md`):
+
+- **§3.6 ordered chain.** `snapshot_migration_chain` is a table in core
+  with one named step per schema version, statically checked to be
+  contiguous from the oldest readable schema to the current one.
+  - A step is an *initialiser* or a *core* step. The planet layer supplies
+    the initialisers through `planet_snapshot_migration`. Core steps
+    convert stored chunks, such as the 2 → 3 widening; removing a field
+    would also be a core step.
+  - Each step applied is logged in `SnapshotManifest::applied_migrations`.
+    A missing initialiser fails with the step's name and its decision.
+- **Schema 5** adds the atmosphere (ADR-0010 §4.1) and its first
+  *scenario-layered* field. The registry declares 0 layers, each manifest
+  states the stored count, and the reader checks it against the bytes and
+  a bound. The 4 → 5 step initialises the atmosphere at hydrostatic rest
+  with the scenario's layer count.
+- **V5.** The golden saves v1–v5 load through the chain with their
+  expected logs and step ten years with closing budgets. From M5 they step
+  under the atmosphere.
+- **Run manifests** carry the scenario entry `atmosphere_layers`. A
+  manifest written before M5 lacks it and takes the preset's count.

@@ -42,8 +42,7 @@ struct Planet {
             state, test_seed, planetsim::geology_parameters_for(PlanetPreset::earth_like), 4U));
         fractions = planetsim::compute_surface_fractions(*mesh, state.slow().hypsometry_m,
                                                          state.slow().sea_level_m, 4U);
-        planetsim::initialise_surface_temperatures(*mesh, state.slow(), parameters, surface, 4U);
-        planetsim::initialise_cryosphere(*mesh, state.slow());
+        planetsim::initialise_climate(*mesh, state.slow(), parameters, surface, 4U);
     }
 
     planetsim::SurfaceEnergyDiagnostics climate_step(std::int64_t index, std::size_t workers) {
@@ -120,7 +119,10 @@ void check_budgets_and_ice(planetsim::test::Context& test,
     double lowest_ice_latitude_deg = 90.0;
     const auto& slow = planet.state.slow();
     for (std::size_t cell = 0; cell < mesh->cell_count(); ++cell) {
-        if (slow.sea_ice_mass_kg_m2[cell] > 0.0) {
+        // A cell without ocean area has an ocean tile only in name: it
+        // follows the surface air (ADR-0009 §10), which over a high plateau
+        // is cold enough to freeze it, but it carries no weight.
+        if (slow.sea_ice_mass_kg_m2[cell] > 0.0 && planet.fractions.ocean_fraction[cell] > 0.0F) {
             lowest_ice_latitude_deg = std::min(
                 lowest_ice_latitude_deg,
                 std::abs(planetsim::latitude_rad(mesh->cells()[cell].center_unit)) * 180.0 /

@@ -56,8 +56,7 @@ struct Planet {
             state, test_seed, planetsim::geology_parameters_for(preset), 4U));
         fractions = planetsim::compute_surface_fractions(*mesh, state.slow().hypsometry_m,
                                                          state.slow().sea_level_m, 4U);
-        planetsim::initialise_surface_temperatures(*mesh, state.slow(), parameters, surface, 4U);
-        planetsim::initialise_cryosphere(*mesh, state.slow());
+        planetsim::initialise_climate(*mesh, state.slow(), parameters, surface, 4U);
     }
 
     planetsim::SurfaceEnergyDiagnostics climate_step(std::int64_t index, std::size_t workers) {
@@ -231,6 +230,11 @@ void check_off_is_unchanged(planetsim::test::Context& test,
                             const std::shared_ptr<const planetsim::PlanetMesh>& mesh) {
     Planet planet(mesh, PlanetPreset::earth_like, 0.0);
     planet.surface.air_exchange_W_m2_K = 0.0;
+    // The per-tile steps of ADR-0007 and ADR-0008 have no atmosphere: the
+    // grey layer of M4's last fit stands in for it (ADR-0010 retires it on
+    // the preset).
+    planet.surface.atmosphere = {};
+    planet.surface.grey_emissivity = 0.4965;
     auto expected = planet.state.slow();
     const auto substep = planetsim::climate_substep(0, planet.parameters);
     planetsim::update_substep_mean_insolation(planet.state, planet.parameters, substep, 4U);

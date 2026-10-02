@@ -40,8 +40,14 @@ inline constexpr double dry_air_gas_constant_J_kg_K = 287.04;
 inline constexpr double dry_air_heat_capacity_J_kg_K = 1004.64;
 inline constexpr double gravitational_constant_m3_kg_s2 = 6.67430e-11;
 
+// The Earth-like column's longwave optical depth τ₀: a calibration
+// constant, fitted jointly with the transport coefficient D (the record is
+// at earth_like_transport_coefficient_W_m2_K, surface_energy.hpp).
+inline constexpr double earth_like_longwave_optical_depth = 1.3581;
+
 // dead_rock and aqua_planet: no atmosphere (experiments A and B,
-// specification §13.1). earth_like: three layers (design record §15.1).
+// specification §13.1). earth_like: three layers (design record §15.1) of
+// the calibrated optical depth.
 [[nodiscard]] AtmosphereParameters atmosphere_parameters_for(PlanetPreset preset) noexcept;
 
 // Throws std::invalid_argument for N above max_atmosphere_layer_count, a

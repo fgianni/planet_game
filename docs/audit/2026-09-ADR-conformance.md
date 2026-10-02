@@ -109,7 +109,7 @@ schemas evolve.
 | G3-M1 | ✅ EVIDENCED | Field layout, fixed blocks, fixed block-index reductions, 1/2/8/16-worker forcing equality, memory gates, and V7 are green. |
 | G3-M3 | ✅ EVIDENCED | *Updated 2026-09-29 (task M3-03):* run manifest (`PRUNv1`), command log, yearly XXH3 checkpoint state hashes and replay are implemented; ADR-0003 V1 and V2 run in CI (`tests/regression/test_run_replay.cpp`, `planet_cli replay`). Weather-window schedules await weather windows. |
 | G4 | ✅ EVIDENCED | The slow/fast/climatology state partition, lazy fast-state lifecycle, simulation modes and the multi-rate scheduler skeleton (task M2-04) are implemented. *Updated 2026-09-29 (task M3-03):* the years-per-minute harness and the ADR-0001 §5 250-year CI gate at L5 and L6 run in CI Release jobs (ADR-0001 §10); the >20 % regression comparison is deferred until cost approaches the budget. |
-| G5 | ⚠ RUNTIME_ONLY | The M2 base snapshot writer/reader, canonical ordering, CRC-32C validation, corruption tests, V4 round trips, CLI inspection, and initial golden save are complete. *Updated 2026-09-29 (task M3-02):* schema v2 with a declared v1 → v2 migration hook is implemented. Schema v3 (ADR-0007 §10) adds the first retired field and an exact v2 → v3 step. *Updated (task M3-03):* manifests and replay are implemented, and every golden save steps ten years (V5). *Updated 2026-10-01 (task M4-05):* zstd compression, delta chains, base rewrites and forks (ADR-0003 V6, V7). General migration machinery (M5) is not yet implemented. |
+| G5 | ⚠ RUNTIME_ONLY | The M2 base snapshot writer/reader, canonical ordering, CRC-32C validation, corruption tests, V4 round trips, CLI inspection, and initial golden save are complete. *Updated 2026-09-29 (task M3-02):* schema v2 with a declared v1 → v2 migration hook is implemented. Schema v3 (ADR-0007 §10) adds the first retired field and an exact v2 → v3 step. *Updated (task M3-03):* manifests and replay are implemented, and every golden save steps ten years (V5). *Updated 2026-10-01 (task M4-05):* zstd compression, delta chains, base rewrites and forks (ADR-0003 V6, V7). *Updated 2026-10-01 (task M5-01):* the ordered, named and logged migration chain (ADR-0003 §3.6); schema v5 adds the atmosphere with a scenario-set layer count (task M5-02). |
 
 ### M2-02 terrain (2026-09-28)
 
@@ -200,6 +200,20 @@ schemas evolve.
 | ADR-0003 V4, V8 with compression | ✅ EVIDENCED | Byte-identical round trips for both codecs at L0, L4, L6; a flipped byte in any compressed chunk is reported for its field (`tests/unit/test_snapshot_file.cpp`). |
 | ADR-0003 V6 | ✅ EVIDENCED | A main line across a base rewrite and a fork reconstruct bit for bit, also after reopening the store (`tests/regression/test_history.cpp`); golden compressed and delta files checked exactly. |
 | ADR-0003 V7 | ✅ EVIDENCED | L6: full snapshot about 1.9 MB (gate 6 MB), written in about 8 ms (gate 15 ms); decade deltas about 33 % of a full snapshot (expected 10–25 %, revisit above 40 %) (`planet_cli history`, ADR-0003 §8). |
+
+### M5 atmosphere and pressure (2026-10-02)
+
+| Requirement | Status | Finding |
+|---|---|---|
+| ADR-0003 §3.6 migration chain, V5 | ✅ EVIDENCED | Named `vN → vN+1` steps with a log; golden saves v1–v5 load through the chain and step ten years (`tests/regression/test_golden_snapshot.cpp`). |
+| ADR-0010 V1 hydrostatics | ✅ EVIDENCED | Surface pressure against a numerical integration to 2e-13; isothermal heights exact; every column reduces to `p₀` (`tests/physics/test_atmosphere_state.cpp`). |
+| ADR-0010 V2–V4 | ✅ EVIDENCED | One grey layer and N black layers match their closed forms to 3e-14; convective adjustment conserves, is neutral and idempotent (`tests/unit/test_atmosphere_column.cpp`). |
+| ADR-0010 V5, V7 | ✅ EVIDENCED | Surface and atmosphere close within 1.4e-5 of the ADR-0007 V2 gate on climate steps and 0.03 on reference steps, N = 3 and 5; 1 and 8 workers bit-identical (`tests/physics/test_atmosphere_planet.cpp`). |
+| ADR-0010 V6 plateau | ✅ EVIDENCED | 6.0 K/km over an equatorial dome, no lapse rate imposed (`tests/physics/test_atmosphere_plateau.cpp`). |
+| ADR-0010 V8 snapshots | ✅ EVIDENCED | Schema 5 round trips for N = 0, 3, 5 under both codecs; scenario layer counts validated (`tests/unit/test_snapshot_file.cpp`). |
+| ADR-0010 V9 calibration | ✅ EVIDENCED | τ₀ = 1.3581, D = 0.6371: 287.92 K, 41.96 K, 3.82 PW at L4, after amendment §11 (transport into the bottom layer). |
+| ADR-0010 V10, ADR-0001 gates | ✅ EVIDENCED | 250 years at L5 in 146 s (240 s), L6 in 447 s (600 s), 4 workers; the L5 run replays bit for bit. |
+| ADR-0008 §10 floes and leads | ✅ EVIDENCED | Continuous ocean tile; Stefan growth from full cover exact to 2e-13; all M4 tests pass. |
 
 ## Risk-register audit
 

@@ -36,8 +36,8 @@ SurfaceEnergyParameters surface_energy_parameters_for(PlanetPreset preset) noexc
     case PlanetPreset::aqua_planet:
         return {SurfaceMaterial::dry_soil, 0.0, 0.0, 0.0, {}};
     case PlanetPreset::earth_like:
-        return {SurfaceMaterial::dry_soil, earth_like_grey_emissivity,
-                earth_like_transport_coefficient_W_m2_K, bulk_air_exchange_W_m2_K, {}};
+        return {SurfaceMaterial::dry_soil, 0.0, earth_like_transport_coefficient_W_m2_K,
+                bulk_air_exchange_W_m2_K, atmosphere_parameters_for(preset)};
     }
     return {};
 }
@@ -72,6 +72,15 @@ void initialise_surface_temperatures(const PlanetMesh& mesh, SlowState& slow,
     compute_annual_mean_insolation(mesh, parameters, annual_mean, worker_count);
     const ColumnProperties land = column_properties(surface.land_material, parameters);
     const ColumnProperties ocean = column_properties(SurfaceMaterial::ocean, parameters);
+    // Under a layered atmosphere the start is the grey-layer equilibrium of
+    // one slab of the column's whole optical depth, g = 1 − exp(−τ₀) (at most
+    // 0.95): warm and free of ice, so that the spin-up cools into the
+    // climate rather than starting inside the ice–albedo feedback (ADR-0010
+    // §4.6).
+    const double greenhouse =
+        surface.atmosphere.layer_count > 0U
+            ? std::min(0.95, -std::expm1(-surface.atmosphere.longwave_optical_depth))
+            : surface.grey_emissivity;
 
     slow.land_surface_temperature_K = Field2D<float>(cells, 0.0F);
     slow.land_ground_temperature_K = Field2D<float>(cells, 0.0F);
@@ -85,16 +94,24 @@ void initialise_surface_temperatures(const PlanetMesh& mesh, SlowState& slow,
                 if (!(annual_mean[cell] > 0.0)) {
                     throw std::domain_error("a cell receives no annual-mean insolation");
                 }
-                const double land_K = column_equilibrium_temperature_K(
-                    land, annual_mean[cell], surface.grey_emissivity);
-                const double ocean_K = column_equilibrium_temperature_K(
-                    ocean, annual_mean[cell], surface.grey_emissivity);
+                const double land_K =
+                    column_equilibrium_temperature_K(land, annual_mean[cell], greenhouse);
+                const double ocean_K =
+                    column_equilibrium_temperature_K(ocean, annual_mean[cell], greenhouse);
                 slow.land_surface_temperature_K[cell] = static_cast<float>(land_K);
                 slow.land_ground_temperature_K[cell] = static_cast<float>(land_K);
                 slow.ocean_mixed_layer_temperature_K[cell] = ocean_K;
                 slow.ocean_deep_temperature_K[cell] = ocean_K;
             }
         });
+}
+
+void initialise_climate(const PlanetMesh& mesh, SlowState& slow,
+                        const PlanetParameters& parameters,
+                        const SurfaceEnergyParameters& surface, std::size_t worker_count) {
+    initialise_surface_temperatures(mesh, slow, parameters, surface, worker_count);
+    initialise_cryosphere(mesh, slow);
+    initialise_atmosphere(mesh, slow, parameters, surface.atmosphere);
 }
 
 void initialise_cryosphere(const PlanetMesh& mesh, SlowState& slow) {
@@ -559,6 +576,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             });
         layers_guess = layers_before;
     }
+    std::vector<ColumnWarmStart> warm_starts(layers > 0U ? cells : 0U);
     // One cell's column under the transport source h (W/m² of cell area);
     // the solution is left in layers_guess.
     const auto solve_column = [&](std::size_t cell, double h, CellSurface& cell_surface) {
@@ -570,7 +588,8 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
         return solve_atmosphere_column(
             columns[cell], std::span<const double>(layers_before.data() + cell * layers, layers),
             dt_s, h, atmosphere.convection, cell_surface,
-            std::span<double>(layers_guess.data() + cell * layers, layers));
+            std::span<double>(layers_guess.data() + cell * layers, layers), ColumnSolveSettings{},
+            &warm_starts[cell]);
     };
     // The start-of-step cell temperature: the first guess of each cell solve.
     std::vector<double> first_guess(cells, 0.0);
@@ -670,21 +689,19 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
         // 100 K; a group takes the highest floor of its cells.
         Field2D<double> floor(groups, -std::numeric_limits<double>::infinity());
         for (std::size_t cell = 0; cell < cells && layers > 0U; ++cell) {
-            // Under an atmosphere, the source at which a layer would lose
-            // its heat above 100 K without any radiative input; below it a
-            // layer's positive root is not guaranteed.
-            const ColumnRadiation& column = columns[cell];
-            double exner_sum = 0.0;
-            for (std::size_t layer = 0; layer < layers; ++layer) {
-                exner_sum += column.exner[layer];
-            }
-            double cell_floor = -std::numeric_limits<double>::infinity();
-            for (std::size_t layer = 0; layer < layers; ++layer) {
-                const double layer_floor = -column.layer_heat_capacity_J_m2_K / dt_s *
-                                           (layers_before[cell * layers + layer] - 100.0) *
-                                           exner_sum / column.exner[layer];
-                cell_floor = std::max(cell_floor, layer_floor);
-            }
+            // Under an atmosphere, the source at which the bottom layer,
+            // which receives it (ADR-0010 §11), would balance at 100 K with
+            // what the surface then supplies.
+            CellSurface cell_surface;
+            cell_surface.land = &land_tiles[cell];
+            cell_surface.ocean = &ocean_tiles[cell];
+            cell_surface.land_fraction = fractions.land_fraction[cell];
+            cell_surface.ocean_fraction = fractions.ocean_fraction[cell];
+            cell_surface.exchange = exchange;
+            const double cell_floor = bottom_source_for(
+                columns[cell],
+                std::span<const double>(layers_before.data() + cell * layers, layers), dt_s,
+                100.0, cell_surface);
             auto& group_floor = floor[group_of_cell[cell]];
             group_floor = std::max(group_floor, cell_floor);
         }

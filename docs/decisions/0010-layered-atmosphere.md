@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-01
 - **Accepted:** 2026-10-01
+- **Amended:** 2026-10-02 — §3.4 C and §4.5: transported heat enters the bottom layer (§11)
 - **Milestone:** P0 / M5 (atmosphere and pressure)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §5 (3–5 layers), §6 (`AtmosphereState`), §9.1, §10 (vertical structure), §13 M5, §23, §24; Planetary Civilization Simulator — Design Record v0.9, §5.2–5.4, §15.1
 - **Related:** ADR-0001 (modes, budget), ADR-0002 (field layout, precision), ADR-0003 (snapshots, §3.6 migration), ADR-0006 (sub-steps), ADR-0007 (surface columns, grey layer), ADR-0008 (snow and sea ice), ADR-0009 (transport, shared cell air)
@@ -402,3 +403,49 @@ ten years with closing budgets (ADR-0003 V5).
   - The atmosphere costs no more than the grey layer: 327 against 330 ms
     per sub-step at L6.
   - Details are in `docs/tasks/M5-03-column-radiation-and-convection.md`.
+
+- **M5-04 (2026-10-02).** Covers §4.6, V6, V9 and V10, which closes M5.
+  - The fit could not reach §4.6's gradient target under §3.4 C, and was
+    redone after the §11 amendment: (τ₀, D) = (1.3581, 0.6371), giving
+    287.92 K, 41.96 K and 3.82 PW at L4.
+  - `earth_like` runs on three layers, and the grey layer is retired from
+    every preset.
+  - The plateau cools at 6.0 K/km.
+  - 250 years run at L5 in 146 s and at L6 in 447 s on 4 workers, after
+    two optimisations that change no decision. The L5 run replays bit for
+    bit.
+  - Details are in `docs/tasks/M5-04-calibration-and-close.md`.
+
+## 11. Amendment: transported heat enters the bottom layer (accepted 2026-10-02)
+
+**Finding (task M5-04).** Under §3.4 C a column receiving the source `h`
+warmed every layer by a uniform θ_c shift, so most of the heat went into
+the upper layers, which radiate it to space. At L4, with τ₀ = 1.50 giving
+288 K:
+- the P2 equator-to-pole difference stayed at 59–63 K for every D from 1.5
+  to 12;
+- the peak transport saturated near 3.3 PW;
+- the polar surface sat near 232 K.
+
+The calibration target of §4.6 (42 K) was out of reach at any D.
+
+**Change (the option chosen on 2026-10-02).**
+- The transported heat enters the bottom layer: `F_0` gains `−h`, and the
+  other layers receive none.
+- Convective adjustment carries the heat upward where the column becomes
+  unstable, as eddies and boundary-layer mixing do. Eddy heat transport is
+  concentrated in the lower troposphere.
+- The diffused quantity is unchanged: the column-mean θ_c of §3.4 C. Its
+  slope is `dθ̄_c/dh` for the source in layer 0, through the same
+  convective pools.
+- The transport floor is the source at which the bottom layer would
+  balance at 100 K, with the longwave and sensible heat the surface then
+  supplies (one surface evaluation per cell and step). A first floor that
+  ignored that supply (−C (T₀ − 100)/Δt, about −195 W/m² on a monthly step)
+  clipped the outer Newton, which then stalled during the first steps from
+  rest and applied a consistency residual of about 900 W/m² to a cell. That
+  cell's bottom layer had no positive root.
+
+**Effect.** At D = 1.5 the gradient falls to 25 K and the transport rises
+to 4.8 PW, so D governs the gradient again. τ₀ and D are fitted under this
+amendment in M5-04.

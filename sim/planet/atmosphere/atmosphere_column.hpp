@@ -9,6 +9,7 @@
 #include <limits>
 #include <span>
 #include <stdexcept>
+#include <string>
 
 namespace planetsim {
 
@@ -248,17 +249,56 @@ inline bool solve_dense(std::array<LayerArray, max_column_layers>& a, LayerArray
 
 }  // namespace detail
 
+// The transport source h at which the bottom layer's equation balances with
+// that layer at `bottom_K` and the others at their start-of-step values:
+// h = C (T₀ − T₀⁰)/Δt − [ε₀ (U₀ + D₁) − 2 ε₀ σ T₀⁴] − H(D, A). Below the
+// value for a low `bottom_K` the column's bottom layer would have to fall
+// under it; the transport solve keeps its sources above (ADR-0009 §9,
+// ADR-0010 §11). One evaluation of the surface.
+template <typename Surface>
+[[nodiscard]] double bottom_source_for(const ColumnRadiation& column,
+                                       std::span<const double> before_K, double dt_s,
+                                       double bottom_K, Surface&& surface) {
+    const std::size_t n = column.layers;
+    LayerArray emission{};
+    for (std::size_t k = 0; k < n; ++k) {
+        const double t = k == 0U ? bottom_K : before_K[k];
+        const double t2 = t * t;
+        emission[k] = column.emissivity[k] * column_stefan_boltzmann_W_m2_K4 * t2 * t2;
+    }
+    const double down = downward_surface_longwave(column, emission);
+    const SurfaceExchange exchange = surface(down, column.air_factor * bottom_K);
+    const LongwaveFluxes fluxes = longwave_fluxes(column, emission, exchange.upward_W_m2);
+    return column.layer_heat_capacity_J_m2_K / dt_s * (bottom_K - before_K[0]) -
+           (fluxes.absorbed_in[0] - 2.0 * emission[0]) - exchange.sensible_W_m2;
+}
+
+// What a column solve leaves for the next solve of the same column within
+// one step (the transport solve re-solves every column for nearby sources):
+// the implicit solution before the convective adjustment, its response to
+// h, and the h it was solved for. The next solve starts from the linear
+// prediction T* + (dT*/dh)(h − h_prev). Only a starting point, never carried
+// across steps, so the step stays a function of the state.
+struct ColumnWarmStart {
+    LayerArray implicit_K{};
+    LayerArray response{};
+    double source_W_m2 = 0.0;
+    bool valid = false;
+};
+
 // One backward-Euler step of the column with the transport source h
-// (W/m²) distributed as h π_k / Σπ (a uniform θ_c change, ADR-0010 §3.4 C):
+// (W/m²) received by the bottom layer, from which convection carries it
+// upward (ADR-0010 §11):
 //
 //   F_k = C (T_k − T_k⁰)/Δt − [ε_k (U_k + D_{k+1}) − 2 ε_k σ T_k⁴]
-//         − δ_k0 H(D, A) − h π_k / Σπ = 0
+//         − δ_k0 [H(D, A) + h] = 0
 //
 // solved by Newton over the layer temperatures with the exact Jacobian
 // (the surface enters through its linearisation), then, if `convection`,
-// adjusted convectively. `temperature_K` holds the first guess on entry and
-// the result on exit. `surface(D, A)` returns the SurfaceExchange; its last
-// call gives the fluxes the step applies. A surface whose response jumps
+// adjusted convectively. `temperature_K` holds the first guess on entry
+// (unless `warm` holds a valid start) and the result on exit.
+// `surface(D, A)` returns the SurfaceExchange; its last call gives the
+// fluxes the step applies. A surface whose response jumps
 // (a phase boundary) may leave no exact root: the layers are then finished
 // from the last evaluation's fluxes, which keeps the budget exact.
 template <typename Surface>
@@ -266,7 +306,8 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
                                           std::span<const double> before_K, double dt_s,
                                           double source_W_m2, bool convection,
                                           Surface&& surface, std::span<double> temperature_K,
-                                          const ColumnSolveSettings& settings = {}) {
+                                          const ColumnSolveSettings& settings = {},
+                                          ColumnWarmStart* warm = nullptr) {
     const std::size_t n = column.layers;
     ColumnSolveResult result;
     if (n == 0U) {
@@ -274,10 +315,6 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
     }
     constexpr double sigma = column_stefan_boltzmann_W_m2_K4;
     const double rate = column.layer_heat_capacity_J_m2_K / dt_s;
-    double exner_sum = 0.0;
-    for (std::size_t k = 0; k < n; ++k) {
-        exner_sum += column.exner[k];
-    }
 
     struct Evaluation {
         LayerArray temperature{};
@@ -303,7 +340,7 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
         for (std::size_t k = 0; k < n; ++k) {
             double f = rate * (t[k] - before_K[k]) -
                        (e.fluxes.absorbed_in[k] - 2.0 * e.emission[k]) -
-                       source_W_m2 * column.exner[k] / exner_sum;
+                       (k == 0U ? source_W_m2 : 0.0);
             if (k == 0U) {
                 f -= e.exchange.sensible_W_m2;
             }
@@ -354,6 +391,13 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
             throw std::invalid_argument("atmosphere column temperatures must be positive");
         }
         start[k] = temperature_K[k];
+    }
+    if (warm != nullptr && warm->valid) {
+        const double change = source_W_m2 - warm->source_W_m2;
+        for (std::size_t k = 0; k < n; ++k) {
+            const double predicted = warm->implicit_K[k] + warm->response[k] * change;
+            start[k] = predicted > 0.5 * warm->implicit_K[k] ? predicted : warm->implicit_K[k];
+        }
     }
     Evaluation current = evaluate(start);
     int non_monotone = 0;
@@ -417,16 +461,20 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
         result.converged = true;
     }
 
-    // The response of the layers to h at the solution: J δT = π / Σπ.
+    // The response of the layers to h at the solution: J δT = e₀.
     LayerArray response{};
     {
         auto j = jacobian(current);
-        for (std::size_t k = 0; k < n; ++k) {
-            response[k] = column.exner[k] / exner_sum;
-        }
+        response[0] = 1.0;
         if (!detail::solve_dense(j, response, n)) {
             response = LayerArray{};
         }
+    }
+    if (warm != nullptr) {
+        warm->implicit_K = current.temperature;
+        warm->response = response;
+        warm->source_W_m2 = source_W_m2;
+        warm->valid = true;
     }
 
     double residual_sum = 0.0;
@@ -437,7 +485,16 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
         const double correction = result.converged ? 0.0 : current.residual[k] / rate;
         temperature_K[k] = current.temperature[k] - correction;
         if (!(temperature_K[k] > 0.0)) {
-            throw std::runtime_error("an atmospheric layer fell to a non-positive temperature");
+            std::string state;
+            for (std::size_t j = 0; j < n; ++j) {
+                state += " T" + std::to_string(j) + "=" + std::to_string(current.temperature[j]) +
+                         " F" + std::to_string(j) + "=" + std::to_string(current.residual[j]) +
+                         " eps" + std::to_string(j) + "=" + std::to_string(column.emissivity[j]);
+            }
+            throw std::runtime_error("an atmospheric layer fell to a non-positive temperature "
+                                     "finishing an unconverged column (" +
+                                     std::to_string(result.iterations) + " iterations, h=" +
+                                     std::to_string(source_W_m2) + " W/m²):" + state);
         }
         residual_sum += current.residual[k];
         result.max_correction_K = std::max(result.max_correction_K, std::abs(correction));

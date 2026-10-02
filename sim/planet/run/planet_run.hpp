@@ -25,9 +25,17 @@ struct Scenario {
     std::uint32_t subdivision = 5;
     int spin_up_years = 0;   // climate years before tick 0 (ADR-0006 §4.2)
     SimulationMode initial_mode = SimulationMode::climate;
+    // ADR-0010 §4.1: the atmosphere's layer count; empty means the preset's.
+    // The manifest records the resolved count. A preset without an
+    // atmosphere cannot be given one.
+    std::optional<std::uint32_t> atmosphere_layers;
 
+    // The layer count the run uses.
+    [[nodiscard]] std::uint32_t resolved_atmosphere_layers() const noexcept;
     [[nodiscard]] ScenarioEntries entries() const;
-    // Throws std::runtime_error on a missing, unknown or invalid entry.
+    // Throws std::runtime_error on a missing, unknown or invalid entry. A
+    // manifest written before M5 has no atmosphere_layers entry and takes
+    // the preset's.
     [[nodiscard]] static Scenario from_entries(const ScenarioEntries& entries);
 };
 

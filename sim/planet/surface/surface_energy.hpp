@@ -41,33 +41,36 @@ struct SurfaceEnergyParameters {
 // ρ = 1.2 kg/m³, c_p = 1005 J/kg/K, C_H = 1.2e-3 and U = 7 m/s.
 inline constexpr double bulk_air_exchange_W_m2_K = 10.0;
 
-// Earth-like grey-layer emissivity g and transport coefficient D:
-// calibration constants (ADR-0007 §3.2 C, ADR-0008 §4.7, ADR-0009 §4.4 and
-// §10–12, specification §24), refitted when the atmosphere (M5), clouds (M8)
-// and ocean transport (M11) arrive.
+// Earth-like optical depth τ₀ (earth_like_longwave_optical_depth, in
+// sim/planet/atmosphere/atmosphere.hpp) and transport coefficient D:
+// calibration constants (ADR-0010 §4.6, §11; ADR-0009 §4.4 and §10–12;
+// specification §24), refitted when clouds (M8) and ocean transport (M11)
+// arrive.
 //
-// Fit (2026-10-01, task M4-04): alternating bisection over the last of 150
-// spin-up years, earth_like preset, L4, seed 1, sea ice active, no
-// precipitation, air diffusion on the mesh one level coarser, to a 288 K
-// length-weighted global mean surface temperature and a 42 K
-// equator-to-pole difference of the P2 fit (North et al., 1981)
-// (`planet_cli thermal --subdivision 4 --years 150 --calibrate 288
-// --calibrate-gradient 42`). The ice edge moves a cell at a time, so the
-// fit alternates between (g, D) = (0.4965, 0.6400): 287.93 K, 42.08 K and
-// (0.4971, 0.6559): 288.03 K, 41.58 K; the first is kept. At L5: 288.20 K,
-// 40.9 K, peak poleward transport 3.72 PW, sea ice 4.8–10.2 million km² in
-// the north and 33.3–33.8 in the south (an open polar ocean), relative
-// imbalance −2.2e-3 after 150 years (perennial ice still thickening). The
-// fit before sea ice (2026-09-30) was g = 0.4455, D = 0.1999.
-inline constexpr double earth_like_grey_emissivity = 0.4965;
-
-// See earth_like_grey_emissivity for the joint fit record.
-inline constexpr double earth_like_transport_coefficient_W_m2_K = 0.6400;
+// Fit (2026-10-02, task M5-04): alternating bisection over the last of 150
+// spin-up years, earth_like preset with three atmosphere layers, L4, seed 1,
+// sea ice as floes and leads (ADR-0008 §10), no precipitation, transported
+// heat entering the bottom layer (ADR-0010 §11), to a 288 K length-weighted
+// global mean surface temperature and a 42 K equator-to-pole difference of
+// the P2 fit (North et al., 1981) (`planet_cli thermal --subdivision 4
+// --years 150 --layers 3 --calibrate 288 --calibrate-gradient 42`). The fit
+// alternates between (τ₀, D) = (1.3581, 0.6371): 287.92 K, 41.96 K and
+// (1.3624, 0.6458): 288.02 K, 41.67 K; the first is kept. Peak poleward
+// transport 3.82 PW; sea ice 6.1–9.5 million km² in the north and 24.4–25.6
+// in the south. At L5: 288.52 K, 40.9 K, 3.71 PW, sea ice 4.6–9.9 million
+// km² in the north and 22.5–24.0 in the south, relative imbalance −7.5e-3
+// after 150 years (perennial ice still thickening).
+//
+// Earlier fits of the grey layer (ADR-0007 §3.2 C), retired at M5:
+// (g, D) = (0.4965, 0.6400) with sea ice (2026-10-01, task M4-04), and
+// (0.4455, 0.1999) before it (2026-09-30).
+inline constexpr double earth_like_transport_coefficient_W_m2_K = 0.6371;
 
 // dead_rock: rock, g = 0, no transport. aqua_planet: g = 0, no transport
 // (experiments A and B have no atmosphere and no currents; only the ocean
 // tile has area). earth_like: dry soil (until hydrology supplies moisture,
-// M9), the calibrated g and D.
+// M9), the three-layer atmosphere with the calibrated τ₀ (the grey layer is
+// retired, g = 0), and the calibrated D.
 [[nodiscard]] SurfaceEnergyParameters surface_energy_parameters_for(PlanetPreset preset) noexcept;
 
 // Annual-mean insolation of every cell: the length-weighted mean of the
@@ -77,11 +80,19 @@ void compute_annual_mean_insolation(const PlanetMesh& mesh, const PlanetParamete
                                     std::size_t worker_count = 1U);
 
 // ADR-0007 §4.5: both tiles of every cell at the closed-form radiative
-// equilibrium of their annual-mean insolation, both layers equal.
+// equilibrium of their annual-mean insolation, both layers equal. Under a
+// layered atmosphere the grey layer of that equilibrium has g = 1 − exp(−τ₀)
+// (at most 0.95), a warm start (ADR-0010 §4.6).
 void initialise_surface_temperatures(const PlanetMesh& mesh, SlowState& slow,
                                      const PlanetParameters& parameters,
                                      const SurfaceEnergyParameters& surface,
                                      std::size_t worker_count = 1U);
+
+// A new planet's climate state: the surface temperatures, the cryosphere and
+// the atmosphere with the surface parameters' layer count (ADR-0010 §4.3).
+void initialise_climate(const PlanetMesh& mesh, SlowState& slow,
+                        const PlanetParameters& parameters,
+                        const SurfaceEnergyParameters& surface, std::size_t worker_count = 1U);
 
 // ADR-0008 §4.6: no snow and no sea ice, both reservoirs zero; ocean layers
 // below the seawater freezing point are raised to it (ADR-0008 §9).

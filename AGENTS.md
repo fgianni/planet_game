@@ -18,10 +18,9 @@ documents keep the version citations they were written against.
 
 P0 --- Living Planet.
 
-Most recently completed milestone: **M4 --- Basic snow, ice and albedo
-feedback**.
+Most recently completed milestone: **M5 --- Atmosphere and pressure**.
 
-M0 through M4 are complete. M2 includes gate G2-M2 (finite-volume
+M0 through M5 are complete. M2 includes gate G2-M2 (finite-volume
 operators), the state-partition/persistent-snapshot foundation, foundation
 hardening, plate-scale terrain with sub-cell hypsometry and sea level, static
 cell-mesh drainage, and the simulation modes, scheduler skeleton and sub-step
@@ -37,19 +36,18 @@ M4 (basic snow, ice and albedo feedback) is complete under ADR-0008 and
 ADR-0009: tasks M4-01 (cryosphere state, land snow, PSNAP schema 4), M4-02
 (diffusive heat transport with shared cell air), M4-03 (sea ice), M4-04
 (seasonal experiment, climatology, refit) and M4-05 (ADR-0003 snapshot
-history: zstd compression, delta chains and forks). Most recently
-completed task:
-[`docs/tasks/M4-05-history-deltas-and-compression.md`](docs/tasks/M4-05-history-deltas-and-compression.md).
+history: zstd compression, delta chains and forks).
 Task documents in `docs/tasks/` state their scope, the decisions already
 made, acceptance criteria and what to report.
 
-M5 (atmosphere and pressure) was requested on 2026-10-01 and is in progress
-under ADR-0010 (accepted 2026-10-01): M5-01 (the ordered snapshot migration
-chain), M5-02 (atmosphere state, hydrostatics, PSNAP schema 5) and M5-03
+M5 (atmosphere and pressure) is complete under ADR-0010 (accepted
+2026-10-01, amended §11): tasks M5-01 (the ordered snapshot migration
+chain), M5-02 (atmosphere state, hydrostatics, PSNAP schema 5), M5-03
 (column radiation and convection; ADR-0008 §10 sea-ice floes and leads)
-are complete; M5-04 (calibration, preset switch, gates and close)
-remains. Do not implement M6 or later milestones unless explicitly
-requested.
+and M5-04 (refit of τ₀ and D, the Earth-like preset on three layers, the
+plateau experiment, performance gates). Most recently completed task:
+[`docs/tasks/M5-04-calibration-and-close.md`](docs/tasks/M5-04-calibration-and-close.md).
+Do not implement M6 or later milestones unless explicitly requested.
 
 ## Hard rules
 

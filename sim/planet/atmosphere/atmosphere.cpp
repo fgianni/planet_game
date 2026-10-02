@@ -24,6 +24,7 @@ AtmosphereParameters atmosphere_parameters_for(PlanetPreset preset) noexcept {
         break;
     case PlanetPreset::earth_like:
         parameters.layer_count = 3U;
+        parameters.longwave_optical_depth = earth_like_longwave_optical_depth;
         break;
     }
     return parameters;

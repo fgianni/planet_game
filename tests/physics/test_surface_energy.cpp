@@ -50,8 +50,7 @@ struct Planet {
             state, test_seed, planetsim::geology_parameters_for(preset), 4U));
         fractions = planetsim::compute_surface_fractions(*mesh, state.slow().hypsometry_m,
                                                          state.slow().sea_level_m, 4U);
-        planetsim::initialise_surface_temperatures(*mesh, state.slow(), parameters, surface, 4U);
-        planetsim::initialise_cryosphere(*mesh, state.slow());
+        planetsim::initialise_climate(*mesh, state.slow(), parameters, surface, 4U);
     }
 };
 
@@ -322,11 +321,14 @@ void check_experiments(planetsim::test::Context& test,
 // entirely in double. A float32 mixed layer drifted 0.01-0.04 K here.
 void check_reference_ocean_precision(planetsim::test::Context& test,
                                      const std::shared_ptr<const planetsim::PlanetMesh>& mesh) {
-    // The column alone: no horizontal transport and no shared air
-    // (ADR-0009), which would couple the columns this test compares.
+    // The column alone: no horizontal transport, no shared air (ADR-0009)
+    // and no atmosphere (ADR-0010), which would couple the columns this test
+    // compares; the ADR-0007 grey layer of M4's last fit instead.
     auto surface = planetsim::surface_energy_parameters_for(PlanetPreset::earth_like);
     surface.transport_coefficient_W_m2_K = 0.0;
     surface.air_exchange_W_m2_K = 0.0;
+    surface.atmosphere = {};
+    surface.grey_emissivity = 0.4965;
     Planet planet(mesh, PlanetPreset::earth_like, surface);
     const std::size_t cells = mesh->cell_count();
     // Constant forcing, 3 W/m2 of absorbed shortwave above the initial

@@ -168,10 +168,9 @@ second order in L2; see ADR-0002 §9 for the full record.
 ./build/planet_cli history --subdivision 6 --decades 10
 ```
 
-The `PSNAP` format (schema v4: M3 added the surface temperatures and the
-`double` ocean mixed layer, M4 the snow and sea-ice reservoirs; older files
-load through the migration chain, ADR-0007 §4.6 and §10, ADR-0008 §4.6)
-stores only
+The `PSNAP` format (schema v5: M3 added the surface temperatures and the
+`double` ocean mixed layer, M4 the snow and sea-ice reservoirs, M5 the
+atmosphere, whose layer count each file states) stores only
 authoritative slow state, in stable
 field-ID order and layer-major/cell-major order within each field. Its fixed
 little-endian representation, canonical manifest, per-field CRC-32C checksums,
@@ -179,7 +178,9 @@ and strict reader make equal states byte-identical and reject corrupt or
 incompatible files before mutating the destination state. The manifest
 records the mesh generator version and a checksum of the cell centres, so a
 snapshot never loads onto different mesh geometry, and writes go through a
-`.partial` file renamed into place. `tests/data/golden/` holds one snapshot
+`.partial` file renamed into place. Older files load through an ordered
+chain of named migration steps, one per schema version (ADR-0003 §3.6); the
+reader reports the steps it applied. `tests/data/golden/` holds one snapshot
 per schema version and one per codec. Chunks are compressed with zstd after
 grouping each float's bytes (`shuffle-zstd`; the system `libzstd` is the
 project's one third-party library); uncompressed files still load. A
@@ -264,8 +265,9 @@ sequence. Weather windows are not implemented yet (ADR-0001 §8).
 
 Every cell has a land tile and an ocean tile, each a two-layer column
 (surface and ground, or mixed layer and deep ocean) that absorbs `(1 − α) Q`
-and radiates `(1 − g/2) ε σ T⁴` to space through an optional grey layer of
-emissivity `g` (ADR-0007). Each step is backward Euler, stable for a whole
+and radiates `ε σ T⁴`: to space through an optional grey layer of
+emissivity `g` (ADR-0007) on the planets without air, or into the cell's
+atmospheric column (ADR-0010, below). Each step is backward Euler, stable for a whole
 climate sub-step, and its budget closes to rounding. The surface is the first
 scheduler process: climate steps use the sub-step mean insolation, reference
 steps the instantaneous insolation. The command spins a generated planet up
@@ -273,17 +275,13 @@ from radiative equilibrium and prints the last year's global, land and ocean
 mean temperature, energy balance, transport, zonal means and the cost per
 sub-step.
 
-Until the atmosphere exists, heat moves by diffusion of the cells' air
-temperature (ADR-0009), on the mesh one level coarser, solved implicitly
-(Newton with a multigrid-preconditioned conjugate-gradient solve) so that
-energy closes exactly and the monthly step stays stable. Each cell's land
-and ocean tiles exchange heat with that air at the bulk rate, so coastal
-land is maritime and a freezing ocean gives only what the air can take. Dead rock (no tilt, `g = 0`) and the aqua planet, which
-have no atmosphere, are experiments A and B of the specification. The
-Earth-like `g = 0.4965` and transport coefficient `D = 0.64 W/m²/K` are
-calibration constants fitted together, with sea ice active, to a 288 K
-global mean and Earth's 42 K equator-to-pole difference; the transport they
-imply (3.7 PW) is about two thirds of Earth's.
+Until the winds of M6, heat moves by diffusion (ADR-0009), on the mesh one
+level coarser, solved implicitly (Newton with a multigrid-preconditioned
+conjugate-gradient solve) so that energy closes exactly and the monthly
+step stays stable. On the Earth-like planet it diffuses the atmospheric
+columns' mean potential temperature and enters their bottom layer. Dead rock
+(no tilt) and the aqua planet, which have no atmosphere, are experiments A
+and B of the specification.
 
 Snow lies on the land tile (ADR-0008). Until the atmosphere supplies
 moisture, precipitation is a prescribed forcing, zero by default:
@@ -299,17 +297,44 @@ With the transport, snow now clears seasonally from about 15 % of land
 cells, while high latitudes still accumulate it.
 
 Sea ice forms on the ocean tile when the mixed layer would cool below
-−1.8 °C (ADR-0008): a zero-heat-capacity slab whose surface balances
+−1.8 °C (ADR-0008): zero-heat-capacity floes whose surface balances
 sunlight, emission, heat conducted from the freezing water below and the
-transport, melting at 0 °C at the top and growing or melting at its base.
-Its thickness is solved implicitly, so a month-long step stays stable, and
-it raises the albedo smoothly up to half a metre. `planet_cli thermal`
-prints the year's sea-ice extent by hemisphere; with the constants fitted
-before ice existed it is currently about twice Earth's, pending the M4-04
-refit. After the M4-04 refit northern sea ice spans about 5–10 million km²
-over the year; the cycle is stationary but not periodic (the summer minimum
-varies by about 6 % from year to year). The scheduler accumulates a monthly
+air, melting at 0 °C at the top and growing or melting at its base. Ice
+thinner than half a metre covers part of the tile as floes of that
+thickness, with leads of open water between them that freeze or melt ice,
+so the tile responds continuously as the last ice goes. The mass is solved
+implicitly, so a month-long step stays stable. `planet_cli thermal` prints
+the year's sea-ice extent by hemisphere: on the Earth-like planet northern
+sea ice spans about 6–9.5 million km² over the year; the cycle is stationary
+but not periodic. The scheduler accumulates a monthly
 climatology (means and variances per month) over a run.
+
+## Atmosphere
+
+```bash
+./build/planet_cli atmosphere --subdivision 5 --layers 3
+./build/planet_cli thermal --layers 5
+```
+
+The Earth-like planet has an atmosphere of three equal-mass layers per cell
+(ADR-0010; five also work, and the layer count is a scenario entry recorded
+in the run manifest and in every snapshot). Each column starts at
+hydrostatic rest, its surface pressure the reference sea-level pressure
+reduced to the cell's height, so high ground carries less air (98.9 kPa
+mean, 45 kPa on a 6 km plateau). The layers exchange grey longwave with
+each other, the surface and space, with an optical depth that falls with
+pressure, receive sensible heat from the surface, and mix convectively
+wherever they cool faster than 6.5 K/km. The column and its land and ocean
+tiles are solved together, implicitly, every step, and the energy budget of
+surface and air closes to rounding. Nothing imposes a lapse rate on the
+surface, yet a dome 4 km high cools at about 6 K/km.
+
+The optical depth `τ₀ = 1.3581` and the transport coefficient
+`D = 0.6371 W/m²/K` are calibration constants fitted together, with sea ice
+active, to a 288 K global mean and Earth's 42 K equator-to-pole difference;
+the poleward transport they imply peaks at 3.8 PW, about 70 % of Earth's.
+Sunlight still passes through the air unabsorbed, and there is no water
+vapour, cloud or wind yet (M6–M8).
 
 ## Recorded runs and replay
 
@@ -448,13 +473,17 @@ The precise M1 coordinate and validation conventions are in
 
 ## Current limitations
 
-M2 provides the finite-volume operators, state partitions, base persistent
+M2 provides the finite-volume operators, state partitions, persistent
 snapshots, procedural plate-scale terrain with sea level, and static drainage
-topology; M3 adds surface temperatures from radiative columns without
-horizontal transport, and runs are recorded and replayable. Dynamic runoff, discharge, lake water balance, snow and
-ice, the atmosphere, clouds, orbital precession and perturbations are not yet
-computed. Geology and drainage are generated once and are
-not time-evolving, and `GeologyState` is not persisted. Compressed/delta snapshots, forks and autosaves remain assigned to later milestones. Tracer
+topology; M3 surface temperatures from radiative columns, with recorded,
+replayable runs; M4 snow, sea ice and their albedo feedback; M5 a layered
+atmosphere with pressure, grey longwave and convection. The atmosphere has
+no winds, water vapour or clouds yet: heat still moves by a calibrated
+diffusion, sunlight reaches the surface unabsorbed, and precipitation is a
+prescribed forcing. Dynamic runoff, discharge and lake water balance,
+orbital precession and perturbations are not yet computed. Geology and
+drainage are generated once and are not time-evolving, and `GeologyState` is
+not persisted. Autosaves remain assigned to a later milestone. Tracer
 advection and the placement of vector fields (cell centres or edge normals)
 are left to the first milestone that transports them. The two-point
 Laplacian's pointwise truncation error does not converge next to the pentagons

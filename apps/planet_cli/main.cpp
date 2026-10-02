@@ -1354,9 +1354,7 @@ int run_history(const HistoryOptions& options) {
         *mesh, state.slow().hypsometry_m, state.slow().sea_level_m, worker_count);
     const auto surface =
         planetsim::surface_energy_parameters_for(planetsim::PlanetPreset::earth_like);
-    planetsim::initialise_surface_temperatures(*mesh, state.slow(), parameters, surface,
-                                               worker_count);
-    planetsim::initialise_cryosphere(*mesh, state.slow());
+    planetsim::initialise_climate(*mesh, state.slow(), parameters, surface, worker_count);
     if (options.spin_up_years > 0) {
         static_cast<void>(planetsim::spin_up_surface_energy(state, parameters, surface, fractions,
                                                             options.spin_up_years, worker_count));
@@ -1458,10 +1456,7 @@ int run_thermal(const ThermalOptions& options) {
         precipitation[cell] = static_cast<float>(options.precipitation_kg_m2_s);
     }
     const auto spin_up = [&](const planetsim::SurfaceEnergyParameters& candidate) {
-        planetsim::initialise_surface_temperatures(*mesh, state.slow(), parameters, candidate,
-                                                   worker_count);
-        planetsim::initialise_cryosphere(*mesh, state.slow());
-        planetsim::initialise_atmosphere(*mesh, state.slow(), parameters, candidate.atmosphere);
+        planetsim::initialise_climate(*mesh, state.slow(), parameters, candidate, worker_count);
         return planetsim::spin_up_surface_energy(state, parameters, candidate, fractions,
                                                  options.years, worker_count);
     };

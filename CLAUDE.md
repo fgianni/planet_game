@@ -15,19 +15,15 @@ The specification defines the architecture, physical design, P0 roadmap,
 validation strategy, and current implementation task for the Planetary
 Civilization Simulator.
 
-Most recently completed milestone: **P0 / M4 --- Basic snow, ice and
-albedo feedback** (ADR-0008, ADR-0009): M4-01 (cryosphere state, land snow,
-PSNAP schema 4), M4-02 (diffusive heat transport), M4-03 (sea ice), M4-04
-(seasonal experiment, climatology, refit) and M4-05
-(`docs/tasks/M4-05-history-deltas-and-compression.md`: ADR-0003 snapshot
-history with zstd compression, delta chains and forks, V6--V7).
-M0--M3 (mesh, orbit, terrain, drainage, scheduler and calendar, sub-step
-insolation, surface energy columns, replay) are complete.
-
-M5 (atmosphere and pressure) is in progress under ADR-0010: M5-01 (the
-ordered snapshot migration chain), M5-02 (atmosphere state, hydrostatics,
-PSNAP schema 5) and M5-03 (column radiation and convection; ADR-0008 §10
-sea-ice floes and leads) are complete; M5-04 remains.
+Most recently completed milestone: **P0 / M5 --- Atmosphere and pressure**
+(ADR-0010, amended §11; ADR-0008 §10): M5-01 (the ordered snapshot
+migration chain), M5-02 (atmosphere state, hydrostatics, PSNAP schema 5),
+M5-03 (column radiation and convection, sea-ice floes and leads) and M5-04
+(`docs/tasks/M5-04-calibration-and-close.md`: refit, the Earth-like preset
+on three layers, plateau experiment, performance gates).
+M0--M4 (mesh, orbit, terrain, drainage, scheduler and calendar, surface
+energy columns, replay, snow and sea ice, diffusive transport, snapshot
+history) are complete.
 
 Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI

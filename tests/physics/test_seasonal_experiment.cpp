@@ -38,8 +38,7 @@ struct Planet {
             state, test_seed, planetsim::geology_parameters_for(preset), 4U));
         fractions = planetsim::compute_surface_fractions(*mesh, state.slow().hypsometry_m,
                                                          state.slow().sea_level_m, 4U);
-        planetsim::initialise_surface_temperatures(*mesh, state.slow(), parameters, surface, 4U);
-        planetsim::initialise_cryosphere(*mesh, state.slow());
+        planetsim::initialise_climate(*mesh, state.slow(), parameters, surface, 4U);
         auto& precipitation = state.forcing().prescribed_precipitation_kg_m2_s;
         for (std::size_t cell = 0; cell < precipitation.size(); ++cell) {
             precipitation[cell] = precipitation_kg_m2_s;

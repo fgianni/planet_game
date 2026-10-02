@@ -61,6 +61,13 @@ template <typename Integer>
     return parameters;
 }
 
+// The preset's surface with the scenario's atmosphere layer count.
+[[nodiscard]] SurfaceEnergyParameters scenario_surface_parameters(const Scenario& scenario) {
+    SurfaceEnergyParameters surface = surface_energy_parameters_for(scenario.preset);
+    surface.atmosphere.layer_count = scenario.resolved_atmosphere_layers();
+    return surface;
+}
+
 [[nodiscard]] const Scenario& validated(const Scenario& scenario) {
     if (scenario.subdivision > max_run_subdivision) {
         throw std::invalid_argument("run subdivision must be at most 7");
@@ -72,10 +79,23 @@ template <typename Integer>
         scenario.initial_mode != SimulationMode::reference) {
         throw std::invalid_argument("a run starts in climate or reference mode");
     }
+    if (scenario.atmosphere_layers) {
+        const std::uint32_t preset_layers = atmosphere_parameters_for(scenario.preset).layer_count;
+        if (*scenario.atmosphere_layers > max_atmosphere_layer_count ||
+            (preset_layers == 0U) != (*scenario.atmosphere_layers == 0U)) {
+            throw std::invalid_argument(
+                "atmosphere_layers must lie in 1.." + std::to_string(max_atmosphere_layer_count) +
+                " for a preset with an atmosphere, and be 0 for one without");
+        }
+    }
     return scenario;
 }
 
 }  // namespace
+
+std::uint32_t Scenario::resolved_atmosphere_layers() const noexcept {
+    return atmosphere_layers ? *atmosphere_layers : atmosphere_parameters_for(preset).layer_count;
+}
 
 ScenarioEntries Scenario::entries() const {
     return {
@@ -84,12 +104,17 @@ ScenarioEntries Scenario::entries() const {
         {"subdivision", std::to_string(subdivision)},
         {"spin_up_years", std::to_string(spin_up_years)},
         {"initial_mode", std::string(simulation_mode_name(initial_mode))},
+        {"atmosphere_layers", std::to_string(resolved_atmosphere_layers())},
     };
 }
 
 Scenario Scenario::from_entries(const ScenarioEntries& entries) {
     Scenario scenario;
-    const auto defaults = scenario.entries();
+    auto defaults = scenario.entries();
+    // atmosphere_layers is optional (manifests before M5).
+    if (!scenario_value(entries, "atmosphere_layers")) {
+        defaults.pop_back();
+    }
     if (entries.size() != defaults.size()) {
         throw std::runtime_error("scenario has " + std::to_string(entries.size()) +
                                  " entries; this build expects " +
@@ -116,6 +141,10 @@ Scenario Scenario::from_entries(const ScenarioEntries& entries) {
                                  std::string(value("initial_mode")));
     }
     scenario.initial_mode = *mode;
+    if (const auto layers = scenario_value(entries, "atmosphere_layers")) {
+        scenario.atmosphere_layers =
+            parse_scenario_integer<std::uint32_t>("atmosphere_layers", *layers);
+    }
     try {
         static_cast<void>(validated(scenario));
     } catch (const std::invalid_argument& error) {
@@ -133,7 +162,7 @@ PlanetRun::PlanetRun(const Scenario& scenario, std::size_t worker_count)
       worker_count_(std::max<std::size_t>(1U, worker_count)),
       base_parameters_(scenario_parameters(scenario_)),
       parameters_(base_parameters_),
-      surface_(surface_energy_parameters_for(scenario_.preset)),
+      surface_(scenario_surface_parameters(scenario_)),
       mesh_(std::make_shared<const PlanetMesh>(
           make_icosphere(scenario_.subdivision, base_parameters_.radius_m))),
       state_(mesh_) {
@@ -141,8 +170,7 @@ PlanetRun::PlanetRun(const Scenario& scenario, std::size_t worker_count)
                                        geology_parameters_for(scenario_.preset), worker_count_));
     fractions_ = compute_surface_fractions(*mesh_, state_.slow().hypsometry_m,
                                            state_.slow().sea_level_m, worker_count_);
-    initialise_surface_temperatures(*mesh_, state_.slow(), parameters_, surface_, worker_count_);
-    initialise_cryosphere(*mesh_, state_.slow());
+    initialise_climate(*mesh_, state_.slow(), parameters_, surface_, worker_count_);
     if (scenario_.spin_up_years > 0) {
         static_cast<void>(spin_up_surface_energy(state_, parameters_, surface_, fractions_,
                                                  scenario_.spin_up_years, worker_count_));

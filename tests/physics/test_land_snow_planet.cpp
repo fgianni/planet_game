@@ -43,8 +43,7 @@ struct Planet {
             state, test_seed, planetsim::geology_parameters_for(PlanetPreset::earth_like), 4U));
         fractions = planetsim::compute_surface_fractions(*mesh, state.slow().hypsometry_m,
                                                          state.slow().sea_level_m, 4U);
-        planetsim::initialise_surface_temperatures(*mesh, state.slow(), parameters, surface, 4U);
-        planetsim::initialise_cryosphere(*mesh, state.slow());
+        planetsim::initialise_climate(*mesh, state.slow(), parameters, surface, 4U);
     }
 
     void set_precipitation(float rate) {
