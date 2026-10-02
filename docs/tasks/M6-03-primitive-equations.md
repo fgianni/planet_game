@@ -187,3 +187,60 @@
   at L4 showed ordinary baroclinic spin-up, with eddies gusting to
   60–80 m/s and nothing numerically unstable. The 5-layer gate run is
   repeated with the new bound.
+
+### Step B — reference mode
+
+`sim/planet/dynamics/atmosphere_dynamics.{hpp,cpp}`, the first fast field
+`atmosphere_edge_normal_wind_m_s` (`0x0006'0001`, `edge_layers`),
+`tests/physics/test_reference_winds.cpp`, and `planet_cli reference`.
+
+- **Coupling.** Each 10-minute reference step runs the column physics and
+  then the dynamics, a process split.
+  - The dynamics reads `p_s` and the layer temperatures, and the winds from
+    the fast state; it advances the step and writes them back.
+  - The winds see the step-limited orography (§4), and bulk drag acts on
+    the bottom layer, with C_D = 1.5e-3 over ocean and 4e-3 over land, and
+    its kinetic energy returned as heat.
+  - Reference mode no longer runs ADR-0009's diffusion; climate mode keeps
+    it.
+  - Climate steps release the fast state, and the first reference step
+    opens it with the winds at rest. The balanced start is M6-04's.
+- **Energy identity with dissipation.** With drag and hyperviscosity on,
+  the semi-discrete dE/dt is 1e-17 of its gross terms for N = 1, 3 and 5,
+  so the heat return is exact.
+- **Spin-up from rest** is a violent geostrophic adjustment. In pure
+  dynamics from the L3 climate state, kinetic energy reaches 9.4e20 J in two
+  days. RK3's energy error over those two days converges at third order:
+  7.1e-5, 1.2e-5, 1.6e-6 and 2.1e-7 of the total at Δt = 600, 300, 150 and
+  75 s.
+- **V6, Earth-like at L4, N = 3,** after 2 climate spin-up years, then 1,096
+  reference days; 8 orography passes; 24 minutes on 4 workers:
+  - **Mass:** relative changes below 6e-15 throughout.
+  - **Energy:** the dynamics changed the total by −1.198e20 J, which is
+    −3.1e-5 per year over the whole run. Of that, −1.1964e20 J came in the
+    first 30 days, the spin-up from rest. From day 30 to day 1,096 the
+    change is −1.6e17 J, a drift of **4e-8 per year**, inside the 1e-5 gate
+    by a factor of 250. The equilibrated drift passes. The run's total
+    fails only through the initial shock, which M6-04's balanced start
+    removes.
+  - **Circulation** (zonal means of the last 730 days, recorded for the
+    climate-mode comparison):
+    - top-layer jets of 26.6 m/s at 55° S and 25.8 m/s at 55° N;
+    - upper tropical easterlies of 4–7 m/s;
+    - bottom-layer westerlies of 1.4–2.2 m/s over 35–65° in both
+      hemispheres;
+    - weak or absent trades (−0.7 m/s at 15° N, slightly westerly within
+      10° of the equator). That is plausible for a dry model at L4 with
+      three layers, without the latent heating that drives a strong Hadley
+      cell (M7–M8).
+  - **Surface temperature** still falls, from 293.1 K in the first month to
+    285.8 K by the end, about 2 K per year. Two spin-up years are not
+    equilibrium, and the resolved winds carry heat differently from the
+    calibrated diffusion. Reconciling the two is M6-05's refit, not a gate
+    here.
+  - **Cost:** about 1.3 s per simulated day at L4 on 4 workers, with the
+    column physics included.
+- **Determinism.** `test_run_replay` switches the Earth-like planet into
+  reference mode for two days and back. It replays bit for bit on 1, 2 and
+  8 workers and with chunked runs, with the winds included.
+
