@@ -1,10 +1,11 @@
 # Planetary Civilization Simulator
 
-The repository has completed **P0 / M3 — Surface energy and first thermal
-planet**, on top of M2's geological planet, terrain and ocean basins. It
-contains a standalone C++20 `PlanetSim` library; headless mesh, solar,
-terrain, drainage, calendar and thermal diagnostics; recorded and replayable
-runs; tests; and an optional Godot 4 presentation adapter.
+The repository has completed **P0 / M5 — Atmosphere and pressure**, on top
+of M4's snow, sea ice and diffusive heat transport, M3's surface energy
+columns and M2's geological planet, terrain and ocean basins. It contains a
+standalone C++20 `PlanetSim` library; headless mesh, solar, terrain,
+drainage, calendar, thermal and atmosphere diagnostics; recorded and
+replayable runs; tests; and an optional Godot 4 presentation adapter.
 
 ## Requirements
 
@@ -428,8 +429,9 @@ not alter persistent `PSNAP` files.
 - Evolving fields are separate 64-byte-aligned `Field2D<T>`, layer-major
   `Field3D<T>`, or `EdgeField<T>` arrays indexed by strong IDs.
 - `PlanetState` retains a shared immutable mesh handle. Its authoritative
-  `SlowState` owns hypsometry, global sea level and the four surface
-  temperatures; `FastState` is
+  `SlowState` owns hypsometry, global sea level, the four surface
+  temperatures, snow and sea-ice mass, and the atmosphere's surface
+  pressure and layer temperatures; `FastState` is
   optional and lazily allocated, `Climatology` is derived, and forcing remains
   outside the persistent partition.
 - The mesh is body-fixed with geographic north on `+Z`; physical rotation and
@@ -466,7 +468,10 @@ The main decisions are recorded in:
 - [Keplerian orbit and coordinate frames](docs/decisions/0004-keplerian-orbit-and-coordinate-frames.md);
 - [coastlines and drainage](docs/decisions/0005-coastlines-and-drainage.md);
 - [seasonal climate-mode steps](docs/decisions/0006-seasonal-climate-steps.md);
-- [surface energy columns](docs/decisions/0007-surface-energy-columns.md).
+- [surface energy columns](docs/decisions/0007-surface-energy-columns.md);
+- [snow, sea ice and the ice–albedo feedback](docs/decisions/0008-snow-and-sea-ice.md);
+- [diffusive horizontal heat transport](docs/decisions/0009-diffusive-heat-transport.md);
+- [the layered atmosphere](docs/decisions/0010-layered-atmosphere.md).
 
 The precise M1 coordinate and validation conventions are in
 [`docs/M1_TECHNICAL_SPEC.md`](docs/M1_TECHNICAL_SPEC.md).
