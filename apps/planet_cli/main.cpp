@@ -924,8 +924,37 @@ int run_operators(const OperatorOptions& options) {
         {"poisson_solution", &planetsim::OperatorValidation::poisson_solution},
     };
 
+    struct CGridRow {
+        std::string_view name;
+        planetsim::OperatorErrorNorms planetsim::CGridValidation::*norms;
+    };
+    constexpr CGridRow c_grid_rows[] = {
+        {"c_grid_tangential_velocity", &planetsim::CGridValidation::tangential_velocity},
+        {"c_grid_vorticity", &planetsim::CGridValidation::vorticity},
+        {"c_grid_kinetic_energy", &planetsim::CGridValidation::kinetic_energy},
+        {"c_grid_reconstruction", &planetsim::CGridValidation::reconstruction},
+        {"c_grid_normal_gradient", &planetsim::CGridValidation::normal_gradient},
+        {"c_grid_tangential_gradient", &planetsim::CGridValidation::tangential_gradient},
+    };
+    const auto print_norms = [](std::string_view name, const planetsim::OperatorErrorNorms& norms,
+                                const planetsim::OperatorErrorNorms* coarse) {
+        std::cout << "  " << name << "_relative_l2: " << norms.relative_l2
+                  << " relative_max: " << norms.relative_max
+                  << " pentagon_relative_max: " << norms.pentagon_relative_max
+                  << " seam_relative_max: " << norms.seam_relative_max
+                  << " interior_relative_max: " << norms.interior_relative_max;
+        if (coarse != nullptr) {
+            std::cout << std::fixed << std::setprecision(3)
+                      << " order_l2: " << std::log2(coarse->relative_l2 / norms.relative_l2)
+                      << " order_max: " << std::log2(coarse->relative_max / norms.relative_max)
+                      << std::scientific << std::setprecision(6);
+        }
+        std::cout << '\n';
+    };
+
     std::cout << std::setprecision(6) << std::scientific;
     planetsim::OperatorValidation previous;
+    planetsim::CGridValidation previous_c_grid;
     bool has_previous = false;
     for (std::uint32_t level = options.min_subdivision; level <= options.max_subdivision;
          ++level) {
@@ -939,22 +968,23 @@ int run_operators(const OperatorOptions& options) {
                   << '\n'
                   << "  poisson_iterations: " << validation.poisson_iterations << '\n';
         for (const auto& row : rows) {
-            const auto& norms = validation.*(row.norms);
-            std::cout << "  " << row.name << "_relative_l2: " << norms.relative_l2
-                      << " relative_max: " << norms.relative_max
-                      << " pentagon_relative_max: " << norms.pentagon_relative_max
-                      << " seam_relative_max: " << norms.seam_relative_max
-                      << " interior_relative_max: " << norms.interior_relative_max;
-            if (has_previous) {
-                const auto& coarse = previous.*(row.norms);
-                std::cout << std::fixed << std::setprecision(3)
-                          << " order_l2: " << std::log2(coarse.relative_l2 / norms.relative_l2)
-                          << " order_max: "
-                          << std::log2(coarse.relative_max / norms.relative_max)
-                          << std::scientific << std::setprecision(6);
-            }
-            std::cout << '\n';
+            print_norms(row.name, validation.*(row.norms),
+                        has_previous ? &(previous.*(row.norms)) : nullptr);
         }
+        auto c_grid = planetsim::validate_c_grid_operators(mesh);
+        const auto& identities = c_grid.identities;
+        std::cout << "  c_grid_corners: " << c_grid.corner_count
+                  << " kite_cell_area: " << identities.kite_cell_area
+                  << " kite_triangle_area: " << identities.kite_triangle_area
+                  << " weight_antisymmetry: " << identities.weight_antisymmetry << '\n'
+                  << "  c_grid_coriolis_work: " << identities.coriolis_work
+                  << " curl_of_gradient: " << identities.curl_of_gradient
+                  << " perp_vorticity: " << identities.perp_vorticity << '\n';
+        for (const auto& row : c_grid_rows) {
+            print_norms(row.name, c_grid.*(row.norms),
+                        has_previous ? &(previous_c_grid.*(row.norms)) : nullptr);
+        }
+        previous_c_grid = c_grid;
         if (level == options.max_subdivision && !options.error_map_path.empty()) {
             write_error_map(options.error_map_path, mesh, validation);
         }

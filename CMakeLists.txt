@@ -46,6 +46,7 @@ add_library(PlanetSim STATIC
     sim/planet/mesh/icosphere.cpp
     sim/planet/mesh/mesh_diagnostics.cpp
     sim/planet/mesh/planet_mesh.cpp
+    sim/planet/operators/c_grid.cpp
     sim/planet/operators/finite_volume.cpp
     sim/planet/operators/operator_validation.cpp
     sim/planet/orbit/climate_calendar.cpp

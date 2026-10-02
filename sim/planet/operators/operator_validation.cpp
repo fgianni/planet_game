@@ -3,6 +3,7 @@
 #include "sim/core/fields/field.hpp"
 #include "sim/core/math/vec3d.hpp"
 #include "sim/core/random/counter_rng.hpp"
+#include "sim/planet/operators/c_grid.hpp"
 #include "sim/planet/operators/finite_volume.hpp"
 
 #include <algorithm>
@@ -88,7 +89,12 @@ struct AnalyticFields {
         return surface_gradient_of(unit, {p.x, p.z, p.y - p.z});
     }
 
-    // u = grad(g) + r x grad(h); div(u) = lap(g).
+    // lap(h) = -6 h / R^2 (h is of degree 2): the vorticity of r x grad(h).
+    [[nodiscard]] double streamfunction_laplacian(const Vec3d& unit) const noexcept {
+        return -6.0 * streamfunction(unit) / (radius_m * radius_m);
+    }
+
+    // u = grad(g) + r x grad(h); div(u) = lap(g), curl(u) · r = lap(h).
     [[nodiscard]] Vec3d vector(const Vec3d& unit) const noexcept {
         return scalar_gradient(unit) + cross(unit, streamfunction_gradient(unit));
     }
@@ -189,6 +195,12 @@ enum class CellRegion : std::uint8_t { pentagon, near_pentagon, seam, interior, 
 class NormAccumulator {
   public:
     void add(const CellGeometry& cell, CellRegion region, double error, double exact) {
+        add(cell.area_m2, cell.is_pentagon(), region, error, exact);
+    }
+
+    // A sample of weight `weight` (an area); pentagon samples enter only the
+    // pentagon maximum.
+    void add(double weight, bool pentagon, CellRegion region, double error, double exact) {
         const double abs_error = std::abs(error);
         max_exact_ = std::max(max_exact_, std::abs(exact));
         if (region == CellRegion::seam) {
@@ -196,12 +208,12 @@ class NormAccumulator {
         } else if (region == CellRegion::interior) {
             interior_max_error_ = std::max(interior_max_error_, abs_error);
         }
-        if (cell.is_pentagon()) {
+        if (pentagon) {
             pentagon_max_error_ = std::max(pentagon_max_error_, abs_error);
             return;
         }
-        error_squared_ += cell.area_m2 * error * error;
-        exact_squared_ += cell.area_m2 * exact * exact;
+        error_squared_ += weight * error * error;
+        exact_squared_ += weight * exact * exact;
         max_error_ = std::max(max_error_, abs_error);
     }
 
@@ -437,6 +449,228 @@ NondivergentFluxCheck check_nondivergent_flux(const PlanetMesh& mesh, std::size_
     }
 
     return {max_divergence / max_scale, std::abs(net) / gross};
+}
+
+CGridValidation validate_c_grid_operators(const PlanetMesh& mesh, std::size_t worker_count) {
+    const auto grid = CGridGeometry::build(mesh);
+    AnalyticFields analytic;
+    analytic.radius_m = mesh.radius_m();
+    const auto corners_unit = mesh.corners_unit();
+    const std::size_t edge_count = mesh.edge_count();
+    const std::size_t corner_count = grid.corner_count();
+    const auto edge_id = [](std::size_t index) {
+        return EdgeId{static_cast<EdgeId::value_type>(index)};
+    };
+
+    CGridValidation result;
+    result.edge_count = edge_count;
+    result.corner_count = corner_count;
+    auto& checks = result.identities;
+
+    // V1: the kites tile the cells and the dual triangles.
+    std::vector<double> kite_sum(mesh.cell_count(), 0.0);
+    for (const auto& corner : grid.corners()) {
+        for (std::size_t k = 0; k < 3U; ++k) {
+            kite_sum[corner.cell[k].to_index()] += corner.kite_area_m2[k];
+        }
+        const Vec3d& a = mesh.cell(corner.cell[0]).center_unit;
+        const Vec3d& b = mesh.cell(corner.cell[1]).center_unit;
+        const Vec3d& c = mesh.cell(corner.cell[2]).center_unit;
+        const double triangle =
+            2.0 * std::atan2(std::abs(dot(a, cross(b, c))),
+                             1.0 + dot(a, b) + dot(b, c) + dot(c, a)) *
+            mesh.radius_m() * mesh.radius_m();
+        checks.kite_triangle_area = std::max(
+            checks.kite_triangle_area, std::abs(corner.area_m2 - triangle) / corner.area_m2);
+    }
+    for (const auto& cell : mesh.cells()) {
+        checks.kite_cell_area =
+            std::max(checks.kite_cell_area,
+                     std::abs(kite_sum[cell.id.to_index()] - cell.area_m2) / cell.area_m2);
+    }
+
+    // V1: antisymmetric weights.
+    for (std::size_t index = 0; index < edge_count; ++index) {
+        const auto edges = grid.tangential_weight_edges(edge_id(index));
+        const auto weights = grid.tangential_weights(edge_id(index));
+        for (std::size_t term = 0; term < edges.size(); ++term) {
+            const auto back_edges = grid.tangential_weight_edges(edges[term]);
+            const auto back_weights = grid.tangential_weights(edges[term]);
+            double reverse = 0.0;
+            bool found = false;
+            for (std::size_t back = 0; back < back_edges.size(); ++back) {
+                if (back_edges[back] == edge_id(index)) {
+                    reverse = back_weights[back];
+                    found = true;
+                }
+            }
+            if (!found) {
+                throw std::logic_error("TRiSK weight has no reverse term");
+            }
+            checks.weight_antisymmetry =
+                std::max(checks.weight_antisymmetry, std::abs(weights[term] + reverse));
+        }
+    }
+
+    // V1: the Coriolis term does no work, and the vorticity of u⊥ is minus
+    // the kite-weighted cell divergence, for arbitrary u.
+    EdgeField<double> random_velocity(edge_count);
+    for (std::size_t index = 0; index < edge_count; ++index) {
+        random_velocity[edge_id(index)] =
+            keyed_random_unit_double(0x0611U, RandomStreamId::validation, 0,
+                                     static_cast<std::uint32_t>(index)) -
+            0.5;
+    }
+    EdgeField<double> random_perp(edge_count);
+    tangential_velocity(mesh, grid, random_velocity, random_perp, worker_count);
+    double work = 0.0;
+    double gross_work = 0.0;
+    for (std::size_t index = 0; index < edge_count; ++index) {
+        const auto& edge = mesh.edge(edge_id(index));
+        const double term = edge.length_m * edge.centroid_distance_m *
+                            random_velocity[edge_id(index)] * random_perp[edge_id(index)];
+        work += term;
+        gross_work += std::abs(term);
+    }
+    checks.coriolis_work = std::abs(work) / gross_work;
+
+    Field2D<double> random_divergence(mesh.cell_count());
+    divergence(mesh, random_velocity, random_divergence, worker_count);
+    Field2D<double> perp_vorticity(corner_count);
+    relative_vorticity(mesh, grid, random_perp, perp_vorticity, worker_count);
+    double perp_scale = 0.0;
+    double perp_error = 0.0;
+    for (std::size_t index = 0; index < corner_count; ++index) {
+        const auto& corner = grid.corners()[index];
+        double mapped = 0.0;
+        double scale = 0.0;
+        for (std::size_t k = 0; k < 3U; ++k) {
+            const auto& cell = mesh.cell(corner.cell[k]);
+            // The divergence over the kite sum, the area the weights use.
+            mapped += corner.kite_area_m2[k] * random_divergence[cell.id] * cell.area_m2 /
+                      kite_sum[cell.id.to_index()];
+            double gross = 0.0;
+            for (const auto& cell_edge : mesh.cell_edges(cell.id)) {
+                gross += std::abs(random_velocity[cell_edge.edge]) *
+                         mesh.edge(cell_edge.edge).length_m;
+            }
+            scale += corner.kite_area_m2[k] * gross / cell.area_m2;
+        }
+        perp_error = std::max(perp_error, std::abs(perp_vorticity[index] + mapped / corner.area_m2));
+        perp_scale = std::max(perp_scale, scale / corner.area_m2);
+    }
+    checks.perp_vorticity = perp_error / perp_scale;
+
+    // Analytic samples.
+    Field2D<double> scalar(mesh.cell_count());
+    for (const auto& cell : mesh.cells()) {
+        scalar[cell.id] = analytic.scalar(cell.center_unit);
+    }
+    EdgeField<double> velocity(edge_count);
+    for (std::size_t index = 0; index < edge_count; ++index) {
+        const auto& edge = grid.edges()[index];
+        velocity[edge_id(index)] = dot(analytic.vector(edge.midpoint_unit), edge.normal_unit);
+    }
+
+    // V1: the curl of a gradient.
+    EdgeField<double> scalar_gradient(edge_count);
+    normal_gradient(mesh, grid, scalar, scalar_gradient, worker_count);
+    Field2D<double> gradient_vorticity(corner_count);
+    relative_vorticity(mesh, grid, scalar_gradient, gradient_vorticity, worker_count);
+    double curl_error = 0.0;
+    double curl_scale = 0.0;
+    for (std::size_t index = 0; index < corner_count; ++index) {
+        const auto& corner = grid.corners()[index];
+        double gross = 0.0;
+        for (std::size_t k = 0; k < 3U; ++k) {
+            gross += std::abs(mesh.edge(corner.edge[k]).centroid_distance_m *
+                              scalar_gradient[corner.edge[k]]);
+        }
+        curl_error = std::max(curl_error, std::abs(gradient_vorticity[index]));
+        curl_scale = std::max(curl_scale, gross / corner.area_m2);
+    }
+    checks.curl_of_gradient = curl_error / curl_scale;
+
+    // V2: accuracy.
+    EdgeField<double> perp(edge_count);
+    tangential_velocity(mesh, grid, velocity, perp, worker_count);
+    Field2D<double> vorticity(corner_count);
+    relative_vorticity(mesh, grid, velocity, vorticity, worker_count);
+    Field2D<double> kinetic(mesh.cell_count());
+    kinetic_energy(mesh, velocity, kinetic, worker_count);
+    Field2D<double> east(mesh.cell_count());
+    Field2D<double> north(mesh.cell_count());
+    reconstruct_cell_vector(mesh, grid, velocity, east, north, worker_count);
+    Field2D<double> corner_scalar(corner_count);
+    interpolate_to_corner(grid, scalar, corner_scalar, worker_count);
+    EdgeField<double> scalar_tangential(edge_count);
+    tangential_gradient(mesh, grid, corner_scalar, scalar_tangential, worker_count);
+
+    const auto regions = classify_cells(mesh);
+    const auto excluded = [](CellRegion region) {
+        return region == CellRegion::pentagon;
+    };
+    NormAccumulator perp_norms;
+    NormAccumulator normal_gradient_norms;
+    NormAccumulator tangential_gradient_norms;
+    for (std::size_t index = 0; index < edge_count; ++index) {
+        const auto& geometry = mesh.edge(edge_id(index));
+        const auto& edge = grid.edges()[index];
+        const CellRegion first = regions[geometry.first_cell.to_index()];
+        const CellRegion second = regions[geometry.second_cell.to_index()];
+        const bool pentagon = excluded(first) || excluded(second);
+        const CellRegion region =
+            second == CellRegion::near_pentagon ? CellRegion::near_pentagon : first;
+        const double weight = 0.5 * geometry.length_m * geometry.centroid_distance_m;
+        const Vec3d exact_vector = analytic.vector(edge.midpoint_unit);
+        const Vec3d exact_gradient = analytic.scalar_gradient(edge.midpoint_unit);
+        const double exact_perp = dot(exact_vector, edge.tangent_unit);
+        perp_norms.add(weight, pentagon, region, perp[edge_id(index)] - exact_perp, exact_perp);
+        const double exact_normal = dot(exact_gradient, edge.normal_unit);
+        normal_gradient_norms.add(weight, pentagon, region,
+                                  scalar_gradient[edge_id(index)] - exact_normal, exact_normal);
+        const double exact_tangential = dot(exact_gradient, edge.tangent_unit);
+        tangential_gradient_norms.add(weight, pentagon, region,
+                                      scalar_tangential[edge_id(index)] - exact_tangential,
+                                      exact_tangential);
+    }
+
+    NormAccumulator vorticity_norms;
+    for (std::size_t index = 0; index < corner_count; ++index) {
+        const auto& corner = grid.corners()[index];
+        bool pentagon = false;
+        CellRegion region = regions[corner.cell[0].to_index()];
+        for (std::size_t k = 0; k < 3U; ++k) {
+            const CellRegion cell_region = regions[corner.cell[k].to_index()];
+            pentagon = pentagon || excluded(cell_region);
+            if (cell_region == CellRegion::near_pentagon) {
+                region = CellRegion::near_pentagon;
+            }
+        }
+        const double exact = analytic.streamfunction_laplacian(corners_unit[index]);
+        vorticity_norms.add(corner.area_m2, pentagon, region, vorticity[index] - exact, exact);
+    }
+
+    NormAccumulator kinetic_norms;
+    NormAccumulator reconstruction_norms;
+    for (const auto& cell : mesh.cells()) {
+        const CellRegion region = regions[cell.id.to_index()];
+        const Vec3d exact_vector = analytic.vector(cell.center_unit);
+        const double exact_kinetic = 0.5 * dot(exact_vector, exact_vector);
+        kinetic_norms.add(cell, region, kinetic[cell.id] - exact_kinetic, exact_kinetic);
+        reconstruction_norms.add(cell, region,
+                                 std::hypot(east[cell.id] - dot(exact_vector, cell.east_unit),
+                                            north[cell.id] - dot(exact_vector, cell.north_unit)),
+                                 length(exact_vector));
+    }
+
+    result.tangential_velocity = perp_norms.norms();
+    result.vorticity = vorticity_norms.norms();
+    result.kinetic_energy = kinetic_norms.norms();
+    result.reconstruction = reconstruction_norms.norms();
+    result.normal_gradient = normal_gradient_norms.norms();
+    result.tangential_gradient = tangential_gradient_norms.norms();
+    return result;
 }
 
 }  // namespace planetsim

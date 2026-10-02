@@ -75,4 +75,44 @@ struct NondivergentFluxCheck {
 [[nodiscard]] NondivergentFluxCheck check_nondivergent_flux(const PlanetMesh& mesh,
                                                             std::size_t worker_count = 1U);
 
+// ADR-0011 V1: discrete identities of the C-grid (task M6-01). Each is zero
+// apart from rounding.
+struct CGridIdentityChecks {
+    // max_i |Σ_v R_iv − A_i| / A_i: the kites tile every cell.
+    double kite_cell_area = 0.0;
+    // max_v |A_v − T_v| / A_v, T_v the spherical triangle of the corner's
+    // three cell centres: the kites tile every dual triangle.
+    double kite_triangle_area = 0.0;
+    // max |W_ee' + W_e'e| over all pairs: the weights are antisymmetric.
+    double weight_antisymmetry = 0.0;
+    // |Σ_e l_e d_e u_e u⊥_e| / Σ_e |l_e d_e u_e u⊥_e| for arbitrary u: the
+    // Coriolis term does no work.
+    double coriolis_work = 0.0;
+    // max_v |ζ(∇φ)_v| / max_v (Σ_e |d_e ∂_n φ_e| / A_v): curl of a gradient.
+    double curl_of_gradient = 0.0;
+    // max_v |ζ(u⊥)_v + Σ_i R_iv div(u)_i / A_v| over its scale, arbitrary u,
+    // with div taken over the kite sum Σ_v R_iv (the area the TRiSK weights
+    // use): the steady-geostrophic-mode condition (Thuburn et al., 2009).
+    double perp_vorticity = 0.0;
+};
+
+// ADR-0011 V2: accuracy of the C-grid operators on u = grad(g) + r x grad(h)
+// with velocities at the Voronoi edge midpoints. Edges are weighted by
+// l_e d_e / 2 and corners by A_v; an edge or corner touching a pentagon
+// counts as a pentagon.
+struct CGridValidation {
+    std::size_t edge_count = 0;
+    std::size_t corner_count = 0;
+    CGridIdentityChecks identities;
+    OperatorErrorNorms tangential_velocity;   // u⊥ against u · t_e
+    OperatorErrorNorms vorticity;             // ζ against lap(h) at corners
+    OperatorErrorNorms kinetic_energy;        // K against |u|² / 2 at cells
+    OperatorErrorNorms reconstruction;        // |U − u| at cells (vector)
+    OperatorErrorNorms normal_gradient;       // against grad(g) · n_e
+    OperatorErrorNorms tangential_gradient;   // of g interpolated to corners (barycentric)
+};
+
+[[nodiscard]] CGridValidation validate_c_grid_operators(const PlanetMesh& mesh,
+                                                        std::size_t worker_count = 1U);
+
 }  // namespace planetsim

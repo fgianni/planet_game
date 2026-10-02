@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-02
 - **Accepted:** 2026-10-02
+- **Amendment proposed:** 2026-10-02 — §11: V2 gates for the TRiSK operators, as measured in M6-01
 - **Milestone:** P0 / M6 (wind and Coriolis)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §6 (`AtmosphereState`), §8 (multi-rate), §9.2, §13 M6, §15.5 (zero-rotation experiment), §23, §24; Planetary Civilization Simulator — Design Record v0.9, §5.4, §15.2–15.5, §25 (M5 row: "planetary circulation direction and latitude dependence"), §28
 - **Related:** ADR-0001 (modes, partition, budget, §8 milestone mapping), ADR-0002 (mesh, operators, §4.2 advection, field layout), ADR-0003 (determinism, replay), ADR-0006 (sub-steps), ADR-0009 (implicit transport, coarse graph), ADR-0010 (layered atmosphere; its §7 M6 row)
@@ -612,3 +613,64 @@ amendment.
 - Thuburn, J., Ringler, T. D., Skamarock, W. C. and Klemp, J. B. (2009). Numerical representation of geostrophic modes on arbitrarily structured C-grids. *J. Comput. Phys.* 228.
 - Wicker, L. J. and Skamarock, W. C. (2002). Time-splitting methods for elastic models using forward time schemes. *Mon. Wea. Rev.* 130.
 - Williamson, D. L. et al. (1992). A standard test set for numerical approximations to the shallow water equations in spherical geometry. *J. Comput. Phys.* 102.
+
+## 11. Implementation record
+
+- **M6-01 (2026-10-02).** Covers §4.2, V1 and V2.
+  - `CGridGeometry` is built from the mesh, which is unchanged.
+  - Every TRiSK identity of V1 holds to 4e-16 at L2–L7.
+  - The kites tile the cells and dual triangles to 1.7e-12 at L6. That
+    residual is the rounding of the mesh's circumcentres and grows as 4ᴸ
+    (§12).
+  - Details are in `docs/tasks/M6-01-c-grid-geometry-and-operators.md`.
+
+## 12. Amendment: V2 as measured for the TRiSK operators (proposed 2026-10-02)
+
+**Finding (task M6-01).** On the analytic field `u = ∇g + r × ∇h`, L3–L7:
+
+| Operator | L6 relative L2 | L2 order L4→L5, L5→L6, L6→L7 | relative max, L4–L7 |
+|---|---|---|---|
+| Perot reconstruction | 1.7e-4 | 2.00, 2.00, 2.00 | converges (order ≥ 1) |
+| Normal gradient | 8.4e-5 | 1.99, 1.99, 1.99 | converges |
+| Tangential gradient (barycentric corners) | 2.9e-4 | 1.97, 1.98, 1.98 | converges |
+| TRiSK tangential velocity `u⊥` | 3.6e-4 | 1.89, 1.70, 1.40 | 7.6e-3 → 6.8e-3, stalls |
+| Kinetic energy | 6.2e-4 | 1.62, 1.34, 1.15 | 1.7e-2 → 1.6e-2, stalls |
+| Vorticity at corners | 5.2e-3 | 0.92, 0.93, 0.94 | 6.1e-2 → 6.2e-2, stalls |
+
+- **Where the errors are.** The maxima that stall sit in the first ring
+  of hexagons around the pentagons. The icosahedron's seams carry no more
+  error than the interior. The TRiSK perp operator and kinetic energy are
+  not consistent there, which is Peixoto's (2016) finding, the risk named
+  in §6.
+- **Why the L2 orders fall.** The pentagon rings are a fixed number of
+  cells, so as they shrink the L2 order tends to one.
+- **Vorticity.** It is first order. The circulation divided by `A_v` is
+  the mean over the dual triangle, but it is compared with the value at
+  the circumcentre, which is not the triangle's centroid.
+- **The original gate.** V2's "L2 order ≥ 1 for each" therefore holds
+  for the three consistent operators. It fails for the vorticity (0.93),
+  and for the other two it holds now but not in the limit.
+
+**Change (proposed).**
+- **Consistent operators** (reconstruction, normal and tangential
+  gradient): L2 order ≥ 1.5 and maximum order ≥ 0.9 at every step from
+  L3 to L6.
+- **TRiSK operators** (`u⊥`, kinetic energy, vorticity):
+  - L2 order ≥ 0.9 from L3 to L6;
+  - from L4 on, maxima bounded: `u⊥` ≤ 1e-2, kinetic energy ≤ 3e-2,
+    vorticity ≤ 8e-2;
+  - L6 L2 errors ≤ 5e-4, 8e-4 and 6e-3;
+  - seam maxima at most twice the interior's.
+- **Acceptability** is decided by V3. TRiSK's conservation properties (V1)
+  are exact, and what the dynamics needs is that shallow-water solutions
+  converge, not the operators pointwise. That is how ADR-0002 §9 treated
+  the two-point Laplacian. If Williamson test 2 does not converge at order
+  ≥ 1 in M6-02, the §6 fallback (Peixoto's consistent reconstruction) is
+  adopted by a further amendment.
+- **Kite-area gate.** The V1 gate becomes `1e-15 · 4ᴸ` relative.
+  - The mesh's circumcentre is the normalised cross product of two
+    differences of length h, so it is accurate to ε/h. The tiling's
+    misfit then grows as 4ᴸ: 3.7e-13 at L5, 1.7e-12 at L6.
+  - The TRiSK weights take their kite fractions over the kite sum, so
+    they stay antisymmetric to 4e-16 regardless.
+

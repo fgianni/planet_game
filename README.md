@@ -161,6 +161,17 @@ optional CSV holds per-cell normalized errors at the finest level for error
 maps. At L5→L6 the gradient, divergence and Poisson solution converge at
 second order in L2; see ADR-0002 §9 for the full record.
 
+The same command validates the C-grid of ADR-0011
+(`sim/planet/operators/c_grid.hpp`, task M6-01): velocities normal to the
+edges, vorticity at the corners, the TRiSK tangential velocity and kinetic
+energy, and the Perot reconstruction of cell vectors. It prints the discrete
+identities (antisymmetric weights, a Coriolis term that does no work, the
+steady-geostrophic-mode condition), all at rounding, and each operator's
+errors and orders. The reconstruction and gradients converge at second
+order; TRiSK's tangential velocity and kinetic energy keep a bounded error in
+the ring around each pentagon, and the vorticity is first order
+(ADR-0011 §12).
+
 ## Persistent snapshots
 
 ```bash
