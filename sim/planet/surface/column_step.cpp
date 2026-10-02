@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace planetsim {
@@ -55,11 +56,18 @@ double solve_column_surface(const ColumnSystem& system, double sink_W_m2) {
     // Both terms of f(x) = a x + r x⁴ − b are increasing, so each alone
     // overestimates the root: the smaller of the two is a start at or above it.
     double x = std::min(b / system.a, std::sqrt(std::sqrt(b / system.radiative)));
+    // The iterates fall monotonically onto the root; once a step is at the
+    // rounding level the root is reached and further iterations only
+    // repeat it (task M5-04: this loop was 38 % of a climate step).
     for (int iteration = 0; iteration < column_newton_iterations; ++iteration) {
         const double x3 = x * x * x;
         const double value = system.a * x + system.radiative * x3 * x - b;
         const double slope = system.a + 4.0 * system.radiative * x3;
-        x -= value / slope;
+        const double step = value / slope;
+        x -= step;
+        if (std::abs(step) <= 4.0 * std::numeric_limits<double>::epsilon() * x) {
+            break;
+        }
     }
     return x;
 }
