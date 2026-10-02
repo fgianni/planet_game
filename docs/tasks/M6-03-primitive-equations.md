@@ -150,7 +150,20 @@
 
   Every V5 criterion holds at L4. The surface westerlies are weak and the
   jet sits equatorward of Held–Suarez's 45°, which is plausible for three
-  layers at 440 km. The gate run (L5, N = 3 and 5, 1,000 days) is pending.
+  layers at 440 km.
+- **V5 gate, Held–Suarez at L5, N = 3,** 1,000 days with the last 800
+  averaged and τ = 8 h; 51 minutes on 8 workers:
+  - top-layer jets of 30.4 m/s at 37.5° S and 30.2 m/s at 37.5° N (gate:
+    15–45 m/s at 25–55°);
+  - the bottom layer easterly over 5–20° (−0.6 to −1.1 m/s), westerly over
+    35–55° (up to 3.2 m/s at 37.5°), and weakly easterly again poleward of
+    57° (−0.9 m/s at 62.5°), so trades, westerlies and polar easterlies;
+  - eddy kinetic energy up to 65 m²/s² in the middle layer at 37.5°;
+  - the hemispheres agree to within 0.3 m/s, and mass is exact.
+
+  From L4 to L5 the jet moves poleward (32.5° → 37.5°) and the surface
+  westerlies triple (1.0 → 3.2 m/s), towards Held–Suarez's many-level
+  solution. **V5 passes at N = 3.** The N = 5 run is pending.
 - **Determinism:** bit-identical on 1, 2 and 8 workers with Held–Suarez
   forcing and hyperviscosity.
 - **Cost:** about 2 s per simulated day at L5 with N = 3 on 8 workers, and
