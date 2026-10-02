@@ -32,9 +32,9 @@ state/fluxes rather than scripted climate modifiers; - production code
 and tests together; - do not proceed to M7 unless explicitly requested.
 
 Current milestone: **P0 / M6 --- Wind and Coriolis** (ADR-0011, accepted
-2026-10-02; amended §12). M6-01 (C-grid geometry and vector
-operators, `docs/tasks/M6-01-c-grid-geometry-and-operators.md`) is
-complete; next is M6-02 (shallow-water core).
+2026-10-02; amended §12). M6-01 (C-grid geometry and vector operators)
+and M6-02 (shallow-water core, `docs/tasks/M6-02-shallow-water-core.md`)
+are complete; next is M6-03 (primitive equations in reference mode).
 
 When starting work, first audit the repository and propose the concrete
 implementation plan for the current milestone against the specification. Then implement in

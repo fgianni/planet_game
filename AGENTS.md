@@ -48,10 +48,11 @@ and M5-04 (refit of τ₀ and D, the Earth-like preset on three layers, the
 plateau experiment, performance gates). Most recently completed task:
 [`docs/tasks/M5-04-calibration-and-close.md`](docs/tasks/M5-04-calibration-and-close.md).
 M6 (wind and Coriolis) is in progress under ADR-0011 (accepted
-2026-10-02; amended §12): task M6-01 (C-grid geometry and
-vector operators) is complete. Most recently completed task:
-[`docs/tasks/M6-01-c-grid-geometry-and-operators.md`](docs/tasks/M6-01-c-grid-geometry-and-operators.md).
-The next task is M6-02 (shallow-water core). Do not implement M7 or later
+2026-10-02, amended §12): tasks M6-01 (C-grid geometry and vector
+operators) and M6-02 (shallow-water core, Williamson tests 2 and 5) are
+complete. Most recently completed task:
+[`docs/tasks/M6-02-shallow-water-core.md`](docs/tasks/M6-02-shallow-water-core.md).
+The next task is M6-03 (primitive equations in reference mode). Do not implement M7 or later
 milestones unless explicitly requested.
 
 ## Hard rules

@@ -38,6 +38,8 @@ add_library(PlanetSim STATIC
     sim/planet/atmosphere/atmosphere.cpp
     sim/planet/climatology/monthly_climatology.cpp
     sim/planet/coordinates/local_tangent_basis.cpp
+    sim/planet/dynamics/shallow_water.cpp
+    sim/planet/dynamics/williamson_cases.cpp
     sim/planet/geology/crust.cpp
     sim/planet/geology/geology_generator.cpp
     sim/planet/geology/geology_parameters.cpp

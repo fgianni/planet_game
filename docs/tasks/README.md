@@ -23,6 +23,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [M5-03](M5-03-column-radiation-and-convection.md) | Column radiation and convection, surface coupling; sea-ice floes and leads (ADR-0010, ADR-0008 §10) | Complete |
 | [M5-04](M5-04-calibration-and-close.md) | Refit, preset switch, plateau experiment, performance gates; closes M5 (ADR-0010 §11) | Complete |
 | [M6-01](M6-01-c-grid-geometry-and-operators.md) | C-grid geometry and vector operators (ADR-0011 §4.2, V1, V2) | Complete |
+| [M6-02](M6-02-shallow-water-core.md) | Shallow-water core, Williamson tests 2 and 5 (ADR-0011 §4.3, V3; decides §12) | Complete |
 
 Completed tasks are records: they keep the specification and design versions
 they were written against, even after those files have left the tree. Read

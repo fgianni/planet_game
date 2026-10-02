@@ -623,6 +623,15 @@ amendment.
     residual is the rounding of the mesh's circumcentres and grows as 4ᴸ
     (§12).
   - Details are in `docs/tasks/M6-01-c-grid-geometry-and-operators.md`.
+- **M6-02 (2026-10-02).** Covers the one-layer core of §4.3, V3 and V11.
+  - Williamson test 2 converges at second order in L2, with an error of
+    3.5e-5 at L6 (gate 1e-3). Its maximum error stalls at 5e-4, as §12
+    predicted. **This decides §12: TRiSK is kept.**
+  - Test 5 conserves mass exactly and energy to 5e-8 over 15 days at L5.
+  - The energy error is RK3's, of third order in Δt.
+  - The hyperviscosity constant follows the measured fastest mode of the
+    vector Laplacian (λ d̄² ≈ −29, rotational), not the scalar 8.
+  - Details are in `docs/tasks/M6-02-shallow-water-core.md`.
 
 ## 12. Amendment: V2 as measured for the TRiSK operators (accepted 2026-10-02)
 

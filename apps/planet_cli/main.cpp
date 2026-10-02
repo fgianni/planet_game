@@ -5,6 +5,8 @@
 #include "sim/core/serialization/history_store.hpp"
 #include "sim/core/serialization/snapshot_file.hpp"
 #include "sim/planet/atmosphere/atmosphere.hpp"
+#include "sim/planet/dynamics/shallow_water.hpp"
+#include "sim/planet/dynamics/williamson_cases.hpp"
 #include "sim/planet/mesh/icosphere.hpp"
 #include "sim/planet/mesh/mesh_diagnostics.hpp"
 #include "sim/planet/operators/operator_validation.hpp"
@@ -166,7 +168,9 @@ void print_usage(std::ostream& output) {
               " [--command TICK,TYPE,PAYLOAD]... [--workers W] [--manifest FILE.prun]"
               " [--snapshot FILE.psnap] [--min-years-per-minute R] [--max-seconds S]\n"
            << "    commands: set_mode,climate|reference; set_solar_luminosity_factor,F\n"
-           << "  planet_cli replay FILE.prun [--workers W]\n";
+           << "  planet_cli replay FILE.prun [--workers W]\n"
+           << "  planet_cli shallow-water [--case 2|5] [--subdivision LEVEL] [--days D]"
+              " [--workers W] [--damping-hours H] [--reference-subdivision LEVEL]\n";
 }
 
 [[nodiscard]] std::uint32_t parse_subdivision(std::string_view text) {
@@ -994,6 +998,147 @@ int run_operators(const OperatorOptions& options) {
     return 0;
 }
 
+struct ShallowWaterOptions {
+    int test_case = 2;
+    std::uint32_t subdivision = 5;
+    double days = 5.0;
+    std::size_t workers = 1;
+    std::optional<double> damping_hours;
+    std::optional<std::uint32_t> reference_subdivision;
+};
+
+[[nodiscard]] ShallowWaterOptions parse_shallow_water_options(int argument_count,
+                                                              char** arguments) {
+    ShallowWaterOptions options;
+    for (int index = 2; index < argument_count; ++index) {
+        const std::string_view argument{arguments[index]};
+        if (++index >= argument_count) {
+            throw std::invalid_argument(std::string(argument) + " requires a value");
+        }
+        const std::string_view value{arguments[index]};
+        if (argument == "--case") {
+            options.test_case = static_cast<int>(parse_unsigned(value, "case"));
+            if (options.test_case != 2 && options.test_case != 5) {
+                throw std::invalid_argument("shallow-water cases are 2 and 5");
+            }
+        } else if (argument == "--subdivision") {
+            options.subdivision = parse_subdivision(value);
+        } else if (argument == "--days") {
+            options.days = parse_double(value, "days");
+        } else if (argument == "--workers") {
+            options.workers = static_cast<std::size_t>(parse_unsigned(value, "workers"));
+        } else if (argument == "--damping-hours") {
+            options.damping_hours = parse_double(value, "damping hours");
+        } else if (argument == "--reference-subdivision") {
+            options.reference_subdivision = parse_subdivision(value);
+        } else {
+            throw std::invalid_argument("unknown shallow-water option: " + std::string(argument));
+        }
+    }
+    if (!(options.days > 0.0) || options.workers == 0U) {
+        throw std::invalid_argument("days and workers must be positive");
+    }
+    return options;
+}
+
+// The generic axis of test 2: Williamson's α tilt, in a direction shared
+// with no symmetry axis of the icosahedron.
+[[nodiscard]] planetsim::Vec3d shallow_water_case_2_axis() {
+    return {std::sin(0.7) * std::cos(0.4), std::sin(0.7) * std::sin(0.4), std::cos(0.7)};
+}
+
+struct ShallowWaterRun {
+    planetsim::PlanetMesh mesh;
+    planetsim::ShallowWaterState state;
+    planetsim::ShallowWaterDiagnostics initial;
+    planetsim::ShallowWaterDiagnostics final;
+    planetsim::ThicknessErrors errors;
+    std::size_t steps = 0;
+    double seconds = 0.0;
+};
+
+[[nodiscard]] ShallowWaterRun run_shallow_water_case(const ShallowWaterOptions& options,
+                                                     std::uint32_t subdivision) {
+    ShallowWaterRun run{planetsim::make_icosphere(subdivision, planetsim::williamson_radius_m),
+                        {}, {}, {}, {}, 0, 0.0};
+    const auto& mesh = run.mesh;
+    const auto grid = planetsim::CGridGeometry::build(mesh);
+    auto test = options.test_case == 2
+                    ? planetsim::williamson_case_2(mesh, grid, shallow_water_case_2_axis())
+                    : planetsim::williamson_case_5(mesh, grid);
+    if (options.damping_hours) {
+        test.parameters.hyperviscosity_m4_s =
+            planetsim::hyperviscosity_for_damping_time(mesh, *options.damping_hours * 3600.0);
+    }
+    const planetsim::ShallowWaterModel model(mesh, grid, test.parameters, test.bottom_height_m);
+    planetsim::SubstepRule rule;
+    rule.wave_speed_m_s = options.test_case == 2 ? 180.0 : 250.0;
+    rule.max_wind_m_s = options.test_case == 2 ? 60.0 : 60.0;
+
+    run.state = test.initial;
+    run.initial = model.diagnose(run.state, options.workers);
+    const auto start = std::chrono::steady_clock::now();
+    run.steps = model.advance(run.state, options.days * planetsim::williamson_day_s, rule,
+                              options.workers);
+    run.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    run.final = model.diagnose(run.state, options.workers);
+    run.errors =
+        planetsim::thickness_errors(run.mesh, run.state.thickness_m, test.initial.thickness_m);
+    return run;
+}
+
+int run_shallow_water(const ShallowWaterOptions& options) {
+    const auto run = run_shallow_water_case(options, options.subdivision);
+    const auto relative = [](double final, double initial) {
+        return (final - initial) / std::abs(initial);
+    };
+    std::cout << std::setprecision(6) << std::scientific << "case: " << options.test_case
+              << " subdivision: " << options.subdivision << " days: " << options.days << '\n'
+              << "steps: " << run.steps
+              << " dt_s: " << options.days * planetsim::williamson_day_s /
+                                  static_cast<double>(run.steps)
+              << " wall_s: " << run.seconds << '\n'
+              << "relative_mass_change: " << relative(run.final.mass_m3, run.initial.mass_m3)
+              << '\n'
+              << "relative_energy_change: "
+              << relative(run.final.energy_J(), run.initial.energy_J()) << '\n'
+              << "relative_potential_enstrophy_change: "
+              << relative(run.final.potential_enstrophy, run.initial.potential_enstrophy) << '\n'
+              << "max_wind_m_s: " << run.final.max_wind_m_s << '\n';
+    if (options.test_case == 2) {
+        std::cout << "thickness_l2_error: " << run.errors.l2
+                  << " thickness_linf_error: " << run.errors.linf << '\n';
+    }
+    if (options.reference_subdivision) {
+        // The difference from a run on another level, sampled at the nearest
+        // reference cell: a self-convergence measure where no exact solution
+        // exists (test 5).
+        const auto reference = run_shallow_water_case(options, *options.reference_subdivision);
+        double error_squared = 0.0;
+        double exact_squared = 0.0;
+        for (const auto& cell : run.mesh.cells()) {
+            std::size_t nearest = 0;
+            double best = -2.0;
+            for (const auto& candidate : reference.mesh.cells()) {
+                const double alignment = planetsim::dot(candidate.center_unit, cell.center_unit);
+                if (alignment > best) {
+                    best = alignment;
+                    nearest = candidate.id.to_index();
+                }
+            }
+            const double difference =
+                run.state.thickness_m[cell.id] - reference.state.thickness_m[nearest];
+            error_squared += cell.area_m2 * difference * difference;
+            exact_squared += cell.area_m2 * reference.state.thickness_m[nearest] *
+                             reference.state.thickness_m[nearest];
+        }
+        std::cout << "reference_subdivision: " << *options.reference_subdivision
+                  << " thickness_l2_difference: " << std::sqrt(error_squared / exact_squared)
+                  << '\n';
+    }
+    return 0;
+}
+
 int run_mesh(const MeshOptions& options) {
     const auto start = std::chrono::steady_clock::now();
     const auto mesh = planetsim::make_icosphere(options.subdivision, options.radius_m);
@@ -1778,6 +1923,9 @@ int main(int argument_count, char** arguments) {
         }
         if (command == "run") {
             return run_scenario(parse_run_options(argument_count, arguments));
+        }
+        if (command == "shallow-water") {
+            return run_shallow_water(parse_shallow_water_options(argument_count, arguments));
         }
         if (command == "replay") {
             return run_replay(argument_count, arguments);

@@ -172,6 +172,24 @@ order; TRiSK's tangential velocity and kinetic energy keep a bounded error in
 the ring around each pentagon, and the vorticity is first order
 (ADR-0011 §12).
 
+## Shallow-water core
+
+```bash
+./build/planet_cli shallow-water --case 2 --subdivision 5 --days 5 --workers 4
+./build/planet_cli shallow-water --case 5 --subdivision 5 --days 15 \
+    --reference-subdivision 6
+```
+
+The horizontal core of the winds (ADR-0011, task M6-02) is TRiSK's
+shallow-water model on the C-grid, stepped by RK3. It runs Williamson et
+al.'s (1992) test 2 (steady geostrophic flow about a tilted axis, against
+its exact solution) and test 5 (flow over an isolated mountain, against a
+run on a finer mesh). It reports the step count, mass, energy and
+potential-enstrophy changes, and the thickness errors. Mass is exact, test 2
+converges at second order in L2 (3.5e-5 at L6 after 5 days), and the energy
+error is RK3's alone. `--damping-hours H` adds ∇⁴ hyperviscosity that damps
+the grid-scale mode in about H hours.
+
 ## Persistent snapshots
 
 ```bash
