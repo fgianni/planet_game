@@ -1,6 +1,7 @@
 # Task M6-03 — Primitive equations in reference mode
 
 - **Milestone:** P0 / M6 (third task; M6-01 and M6-02 are complete)
+- **Status:** complete (2026-10-02)
 - **Scope:** ADR-0011 §4.3 in two steps.
   - **Step A, the dry dynamical core.** N σ layers on the C-grid with
     prognostic `p_s`; Held–Suarez forcing; V4, V5, V9 and V11 for the core.
@@ -163,7 +164,20 @@
 
   From L4 to L5 the jet moves poleward (32.5° → 37.5°) and the surface
   westerlies triple (1.0 → 3.2 m/s), towards Held–Suarez's many-level
-  solution. **V5 passes at N = 3.** The N = 5 run is pending.
+  solution. **V5 passes at N = 3.**
+- **V5 gate, Held–Suarez at L5, N = 5,** with the same settings and the
+  150 m/s wind bound of ADR-0011 §13; 2.0 hours on 6 workers:
+  - top-layer jets of 34.7 m/s at 47.5° S and 34.9 m/s at 47.5° N;
+  - bottom layer: trades of −2.8 to −3.9 m/s over 7–20°, westerlies up to
+    8.1 m/s at 47.5°, and polar easterlies of −1 to −2 m/s poleward of
+    67°;
+  - eddy kinetic energy up to 150 m²/s² in the middle layer at 42–47°;
+  - mass changes of 4e-16.
+
+  This is close to Held and Suarez's many-level solution, whose jet sits
+  near 45° at about 30 m/s over surface westerlies of about 8 m/s. **V5
+  passes at N = 5.** Five layers place the jet and the surface winds where
+  many-level models do; three layers give the same pattern, coarser.
 - **Determinism:** bit-identical on 1, 2 and 8 workers with Held–Suarez
   forcing and hyperviscosity.
 - **Cost:** about 2 s per simulated day at L5 with N = 3 on 8 workers, and

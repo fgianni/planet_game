@@ -190,6 +190,36 @@ converges at second order in L2 (3.5e-5 at L6 after 5 days), and the energy
 error is RK3's alone. `--damping-hours H` adds ∇⁴ hyperviscosity that damps
 the grid-scale mode in about H hours.
 
+## Winds
+
+```bash
+./build/planet_cli dynamics --test held-suarez --subdivision 5 --layers 5 \
+    --days 1000 --average-days 800 --damping-hours 8
+./build/planet_cli dynamics --test rest --subdivision 5 --lapse-rate 6.5 \
+    --orography-step 800
+./build/planet_cli reference --subdivision 4 --days 365 --average-days 300
+```
+
+Reference mode resolves the winds (ADR-0011, task M6-03).
+- **The core.** The hydrostatic primitive equations on the atmosphere's σ
+  layers and the C-grid, with surface pressure evolving and RK3 steps
+  within each 10-minute step. Its vertical discretisation conserves total
+  energy exactly in space.
+- **What it sees.** The winds see the terrain smoothed until neighbouring
+  cells differ by at most 800 m; the column physics keeps the true heights.
+  They feel bulk surface drag and grid-scale hyperviscosity, whose kinetic
+  energy returns as heat.
+- **State.** They live in the fast state, the first field there. Climate
+  mode releases them, and they are never saved.
+- **`dynamics`** runs the dry benchmarks. Held–Suarez at L5 with five layers
+  gives 35 m/s jets at 47° over trades, mid-latitude westerlies of 8 m/s
+  and polar easterlies, none of them imposed.
+- **`reference`** runs the Earth-like planet with its physics. Mass is
+  exact, and once spun up the energy drifts by 4e-8 per year.
+
+Climate mode still carries heat by diffusion; its balanced circulation is
+the next task (M6-04).
+
 ## Persistent snapshots
 
 ```bash

@@ -633,6 +633,23 @@ amendment.
   - The hyperviscosity constant follows the measured fastest mode of the
     vector Laplacian (λ d̄² ≈ −29, rotational), not the scalar 8.
   - Details are in `docs/tasks/M6-02-shallow-water-core.md`.
+- **M6-03 (2026-10-02).** Covers §4.3, V4–V6, V9 in part and V11.
+  - **Energy.** The vertical discretisation conserves total energy exactly
+    in space, to 1e-17, including the heat returned by dissipation.
+  - **V4.** An isothermal atmosphere at rest stays at rest to 8e-11 m/s;
+    the logarithmic edge θ̂ is what makes it exact.
+  - **V5, Held–Suarez at L5.**
+    - With N = 3: jets of 30 m/s at 37.5° over trades, westerlies and
+      polar easterlies.
+    - With N = 5: jets of 35 m/s at 47.5°, surface westerlies of 8 m/s and
+      trades of −4 m/s, close to the many-level benchmark.
+  - **V6.** Reference mode on the Earth-like planet conserves mass to
+    6e-15. After spin-up, energy drifts by 4e-8 per year. The spin-up from
+    rest costs 9e-5 of the energy in its first month; M6-04's balanced
+    start removes it.
+  - Amendment §13 records the smoothed orography and the 150 m/s wind
+    bound.
+  - Details are in `docs/tasks/M6-03-primitive-equations.md`.
 
 ## 12. Amendment: V2 as measured for the TRiSK operators (accepted 2026-10-02)
 
