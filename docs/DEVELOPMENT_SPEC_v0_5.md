@@ -1,12 +1,12 @@
 # Planetary Civilization Simulator --- Development Specification
 
-Version: 0.4 (reconciled with design v0.9 and accepted ADRs 0001--0005 in
+Version: 0.5 (reconciled with design v1.0 and accepted ADRs 0001--0011 in
 `docs/decisions/`)\
 Purpose: implementation contract for Codex / Claude Code\
 Primary target: PC/Linux, C++20 + Godot 4\
-Current phase: P0 --- Living Planet (M0 through M3 complete)
+Current phase: P0 --- Living Planet (M0 through M5 complete, M6 in progress)
 
-Design document: `docs/planetary_civilization_simulator_design_v0_9.docx`.
+Design document: `docs/planetary_civilization_simulator_design_v1_0.docx`.
 Accepted decision records take precedence over this specification where they
 conflict.
 
@@ -14,8 +14,29 @@ Decision records live in one directory, `docs/decisions/`, with an index in
 `docs/decisions/README.md`; superseded records are kept under
 `docs/decisions/archive/`.
 
-What is new in v0.4, relative to v0.3 --- all of it from design v0.9
-sections 36 and 37, which v0.3 predates:
+What is new in v0.5, relative to v0.4 --- all of it from design v1.0
+sections 8.4 and 38, which v0.4 predates:
+
+- **the player's identity** (design v1.0 §8.4): the player is the civilization
+  acting through its current government. Credibility and promises belong to
+  each administration; an election loss continues the game (section 29.6.7);
+- **a population and society model** (design v1.0 §38): regions, cohorts with
+  inequality inside them, demography, consumption, opinion dynamics, media,
+  political actors, a promise ledger, the implementation gap, mobilisation,
+  elections and climate perception, with starting equations (section 29);
+- **the exposure interface** (section 29.4): the one read-only path from the
+  planet to the population, and the part P0 must leave room for;
+- **three new module directories and dependency rules** (sections 2, 3, 29.2);
+- **seven society phases, S1 to S7**, mapped onto P1, P3 and P4, each with
+  headless acceptance experiments (sections 29.1, 29.12);
+- civilization-side loops through people (section 11.1, loops 27--31);
+- three decision records required before the code lands (section 26.1);
+- a traceability map from design v1.0 (section 28.1).
+
+Nothing in v0.5 is P0 work. Section 19 is unchanged in that respect.
+
+What v0.4 added, relative to v0.3 --- all of it from design v0.9
+sections 36 and 37 --- and which still stands:
 
 - **fast local loops** (design v0.9 §36): every civilization action must have a
   local, visible, largely reversible consequence, and that speed must come
@@ -39,8 +60,8 @@ sections 36 and 37, which v0.3 predates:
 - behavioural acceptance experiments for all of the above (section 23.1);
 - a traceability map from design v0.9 to this specification (section 28).
 
-Four items require decision records before the code lands; they are listed in
-section 26.
+Four items required decision records before the code lands; they are listed
+in section 26.1.
 
 What v0.3 added, relative to v0.2, and which still stands:
 
@@ -109,7 +130,12 @@ PlanetSim -X-> Godot
 Physics   -X-> UI
 Climate   -X-> Population entities
 Core      -X-> Domain modules
+Population / society / government -X-> planetary solver arrays
 ```
+
+The last rule is the mirror of the third: the population reads the planet
+only through `ExposureState` and reaches it only through the civilization
+flux interface of section 18 (section 29.2).
 
 Godot may: - submit commands; - request/read snapshots; - interpolate
 snapshots for rendering; - visualize physical fields.
@@ -155,6 +181,7 @@ planet_game/
 │   ├── carbon/
 │   ├── observation/
 │   ├── population/
+│   ├── society/
 │   ├── economy/
 │   ├── energy/
 │   ├── infrastructure/
@@ -353,6 +380,13 @@ ConsequenceLedger   per-region fast-loop changes and their attributed causes
 projection run is an ordinary simulation with a different initial condition,
 not a second physics. It is **never** written back into `SlowState`.
 
+The population and society state of section 29.3 is different: it is
+authoritative and must be snapshotted, but it is not planetary state either.
+It lives in a separate `SocietyState` container outside `PlanetState`, under
+the same registry, snapshot and migration rules (ADR-0012, section 26.1).
+`ExposureState` (section 29.4) is derived from `SlowState` and is not
+snapshotted.
+
 Representative state:
 
 ``` cpp
@@ -525,7 +559,9 @@ Conceptual cadence:
 -   vegetation: days to months;
 -   carbon reservoirs: days to months;
 -   later economy: days;
--   later population/politics/research: months to years.
+-   later population/politics/research: months to years. The society step
+    runs once per climate sub-step, after the planetary sub-step, with
+    quarterly and yearly processes inside it (section 29.5).
 
 The scheduler must make subsystem cadence explicit.
 
@@ -945,6 +981,22 @@ not be implemented as modifiers on planetary state. From design v0.9 sections
 Loops 23, 24 and 26 are the ones that make adaptation a genuine strategy
 rather than a free repair, and 24 must emerge from the water stocks of
 section 9.10 rather than from a scripted reveal.
+
+From design v1.0 section 38 (section 29):
+
+27. promises -> raised expectations -> unmet expectations -> grievance ->
+    unrest (the J-curve; overpromising feeds future anger);
+28. broken promise exposed -> credibility lost -> statements weaker ->
+    harder to win support for the next policy (trust asymmetry);
+29. efficiency gain -> cheaper service -> more use -> part of the saving lost
+    (rebound; Jevons when the elasticity exceeds one);
+30. slow warming -> generational baseline shift -> lower perceived risk ->
+    delayed response (the shifting baseline);
+31. economic stress -> climate salience crowded out -> policy delay ->
+    more warming -> more stress (the finite pool of worry).
+
+All five must emerge from the equations of section 29.6; none may be a
+scripted modifier, and each has an acceptance row in section 29.12.
 
 ## 12. Coupling registry rule
 
@@ -1692,6 +1744,9 @@ resource conditions
 
 Civilization code must not command desired climate outcomes.
 
+The population consumes these consequences through `ExposureState`, a
+per-region derived aggregate defined in section 29.4.
+
 ### 18.1 Adaptation
 
 Design v0.9 section 37.4 makes adaptation a full strategy. The architectural
@@ -1763,6 +1818,11 @@ them:
 -   staging of tipping events --- camera, pause, newspaper (section 13.3).
     The detection statistics are P0 diagnostics; the staging is not;
 -   scoring and endings based on living conditions (section 18.1).
+
+From design v1.0, the whole population and society model of section 29 is
+P1 (phases S1 and S2) or later. P0's only obligations toward it are not to
+foreclose the exposure fields of section 29.4, the immutable cell-to-region
+map, and a scheduler slot after the planetary sub-step.
 
 ## 20. Development workflow for an AI coding agent
 
@@ -1977,7 +2037,13 @@ question is cheap there and expensive in C++:
 
 ## 26. Current implementation status and outstanding migration tasks
 
-Status as of this revision (2026-09-29): M0 through M3 complete; the ADR
+Status as of this revision (2026-10-04): M0 through M5 complete; M6 in
+progress, with tasks M6-01 (C-grid geometry and operators), M6-02
+(shallow-water core) and M6-03 (primitive equations, winds in reference
+mode) complete; climate mode has no winds yet. Task-level status is kept in
+`docs/tasks/README.md`, which takes precedence over the history below.
+
+Status at v0.4 (2026-09-29): M0 through M3 complete; the ADR
 migration (integer tick clock, dual mesh, field registry, keyed RNG, aligned SoA fields,
 `Field3D` layer-major layout, deterministic cell blocks, recursive cell
 ordering, `-ffp-contract=off`, presentation snapshot schema 2) is applied.
@@ -2050,7 +2116,7 @@ Foundation work completed before M2 terrain starts (task
 7.  ~~Consolidate the two decision-record directories and add an index.~~
     Done: `docs/decisions/` with `README.md` and `archive/`.
 
-### 26.1 Decision records required by design v0.9
+### 26.1 Decision records required by designs v0.9 and v1.0
 
 None of these blocks M2 terrain. All of them block the milestone named.
 
@@ -2075,6 +2141,23 @@ None of these blocks M2 terrain. All of them block the milestone named.
     `EstimatedState` field-identity rule of section 6 should be settled before
     the field set grows further.*
 
+Decision records required by design v1.0. None blocks P0.
+
+5.  **ADR-0012: society state, regions and snapshots** (sections 6, 29.3,
+    29.4). The `SocietyState` container and its partition, the field-id range
+    for civilization fields, the cell-to-region map and where it lives,
+    `ExposureState` as derived data, and the extension of the
+    knowledge-has-no-physical-effect assertion to society state.
+    *Blocks S1.*
+6.  **ADR-0013: cohort model** (sections 29.3, 29.5, 29.6.1--29.6.4). Social
+    groups and age bands, append-only group creation, the income-band
+    representation, the society step order and its RNG streams, and the
+    parameter-file format with provenance. *Blocks S1.*
+7.  **ADR-0014: player commands, statements and the promise ledger**
+    (sections 29.6.6, 29.6.7, 29.9, 29.10). Command validation, what makes a
+    promise measurable, administrations and what carries over between them,
+    and how the latent ledger of hidden gaps is released. *Blocks S4.*
+
 ### 26.2 Work introduced by design v0.9
 
 | Item | Section | Phase |
@@ -2089,6 +2172,27 @@ None of these blocks M2 terrain. All of them block the milestone named.
 | Knowledge-stage unlock tree | 17.1 | P1 |
 | Adaptation measures beyond irrigation | 18.1 | P2--P3 |
 | Event staging: pause, camera, newspaper | 13.3 | P2 |
+
+### 26.3 Work introduced by design v1.0
+
+| Item | Section | Phase |
+|---|---|---|
+| Cell-to-region map built with the mesh-derived data | 29.3 | P0 obligation (do not foreclose) |
+| `ExposureState` aggregation | 29.4 | P1, S1 |
+| Society scheduler slot | 8, 29.5 | P1, S1 |
+| Cohorts, demography, migration, education | 29.3, 29.6.1--29.6.2 | P1, S1 |
+| Needs, expectations, consumption, adoption | 29.6.3--29.6.4 | P1, S2 |
+| Opinion network, salience, memory, misinformation | 29.6.5 | P3, S3 |
+| Statements, actors, credibility, promise ledger, implementation | 29.6.6--29.6.7, 29.8--29.10 | P3, S4 |
+| Mobilisation, support, elections, migration under stress | 29.6.8--29.6.9 | P3, S5 |
+| Climate perception | 29.6.10 | P3, S6 |
+| Representative citizens, promise tracker, cohort map | 29.7; design v1.0 §38.13 | P3, presentation |
+| Other nations | 29.1 | P4, S7 |
+
+The gameplay prototype (section 25) is the cheap place to test the credibility
+mechanic before S4 is built in C++: whether players notice the gap between
+their words and deeds, and whether trust asymmetry feels fair rather than
+punitive.
 
 ## 27. Open questions
 
@@ -2123,6 +2227,22 @@ New from design v0.9:
     now that the projection ensemble also wants compute (section 7.3)? The
     argument in section 7.1 for full resolution still holds; the argument for
     a coarser *projection* does not extend to it.
+
+New from design v1.0:
+
+-   How many regions and social groups are needed before the population
+    feels alive, and where does more detail stop being readable (design v1.0
+    §38.2)? Start from 30 regions and 6 groups.
+-   How strong should the trust asymmetry be? The default ratio of 4 in
+    section 29.6.7 must not make honest but slow policies, such as research,
+    unplayable. Prototype question first.
+-   Should regime type evolve in the first society release, or stay fixed per
+    scenario? Current position: fixed (section 29.13).
+-   How are identity groups and value change modelled without caricature, and
+    without making one opinion the only rational one? The last row of
+    section 29.12 is the first guard; playtests are the second.
+-   Should some scenarios lock the player into one government, with an
+    election loss as defeat (design v1.0 §19)?
 
 ## 28. Traceability: design v0.9 to this specification
 
@@ -2169,3 +2289,525 @@ mandatory full-resolution counterfactual (7.1) split the ADR-0001 budget in
 half; the projection ensemble (7.2) adds N + 1 forward runs per report
 interval on top. Section 7.3 is where that gets resolved, and it is the
 largest single risk this revision introduces.
+
+### 28.1 Design v1.0 to this specification
+
+Design v1.0 added section 38, rewrote section 8.4, extended sections 7, 16,
+18 and 19, and added a revision note (section 39).
+
+| Design v1.0 | Requirement | Specification |
+|---|---|---|
+| 8.4 | player is the civilization acting through its government | 29.6.7; 29.9 |
+| 7 | cohorts, inequality, demography, urbanization, consumption | 29.3; 29.6.1--29.6.4 |
+| 16 | S1--S2 in P1; S3--S6 in P3; S7 in P4 | 29.1; 26.3 |
+| 38.1 | cohorts not agents; values slow, opinions fast | 29.3; 29.5 |
+| 38.1 | legitimate priorities; fictional identities | 29.12 last row; 29.13 |
+| 38.1 | population reads the planet; planet never reads it | 2; 29.2; 29.4 |
+| 38.2 | social groups, age bands, regions, income bands | 29.3 |
+| 38.2 | representative citizens are presentation only | 29.7 |
+| 38.3 | cohort state layers | 29.3 table |
+| 38.4 | demographic transition, urbanization, education, health | 29.6.1; 29.6.2 |
+| 38.5 | needs, expectations, consumption, adoption, rebound, lock-in | 29.6.3; 29.6.4 |
+| 38.6 | Friedkin--Johnsen, bounded confidence, two-step flow | 29.6.5 |
+| 38.6 | misinformation, collective memory, identity | 29.6.5 |
+| 38.7 | political actors as rule-based agents | 29.8 |
+| 38.8 | statements, deeds, visibility, credibility | 29.6.6; 29.6.7; 29.9 |
+| 38.8 | implementation gap, promise ledger, trust asymmetry | 29.6.7; 29.10 |
+| 38.8 | press freedom and censorship | 29.6.7 (latent ledger) |
+| 38.8 | change of government | 29.6.7; 29.6.9 |
+| 38.9 | exit, voice, loyalty; thresholds; Easton support | 29.6.2; 29.6.8 |
+| 38.9 | elections; regime fixed per scenario; bottom-up adaptation | 29.6.9; 29.13; 18.1 |
+| 38.10 | experience, shifting baseline, worry budget, distance, identity | 29.6.10; 29.6.5 |
+| 38.11 | other nations | 29.1 (S7) |
+| 38.12 | coupling and cadence | 29.4; 29.5 |
+| 38.13 | legibility, calibration, balancing hooks | 29.7; 29.11 |
+| 38.14 | seven phases | 29.1 |
+| 38.15 | stylised-fact validation | 29.12 |
+| 18, 19 register and questions | four decisions; four open questions | 26.1; 27 |
+
+## 29. Population and society
+
+Design v1.0 section 38 adds a population model grounded in sociology,
+political science and climate psychology, and settles the player's identity
+(design v1.0 §8.4): the player is the civilization acting through its current
+government. This section is the implementation contract for it.
+
+None of it is P0 work (section 19). It is specified now for two reasons:
+P1 begins with phases S1 and S2, and P0 must not foreclose them. The exposure
+interface (section 29.4), the region map and the scheduler slot (section 29.5)
+are the parts P0 has to leave room for.
+
+### 29.1 Phases
+
+| Phase | Content | Gameplay stage | Blocked by |
+|---|---|---|---|
+| S1 Foundation | Regions, cohorts, demography, urbanization, education, inequality inside cohorts | P1 | ADR-0012, ADR-0013 |
+| S2 Economy and behaviour | Needs and expectations, consumption, technology adoption, rebound | P1 | S1; economy of P1 |
+| S3 Opinion | Influence network, issues and salience, identity, misinformation, collective memory | P3 | S2 |
+| S4 Politics | Statements and media, political actors, promise ledger, implementation gap, credibility | P3 | S3; ADR-0014 |
+| S5 Responses | Protest thresholds, support stocks, elections, migration, bottom-up adaptation | P3 | S4 |
+| S6 Climate perception | Experience-based risk, shifting baselines, worry budget, health | P3 | S5; knowledge stages of section 17.1 |
+| S7 International | Other nations, refugees, trade shocks, climate agreements | P4 | S6; other civilizations |
+
+S2 deliberately comes before any politics: once cohorts consume, the planet
+receives real demand-driven fluxes from society (section 18) before opinion
+exists. Every phase ends with its acceptance experiments of section 29.12
+passing headless.
+
+### 29.2 Module boundaries
+
+``` text
+sim/population/   regions, cohorts, demography, migration, education,
+                  needs, expectations, consumption, adoption, perception
+sim/society/      issues, influence network, opinion dynamics, media,
+                  political actors, collective memory, mobilisation
+sim/government/   administrations, credibility, promise ledger,
+                  implementation capacity, elections, regime state
+```
+
+Dependencies, added to the forbidden list of section 2:
+
+``` text
+Climate / planetary solvers  -X-> population, society, government
+population/society/government -X-> planetary solver arrays
+population  ---> ExposureState (read only, section 29.4), economy outputs
+society     ---> population
+government  ---> society, population; emits commands to economy and
+                 infrastructure, which emit the fluxes of section 18
+Presentation (representative citizens) -X-> any authoritative state
+```
+
+The only path from society to the planet is the civilization flux interface
+of section 18. A cohort never writes a planetary field; its consumption
+becomes demand, the economy turns demand into activity, and activity becomes
+emissions, land use and water withdrawal.
+
+### 29.3 State
+
+**Regions.** A region is a fixed, contiguous set of surface cells defined by
+the scenario at construction (30 to 50 for Industrial Dawn). The cell-to-region
+map is immutable and stored with the mesh-derived data; region order is the
+order of the region's lowest cell id, so it is independent of thread count.
+
+**Cohorts.** `CohortId = (region, social_group, age_band)`, stored densely in
+structure-of-arrays order with region outermost. Social groups are scenario
+data (design v1.0 §38.2 lists the Industrial Dawn set) and may be appended at
+run time when the economy creates a new group; an appended group gets a new
+index, never a reused one. Age bands are young (0--19), working (20--59) and
+old (60+).
+
+Every cohort carries the following. Population counts are `double` because
+they are a conserved budget; the rest is `float`.
+
+| Field | Shape | Units / range | Cadence | Notes |
+|---|---|---|---|---|
+| `population` | cohort | persons, ≥ 0 | yearly, migration monthly | conserved budget (29.6.1) |
+| `income_share` | cohort × 5 quantile bands | sums to 1 | yearly | inequality inside the cohort |
+| `mean_income` | cohort | currency per capita per year | quarterly | from the economy |
+| `employment_rate` | cohort | 0--1 | quarterly | |
+| `literacy` | cohort | 0--1 | yearly | |
+| `need_satisfaction` | cohort × band × need | 0--1 | quarterly | needs listed in 29.6.3 |
+| `expectation` | cohort × band × need | 0--1.5 | quarterly | may exceed what is available |
+| `values` | cohort × 3 axes | −1 to 1 | generational | Schwartz / Inglehart axes |
+| `identity_weight` | cohort × identity | 0--1 | generational | fictional identities only |
+| `opinion` | cohort × issue | −1 to 1 | monthly | position |
+| `salience` | cohort × issue | sums to 1 | monthly | finite pool of worry |
+| `anchor_opinion` | cohort × issue | −1 to 1 | generational | Friedkin--Johnsen prior |
+| `credibility` | cohort × administration | 0--1 | monthly | current administration only is live |
+| `politician_trust` | cohort | 0--1 | monthly | general trust, carried across administrations |
+| `specific_support` | cohort | 0--1 | monthly | Easton |
+| `diffuse_support` | cohort | 0--1 | yearly | Easton |
+| `grievance` | cohort | ≥ 0 | monthly | relative deprivation |
+| `organisation` | cohort | 0--1 | yearly | unions, churches, parties |
+| `protest_participation` | cohort | 0--1 | monthly | threshold model output |
+| `perceived_risk` | cohort × hazard | 0--1 | monthly | |
+| `climate_baseline` | cohort × exposure variable | units of the variable | at ageing | set during youth, inherited |
+| `adoption` | cohort × technology | 0--1 | yearly | Bass diffusion |
+| `memory` | region × group × event slot | weight ≥ 0 | yearly decay | bounded ring of events |
+
+Issues are the priorities of design v1.0 §8.1: economic security and
+employment, food and housing, energy prices, health and services, tax,
+local environment, climate and adaptation, and order and freedom. The issue
+list is scenario data and append-only within a run.
+
+**Partition.** This state is authoritative and must be snapshotted, which
+section 6's three planetary partitions do not cover. ADR-0012 decides how:
+the proposal is a separate `SocietyState` container outside `PlanetState`,
+with its own field-id range in the registry (`0x0100'xxxx` onward), the same
+append-only, migration and snapshot rules as planetary fields, and the
+assertion of section 23.1's last row extended to it: two runs differing only
+in `SocietyState` must be bit-identical in planetary state until a society
+command emits a flux.
+
+### 29.4 Exposure interface
+
+The population reads the planet only through `ExposureState`, a derived
+per-region aggregate produced at each climate sub-step from `SlowState` and
+`Climatology`. It is the read-only face of section 18's "PlanetSim returns
+physical consequences".
+
+| Exposure variable | Source | Aggregation |
+|---|---|---|
+| `crop_yield_index` | crop environment of P1 (temperature, soil water, season) | area-weighted over cultivated cells |
+| `flood_fraction` | runoff, discharge, surge on the ADR-0005 hypsometry | population-weighted |
+| `drought_index` | soil-moisture anomaly against the cohort's baseline | area-weighted |
+| `heat_stress_days` | days above a humid-heat threshold in the sub-step | population-weighted |
+| `inundated_fraction` | sea level against hypsometry and protected elevation | population-weighted |
+| `air_quality` | aerosol and pollutant load (section 9.9) | population-weighted |
+| `extreme_events` | storms, fires, floods detected in the sub-step | list with magnitude and region |
+| `heating_degree_days`, `cooling_degree_days` | surface air temperature | population-weighted |
+
+Rules:
+
+-   `ExposureState` is derived. It is not snapshotted; it is recomputed from
+    planetary state after load, and a replay must reproduce it bit for bit;
+-   the population sees *true* exposure, because people live through the
+    real weather. Knowledge (section 17) gates what the government and the
+    media can *say about causes*, not what a flood does to a village;
+-   a variable that is not yet simulated in the current milestone is absent,
+    not faked. S1 runs on temperature and a prescribed yield index until the
+    crop model exists.
+
+### 29.5 Cadence
+
+The society step is the climate sub-step of ADR-0006 (twelve per orbital
+year), so the scheduler gains one slot after the planetary sub-step and
+before the snapshot.
+
+| Process | Runs | Order inside the step |
+|---|---|---|
+| Exposure aggregation | every sub-step | 1 |
+| Migration flows | every sub-step | 2 |
+| Media, opinion diffusion, salience | every sub-step | 3 |
+| Protest threshold fixed point | every sub-step | 4 |
+| Needs, expectations, consumption, prices | every third sub-step (quarterly) | 5 |
+| Promise checks | every third sub-step, and at each promise's deadline | 6 |
+| Demography, education, adoption, diffuse support, memory decay | sub-step 12 of each year | 7 |
+| Ageing, inheritance of baselines and memory | sub-step 12 of each year | 8 |
+| Elections | at scheduled ticks, after step 8 | 9 |
+
+The order is fixed and part of the run manifest. Within a process, cohorts
+are visited in storage order and every global sum uses
+`reduce_deterministic_blocks` (section 26). Randomness uses the counter RNG
+keyed as `(world_seed, stream_id, tick, cohort_index, sample_index)` with a
+reserved stream id per process.
+
+Performance target: with 1,000 cohorts, 8 issues and about 20 influence
+neighbours per cohort, the whole society step must cost under 1 % of the
+ADR-0001 climate-mode budget at L5. It is not allowed to become the reason
+a performance gate fails.
+
+### 29.6 Model equations
+
+These are the starting forms. Every coefficient is data in the parameter
+file of section 29.11, versioned with its provenance like the calibration
+constants of section 24. Notation: `c` a cohort, `i` an issue, `k` a need,
+`b` an income band, `Δt` the process interval in years.
+
+#### 29.6.1 Demography
+
+Ageing moves a fraction `Δt / band_width` of each band to the next once a
+year; births enter the young band; deaths leave each band.
+
+``` text
+births_c   = f(D_r) * 0.5 * N_working,c * Δt
+f(D)       = f_min + (f_max - f_min) * σ(-k_f * (D - D_f0))
+deaths_c   = m_age(band) * h_c * N_c * Δt
+h_c        = 1 + a_food * (1 - s_food) + a_san * (1 - s_san)
+               + a_heat * heat_stress_days + a_air * (1 - air_quality)
+             - a_care * s_health
+D_r        = development index: mean of literacy, urban share and
+             normalised income in the region
+```
+
+Mortality responds before fertility (`D_f0` sits above the level at which
+`h` falls), which is what produces the demographic transition rather than
+asserting it.
+
+**Budget.** For each region and year:
+`N(t+1) = N(t) + births - deaths + in_migration - out_migration`, exactly in
+`double`. This is a conservation test like the water and energy budgets.
+
+#### 29.6.2 Migration and urbanization
+
+A gravity flow between regions `r → q`, and between the rural and urban
+groups of one region:
+
+``` text
+flow_rq = M * N_r * push_r * pull_q / d_rq^β
+push_r  = exp(w_wage * (wage_q - wage_r) + w_stress * stress_r
+              + w_conflict * unrest_r)
+pull_q  = housing_slack_q * (1 + w_diaspora * diaspora_rq)
+          * (1 + w_identity * shared_identity_rq)
+stress_r = combined exposure anomaly (flood, drought, heat, inundation)
+```
+
+Flows are capped by the source population and by destination housing; the
+cap is applied in region order so the result does not depend on scheduling.
+
+#### 29.6.3 Needs, expectations and grievance
+
+Needs in priority order: food, water, shelter and heating, employment,
+health and sanitation, energy, education, services and transport, consumer
+goods, environmental quality. For each cohort, band and need:
+
+``` text
+s_ck   = min(1, supply_ck / need_ck)
+w_ck   = priority_k * Π_{j<k} s_cj            (lower needs gate higher ones)
+E_ck  += α_up * max(0, s_ck - E_ck) * Δt
+       - α_down * max(0, E_ck - s_ck) * Δt
+       + Σ_promises π_p * audience_pc        (promise-raised expectations)
+G_c    = Σ_k w_ck * max(0, E_ck - s_ck)      (relative deprivation)
+```
+
+`α_up > α_down` (expectations rise faster than they fall) is what produces
+the J-curve: unrest peaks when satisfaction stalls after a rise, not at its
+lowest point.
+
+#### 29.6.4 Consumption, adoption and rebound
+
+``` text
+service_c,u  = base_u(income_b, climate) * (price_u / efficiency_u)^(-ε_u)
+energy_c,u   = service_c,u / efficiency_u
+dA_c,τ/dt    = (p_τ + q_τ * A_neighbours,τ) * (1 - A_c,τ) * afford_c,τ
+```
+
+`u` is an end use (heating, lighting, transport, goods, food), `τ` a
+technology, `climate` the heating and cooling degree days of section 29.4.
+A higher efficiency lowers the price of the service, so service rises with
+elasticity `ε_u`: that is the rebound, and Jevons at the scale of the economy
+if `ε_u > 1`. Energy demand feeds the economy; the economy emits.
+
+#### 29.6.5 Opinion dynamics
+
+For each issue, once per sub-step:
+
+``` text
+W_cj   = ω_cj * [ |x_c - x_j| ≤ ε_c ]          (bounded confidence)
+x_c'   = λ_c * Σ_j Ŵ_cj x_j + (1 - λ_c) * x_c^0 + Σ_m Δx_cm
+ε_c    = ε_0 * (1 - identity_tie_ci)           (identity narrows listening)
+s_c'   = softmax(β_s * (G-pressure_ci + agenda_ci + experience_ci))
+```
+
+`Ŵ` is `W` row-normalised; a cohort with no neighbour inside its bound
+keeps its own opinion. `ω` is the influence network: shared region, shared
+group, economic ties, shared identity and media overlap, rebuilt yearly.
+`λ_c` is the susceptibility (one minus stubbornness), lower for elites and
+the old. Opinion leaders (clergy, union, notable groups) receive media
+effects first and pass them on through `ω`, which is the two-step flow.
+
+**Misinformation** is a message like any other, with a truth value the
+cohort cannot see. Its uptake is scaled by fit with the cohort's opinion and
+by emotional salience, and damped by literacy and by trust in the outlet.
+
+**Collective memory** is a bounded ring of events per region and group
+(famine, lethal flood, broken promise, victory), each with a weight that
+decays as `exp(-t / τ_mem)` with `τ_mem` of decades. At ageing, a fraction
+`ι` of the weight is inherited by the next band. Memory biases the
+interpretation of new events of the same kind and lowers `politician_trust`.
+
+#### 29.6.6 Media and statements
+
+A statement `m` has a type (promise, framing, agenda, blame/credit), an
+issue, a position or frame value, a channel and an author (an
+administration or an actor of section 29.8). Its effect on cohort `c`:
+
+``` text
+reach_c,ch  = access_ch(literacy_c, urban_c, technology) * audience_share
+Δx_cm       = reach * κ_type * cred_c(author) * [ |x_c - f_m| ≤ ε_c ]
+                  * (f_m - x_c)
+Δagenda_ci  = reach * κ_agenda * cred_c(author)   (agenda: salience, not position)
+```
+
+Framing that ties an issue to an identity raises `identity_tie_ci`, which
+narrows `ε` and freezes the cohort on that issue; a player can cause this
+by accident.
+
+#### 29.6.7 Credibility, promises and the implementation gap
+
+``` text
+cred_c'  = cred_c + a_plus  * (1 - cred_c) * kept_c
+                  - a_minus * cred_c       * exposed_broken_c
+a_minus / a_plus = asymmetry, default 4 (Slovic); tunable, see section 27
+```
+
+A new administration starts with
+`cred_c = politician_trust_c * platform_appeal_c`; the old administration's
+credibility is discarded, and each of its unfulfilled promises becomes a
+memory event that lowers `politician_trust`.
+
+**Implementation.** A decision with nominal effect `e` and nominal delay
+`d` is delivered as `e * κ_impl` after `d / κ_impl`, where the
+implementation capacity `κ_impl ∈ (0, 1]` grows with administrative
+investment, literacy and stability and falls with corruption and unrest.
+The shortfall is real: the railway is late, and the population sees that.
+
+**Gap detection.** At each promise check:
+
+``` text
+perceived_pc = w_exp * experienced_pc + (1 - w_exp) * reported_pc
+reported_pc  = Σ_outlets trust_c,o * report_o(p)
+gap_pc       = max(0, target_p - perceived_pc)
+exposed_pc   = gap_pc > θ_gap   with probability
+               P_expose = 1 - (1 - press_freedom * scrutiny_o)^outlets
+```
+
+The exposure draw uses the keyed RNG. Censorship lowers `press_freedom`,
+which hides gaps, but every hidden gap accumulates in a latent ledger that
+is released at once when press freedom rises or diffuse support collapses.
+
+#### 29.6.8 Mobilisation and support
+
+The threshold model is solved per sub-step as a bounded fixed point:
+
+``` text
+P_c^(n+1) = Φ( (G_c + γ * P_neighbours^(n) + trigger_c - μ_c) / σ_c )
+μ_c       = μ_0 - η * organisation_c
+```
+
+Iterate at most 16 times or until the change is below `1e-4`; the
+iteration count is a diagnostic. Small triggers can cascade or fizzle,
+depending on the threshold distribution, which is the Granovetter result.
+
+``` text
+S_spec'  = S_spec + ρ_s * (f(satisfaction, cred) - S_spec) * Δt
+S_diff'  = S_diff + ρ_d * (S_spec - S_diff) * Δt      with ρ_d << ρ_s
+regime crisis when the population-weighted S_diff < D_crit
+```
+
+#### 29.6.9 Elections
+
+Vote shares are expected values, not samples:
+
+``` text
+v_ck = softmax_k( -β_v * Σ_i s_ci * (x_ci - pos_ki)^2
+                  + β_inc * [k incumbent] * cred_c
+                  + β_mem * memory_ck + noise_k )
+```
+
+`noise_k` is one campaign shock per party per election from the keyed RNG,
+so two seeds give different but plausible results. Seats follow the
+scenario's electoral rule. A lost election creates a new administration
+(section 29.6.7) whose platform can disable or reverse player policies; the
+game continues.
+
+#### 29.6.10 Climate perception
+
+``` text
+anomaly_c,h  = (exposure_h - climate_baseline_c,h) / spread_h
+r_c,h'       = r_c,h + φ_up * max(0, anomaly) * (1 - r_c,h)
+                     - φ_down * r_c,h * Δt
+experience_ci feeds salience (29.6.5) through r
+climate_baseline_c,h  set as the mean exposure during the cohort's young band,
+                      inherited at ageing    (shifting baseline)
+```
+
+Science results (section 17) enter as media messages from the scientists'
+actor with the credibility that actor has earned; they change what can be
+said, not what cohorts automatically believe.
+
+### 29.7 Representative citizens
+
+Named citizens shown in the newspaper and on the map are generated by the
+presentation layer from `(cohort_index, report_interval, sample_index)` with
+the keyed RNG and a name table from the scenario. They read cohort state and
+own none. They are never snapshotted and never read by the simulation, so
+they cannot break determinism or replay.
+
+### 29.8 Political actors
+
+Opposition parties, unions, industrial and landed interests, churches,
+scientists, civil-society groups and independent outlets are rule-based
+agents. Each has an agenda vector over issues, an influence budget per step,
+and a channel mix. Each step it chooses statements greedily by expected
+effect on its agenda, with ties broken by actor index. Actors are not
+planners and do not search.
+
+### 29.9 Commands
+
+New `PlayerCommand` kinds, validated by PlanetSim and recorded in the
+command log like every command (ADR-0003):
+
+| Command | Payload | Effect |
+|---|---|---|
+| `issue_statement` | type, issue, frame value, channel, audience | media message (29.6.6) |
+| `make_promise` | issue, target metric, target value, deadline, audience | ledger entry and expectation rise |
+| `set_policy` | policy id, parameters | nominal decision through the implementation gap |
+| `build` | project, region | as P1 construction; delayed by capacity |
+| `set_research_priority` | field, share | research allocation (section 17) |
+| `set_press_freedom` | level | changes exposure and science diffusion |
+
+A command takes effect at the next society step. Validation rejects a
+promise without a measurable target metric; vague promises are statements,
+not promises.
+
+### 29.10 Promise ledger
+
+``` cpp
+struct Promise {
+    PromiseId        id;               // append-only within a run
+    AdministrationId administration;
+    IssueId          issue;
+    MetricId         target_metric;    // e.g. regional electrification share
+    float            target_value;
+    SimulationTick   made_at;
+    SimulationTick   deadline;
+    CohortMask       audience;
+    PromiseStatus    status;           // pending, kept, broken_hidden,
+                                       // broken_exposed, void
+};
+```
+
+The ledger is part of `SocietyState`. A promise is void, not broken, when
+its administration has left office; it then contributes to collective
+memory instead (29.6.7). The presentation shows each cohort's view of each
+promise, not the true status.
+
+### 29.11 Calibration and data
+
+-   Industrial Dawn baselines: population and age structure, literacy,
+    urban share and class structure by region, from historical demography,
+    with the sources recorded next to the values;
+-   the parameter file (`scenarios/<scenario>/society_params.toml`) holds
+    every coefficient of section 29.6 with units, range, source and date;
+-   parameters are tuned against the stylised facts of section 29.12, never
+    against a desired history; every tuning is a recorded change, as in
+    section 24.
+
+### 29.12 Acceptance experiments
+
+Headless, fixed seeds, in `tests/scenarios`. Each has a numeric criterion
+so it can fail; the thresholds are starting values to be confirmed when the
+phase lands.
+
+| Phase | Experiment | Acceptance |
+|---|---|---|
+| S1 | Population budget | regional and global budgets close exactly every year for 250 years |
+| S1 | Demographic transition | with rising development, mortality falls first and fertility falls within 1--3 generations after |
+| S1 | Determinism | identical `SocietyState` hashes across thread counts; society off vs on is bit-identical in planetary state before the first society flux |
+| S2 | Rebound | an efficiency gain of 30 % lowers energy use by less than 30 % when `ε > 0` |
+| S2 | Adoption | S-shaped uptake; time to 50 % falls with income and with neighbours' adoption |
+| S3 | Polarisation | fragmented media with strong identity ties ends in at least two separated opinion clusters; a shared channel converges |
+| S3 | Memory | a broken promise still lowers trust in the next generation, by less than in the first |
+| S4 | Trust asymmetry | after one exposed broken promise, matching kept promises restore less than half the loss |
+| S4 | Overpromising | equal delivery: a government that promised more ends with lower support |
+| S4 | Censorship | support falls later but further than under a free press |
+| S4 | Implementation gap | lower capacity gives later and smaller delivery with the same decision |
+| S5 | J-curve | unrest peaks after satisfaction stalls following a rise, not at its minimum |
+| S5 | Threshold cascade | the same trigger fizzles at low organisation and cascades at high organisation |
+| S5 | Elections | different seeds give different winners in close races; landslides are seed-stable |
+| S6 | Experience | perceived risk rises after a local disaster and decays over quiet years |
+| S6 | Shifting baseline | under slow steady warming, the youngest cohort's anomaly is smaller than the oldest's |
+| S6 | Worry budget | a recession lowers climate salience at constant climate |
+| all | Legitimate priorities | no parameter set in the shipped file makes climate concern the dominant issue for every cohort in every scenario |
+
+### 29.13 Non-goals
+
+-   individual citizen agents (representative citizens are presentation
+    only, section 29.7);
+-   real ethnic or religious groups; identities are fictional (design v1.0
+    §38.1);
+-   learning or planning AI for political actors;
+-   a regime-change mechanic in the first society release; regime type is
+    fixed per scenario until section 27's question is answered;
+-   any society-side modifier on planetary state.
