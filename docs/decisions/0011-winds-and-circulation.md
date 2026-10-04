@@ -654,6 +654,33 @@ amendment.
   - Amendment §13 records the smoothed orography and the 150 m/s wind
     bound.
   - Details are in `docs/tasks/M6-03-primitive-equations.md`.
+- **M6-04, step B part 1 (2026-10-04).** Covers §14's zonal-mean model,
+  V8 and the zonal part of V9.
+  - **The model as built.**
+    - E is an unknown, so the Jacobian is banded with 3N + 2 unknowns per
+      band.
+    - The Jacobian is exact, by forward-mode differentiation.
+    - The meridional fluxes of M and θ̄ are limited second-order. First-order
+      upwind's diffusion of the planetary M is a spurious torque.
+    - The upwind |F| is smoothed to zero at rest.
+    - ∂θ̄/∂y is taken on pressure surfaces, so an isothermal atmosphere at
+      rest over terrain is exact.
+  - **Solution.** Newton from §14's initial state rarely converges. The
+    fallback continuation is polished by Newton every 10 steps, because the
+    steady state can be unstable to time-marching.
+    - At Ω and 2Ω it is unique to 5e-9 m/s.
+    - At Ω/2 two starts reach states 12–16 m/s apart.
+  - **Held–Suarez.**
+    - At N = 3 it is close to the reference: 24 m/s at 27.5° against
+      26 m/s at 32.5°.
+    - At N = 5 the jet is too strong and too far equatorward: 46 m/s at
+      32.5° against 30 m/s at 42.5°.
+  - **V8 and V9.** At Ω = 0 the wind is exactly zero. The Hadley edge is
+    30°, 25° and 20° for Ω × ½, 1, 2, and the surface torque is ≤ 2e-15 of
+    the gross.
+  - **Cost.** 17–23 ms at N = 3 and 110–130 ms at N = 5 (Earth's Ω), above
+    §14's estimate.
+  - Details are in `docs/tasks/M6-04-balanced-circulation.md`.
 
 ## 12. Amendment: V2 as measured for the TRiSK operators (accepted 2026-10-02)
 

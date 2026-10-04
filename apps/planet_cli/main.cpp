@@ -9,6 +9,7 @@
 #include "sim/planet/dynamics/primitive_equations.hpp"
 #include "sim/planet/dynamics/shallow_water.hpp"
 #include "sim/planet/dynamics/williamson_cases.hpp"
+#include "sim/planet/dynamics/zonal_circulation.hpp"
 #include "sim/planet/dynamics/zonal_statistics.hpp"
 #include "sim/planet/mesh/icosphere.hpp"
 #include "sim/planet/mesh/mesh_diagnostics.hpp"
@@ -180,7 +181,10 @@ void print_usage(std::ostream& output) {
               " [--zonal-csv FILE.csv]\n"
            << "  planet_cli reference [--subdivision LEVEL] [--seed N] [--layers N]"
               " [--spin-up-years N] [--days D] [--average-days D] [--workers W]"
-              " [--zonal-csv FILE.csv]\n";
+              " [--zonal-csv FILE.csv]\n"
+           << "  planet_cli zonal-circulation [--layers N] [--rotation-factor S]"
+              " [--viscosity NU] [--eddy-generation C_E] [--no-eddies]"
+              " [--reference FILE.csv] [--csv FILE.csv]\n";
 }
 
 [[nodiscard]] std::uint32_t parse_subdivision(std::string_view text) {
@@ -1555,6 +1559,250 @@ int run_reference(const ReferenceOptions& options) {
     return 0;
 }
 
+struct ZonalCirculationOptions {
+    std::size_t layers = 3;
+    double rotation_factor = 1.0;
+    std::optional<double> viscosity_m2_s;
+    std::optional<double> eddy_generation;
+    bool eddies = true;
+    std::string reference_csv;
+    std::string csv;
+};
+
+[[nodiscard]] ZonalCirculationOptions parse_zonal_circulation_options(int argument_count,
+                                                                      char** arguments) {
+    ZonalCirculationOptions options;
+    for (int index = 2; index < argument_count; ++index) {
+        const std::string_view argument{arguments[index]};
+        if (argument == "--no-eddies") {
+            options.eddies = false;
+            continue;
+        }
+        if (++index >= argument_count) {
+            throw std::invalid_argument(std::string(argument) + " requires a value");
+        }
+        const std::string_view value{arguments[index]};
+        if (argument == "--layers") {
+            options.layers = static_cast<std::size_t>(parse_unsigned(value, "layers"));
+        } else if (argument == "--rotation-factor") {
+            options.rotation_factor = parse_double(value, "rotation factor");
+        } else if (argument == "--viscosity") {
+            options.viscosity_m2_s = parse_double(value, "viscosity");
+        } else if (argument == "--eddy-generation") {
+            options.eddy_generation = parse_double(value, "eddy generation");
+        } else if (argument == "--reference") {
+            options.reference_csv = value;
+        } else if (argument == "--csv") {
+            options.csv = value;
+        } else {
+            throw std::invalid_argument("unknown zonal-circulation option: " +
+                                        std::string(argument));
+        }
+    }
+    if (options.layers < 2U || !(options.rotation_factor >= 0.0)) {
+        throw std::invalid_argument("invalid zonal-circulation options");
+    }
+    return options;
+}
+
+// A --zonal-csv of planet_cli dynamics or reference: per band, the bottom
+// and top winds, the bottom temperature and the column eddy kinetic energy.
+struct ZonalReference {
+    std::vector<double> latitude_deg;
+    std::vector<double> u_bottom;
+    std::vector<double> u_top;
+    std::vector<double> t_bottom;
+    std::vector<double> eddy_kinetic;
+};
+
+[[nodiscard]] ZonalReference read_zonal_reference(const std::string& path, std::size_t layers) {
+    std::ifstream input(path);
+    if (!input) {
+        throw std::runtime_error("cannot read " + path);
+    }
+    ZonalReference reference;
+    std::string line;
+    std::getline(input, line);   // header
+    while (std::getline(input, line)) {
+        std::vector<double> values;
+        std::stringstream fields(line);
+        std::string field;
+        while (std::getline(fields, field, ',')) {
+            values.push_back(parse_double(field, "reference value"));
+        }
+        if (values.size() != 10U) {
+            throw std::runtime_error("unexpected reference row in " + path);
+        }
+        const auto layer = static_cast<std::size_t>(values[1]);
+        if (layer >= layers) {
+            throw std::runtime_error("the reference has more layers than requested");
+        }
+        if (layer == 0U) {
+            reference.latitude_deg.push_back(values[0]);
+            reference.u_bottom.push_back(values[3]);
+            reference.t_bottom.push_back(values[5]);
+            reference.u_top.push_back(0.0);
+            reference.eddy_kinetic.push_back(0.0);
+        }
+        if (layer + 1U == layers) {
+            reference.u_top.back() = values[3];
+        }
+        reference.eddy_kinetic.back() += values[6] / static_cast<double>(layers);
+    }
+    return reference;
+}
+
+// ADR-0011 §14: the zonal-mean circulation under Held–Suarez forcing.
+int run_zonal_circulation(const ZonalCirculationOptions& options) {
+    planetsim::ZonalCirculationParameters parameters;
+    parameters.layer_count = options.layers;
+    parameters.rotation_rate_rad_s *= options.rotation_factor;
+    parameters.eddies = options.eddies;
+    if (options.viscosity_m2_s) {
+        parameters.viscosity_m2_s = *options.viscosity_m2_s;
+    }
+    if (options.eddy_generation) {
+        parameters.eddy_generation_m4_s2_K2 = *options.eddy_generation;
+    }
+    planetsim::HeldSuarezForcing held_suarez;
+    held_suarez.enabled = true;
+    const planetsim::ZonalCirculation model(parameters);
+    const auto forcing = planetsim::held_suarez_zonal_forcing(parameters, held_suarez);
+    const auto start = std::chrono::steady_clock::now();
+    const auto solution = model.solve(forcing);
+    const double elapsed_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
+            .count();
+    const std::size_t n = solution.layers;
+    const std::size_t bands = solution.bands;
+    std::cout << "test=held-suarez layers=" << n << " bands=" << bands
+              << " unknowns=" << model.unknown_count() << " rotation_factor="
+              << options.rotation_factor << " viscosity_m2_s=" << parameters.viscosity_m2_s
+              << " eddy_generation=" << parameters.eddy_generation_m4_s2_K2
+              << " eddies=" << (parameters.eddies ? "on" : "off") << '\n'
+              << "method="
+              << (solution.method == planetsim::ZonalSolutionMethod::newton ? "newton"
+                                                                            : "continuation")
+              << " jacobians=" << solution.statistics.jacobians
+              << " newton_steps=" << solution.statistics.newton_steps
+              << " continuation_steps=" << solution.statistics.continuation_steps
+              << " rejected_steps=" << solution.statistics.rejected_steps
+              << std::scientific << std::setprecision(2)
+              << " residual=" << solution.residual << std::fixed << " solve_ms=" << elapsed_ms
+              << '\n'
+              << std::scientific << "surface_torque_N_m=" << solution.total_torque_N_m
+              << " gross_N_m=" << solution.gross_torque_N_m << std::fixed << '\n';
+    ZonalReference reference;
+    if (!options.reference_csv.empty()) {
+        reference = read_zonal_reference(options.reference_csv, n);
+        if (reference.latitude_deg.size() != bands) {
+            throw std::runtime_error("the reference has a different band count");
+        }
+    }
+    // The northern hemisphere's jet, Hadley edge and bottom-wind regimes.
+    const std::size_t top = n - 1U;
+    std::size_t jet = bands / 2U;
+    for (std::size_t j = bands / 2U; j < bands; ++j) {
+        if (solution.at_band(solution.eastward_m_s, top, j) >
+            solution.at_band(solution.eastward_m_s, top, jet)) {
+            jet = j;
+        }
+    }
+    const std::size_t equator = bands / 2U - 1U;   // the boundary on the equator
+    const double first = solution.at_boundary(solution.streamfunction_kg_s, 1U, equator + 1U);
+    double hadley_edge = 90.0;
+    for (std::size_t i = equator + 1U; i + 1U < bands; ++i) {
+        if ((solution.at_boundary(solution.streamfunction_kg_s, 1U, i) > 0.0) != (first > 0.0)) {
+            hadley_edge = solution.boundary_latitude_deg[i];
+            break;
+        }
+    }
+    const auto regimes = [&](auto bottom_wind) {
+        std::string text;
+        for (std::size_t j = bands / 2U; j < bands; ++j) {
+            const double u = bottom_wind(j);
+            text += u > 0.05 ? 'W' : (u < -0.05 ? 'E' : '0');
+        }
+        return text;
+    };
+    std::cout << std::setprecision(1) << "jet_m_s=" << solution.at_band(solution.eastward_m_s, top, jet)
+              << " jet_latitude_deg=" << solution.latitude_deg[jet]
+              << " hadley_edge_deg=" << hadley_edge
+              << " bottom_t_contrast_K="
+              << solution.at_band(solution.temperature_K, 0U, bands / 2U) -
+                     solution.at_band(solution.temperature_K, 0U, bands - 1U)
+              << " bottom_winds_NH="
+              << regimes([&](std::size_t j) { return solution.at_band(solution.eastward_m_s, 0U, j); })
+              << '\n';
+    if (!reference.latitude_deg.empty()) {
+        std::size_t ref_jet = bands / 2U;
+        for (std::size_t j = bands / 2U; j < bands; ++j) {
+            if (reference.u_top[j] > reference.u_top[ref_jet]) {
+                ref_jet = j;
+            }
+        }
+        std::cout << "reference: jet_m_s=" << reference.u_top[ref_jet]
+                  << " jet_latitude_deg=" << reference.latitude_deg[ref_jet]
+                  << " bottom_t_contrast_K="
+                  << reference.t_bottom[bands / 2U] - reference.t_bottom[bands - 1U]
+                  << " bottom_winds_NH="
+                  << regimes([&](std::size_t j) { return reference.u_bottom[j]; }) << '\n';
+    }
+    std::cout << std::setprecision(2) << "latitude_deg";
+    for (std::size_t k = 0; k < n; ++k) {
+        std::cout << " u_layer" << k;
+    }
+    for (std::size_t k = 0; k < n; ++k) {
+        std::cout << " T_layer" << k;
+    }
+    std::cout << " eke psi1_1e9_kg_s";
+    if (!reference.latitude_deg.empty()) {
+        std::cout << " ref_u_bottom ref_u_top ref_T_bottom ref_eke";
+    }
+    std::cout << '\n';
+    for (std::size_t j = 0; j < bands; ++j) {
+        std::cout << solution.latitude_deg[j];
+        for (std::size_t k = 0; k < n; ++k) {
+            std::cout << ' ' << solution.at_band(solution.eastward_m_s, k, j);
+        }
+        for (std::size_t k = 0; k < n; ++k) {
+            std::cout << ' ' << solution.at_band(solution.temperature_K, k, j);
+        }
+        // ψ at the lowest interior interface, at the boundary north of the band.
+        const double psi =
+            j + 1U < bands ? solution.at_boundary(solution.streamfunction_kg_s, 1U, j) : 0.0;
+        std::cout << ' ' << solution.eddy_kinetic_m2_s2[j] << ' ' << psi / 1e9;
+        if (!reference.latitude_deg.empty()) {
+            std::cout << ' ' << reference.u_bottom[j] << ' ' << reference.u_top[j] << ' '
+                      << reference.t_bottom[j] << ' ' << reference.eddy_kinetic[j];
+        }
+        std::cout << '\n';
+    }
+    if (!options.csv.empty()) {
+        std::ofstream csv(options.csv);
+        if (!csv) {
+            throw std::runtime_error("cannot write " + options.csv);
+        }
+        csv << std::setprecision(9)
+            << "latitude_deg,layer,eastward_m_s,temperature_K,eddy_kinetic_m2_s2,"
+               "northward_north_m_s,streamfunction_north_kg_s\n";
+        for (std::size_t j = 0; j < bands; ++j) {
+            for (std::size_t k = 0; k < n; ++k) {
+                const bool north = j + 1U < bands;
+                csv << solution.latitude_deg[j] << ',' << k << ','
+                    << solution.at_band(solution.eastward_m_s, k, j) << ','
+                    << solution.at_band(solution.temperature_K, k, j) << ','
+                    << solution.eddy_kinetic_m2_s2[j] << ','
+                    << (north ? solution.at_boundary(solution.northward_m_s, k, j) : 0.0) << ','
+                    << (north ? solution.at_boundary(solution.streamfunction_kg_s, k + 1U, j)
+                              : 0.0)
+                    << '\n';
+            }
+        }
+    }
+    return 0;
+}
+
 int run_mesh(const MeshOptions& options) {
     const auto start = std::chrono::steady_clock::now();
     const auto mesh = planetsim::make_icosphere(options.subdivision, options.radius_m);
@@ -2345,6 +2593,10 @@ int main(int argument_count, char** arguments) {
         }
         if (command == "dynamics") {
             return run_dynamics(parse_dynamics_options(argument_count, arguments));
+        }
+        if (command == "zonal-circulation") {
+            return run_zonal_circulation(
+                parse_zonal_circulation_options(argument_count, arguments));
         }
         if (command == "shallow-water") {
             return run_shallow_water(parse_shallow_water_options(argument_count, arguments));

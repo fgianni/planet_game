@@ -217,8 +217,26 @@ Reference mode resolves the winds (ADR-0011, task M6-03).
 - **`reference`** runs the Earth-like planet with its physics. Mass is
   exact, and once spun up the energy drifts by 4e-8 per year.
 
-Climate mode still carries heat by diffusion; its balanced circulation is
-the next task (M6-04).
+Climate mode's circulation (ADR-0011 §14, task M6-04) is under way:
+
+```bash
+./build/planet_cli zonal-circulation --layers 3 \
+    --reference tools/zonal_mean_prototype/data/hs_L4_N3.csv
+```
+
+- **What it solves.** The steady zonal-mean circulation on 36 latitude
+  bands and the σ layers: angular momentum and θ in flux form, a rigid lid
+  whose multiplier is the zonal-mean pressure gradient, and an eddy
+  closure from the eddy kinetic energy.
+  - Eddies mix heat with a mixing length ℓ_h √(2E).
+  - They carry momentum up the gradient of E.
+- **How.** Newton on an exact banded Jacobian, with pseudo-transient
+  continuation where Newton stalls.
+- **Held–Suarez.** At N = 3 it gives trades, westerlies and polar
+  easterlies, with a 24 m/s jet at 27.5°; the reference core has 26 m/s at
+  32.5°. A solve takes about 20 ms.
+- **Not yet active.** Climate mode still carries heat by diffusion until
+  the circulation is coupled to the column physics.
 
 ## Persistent snapshots
 
