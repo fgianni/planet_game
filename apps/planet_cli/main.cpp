@@ -185,7 +185,7 @@ void print_usage(std::ostream& output) {
               " [--zonal-csv FILE.csv]\n"
            << "  planet_cli zonal-circulation [--planet [--subdivision LEVEL] [--seed N]"
               " [--spin-up-years N] [--workers W]] [--layers N] [--rotation-factor S]"
-              " [--viscosity NU] [--eddy-generation C_E] [--no-eddies]"
+              " [--viscosity NU] [--eddy-generation C_E] [--eddy-scale L] [--no-eddies]"
               " [--reference FILE.csv] [--csv FILE.csv]\n";
 }
 
@@ -1571,6 +1571,7 @@ struct ZonalCirculationOptions {
     double rotation_factor = 1.0;
     std::optional<double> viscosity_m2_s;
     std::optional<double> eddy_generation;
+    std::optional<double> eddy_scale_m;
     bool eddies = true;
     std::string reference_csv;
     std::string csv;
@@ -1609,6 +1610,8 @@ struct ZonalCirculationOptions {
             options.viscosity_m2_s = parse_double(value, "viscosity");
         } else if (argument == "--eddy-generation") {
             options.eddy_generation = parse_double(value, "eddy generation");
+        } else if (argument == "--eddy-scale") {
+            options.eddy_scale_m = parse_double(value, "eddy scale");
         } else if (argument == "--reference") {
             options.reference_csv = value;
         } else if (argument == "--csv") {
@@ -1683,6 +1686,9 @@ int run_zonal_circulation(const ZonalCirculationOptions& options) {
     if (options.eddy_generation) {
         parameters.eddy_generation_m4_s2_K2 = *options.eddy_generation;
     }
+    if (options.eddy_scale_m) {
+        parameters.eddy_scale_m = *options.eddy_scale_m;
+    }
     planetsim::ZonalCirculationSolution solution;
     double elapsed_ms = 0.0;
     std::size_t unknowns = 0;
@@ -1709,6 +1715,7 @@ int run_zonal_circulation(const ZonalCirculationOptions& options) {
         if (options.eddy_generation) {
             planet_parameters.eddy_generation_m4_s2_K2 = *options.eddy_generation;
         }
+        planet_parameters.eddy_scale_m = parameters.eddy_scale_m;
         parameters = planet_parameters;
         const planetsim::ZonalCirculation model(parameters);
         unknowns = model.unknown_count();

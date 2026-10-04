@@ -339,6 +339,40 @@ and the start from the equilibrated temperatures end 0.16 m/s apart
 (previously 5e-9). This is either another case of non-uniqueness or a
 poorly conditioned direction; to be looked at with the N = 5 jet bias.
 
+## Open points after step B (2026-10-04)
+
+1. **Cost (N = 5 at 110–150 ms).**
+   - The per-iteration cost is close to its floor at about 1.8 ms: a
+     Jacobian takes 1.6 ms (85 dual evaluations, each entry computed
+     once) and the LU 0.2 ms. The total is set by the iteration count.
+   - Abandoning a Newton attempt that has not cut the residual tenfold in
+     3 iterations was tried and rejected. Newton often needs damped steps
+     first, and two cases lost convergence.
+   - The Earth-like preset (N = 3) averages 15 ms a month, within the
+     20-years-per-minute gate (about 250 ms per month for everything).
+     N = 5 is not.
+2. **Non-uniqueness.** It is confined to the polar caps (up to 15 m/s at
+   87.5° at Ω/2). The polar band's momentum budget is divided by
+   cos φ × band area ≈ 2e-4.
+   - K_v gives no reliable fix: the solution is unique at 2 and 10 m²/s,
+     not at 1, 3 or 5.
+   - K_v = 10 also removes the Ferrel cell, which hands the surface
+     westerlies to vertical diffusion, so it was rejected. K_v stays 1.
+   - L = 2,000 km (below) makes Held–Suarez at N = 3 unique at every Ω.
+3. **The N = 5 jet** is 44 m/s at 32.5° against 30 m/s at 42.5°.
+   - A momentum-flux shape ∝ sin πσ, which matches the N = 5 reference,
+     weakens it to 36 m/s but moves it further equatorward. The Earth-like
+     reference has the opposite shape (top-heavy), so the uniform shape
+     stays.
+   - The eddy energy is too weak (c_E, below), and the subtropical jet at
+     the Hadley edge dominates.
+4. **The Earth-like eddy energy is half the reference's.** c_E had been
+   fitted without χ and the screening. Fitted in the model's form it is
+   2.6 times larger, which needs L = 2,000 km to converge. This is
+   proposed as ADR-0011 §15, with the evidence there.
+
+`planet_cli zonal-circulation` gained `--eddy-scale L` for these runs.
+
 ## Plan for steps B–D
 
 1. **`ZonalCirculation`** (`sim/planet/dynamics/zonal_circulation.{hpp,cpp}`)

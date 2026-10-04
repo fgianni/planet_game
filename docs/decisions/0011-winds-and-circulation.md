@@ -6,6 +6,7 @@
 - **Amended:** 2026-10-02 — §12: V2 gates for the TRiSK operators, as measured in M6-01
 - **Amended:** 2026-10-02 — §13: the orography the winds see; the sub-step rule's wind bound
 - **Amended:** 2026-10-04 — §14: the zonal-mean circulation, its eddy closure and its solution (replaces §4.5)
+- **Proposed amendment:** 2026-10-04 — §15: the eddy scale L = 2,000 km and c_E fitted in the model's form
 - **Milestone:** P0 / M6 (wind and Coriolis)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §6 (`AtmosphereState`), §8 (multi-rate), §9.2, §13 M6, §15.5 (zero-rotation experiment), §23, §24; Planetary Civilization Simulator — Design Record v0.9, §5.4, §15.2–15.5, §25 (M5 row: "planetary circulation direction and latitude dependence"), §28
 - **Related:** ADR-0001 (modes, partition, budget, §8 milestone mapping), ADR-0002 (mesh, operators, §4.2 advection, field layout), ADR-0003 (determinism, replay), ADR-0006 (sub-steps), ADR-0009 (implicit transport, coarse graph), ADR-0010 (layered atmosphere; its §7 M6 row)
@@ -959,3 +960,62 @@ potential-vorticity flux through the Taylor identity".
 - The prototype data and scripts are recorded in
   `docs/tasks/M6-04-balanced-circulation.md`. The fitted lengths are
   rechecked at L5 when the five-layer reference runs are repeated.
+
+## 15. Amendment: the eddy scale and the fit of c_E (proposed 2026-10-04)
+
+**Finding (task M6-04, step B).** §14's closure was measured against
+reference mode before the C++ model existed.
+- **c_E was fitted without the model's terms.** It was fitted as
+  E / |∂θ̄/∂y|², without χ and without the screening. Fitted in the
+  model's own form, E = c_E (1 − L² ∇²)⁻¹ [χ |∂θ̄/∂y|²], it is 2.6 times
+  larger, and the fit is good:
+
+  | Run (L4) | c_E at L = 1,000 km | at 1,500 km | at 2,000 km | Correlation |
+  |---|---|---|---|---|
+  | Held–Suarez, N = 3 | 4.44e12 | 3.35e12 | 2.91e12 | 0.98–0.99 |
+  | Held–Suarez, N = 5 | 1.09e13 | 8.42e12 | 7.46e12 | 0.84–0.87 |
+  | Earth-like reference, N = 3 | 2.10e12 | 1.56e12 | 1.39e12 | 0.92–0.94 |
+
+- **At L = 1,000 km the eddies cannot be that strong.** With these
+  values the steady state does not exist on the Earth-like planet or for
+  HS at N = 5: sharp jets (50 m/s, E up to 80) form and wander.
+  - Running at the value that converges (7.8e11) keeps the eddy energy at
+    half the reference's.
+  - That run also has polar surface easterlies, and a polar-cap
+    multiplicity: at Ω/2 two starts differ by up to 15 m/s at 87.5°.
+- **At L = 2,000 km, with c_E fitted at that L:**
+  - **Earth-like (1.39e12), climate year.** Every month converges (9–39 ms
+    at N = 3).
+    - The top-layer wind follows reference mode from 20° to the pole:
+      26.7 m/s at 52.5° against 27.7 m/s at 52.5°.
+    - E is within about 20% of the reference: 38 against 44 at 52.5°,
+      30 against 39 at 72.5°.
+    - The equatorial easterlies aloft have the right sign but are twice
+      as strong (−14 m/s against −7).
+    - The surface westerlies are weak (0.5 m/s against 1.5), and the polar
+      surface winds are still easterly.
+    - With five layers every month converges too (47–843 ms).
+  - **Held–Suarez, N = 3 (2.91e12).**
+    - A 22 m/s jet at 27.5° (reference 26 m/s at 32.5°).
+    - A 37.0 K bottom-layer contrast (reference 38.7 K).
+    - Unique at Ω × ½, 1 and 2: two starts agree to 3e-8.
+    - V8: Hadley edges of 35°, 25° and 10°.
+    - V9: torque at rounding.
+  - **Held–Suarez, N = 5** still has no steady state at any of the three
+    L. Its reference is the most energetic (E = 91).
+- **Why L can change.** It was set to 1,000 km in §14 to suppress a
+  grid-scale runaway in the Python prototype, not measured. 2,000 km is
+  still a baroclinic eddy scale: about the wavelength of Earth's
+  synoptic eddies divided by 2.
+
+**Proposed change.**
+- L = 2,000 km.
+- c_E is fitted in the model's own form at that L. For the Earth-like
+  planet this gives 1.39e12; ADR-0011 §4.8 fits it jointly with τ₀.
+- Held–Suarez tests use 2.91e12.
+- HS N = 5 is recorded as a known limitation of the closure.
+
+**Not decided by this amendment.** The five-layer behaviour, a change of
+the closure's form (for example screening the momentum flux as well), and
+the vertical shape of the momentum flux.
+
