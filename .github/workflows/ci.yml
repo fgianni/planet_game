@@ -43,8 +43,14 @@ jobs:
       - name: Floating-point policy (ADR-0002 §4.6)
         run: python3 tools/ci/check_fp_flags.py build
 
+      - name: Presentation include boundary (ADR-0018 V2)
+        run: python3 tools/ci/check_presentation_includes.py .
+
       - name: Build
         run: cmake --build build --parallel
+
+      - name: Presentation include boundary (ADR-0018 V2)
+        run: python3 tools/ci/check_presentation_includes.py .
 
       - name: Field registry append-only policy
         run: |

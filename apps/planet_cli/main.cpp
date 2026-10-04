@@ -5,6 +5,7 @@
 #include "sim/core/serialization/history_store.hpp"
 #include "sim/core/serialization/snapshot_file.hpp"
 #include "sim/presentation/channel_registry.hpp"
+#include "sim/presentation/presentation_record.hpp"
 #include "sim/planet/atmosphere/atmosphere.hpp"
 #include "sim/planet/dynamics/orography.hpp"
 #include "sim/planet/dynamics/balanced_circulation.hpp"
@@ -39,6 +40,7 @@
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -138,6 +140,7 @@ struct RunOptions {
     std::size_t worker_count = 0;   // 0: hardware concurrency
     std::optional<std::filesystem::path> manifest_path;
     std::optional<std::filesystem::path> snapshot_path;
+    std::optional<std::filesystem::path> presentation_record_path;
     // ADR-0001 §5 gates: exit 3 if the stepping rate or the total wall time
     // (setup included) misses them.
     std::optional<double> min_years_per_minute;
@@ -174,6 +177,7 @@ void print_usage(std::ostream& output) {
               " [--spin-up-years N] [--initial-mode climate|reference]"
               " [--command TICK,TYPE,PAYLOAD]... [--workers W] [--manifest FILE.prun]"
               " [--snapshot FILE.psnap] [--min-years-per-minute R] [--max-seconds S]\n"
+              " [--presentation-record FILE.pframe]\n"
            << "    commands: set_mode,climate|reference; set_solar_luminosity_factor,F\n"
            << "  planet_cli replay FILE.prun [--workers W]\n"
            << "  planet_cli channels dump\n"
@@ -362,6 +366,8 @@ void print_usage(std::ostream& output) {
             options.manifest_path = std::filesystem::path(value);
         } else if (argument == "--snapshot") {
             options.snapshot_path = std::filesystem::path(value);
+        } else if (argument == "--presentation-record") {
+            options.presentation_record_path = std::filesystem::path(value);
         } else if (argument == "--min-years-per-minute") {
             options.min_years_per_minute = parse_double(value, "years per minute");
         } else if (argument == "--max-seconds") {
@@ -2646,7 +2652,10 @@ int run_scenario(const RunOptions& options) {
     }
     const auto run_start = std::chrono::steady_clock::now();
     const auto end_tick = planetsim::orbital_year_begin_tick(options.years, run.parameters());
-    run.run_until(end_tick);
+    std::vector<planetsim::StateSnapshot> presentation_frames;
+    run.run_until(end_tick, options.presentation_record_path
+        ? [&presentation_frames](const planetsim::StateSnapshot& frame) { presentation_frames.push_back(frame); }
+        : std::function<void(const planetsim::StateSnapshot&)>{});
     const auto run_finish = std::chrono::steady_clock::now();
 
     const double setup_s = std::chrono::duration<double>(run_start - setup_start).count();
@@ -2680,6 +2689,13 @@ int run_scenario(const RunOptions& options) {
     if (options.snapshot_path) {
         planetsim::write_snapshot(*options.snapshot_path, run.state(), run.tick());
         std::cout << "snapshot_written: " << options.snapshot_path->string() << '\n';
+    }
+    if (options.presentation_record_path) {
+        planetsim::presentation::write_presentation_record(*options.presentation_record_path,
+                                                            presentation_frames);
+        std::cout << "presentation_record_written: "
+                  << options.presentation_record_path->string() << " frames="
+                  << presentation_frames.size() << '\n';
     }
 
     bool gate_passed = true;

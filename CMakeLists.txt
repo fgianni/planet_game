@@ -83,6 +83,16 @@ add_library(PlanetSim STATIC
 )
 add_library(PlanetSim::PlanetSim ALIAS PlanetSim)
 
+add_library(PlanetSimPresentation STATIC
+    sim/presentation/presentation_record.cpp
+    sim/presentation/visual_frame.cpp
+)
+add_library(PlanetSim::Presentation ALIAS PlanetSimPresentation)
+target_include_directories(PlanetSimPresentation PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_link_libraries(PlanetSimPresentation PUBLIC PlanetSim::PlanetSim)
+planetsim_set_project_warnings(PlanetSimPresentation)
+planetsim_enable_sanitizers(PlanetSimPresentation)
+
 target_include_directories(PlanetSim
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
@@ -94,7 +104,7 @@ planetsim_set_project_warnings(PlanetSim)
 planetsim_enable_sanitizers(PlanetSim)
 
 add_executable(planet_cli apps/planet_cli/main.cpp)
-target_link_libraries(planet_cli PRIVATE PlanetSim::PlanetSim)
+target_link_libraries(planet_cli PRIVATE PlanetSim::PlanetSim PlanetSim::Presentation)
 planetsim_set_project_warnings(planet_cli)
 planetsim_enable_sanitizers(planet_cli)
 

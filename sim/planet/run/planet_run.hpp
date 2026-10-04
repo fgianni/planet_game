@@ -2,6 +2,7 @@
 
 #include "sim/core/scheduler/scheduler.hpp"
 #include "sim/core/serialization/run_manifest.hpp"
+#include "sim/core/serialization/state_snapshot.hpp"
 #include "sim/planet/dynamics/atmosphere_dynamics.hpp"
 #include "sim/planet/geology/geology_parameters.hpp"
 #include "sim/planet/planet_parameters.hpp"
@@ -12,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -72,7 +74,8 @@ class PlanetRun {
     void submit(RunCommand command);
 
     // Runs whole steps while the next step ends at or before target_tick.
-    void run_until(SimulationTick target_tick);
+    void run_until(SimulationTick target_tick,
+                   const std::function<void(const StateSnapshot&)>& snapshot_observer = {});
 
     [[nodiscard]] SimulationTick tick() const noexcept { return clock_.tick(); }
     [[nodiscard]] const Scenario& scenario() const noexcept { return scenario_; }

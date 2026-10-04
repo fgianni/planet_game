@@ -232,7 +232,8 @@ void PlanetRun::apply(const RunCommand& command) {
     manifest_.commands.push_back(command);
 }
 
-void PlanetRun::run_until(SimulationTick target_tick) {
+void PlanetRun::run_until(SimulationTick target_tick,
+                          const std::function<void(const StateSnapshot&)>& snapshot_observer) {
     while (scheduler_->next_step().end_tick <= target_tick) {
         const SimulationTick boundary = clock_.tick();
         while (!pending_.empty() && pending_.front().tick <= boundary) {
@@ -247,6 +248,7 @@ void PlanetRun::run_until(SimulationTick target_tick) {
         }
         static_cast<void>(scheduler_->step());
         checkpoint_if_due();
+        if (snapshot_observer) snapshot_observer(make_state_snapshot(state_, clock_));
     }
 }
 
