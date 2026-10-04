@@ -1,5 +1,8 @@
 #include "sim/planet/terrain/terrain_snapshot.hpp"
 
+#include "sim/planet/geology/geology_state.hpp"
+#include "sim/planet/planet_state.hpp"
+#include "sim/planet/terrain/drainage.hpp"
 #include "sim/planet/geology/geology_parameters.hpp"
 #include "sim/planet/terrain/hypsometry.hpp"
 #include "sim/planet/terrain/surface_fractions.hpp"

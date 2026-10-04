@@ -10,7 +10,7 @@
 namespace planetsim {
 
 class PlanetState;
-inline constexpr std::uint32_t state_snapshot_schema_version = 2;
+inline constexpr std::uint32_t state_snapshot_schema_version = 3;
 
 struct StateSnapshot {
     std::uint32_t schema_version = state_snapshot_schema_version;
@@ -28,6 +28,15 @@ struct StateSnapshot {
     Vec3d sun_direction_body_unit{1.0, 0.0, 0.0};
     FieldId top_of_atmosphere_insolation_field_id = FieldId::top_of_atmosphere_insolation_W_m2;
     std::vector<float> top_of_atmosphere_insolation_W_m2;
+    // Schema 3 presentation fields. Empty means the source field has not
+    // been produced; these are read-only copies, never PSNAP fields.
+    std::vector<float> surface_temperature_K;
+    std::vector<float> land_snow_water_equivalent_kg_m2;
+    std::vector<float> sea_ice_mass_kg_m2;
+    // Sample-weighted annual aggregates of the twelve monthly climatology
+    // layers. Both vectors are empty until climatology has samples.
+    std::vector<float> climatology_surface_temperature_mean_K;
+    std::vector<float> climatology_surface_temperature_variance_K2;
 };
 
 [[nodiscard]] StateSnapshot make_state_snapshot(const PlanetState& state,

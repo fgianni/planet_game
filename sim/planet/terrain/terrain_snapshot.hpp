@@ -1,13 +1,14 @@
 #pragma once
 
-#include "sim/planet/geology/geology_state.hpp"
-#include "sim/planet/planet_state.hpp"
-#include "sim/planet/terrain/drainage.hpp"
-
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
 namespace planetsim {
+
+class PlanetState;
+struct GeologyState;
+struct DrainageState;
 
 inline constexpr std::uint32_t terrain_snapshot_schema_version = 2;
 

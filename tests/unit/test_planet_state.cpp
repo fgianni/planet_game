@@ -45,6 +45,10 @@ int main() {
     planetsim::update_solar_forcing(state, parameters, clock.tick());
     const auto snapshot = planetsim::make_state_snapshot(state, clock);
     PLANETSIM_EXPECT(test, snapshot.schema_version == planetsim::state_snapshot_schema_version);
+    PLANETSIM_EXPECT(test, snapshot.surface_temperature_K.size() == state.mesh().cell_count());
+    PLANETSIM_EXPECT(test, snapshot.land_snow_water_equivalent_kg_m2.size() ==
+                               state.mesh().cell_count());
+    PLANETSIM_EXPECT(test, snapshot.sea_ice_mass_kg_m2.size() == state.mesh().cell_count());
     PLANETSIM_EXPECT(test, snapshot.simulation_tick == 15);
     PLANETSIM_EXPECT_NEAR(test, snapshot.simulation_time_s, 900.0, 0.0);
     PLANETSIM_EXPECT(test, snapshot.top_of_atmosphere_insolation_field_id ==
