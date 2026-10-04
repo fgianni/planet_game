@@ -1,12 +1,12 @@
 # Planetary Civilization Simulator --- Development Specification
 
-Version: 0.6 (reconciled with design v1.1 and accepted ADRs 0001--0011 in
+Version: 0.7 (reconciled with design v1.2 and accepted ADRs 0001--0011 in
 `docs/decisions/`)\
 Purpose: implementation contract for Codex / Claude Code\
 Primary target: PC/Linux, C++20 + Godot 4\
 Current phase: P0 --- Living Planet (M0 through M5 complete, M6 in progress)
 
-Design document: `docs/planetary_civilization_simulator_design_v1_1.docx`.
+Design document: `docs/planetary_civilization_simulator_design_v1_2.docx`.
 Accepted decision records take precedence over this specification where they
 conflict.
 
@@ -14,8 +14,24 @@ Decision records live in one directory, `docs/decisions/`, with an index in
 `docs/decisions/README.md`; superseded records are kept under
 `docs/decisions/archive/`.
 
-What is new in v0.6, relative to v0.5 --- all of it from design v1.1
-section 40, which v0.5 predates:
+What is new in v0.7, relative to v0.6 --- all of it from design v1.2
+section 42, which v0.6 predates:
+
+- **a presentation boundary** (section 31.1): a Godot-free `sim/presentation`
+  library turns snapshots into a `VisualFrame` of semantic channels;
+- **swappable style packs** (section 31.3): art direction is data and shaders
+  over the semantic channels; `stylised` and `map` styles are built first;
+- **the readability invariant** (section 31.8): every style must make each
+  planetary signal distinguishable, in colour and for colour-blind viewers,
+  checked by a CI harness on test snapshots;
+- temporal smoothing, camera scales, procedural detail that never
+  contradicts its cell, event staging, knowledge-gated overlays and a
+  performance budget (sections 31.4--31.9);
+- **M14 is replaced by a rendering track R0--R8** that runs alongside the
+  physics (section 31.10), and ADR-0018 is required before R1.
+
+What v0.6 added, relative to v0.5 --- all of it from design v1.1
+section 40 --- and which still stands:
 
 - **natural forcing** (design v1.1 §40.5, §40.6): the solar cycle, volcanic
   eruptions as seeded events on the plate boundaries, and slow orbital change
@@ -159,6 +175,8 @@ Physics   -X-> UI
 Climate   -X-> Population entities
 Core      -X-> Domain modules
 Population / society / government -X-> planetary solver arrays
+sim/presentation -X-> PlanetState, solvers
+Style packs      -X-> raw snapshot fields
 ```
 
 The last rule is the mirror of the third: the population reads the planet
@@ -216,7 +234,8 @@ planet_game/
 │   ├── technology/
 │   ├── government/
 │   ├── scenario/
-│   └── history/
+│   ├── history/
+│   └── presentation/
 ├── apps/
 │   ├── planet_cli/
 │   ├── climate_lab/
@@ -224,6 +243,7 @@ planet_game/
 ├── godot/
 │   ├── project.godot
 │   ├── gdextension/
+│   ├── styles/
 │   ├── scenes/
 │   ├── shaders/
 │   ├── materials/
@@ -1433,8 +1453,11 @@ the hysteresis machinery exists and all of which are gameplay-critical:
 
 ### M14 --- Visualization
 
-Render authoritative temperature, wind, currents, precipitation, soil
-moisture, vegetation, snow/ice, clouds, SST and energy imbalance.
+Replaced in v0.7 by the rendering track R0--R8 of section 31.10, which runs
+alongside the physics milestones instead of after them. The original
+obligation (render authoritative temperature, wind, currents, precipitation,
+soil moisture, vegetation, snow/ice, clouds, SST and energy imbalance) is met
+in the climate lab by R2--R7 and the overlays of section 31.7.
 
 ### M14.1 --- Counterfactual planet and attribution
 
@@ -2171,7 +2194,7 @@ Foundation work completed before M2 terrain starts (task
 7.  ~~Consolidate the two decision-record directories and add an index.~~
     Done: `docs/decisions/` with `README.md` and `archive/`.
 
-### 26.1 Decision records required by designs v0.9 to v1.1
+### 26.1 Decision records required by designs v0.9 to v1.2
 
 None of these blocks M2 terrain. All of them block the milestone named.
 
@@ -2228,6 +2251,11 @@ Decision records required by design v1.1.
     bounds, trade along the network, budget accounts, tax bases on income
     bands and the interest rule. *Blocks S2.*
 
+Decision record required by design v1.2.
+
+11. **ADR-0018: presentation boundary, semantic channels and style packs**
+    (sections 31.1--31.3, 31.8). *Blocks R1.*
+
 ### 26.2 Work introduced by design v0.9
 
 | Item | Section | Phase |
@@ -2275,6 +2303,12 @@ Section 30.1 is the complete placement table. The P0 items are:
 | Volcanic eruptions and stratospheric sulphate | 30.2 | M12; experiment at M13 |
 | DIC, alkalinity, pH and Ω | 30.3 | M12 |
 | Orbital change for long scenarios | 30.2 | after M13 |
+
+### 26.5 Work introduced by design v1.2
+
+The rendering track of section 31.10. R1 can start now: it needs only the
+existing snapshots and ADR-0018, and it makes every later visual layer
+style-independent from the start.
 
 ## 27. Open questions
 
@@ -2339,6 +2373,15 @@ New from design v1.1:
     prototype checks.
 -   Which reference series does the debrief use, and how is the comparison
     kept honest when the planet is not Earth?
+
+New from design v1.2:
+
+-   How far may a cartoon style simplify before it hides a signal? The
+    readability threshold of section 31.8 (mean ΔE 10) is a starting value.
+-   Switch styles mid-game or only between games?
+-   May community style packs carry scripts, or only data and shaders?
+-   How much procedural detail may be added inside a cell before it
+    misleads (section 31.5)?
 
 ## 28. Traceability: design v0.9 to this specification
 
@@ -2439,6 +2482,23 @@ Design v1.0 added section 38, rewrote section 8.4, extended sections 7, 16,
 | 40.12 | learning debrief, isolated from the simulation | 30.12 |
 | 40.14 | staging | 30.1; 26.4 |
 | 17 | warfare in P4; public finance in scope; debrief without reproduction | 19; 30.8; 30.12 |
+
+### 28.3 Design v1.2 to this specification
+
+| Design v1.2 | Requirement | Specification |
+|---|---|---|
+| 42.1 | presentation only; truthful detail; information invariant | 31.1; 31.5; 31.8 |
+| 42.2 | style packs over semantic channels; two styles first | 31.2; 31.3 |
+| 42.3 | readability test snapshots, colour-blind checks | 31.8 |
+| 42.4 | visual layers by milestone | 31.2; 31.10 |
+| 42.5 | planet, region and local scales | 31.5 |
+| 42.6 | civilization footprint | 31.2 (R8 channels); 31.10 |
+| 42.7 | smoothing that grows with speed; events unsmoothed | 31.4 |
+| 42.8 | event staging, player-adjustable | 31.6 |
+| 42.9 | knowledge-gated overlays, uncertainty, society views | 31.7; 31.10 R8 |
+| 42.10 | accessibility | 31.7; 31.8 |
+| 42.11 | performance | 31.9 |
+| 42.12 | rendering track R0--R8 | 31.10 |
 
 ## 29. Population and society
 
@@ -3222,3 +3282,225 @@ that removing it leaves every state hash unchanged.
 | S3 | Norm diffusion | a norm with infrastructure support spreads faster than one with media support alone |
 | S7 | Conflict risk | shared water scarcity raises onset frequency over many seeds; treaties lower it |
 | P2 | Debrief isolation | removing the reference dataset leaves every state hash unchanged |
+
+## 31. Rendering and presentation
+
+Design v1.2 section 42 makes the art direction swappable and requires every
+visual style to carry the same information. This section is the contract
+for the presentation side: what it may read, how styles plug in, how
+readability is tested, and the rendering track that runs alongside P0.
+
+### 31.1 Boundary
+
+``` text
+PlanetSim (authoritative state)
+     |
+     v
+StateSnapshot / TerrainSnapshot           (existing, read-oriented)
+     |
+     v
+sim/presentation   ->  VisualFrame        (semantic channels, events)
+     |
+     v
+godot/gdextension  ->  active style pack  ->  screen
+```
+
+-   `sim/presentation/` is a C++ library with no Godot dependency. It turns
+    snapshots into a `VisualFrame` of **semantic channels** (section 31.2),
+    so the mapping from physics to meaning is unit-tested headless;
+-   it depends on snapshots only, never on `PlanetState` or a solver;
+-   the Godot bridge (today `PlanetMeshNode`) consumes `VisualFrame` and
+    hands it to the active style pack. Its existing view modes (terrain,
+    plates, crust age, insolation, drainage) become climate-lab overlays
+    under section 31.7;
+-   nothing in `sim/presentation/` or Godot may write authoritative state;
+    a test asserts that rendering a run leaves every state hash unchanged.
+
+Forbidden dependencies, added to section 2:
+
+``` text
+sim/presentation -X-> PlanetState, solvers, SocietyState internals
+Style packs      -X-> raw snapshot fields (semantic channels only)
+```
+
+### 31.2 Semantic channels
+
+Each channel is one value per cell (corners interpolated by the bridge),
+normalised to a documented range and meaning. Styles see only these.
+
+| Channel | Range | Meaning | Source fields | From |
+|---|---|---|---|---|
+| `relief` | m | exaggeration-free elevation | terrain | R0 |
+| `surface_class` | weights over water, rock, sand, soil, ice | dominant surface mix | terrain, cryosphere, vegetation | R0 |
+| `daylight` | 0--1 | insolation relative to the cell's annual maximum | insolation | R0 |
+| `snow_cover` | 0--1 | fraction snow covered | snow water equivalent | R2 |
+| `sea_ice` | 0--1 | ice fraction of the ocean tile | sea ice | R2 |
+| `temperature_anomaly` | −1 to 1 | against the cell's reference climatology; overlays only | surface temperature | R2 |
+| `atmosphere_density` | 0--1 | scattering strength | atmospheric state | R3 |
+| `wind` | vector, m/s | for particles and cloud motion | winds | R3 |
+| `cloud_cover` | 0--1 | cloud fraction | cloud fields | R4 |
+| `cloud_thickness` | 0--1 | optical depth, normalised | cloud fields | R4 |
+| `precipitation` | 0--1 | rate, normalised | precipitation | R4 |
+| `water_extent` | 0--1 | inundated fraction of the cell, incl. floods and sea level | hydrology, hypsometry | R5 |
+| `vegetation_vigour` | 0--1 | leaf area relative to potential | vegetation | R5 |
+| `dryness` | 0--1 | soil-moisture deficit | soil moisture | R5 |
+| `ocean_tint` | weights over clear, turbid, bloom, hypoxic | water colour class | ocean, nutrients | R6 |
+| `current` | vector, m/s | surface current | ocean | R6 |
+| `haze` | 0--1 | tropospheric aerosol optical depth | aerosols | R7 |
+| `stratospheric_veil` | 0--1 | volcanic optical depth | stratospheric sulphate | R7 |
+| `fire` | 0--1 | active fire intensity; burn scar decays separately | fire | R7 |
+| `urban`, `farmland`, `mining` | 0--1 | land-use fractions | civilization | R8 |
+| `night_lights` | 0--1 | electrified urban activity | civilization, energy | R8 |
+
+Rules:
+
+-   the channel list is append-only and versioned like the field registry;
+    a style declares the channel-set version it implements;
+-   a channel absent in the current milestone is reported absent, never
+    faked; styles must render its absence neutrally;
+-   **events** travel separately as a list (kind, position, magnitude, start
+    and end tick): eruptions, cyclones, floods, fires, tipping events,
+    protests, elections. They are not smoothed (section 31.4).
+
+### 31.3 Style packs
+
+A style pack is a directory `godot/styles/<name>/` with a manifest:
+
+``` text
+style.tres
+  name, version, author, licence
+  channel_set_version           (section 31.2)
+  shaders: surface, ocean, atmosphere, clouds, effects
+  ramps:   one colour ramp or LUT per scalar channel it uses
+  assets:  detail meshes and textures by camera scale
+  ui_skin: icons, fonts, panels       (never overlay scales)
+  motion:  easing, relief exaggeration, cloud motion speed
+  cost_tier: low | medium | high
+```
+
+-   loading validates the manifest: a style that does not use every
+    required channel of its channel-set version is refused, with the missing
+    channels named;
+-   switching styles swaps materials and assets only; the bridge keeps the
+    current `VisualFrame`, so a switch is instant and has no simulation
+    effect;
+-   the first two styles are `stylised` (primary) and `map` (flat, symbolic),
+    built together in R1 so the abstraction is proven by two very different
+    implementations;
+-   style packs contain data and shaders only. Scripts in community packs
+    are an open question (section 27).
+
+### 31.4 Temporal smoothing
+
+Each scalar channel is smoothed on the presentation side with a display time
+constant that grows with the simulation speed:
+
+``` text
+c_display' = c_display + (c_frame - c_display) * (1 - exp(-Δt_wall / τ))
+τ = max(τ_min, k_ch * simulated_years_per_wall_second)
+```
+
+`k_ch` is per channel: snow and vegetation are smoothed more than clouds.
+Events bypass smoothing and are drawn at their true time and place. Like all
+pacing (section 8), smoothing is presentation and never changes the tick
+sequence.
+
+### 31.5 Camera scales and procedural detail
+
+| Scale | Geometry | Detail |
+|---|---|---|
+| Planet | the cell mesh at the shipped level, corners interpolated | none beyond channels |
+| Region | the same mesh, refined in view | procedural detail from channels |
+| Local | a generated patch for a few cells | procedural detail and assets |
+
+Procedural detail uses a presentation RNG stream keyed by
+`(world_seed, cell_id, detail_kind)`, separate from every simulation stream,
+so the same place always looks the same. Detail must respect its cell:
+tree density follows `vegetation_vigour`, snow follows `snow_cover`,
+buildings follow `urban`. A test samples generated detail and asserts it
+never contradicts the channel values beyond a tolerance.
+
+### 31.6 Event staging
+
+The presentation may move the camera, slow presentation time, or pause on an
+event, and open the newspaper. Under section 8, any change of simulation
+pacing is requested through the existing state-only rules; staging itself is
+presentation. Staging intensity is a player setting, including off.
+
+### 31.7 Overlays and knowledge
+
+-   In normal play, data overlays read `EstimatedState` and
+    `ObservationState` (sections 6, 17), not `SlowState`. Uncertainty is
+    drawn from the per-field uncertainty: fading, hatching or blur, chosen by
+    the overlay, not by the style;
+-   true-state overlays and the existing debug view modes are available only
+    in the climate lab and debug builds;
+-   overlay colour scales are fixed, colour-blind-safe and shared by all
+    styles; every overlay has a text reading on hover or selection.
+
+### 31.8 Readability test harness
+
+`tests/presentation/` holds the test snapshots of design v1.2 §42.3: for each
+signal, a baseline snapshot and a signal snapshot of the same region. For
+each style:
+
+1.  render both offscreen at a fixed camera, resolution and lighting;
+2.  compute the mean perceptual colour difference (CIEDE2000) over the
+    signal region;
+3.  repeat on simulated deuteranopia, protanopia and tritanopia, and on
+    luminance only;
+4.  pass if every signal exceeds the threshold in every variant.
+
+The threshold starts at a mean ΔE of 10 and is recorded with the harness.
+The harness runs in CI under a software renderer (for example Mesa llvmpipe
+in a virtual framebuffer); results are written to the sidecar analytics
+format so differences can be inspected. A style that fails is not shipped.
+
+The channel mapping of section 31.2 has its own headless unit tests in
+`sim/presentation`: for each test snapshot, the expected channel moves in the
+expected direction by more than a threshold.
+
+### 31.9 Performance budget
+
+-   PC target: 60 frames per second at 1080p on a mid-range graphics card at
+    L6, for a `medium` cost-tier style; `high` styles state their own target;
+-   per tick, only changed channels are uploaded, as float textures indexed
+    by cell, as `PlanetMeshNode` already does for insolation;
+-   the render thread never waits for the simulation (section 8); if a frame
+    arrives late, the previous `VisualFrame` is drawn;
+-   Android gets a `low` cost-tier style, not a reduced simulation.
+
+### 31.10 Rendering track
+
+M14 is replaced by a rendering track that runs alongside the physics. Each
+step lands with or after the milestone that provides its fields.
+
+| Track | Content | Needs | Acceptance |
+|---|---|---|---|
+| R0 | Existing terrain, plates, crust age, insolation, drainage views | M0--M3 | done |
+| R1 | `sim/presentation`, `VisualFrame`, channels R0--R2, style packs, `stylised` and `map` styles, switching, readability harness, render-does-not-change-state test | ADR-0018 | both styles pass the R1 signals; switching is instant |
+| R2 | Snow, sea ice, temperature-anomaly overlay | M4 | cold and warm years distinguishable in both styles |
+| R3 | Atmosphere scattering, wind particles | M5, M6 | wind patterns visible; no frame waits on the simulation |
+| R4 | Clouds, precipitation | M7, M8 | cloud bands and a cyclone distinguishable; clouds sit where the fields put them |
+| R5 | Rivers, floods, moving coastlines, vegetation, dryness | M9, M10 | drought, flood and deforestation signals pass |
+| R6 | Ocean tint, currents | M11 | current patterns and a bloom are distinguishable |
+| R7 | Haze, volcanic veil, fire, event staging | M12--M15 | smog, eruption and fire signals pass; staging never changes ticks |
+| R8 | Civilization footprint, camera scales, society views, newspaper, reports, debrief | P1 onward | footprint signals pass; detail never contradicts channels |
+
+The old M14 obligation ("render authoritative temperature, wind, currents,
+precipitation, soil moisture, vegetation, snow/ice, clouds, SST and energy
+imbalance") is met by R2--R7 in the climate lab, and by the overlays of
+section 31.7.
+
+### 31.11 Decision record
+
+ADR-0018 (section 26.1) decides the `sim/presentation` library, the channel
+registry and its versioning, the style manifest and its validation, the
+presentation RNG stream, and the readability threshold. It blocks R1.
+
+### 31.12 Non-goals
+
+-   a photorealistic style before P1;
+-   any gameplay difference between styles;
+-   scripts in style packs, until section 27's question is answered;
+-   presentation-side physics: a style may animate, never simulate.
