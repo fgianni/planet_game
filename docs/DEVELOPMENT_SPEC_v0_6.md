@@ -1,12 +1,12 @@
 # Planetary Civilization Simulator --- Development Specification
 
-Version: 0.5 (reconciled with design v1.0 and accepted ADRs 0001--0011 in
+Version: 0.6 (reconciled with design v1.1 and accepted ADRs 0001--0011 in
 `docs/decisions/`)\
 Purpose: implementation contract for Codex / Claude Code\
 Primary target: PC/Linux, C++20 + Godot 4\
 Current phase: P0 --- Living Planet (M0 through M5 complete, M6 in progress)
 
-Design document: `docs/planetary_civilization_simulator_design_v1_0.docx`.
+Design document: `docs/planetary_civilization_simulator_design_v1_1.docx`.
 Accepted decision records take precedence over this specification where they
 conflict.
 
@@ -14,8 +14,36 @@ Decision records live in one directory, `docs/decisions/`, with an index in
 `docs/decisions/README.md`; superseded records are kept under
 `docs/decisions/archive/`.
 
-What is new in v0.5, relative to v0.4 --- all of it from design v1.0
-sections 8.4 and 38, which v0.4 predates:
+What is new in v0.6, relative to v0.5 --- all of it from design v1.1
+section 40, which v0.5 predates:
+
+- **natural forcing** (design v1.1 §40.5, §40.6): the solar cycle, volcanic
+  eruptions as seeded events on the plate boundaries, and slow orbital change
+  for long scenarios (section 30.2). The human signal must be found against
+  them, not shown;
+- **ocean carbonate chemistry** (design v1.1 §40.7): DIC and alkalinity in the
+  M12 ocean carbon reservoir, with pH and aragonite saturation diagnosed
+  (section 30.3);
+- **a biodiversity index** with a permanent extinction counter, from M10
+  (section 30.4);
+- **pollution stocks** for water, soil, nutrients and toxic waste, with
+  sources in the civilization flux interface (sections 18, 30.5);
+- **the food system**: diets, livestock, fertilizer, storage and fisheries
+  with collapse (section 30.6);
+- **public finance and prices**: budget, taxes on income bands, debt whose
+  interest rises with lost credibility (section 30.7);
+- **conflict** as a P4 consequence system (section 30.8); **future
+  generations**, **lifestyle norms**, **indicators and endings**, and a
+  **learning debrief** isolated from the simulation (sections 30.9--30.12);
+- milestone hooks in M10, M12 and M13, three new decision records
+  (section 26.1), acceptance experiments (section 30.13) and traceability
+  (section 28.2).
+
+The four physical additions are P0 work inside existing milestones; the rest
+is P1 or later.
+
+What v0.5 added, relative to v0.4 --- all of it from design v1.0
+sections 8.4 and 38 --- and which still stands:
 
 - **the player's identity** (design v1.0 §8.4): the player is the civilization
   acting through its current government. Credibility and promises belong to
@@ -748,6 +776,10 @@ Keep forcing logic distinct from the carbon-reservoir model.
 
 Later reservoirs: - atmosphere; - vegetation; - soil; - ocean.
 
+The ocean reservoir carries DIC and alkalinity, so pH and aragonite
+saturation are diagnosed and acidification is a separate consequence of
+emissions that cooling cannot undo (section 30.3).
+
 ### 9.9 Aerosols
 
 Do not merge aerosols into CO2.
@@ -757,6 +789,10 @@ interactions; - finite atmospheric lifetime; - spatially heterogeneous
 pollution.
 
 Detailed aerosol physics is not required in the first implementation.
+
+Stratospheric sulphate from volcanic eruptions is a separate tracer from
+tropospheric pollution aerosol, with a lifetime of about a year, and uses the
+same shortwave path (section 30.2).
 
 Aerosols are a P1 priority rather than a curiosity: they mask warming, dim
 solar output and weaken monsoons, so cleaning the air improves health and
@@ -1316,6 +1352,10 @@ depression/lake handling and M4 snowmelt input.
 
 ### M10 --- Vegetation and the living biosphere
 
+Added in v0.6: the biodiversity index per region and biome, with its
+monotonic extinction counter, is M10 state (section 30.4). Its functions are
+P2.
+
 Climate suitability, vegetation fraction, evapotranspiration, albedo and
 soil-water coupling.
 
@@ -1360,6 +1400,10 @@ temperature/salinity-dependent density.
 Configurable CO2, greenhouse forcing, diagnostics and architecture for
 later carbon reservoirs.
 
+Added in v0.6 (section 30): the solar cycle in the luminosity forcing;
+volcanic eruptions as seeded events with stratospheric sulphate; DIC and
+alkalinity in the ocean reservoir with diagnosed pH and Ω.
+
 Reservoirs to be wired as they become available: atmosphere, vegetation,
 soil, peat/permafrost, ocean (with the biological pump as a later term).
 Short-lived forcers (section 9.11) keep their own lifetimes and are never
@@ -1370,6 +1414,9 @@ folded into the CO2 concentration.
 Include no-atmosphere, doubled-CO2, zero-rotation, high-tilt,
 eccentric-orbit, water-world, frozen-world, altered-ocean-transport,
 deforestation and long-equilibrium runs.
+
+Added in v0.6: the eruption-masks-trend experiment of section 30.13. Slow
+orbital change for long scenarios follows M13 (section 30.2).
 
 Design v0.9 sections 37.3 and 37.6 add three more, all of which are cheap once
 the hysteresis machinery exists and all of which are gameplay-critical:
@@ -1727,6 +1774,10 @@ waste heat
 ocean engineering
 solar geoengineering
 carbon removal
+livestock methane and fertilizer N2O
+river pollutant and nutrient loads
+soil degradation (tillage, overgrazing, salinisation)
+fish catch
 ```
 
 PlanetSim returns physical consequences:
@@ -1823,6 +1874,10 @@ From design v1.0, the whole population and society model of section 29 is
 P1 (phases S1 and S2) or later. P0's only obligations toward it are not to
 foreclose the exposure fields of section 29.4, the immutable cell-to-region
 map, and a scheduler slot after the planetary sub-step.
+
+From design v1.1, the solar cycle, volcanic eruptions, carbonate chemistry
+and the biodiversity index are P0 (section 30.1). Everything else in section
+30 is P1 or later, and conflict remains excluded before P4.
 
 ## 20. Development workflow for an AI coding agent
 
@@ -2116,7 +2171,7 @@ Foundation work completed before M2 terrain starts (task
 7.  ~~Consolidate the two decision-record directories and add an index.~~
     Done: `docs/decisions/` with `README.md` and `archive/`.
 
-### 26.1 Decision records required by designs v0.9 and v1.0
+### 26.1 Decision records required by designs v0.9 to v1.1
 
 None of these blocks M2 terrain. All of them block the milestone named.
 
@@ -2158,6 +2213,21 @@ Decision records required by design v1.0. None blocks P0.
     promise measurable, administrations and what carries over between them,
     and how the latent ledger of hidden gaps is released. *Blocks S4.*
 
+Decision records required by design v1.1.
+
+8.  **ADR-0015: natural forcing events** (section 30.2). The volcano list and
+    its derivation from plate boundaries, rate and size distributions, the
+    RNG stream and manifest record, prescribed historical eruptions, the
+    stratospheric tracer, the solar-cycle parameters and jitter, and how
+    orbital drift updates `PlanetParameters`. *Blocks the M12 forcing work.*
+9.  **ADR-0016: ocean carbonate chemistry** (section 30.3). The carbonate
+    system approximation, field ids and precision, the gas-transfer
+    parameterisation, deep exchange, and validation ranges. *Blocks M12.*
+10. **ADR-0017: commodities, prices and public finance** (sections 30.6,
+    30.7). The commodity list including food, the price update and its
+    bounds, trade along the network, budget accounts, tax bases on income
+    bands and the interest rule. *Blocks S2.*
+
 ### 26.2 Work introduced by design v0.9
 
 | Item | Section | Phase |
@@ -2193,6 +2263,18 @@ The gameplay prototype (section 25) is the cheap place to test the credibility
 mechanic before S4 is built in C++: whether players notice the gap between
 their words and deeds, and whether trust asymmetry feels fair rather than
 punitive.
+
+### 26.4 Work introduced by design v1.1
+
+Section 30.1 is the complete placement table. The P0 items are:
+
+| Item | Section | Milestone |
+|---|---|---|
+| Biodiversity index and extinction counter | 30.4 | M10 |
+| Solar cycle | 30.2 | M12 |
+| Volcanic eruptions and stratospheric sulphate | 30.2 | M12; experiment at M13 |
+| DIC, alkalinity, pH and Ω | 30.3 | M12 |
+| Orbital change for long scenarios | 30.2 | after M13 |
 
 ## 27. Open questions
 
@@ -2243,6 +2325,20 @@ New from design v1.0:
     section 29.12 is the first guard; playtests are the second.
 -   Should some scenarios lock the player into one government, with an
     election loss as defeat (design v1.0 §19)?
+
+New from design v1.1:
+
+-   How much of the budget does the player manage directly, and how much
+    follows from standing policy, so finance stays a constraint rather than
+    bookkeeping?
+-   How is conflict kept a consequence the player regrets, rather than a
+    strategy to optimise?
+-   Which indicators make up the end report, and are they weighted at all?
+-   What eruption rate and size distribution test the player's science
+    without masking the human signal for too long? ADR-0015 proposes; the
+    prototype checks.
+-   Which reference series does the debrief use, and how is the comparison
+    kept honest when the planet is not Earth?
 
 ## 28. Traceability: design v0.9 to this specification
 
@@ -2324,6 +2420,25 @@ Design v1.0 added section 38, rewrote section 8.4, extended sections 7, 16,
 | 38.14 | seven phases | 29.1 |
 | 38.15 | stylised-fact validation | 29.12 |
 | 18, 19 register and questions | four decisions; four open questions | 26.1; 27 |
+
+### 28.2 Design v1.1 to this specification
+
+| Design v1.1 | Requirement | Specification |
+|---|---|---|
+| 40.1 | budget, taxes on income bands, debt, no markets | 30.7 |
+| 40.2 | diets, livestock, fisheries, fertilizer, storage, waste | 30.6; 18 |
+| 40.3 | conflict as a P4 consequence system | 30.8 |
+| 40.4 | five indicators, era milestones, self-set goals, collapse as an ending | 30.11 |
+| 40.5 | volcanic eruptions; earthquakes and tsunamis | 30.2; 9.9 |
+| 40.6 | solar cycle, internal variability, orbital change | 30.2 |
+| 40.7 | ocean acidification | 30.3; 9.8 |
+| 40.8 | pollution stocks | 30.5; 18 |
+| 40.9 | biodiversity index and permanent extinctions | 30.4; M10 |
+| 40.10 | voice of the young; future-generations indicator; discounting | 30.9 |
+| 40.11 | lifestyle norms | 30.10 |
+| 40.12 | learning debrief, isolated from the simulation | 30.12 |
+| 40.14 | staging | 30.1; 26.4 |
+| 17 | warfare in P4; public finance in scope; debrief without reproduction | 19; 30.8; 30.12 |
 
 ## 29. Population and society
 
@@ -2811,3 +2926,299 @@ phase lands.
 -   a regime-change mechanic in the first society release; regime type is
     fixed per scenario until section 27's question is answered;
 -   any society-side modifier on planetary state.
+
+## 30. Completing the world
+
+Design v1.1 section 40 adds twelve elements that the world still lacked.
+Four of them are physical and join P0 milestones: the solar cycle, volcanic
+eruptions, ocean carbonate chemistry and the biodiversity index. The rest are
+civilization-side and follow the phases of section 29.1.
+
+### 30.1 Placement
+
+| Addition | Design v1.1 | Stage | Milestone or phase | Owner module |
+|---|---|---|---|---|
+| Solar cycle | 40.6 | P0 | M12 (forcing) | `planet/orbit` |
+| Volcanic eruptions | 40.5 | P0 | M12 forcing, M13 experiment | `planet/geology`, `atmosphere/radiation` |
+| Ocean carbonate chemistry, pH | 40.7 | P0 | M12 | `carbon`, `ocean` |
+| Biodiversity index (state) | 40.9 | P0 | M10 | `biosphere` |
+| Orbital change | 40.6 | P0 | after M13 | `planet/orbit` |
+| Local pollution stocks | 40.8 | P1 | with S2 | `hydrology`, `biosphere` |
+| Food system | 40.2 | P1 | with S2 | `economy`, `biosphere`, `ocean` |
+| Government budget, taxes, prices | 40.1 | P1 | with S2 | `government`, `economy` |
+| Indicators, era milestones, endings | 40.4 | P1 | first version with S2 | game layer |
+| Earthquakes and tsunamis | 40.5 | P2 | hazards | `planet/geology` |
+| Learning debrief | 40.12 | P2 | presentation | presentation |
+| Debt, future-generations indicator | 40.1, 40.10 | P3 | with S4 | `government` |
+| Voice of the young | 40.10 | P3 | with S5 | `society` |
+| Lifestyle norms | 40.11 | P3 | with S3 | `society` |
+| Biodiversity functions | 40.9 | P2 | after M10 | `biosphere` |
+| Conflict and security | 40.3 | P4 | with S7 | `government` |
+
+### 30.2 Natural forcing: solar cycle, eruptions and orbital change
+
+These are the background against which the human signal must be found
+(design v1.1 §40.6). They are forcing, not modifiers, and every event is
+recorded in the run manifest.
+
+**Solar cycle.** A periodic modulation of the star's luminosity:
+
+``` text
+L(t) = L0 * (1 + a_sun * sin(2π (t - t0) / P_sun))
+```
+
+`a_sun` (Earth: about 5e-4), `P_sun` (Earth: about 11 years) and `t0` are
+`PlanetParameters`; the period may jitter from cycle to cycle by a seeded
+draw of up to ±20 %, fixed at scenario construction. The modulation enters
+through the existing sub-step mean insolation (ADR-0006 §4.3), so it is
+seasonal and conserved like the rest of the forcing.
+
+**Volcanic eruptions.** Eruptions are discrete events on a volcano list
+derived from the plate boundaries of the M2 terrain generator.
+
+``` text
+onset:      Poisson process per volcano, rate λ_v from the scenario
+size:       truncated power law over eruption magnitude (VEI-like classes)
+injection:  stratospheric sulphate mass M_SO4 by size class and latitude
+burden:     dB/dt = injection - B / τ_strat,  τ_strat ≈ 1 year
+spread:     latitude-band transport toward both hemispheres for
+            tropical eruptions, one hemisphere otherwise
+forcing:    shortwave reflection from the stratospheric optical depth,
+            through the aerosol path of section 9.9
+```
+
+Rules:
+
+-   the volcano list, rates and size distribution are scenario data; the
+    onset and size draws use the keyed RNG with a reserved stream and are
+    fixed when drawn, so a replay reproduces every eruption;
+-   a scenario may prescribe dated historical eruptions (Industrial Dawn:
+    an 1883 Krakatoa-class event) in place of or alongside the random ones;
+-   stratospheric aerosol is a separate tracer from tropospheric pollution
+    aerosol, with its own lifetime; neither is folded into CO2;
+-   tephra and local ash damage are P2 hazards; P0 carries only the forcing.
+
+**Orbital change.** For long scenarios (Ice Age, design §4.2), the
+precession angle, obliquity and eccentricity drift with simplified secular
+periods. They update `PlanetParameters` at year boundaries through the
+ADR-0004 frames; within a year the orbit is fixed. Short scenarios hold
+them constant.
+
+**Earthquakes and tsunamis (P2).** Discrete hazard events on the same plate
+boundaries, drawn the same way, with no climate effect: infrastructure
+damage, casualties and coastal inundation on the ADR-0005 hypsometry.
+
+### 30.3 Ocean carbonate chemistry
+
+The ocean carbon reservoir of M12 carries two prognostic surface fields per
+ocean cell, both `double` and in `SlowState`:
+
+``` text
+DIC   dissolved inorganic carbon, mol/kg
+ALK   total alkalinity, mol/kg
+```
+
+pH, the partial pressure of CO2 at the surface and the aragonite saturation
+state Ω are diagnosed from DIC, ALK, temperature and salinity with a
+standard simplified carbonate system. The air--sea CO2 flux follows from
+the partial-pressure difference and a gas-transfer velocity, so the
+buffering (the Revelle factor) emerges rather than being prescribed.
+Exchange with the deep ocean uses the deep-ocean reservoir of M11.
+
+Acidification recovers only through slow processes (deep mixing, carbonate
+dissolution), so no surface process may reset pH. Ω feeds reefs and the
+fisheries of section 30.6.
+
+### 30.4 Biodiversity index
+
+From M10, each region carries a species-richness index per biome
+(`float`, 0 to 1 of the biome's potential), in `SlowState`:
+
+``` text
+dR/dt = r_rec * (R_pot - R) * habitat * (1 - pressure)  -  δ * pressure * R
+pressure = w_hab * habitat_loss + w_temp * thermal_stress
+         + w_poll * pollution (P1) + w_harv * overharvest (P1)
+extinctions += max(0, R_prev - R) * N_species_biome   when R < R_crit
+```
+
+`extinctions` is a monotonic counter per region and biome: it never
+decreases, and a test asserts it. Below `R_crit` the biome loses functions
+(pollination, pest control, fish recruitment, soil formation) in P2;
+before P2, the index is state and diagnostics only.
+
+### 30.5 Pollution stocks
+
+Each pollutant is a physical stock with a source, a transport path and a
+decay time. The civilization flux interface of section 18 gains the
+sources.
+
+| Stock | Where | Transport | Decay | Exposure output |
+|---|---|---|---|---|
+| Tropospheric aerosol and smog | atmosphere | winds (section 9.9) | days to weeks | `air_quality` |
+| River pollutant load | land cells | routed downstream on the ADR-0005 drainage | first-order per reach | `water_quality` |
+| Soil degradation | land cells | none (local) | recovers over decades | yield reduction |
+| Nutrient load | land, then coastal ocean | runoff to the river mouth | uptake and burial | coastal `hypoxia` when load and warm water exceed a threshold |
+| Toxic waste | land cells | slow leaching | decades or none | local health |
+
+`water_quality` and `hypoxia` join the exposure variables of section 29.4.
+Salinisation from irrigation is part of soil degradation and must follow
+from the water budget of section 9.10, so it emerges where irrigation
+exceeds drainage.
+
+### 30.6 Food system
+
+All flows are physical quantities in the P1 economy, per region:
+
+``` text
+diet_c           demand vector over grain, vegetables, meat, dairy, fish
+                 (kcal per capita), shifting with income and norms (30.10)
+herd_r'          herd_r + births - slaughter, limited by feed and pasture
+CH4_livestock    herd * emission factor by animal type    -> section 18 flux
+pasture_r        land use, competing with crops and forest (section 9.10)
+fertilizer_r     N applied -> yield gain, N2O flux, nutrient runoff (30.5)
+food_stock_r     storage with spoilage; trade along the transport network
+waste_fraction   loss between field and consumer, falling with infrastructure
+```
+
+Fish stocks per ocean region follow logistic growth with depensation, so a
+stock below a critical fraction collapses even when fishing stops:
+
+``` text
+F' = F + g(T, Ω) * F * (1 - F/K) * (F/F_crit - 1) * Δt - catch
+catch = q * effort * F
+```
+
+`g` falls with temperature beyond the stock's tolerance and with low Ω
+(section 30.3). Food prices from section 30.7 feed cohort needs; food-price
+shocks reach grievance through section 29.6.3 without any special case.
+
+### 30.7 Public finance and prices
+
+**Prices.** One price per commodity and region, updated each quarter by a
+bounded adjustment:
+
+``` text
+p' = p * exp(η * clamp((demand - supply) / supply, -1, 1))
+```
+
+with trade along the transport network moving supply toward high prices,
+limited by capacity and cost. There are no markets, banks or speculation
+(design §17).
+
+**Budget.** Each administration holds accounts per year:
+
+``` text
+revenue  = Σ_tax rate_tax * Σ_cohort,band base_tax(c, b)
+spending = Σ_line allocation_line   (infrastructure, services, research,
+           administration, security, adaptation, debt service)
+debt'    = debt + spending - revenue
+interest = i_0 + k_debt * debt / output + k_cred * (1 - mean credibility)
+```
+
+Taxes act on income bands, so their distribution falls out of section
+29.3. A tax change is a `set_policy` command (section 29.9) and passes
+through the implementation gap. The credibility term links the promise
+ledger to the cost of borrowing.
+
+### 30.8 Conflict and security (P4)
+
+Conflict risk between two societies is a hazard rate:
+
+``` text
+h_ab = h_0 * exp( w_water * shared_water_scarcity + w_land * land_scarcity
+                + w_refugee * refugee_flow_ab + w_griev * grievance
+                - w_legit * legitimacy - w_trade * interdependence_ab
+                - w_treaty * treaties_ab + w_mem * past_conflict_ab )
+```
+
+Onset is a keyed-RNG draw per year. A conflict destroys a fraction of
+infrastructure and harvest in the affected regions, displaces cohorts
+through the migration model, emits from destruction and rebuilding, consumes
+budget, and suspends climate agreements between the parties. Security
+spending lowers onset and damage. There is no combat simulation; the
+conflict is a state with an intensity and a duration.
+
+### 30.9 Future generations
+
+**Indicator.** A future-generations indicator, computed at each report
+interval and shown in every era report:
+
+``` text
+FG = debt / output, depleted non-renewable resources, committed warming
+     (section 7.2), crossed tipping elements, extinctions (30.4),
+     surface pH change (30.3)
+```
+
+It is a vector, not a single number; the presentation may show a weighted
+summary, but the weights are data and visible.
+
+**Voice of the young.** Young cohorts whose climate salience is high gain
+organisation (section 29.6.8) and unlock specific mobilisation forms:
+school strikes, youth movements and, once courts exist in the scenario,
+climate lawsuits that force a promise check.
+
+**Discounting.** The discount rate the government uses to appraise
+investments is a visible policy parameter, not a constant. Political actors
+use their own rates.
+
+### 30.10 Lifestyle norms
+
+Each cohort carries a norm vector (car use, meat share, air travel, housing
+size, cycling, reuse), each 0 to 1. Norms diffuse through the influence
+network of section 29.6.5 with a conformity term:
+
+``` text
+n_c' = n_c + (p_norm + q_norm * n_neighbours) * (target(income, infra, price) - n_c) * Δt
+```
+
+`target` depends on income, infrastructure (cycle lanes, transit, housing
+stock) and prices. Media can nudge `q_norm`; no command sets a norm. Norms
+scale the consumption base of section 29.6.4 and the diet vector of section
+30.6. A norm tied to identity freezes like an opinion (section 29.6.5).
+
+### 30.11 Indicators, era milestones and endings
+
+Indicators are derived from state at each report interval and stored in the
+sidecar analytics file (section 27), never in the snapshot:
+
+| Indicator | Computed from |
+|---|---|
+| Living conditions | need satisfaction and health, population-weighted with extra weight on the worst-off income band |
+| Planetary state | global warming, committed warming, tipping elements crossed, biodiversity, surface pH |
+| Future generations | section 30.9 |
+| Resilience | loss and recovery time after shocks: disasters, eruptions, price spikes, conflict |
+| Legitimacy | diffuse support and share of cohorts in open protest |
+
+Scenario data defines era milestones (dated report points) and optional
+self-set goals as predicates over indicators. A collapse ending fires when
+an indicator predicate holds for a set duration; it pauses presentation and
+offers a history fork (ADR-0003). None of this affects the tick sequence.
+
+### 30.12 Learning debrief
+
+A curated reference dataset, `data/reference/earth.csv`, holds yearly real
+series from 1880 (CO2, global temperature anomaly, population, energy mix,
+forest cover) with a source and licence for each column. It is read only by
+the presentation layer. The simulation never reads it, and a test asserts
+that removing it leaves every state hash unchanged.
+
+### 30.13 Acceptance experiments
+
+| Milestone or phase | Experiment | Acceptance |
+|---|---|---|
+| M12 | Solar cycle | global mean temperature shows a spectral peak at `P_sun` with the expected small amplitude; energy budget closes |
+| M12 | Single large tropical eruption | global cooling peaks within two years and decays with the stratospheric lifetime; both hemispheres cool |
+| M13 | Eruption masks trend | under steady CO2 rise, a large eruption produces a temporary pause in warming; the trend resumes |
+| M12 | Acidification | doubling CO2 lowers surface pH by roughly 0.3; Ω falls; cooling alone does not restore pH |
+| M12 | Revelle factor | emerges in the expected range at preindustrial conditions without being prescribed |
+| M10 | Extinction counter | never decreases in any run; the index recovers after pressure ends but the counter does not |
+| S2 | Livestock | doubling the meat share of diets raises pasture area and methane flux in proportion |
+| S2 | Fishery collapse | sustained overfishing below the critical fraction collapses the stock; it does not recover within decades after fishing stops |
+| S2 | Salinisation | irrigation beyond drainage lowers yield over decades; with drainage it does not |
+| S2 | Food-price shock | a regional drought raises food prices and grievance in that region without any scripted link |
+| S2 | Budget closure | revenue, spending and debt balance exactly every year |
+| S4 | Borrowing cost | equal debt, lower credibility gives a higher interest rate |
+| S5 | Youth mobilisation | young cohorts mobilise first once climate salience is high |
+| S3 | Norm diffusion | a norm with infrastructure support spreads faster than one with media support alone |
+| S7 | Conflict risk | shared water scarcity raises onset frequency over many seeds; treaties lower it |
+| P2 | Debrief isolation | removing the reference dataset leaves every state hash unchanged |
