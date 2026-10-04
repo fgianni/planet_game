@@ -5,6 +5,7 @@
 - **Accepted:** 2026-10-02
 - **Amended:** 2026-10-02 — §12: V2 gates for the TRiSK operators, as measured in M6-01
 - **Amended:** 2026-10-02 — §13: the orography the winds see; the sub-step rule's wind bound
+- **Proposed amendment:** 2026-10-04 — §14: the zonal-mean circulation, its eddy closure and its solution
 - **Milestone:** P0 / M6 (wind and Coriolis)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §6 (`AtmosphereState`), §8 (multi-rate), §9.2, §13 M6, §15.5 (zero-rotation experiment), §23, §24; Planetary Civilization Simulator — Design Record v0.9, §5.4, §15.2–15.5, §25 (M5 row: "planetary circulation direction and latitude dependence"), §28
 - **Related:** ADR-0001 (modes, partition, budget, §8 milestone mapping), ADR-0002 (mesh, operators, §4.2 advection, field layout), ADR-0003 (determinism, replay), ADR-0006 (sub-steps), ADR-0009 (implicit transport, coarse graph), ADR-0010 (layered atmosphere; its §7 M6 row)
@@ -756,3 +757,159 @@ Earth-like terrain is not:
 - Earth's jets exceed 100 m/s at times.
 - The cost is about 11 % more steps.
 
+
+## 14. Amendment: the zonal-mean circulation, its eddy closure and its solution (proposed 2026-10-04)
+
+**Finding (task M6-04, step A).** §4.5 deferred the solution method to
+M6-04 and fixed the closure: Green's diffusivity for heat and potential
+vorticity, with the momentum flux following through the Taylor identity.
+Both were tested against reference mode before any climate code was
+written. `planet_cli dynamics` and `reference` now record zonal means
+(`ZonalStatistics`: wind, temperature, eddy kinetic energy, eddy heat and
+momentum fluxes, streamfunction). Three runs at L4, time means after
+spin-up:
+
+| Run | Days averaged |
+|---|---|
+| Held–Suarez, N = 3 | 300 of 400 |
+| Held–Suarez, N = 5 | 450 of 600 |
+| Earth-like reference mode, N = 3 (V6) | 730 of 1,096 |
+
+- **The Taylor-identity closure fails.** Given each run's own T̄ (and the
+  measured diffusivities), the momentum-flux convergence it implies is
+  wrong in sign at the jet and an order of magnitude too large. Column
+  means (1e-6 m/s²):
+
+  | Run, latitude | Measured | PV diffusion, uniform D |
+  |---|---|---|
+  | HS N = 3, 32.5° | +3.4 | −47.6 |
+  | HS N = 5, 42.5° | +9.1 | −70.7 |
+  | Earth-like, 52.5° | +1.6 | −29.0 |
+
+  With a vertically uniform D the stretching terms cancel in the column,
+  leaving −Dβ: easterly forcing at every latitude. Measured, layer-varying
+  diffusivities do not repair the sign. The closure also violates the
+  angular-momentum constraint unless corrected.
+- **What the data do follow.**
+  - The column eddy momentum flux follows the meridional gradient of eddy
+    kinetic energy, `[u'v'] = ℓ_m ∂E/∂y`: correlation 0.92, 0.74 and 0.59,
+    with ℓ_m = 2.0e5, 2.7e5 and 1.7e5 m. 80–97 % of it is in the free
+    troposphere (σ < 0.7). This is the form of Coumou et al. (2011).
+  - The column E follows `|∂θ̄/∂y|²`: correlation 0.91, 0.91 and 0.85.
+  - The heat flux follows a mixing length, `[v'θ'] = −ℓ_h √(2E) s_k ∂θ_k/∂y`
+    with the shape s_k ∝ σ_k² (the measured diffusivity is concentrated in
+    the lowest layers). The fitted ℓ_h is 1.245e5, 1.203e5 and 1.192e5 m:
+    **the same to 4 % in all three runs**, while Green's coefficient
+    (`D = c_e |∂θ̄/∂y|`) varies 2.7-fold between them. Column correlation
+    0.94–0.96; relative RMS error 0.36–0.38 per layer.
+- **Prototype** (Python, `tools/zonal_mean_prototype/`):
+  the axisymmetric model below under Held–Suarez forcing.
+  - Newton from the reference state converges quadratically (residual
+    2.7e-3 → 9e-5 → 2e-6 → 2e-7 → 2e-9 → 2e-13) to the same steady state
+    as a 400-day explicit march, which needs about 30,000 RK3 steps.
+  - Uncalibrated, it gives trades over 0–17°, westerlies over 22–42° and
+    polar easterlies, a 33 m/s jet at 27.5° (reference: 26 m/s at
+    32.5°), and T̄ within 6 K of the reference.
+  - Two discrete requirements surfaced. Angular momentum must be advected
+    by a monotone (upwind) flux and its viscosity must be in stress form,
+    or equatorial superrotation grows that Hide's theorem forbids. A local
+    E ∝ |∂θ̄/∂y|² gives a grid-scale eddy–jet runaway; the screening below
+    removes it for L ≥ 1,000 km.
+  - Tying eddy energy to the wind shear instead (f ∂ū/∂z) runs away even at
+    Earth's rotation, so the generation stays anchored to temperature.
+  - Rotation (V8), 500-day marches, ν = 5e4 m²/s: at Ω = 0 the zonal wind
+    is zero to rounding with one cell per hemisphere; the Hadley edge, read
+    from the lower streamfunction on the 5° bands, is at 90°, 30°, 30° and
+    25° for Ω × {0, ½, 1, 2}. With ν = 2e5 m²/s it is 20° at Ω and 25° at
+    2Ω, so ν must be small; the C++ model measures V8 properly.
+
+**Change.** §4.5 is replaced by the following.
+
+*The model.* The axisymmetric primitive equations on 36 latitude bands
+of 5° and the slow state's N σ layers, with the vertical discretisation
+of task M6-03 (layer-mean Exner π̄, geopotential Φ̄, the logarithmic edge
+θ̂):
+- Unknowns per band and layer: ū_k and T̄_k. Per band boundary and layer:
+  the meridional velocity v̄_k. Per band boundary: the barotropic pressure
+  gradient.
+- **Rigid lid.** A steady state has no column mass divergence, and v̄ = 0
+  at the poles, so Σ_k v̄_k = 0 at every boundary. This removes the
+  external gravity wave. The barotropic pressure gradient is its Lagrange
+  multiplier: integrated from the south pole, with total mass held, it is
+  the zonal-mean part of the balanced `p_s` (§4.6).
+- **Zonal momentum** as absolute angular momentum
+  `M = (Ω a cos φ + ū) a cos φ` in flux form, upwind in both directions,
+  with stress-form viscosity `ν ∂_φ(cos³φ ∂_φ(ū/cos φ))`. Solid-body
+  rotation is unstressed, and no interior maximum of M can be created
+  (Hide). ν is numerical, the smallest that converges, and is recorded.
+- **Meridional momentum**: the gradient-wind balance with surface drag.
+- **Heat**: θ̄ in upwind flux form, consistent with §4.7's transport.
+- **Heating**: `Q_k(T) = Q⁰_k + Λ_k (T_k − T⁰_k)`.
+  - Q⁰ is the zonal mean of the column physics' layer heating at the
+    current slow state (longwave, sensible heat; ADR-0010 §4.4), with the
+    surfaces held.
+  - Λ_k < 0 is the zonal mean of its diagonal derivative, the radiative
+    damping. ADR-0010 §4.6's invariant asserts it is negative.
+  - Where the model's lapse rate exceeds Γ_c, convection relaxes it
+    within a documented time of hours, conserving the column's enthalpy.
+- **Surface drag** on the bottom layer: `ρ C_D (ū² + 2E)^{1/2} ū`, with
+  §4.3's C_D at the band's land fraction. The eddy wind enters as
+  gustiness. There is no drag aloft.
+
+*The eddy closure.* This replaces "the momentum flux follows from the
+potential-vorticity flux through the Taylor identity".
+- **Eddy kinetic energy.** The column eddy kinetic energy per band solves
+  `(1 − L² ∇²) E = c_E χ |∂θ̄/∂y|²`, where `|∂θ̄/∂y|` is the column mean.
+  - The screening length is L = 1,000 km, the baroclinic eddy scale:
+    eddies spread their energy over it, and it removes the runaway.
+  - χ = 1 / (1 + (L_R / L)²), with `L_R = N H / |f|` the Rossby radius of
+    the band's column. Baroclinic eddies need L_R within the eddy scale,
+    so χ → 0 where |f| → 0: in the deep tropics, and everywhere at Ω = 0.
+    That makes V8's Ω = 0 case free of eddy torques.
+  - `c_E` is the closure's one fitted constant. It replaces §4.5's `c_e`
+    beside τ₀ in §4.8's fit.
+- **Heat:** `D_k = ℓ_h √(2E) s_k`, with `s_k = σ_k² / mean(σ²)`, and
+  `ℓ_h = 1.2e5 m`, as measured.
+- **Momentum:**
+  - The column-mean flux is `[u'v'] = ℓ_m ∂E/∂y`, carried by the layers
+    with σ < 0.7, with `ℓ_m = 2.0e5 m`, as measured.
+  - In flux form it conserves angular momentum exactly. The eddies exert
+    no net torque, and V9 tests the drag balance alone.
+- ℓ_h, ℓ_m and L are documented physical constants, measured from
+  reference mode (§4.8). They are not tuned to the 288 K and 42 K
+  targets, and are rechecked whenever reference mode changes.
+
+*The solution.*
+- **Newton.** The steady equations are solved by Newton's method from the
+  current slow state: T̄⁰ from the band means, ū from thermal wind with
+  zero surface wind, v̄ = 0.
+  - The Jacobian is banded: unknowns are ordered band by band, about
+    3N + 1 per band.
+  - It is solved directly by banded LU, which is deterministic and
+    sequential.
+  - Convergence is reached when the scaled residual is below a
+    documented tolerance.
+- **Fallback.** Pseudo-transient continuation: backward Euler with a step
+  that grows as the residual falls, with fixed iteration caps.
+- **No silent failure.** If both fail, the step fails loudly. The
+  previous step's circulation is never reused.
+- **Nothing carried across steps (D6).** The first Newton step alone is
+  the linear steady response about the slow state, a Kuo–Eliassen
+  diagnosis regularised by Λ and the drag; the converged state adds the
+  nonlinear angular-momentum constraint on the Hadley cell. Once the
+  climate is in equilibrium, T̄ ≈ T̄⁰ and the two coincide.
+- **Outputs to §4.4–4.7:** ū_k, the layer mass fluxes of v̄ (the
+  overturning), D_k, and the zonal-mean `p_s` profile.
+- **Cost.** The banded system has about 36 (3N + 1) unknowns and a
+  bandwidth of about 2 (3N + 1); a Newton iteration is then of order 10⁵
+  operations plus the residual, so a solve should cost well under the
+  50 ms of §1.1 at N = 5. M6-04 measures it.
+
+**Consequences.**
+- §4.5's `c_e` becomes `c_E`. The transport's `D_e(φ, k)` in §4.7 is D_k
+  above, mapped from the bands to the coarse mesh's edges by latitude.
+- V9's eddy torque is zero by construction. What remains is the surface
+  drag's torque, and the azonal circulation's.
+- The prototype data and scripts are recorded in
+  `docs/tasks/M6-04-balanced-circulation.md`. The fitted lengths are
+  rechecked at L5 when the five-layer reference runs are repeated.

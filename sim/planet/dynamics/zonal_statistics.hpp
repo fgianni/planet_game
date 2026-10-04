@@ -26,7 +26,8 @@ struct ZonalProfile {
     std::vector<double> eastward_m_s;
     std::vector<double> northward_m_s;
     std::vector<double> temperature_K;
-    std::vector<double> eddy_kinetic_m2_s2;        // ½([u² + v²] − [u]² − [v]²), transient only
+    // ½ of the time variance of u and v, band-averaged: transient eddies only
+    std::vector<double> eddy_kinetic_m2_s2;
     std::vector<double> eddy_momentum_flux_m2_s2;  // [u'v']
     std::vector<double> eddy_heat_flux_K_m_s;      // [v'T']
     // Meridional mass streamfunction at the band centres, (layers + 1) ×
