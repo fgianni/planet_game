@@ -57,8 +57,10 @@ struct ZonalCirculationParameters {
     // The eddy closure (§14). c_E is the fitted constant; the lengths are
     // measured from reference mode.
     bool eddies = true;
-    double eddy_generation_m4_s2_K2 = 1.7e12;   // c_E
-    double eddy_scale_m = 1.0e6;                // L
+    // c_E fitted in the model's form to the Held–Suarez N = 3 reference
+    // (ADR-0011 §15); the planets set their own.
+    double eddy_generation_m4_s2_K2 = 2.91e12;  // c_E
+    double eddy_scale_m = 2.0e6;                // L (§15)
     double heat_mixing_length_m = 1.2e5;        // ℓ_h
     double momentum_mixing_length_m = 2.0e5;    // ℓ_m
     double free_troposphere_sigma = 0.7;        // σ_free

@@ -6,7 +6,7 @@
 - **Amended:** 2026-10-02 — §12: V2 gates for the TRiSK operators, as measured in M6-01
 - **Amended:** 2026-10-02 — §13: the orography the winds see; the sub-step rule's wind bound
 - **Amended:** 2026-10-04 — §14: the zonal-mean circulation, its eddy closure and its solution (replaces §4.5)
-- **Proposed amendment:** 2026-10-04 — §15: the eddy scale L = 2,000 km and c_E fitted in the model's form
+- **Amended:** 2026-10-04 — §15: the eddy scale L = 2,000 km and c_E fitted in the model's form
 - **Milestone:** P0 / M6 (wind and Coriolis)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §6 (`AtmosphereState`), §8 (multi-rate), §9.2, §13 M6, §15.5 (zero-rotation experiment), §23, §24; Planetary Civilization Simulator — Design Record v0.9, §5.4, §15.2–15.5, §25 (M5 row: "planetary circulation direction and latitude dependence"), §28
 - **Related:** ADR-0001 (modes, partition, budget, §8 milestone mapping), ADR-0002 (mesh, operators, §4.2 advection, field layout), ADR-0003 (determinism, replay), ADR-0006 (sub-steps), ADR-0009 (implicit transport, coarse graph), ADR-0010 (layered atmosphere; its §7 M6 row)
@@ -961,7 +961,7 @@ potential-vorticity flux through the Taylor identity".
   `docs/tasks/M6-04-balanced-circulation.md`. The fitted lengths are
   rechecked at L5 when the five-layer reference runs are repeated.
 
-## 15. Amendment: the eddy scale and the fit of c_E (proposed 2026-10-04)
+## 15. Amendment: the eddy scale and the fit of c_E (accepted 2026-10-04)
 
 **Finding (task M6-04, step B).** §14's closure was measured against
 reference mode before the C++ model existed.
@@ -1008,7 +1008,7 @@ reference mode before the C++ model existed.
   still a baroclinic eddy scale: about the wavelength of Earth's
   synoptic eddies divided by 2.
 
-**Proposed change.**
+**Change.**
 - L = 2,000 km.
 - c_E is fitted in the model's own form at that L. For the Earth-like
   planet this gives 1.39e12; ADR-0011 §4.8 fits it jointly with τ₀.

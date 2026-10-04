@@ -18,11 +18,11 @@ namespace planetsim {
 // step 1, §14): the bands' means of the slow state and of the column
 // physics' heating.
 
-// c_E for the Earth-like planet: E / |∂θ̄/∂y|² fitted to reference mode's
-// zonal means (tools/zonal_mean_prototype/data/ref_L4_N3.csv, momentum.py).
-// Provisional: ADR-0011 §4.8 fits it jointly with τ₀ once the circulation
-// carries the climate's heat.
-inline constexpr double earth_like_eddy_generation_m4_s2_K2 = 7.8e11;
+// c_E for the Earth-like planet (ADR-0011 §15): E = c_E (1 − L²∇²)⁻¹
+// [χ |∂θ̄/∂y|²] fitted at L = 2,000 km to reference mode's zonal means
+// (tools/zonal_mean_prototype/data/ref_L4_N3.csv). Provisional: §4.8 fits
+// it jointly with τ₀ once the circulation carries the climate's heat.
+inline constexpr double earth_like_eddy_generation_m4_s2_K2 = 1.39e12;
 
 // §14's model for a planet and its atmosphere: the planet's radius,
 // gravity and rotation, dry air, the atmosphere's layers and Γ_c, and the

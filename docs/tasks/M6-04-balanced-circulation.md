@@ -368,8 +368,10 @@ poorly conditioned direction; to be looked at with the N = 5 jet bias.
      the Hadley edge dominates.
 4. **The Earth-like eddy energy is half the reference's.** c_E had been
    fitted without χ and the screening. Fitted in the model's form it is
-   2.6 times larger, which needs L = 2,000 km to converge. This is
-   proposed as ADR-0011 §15, with the evidence there.
+   2.6 times larger, which needs L = 2,000 km to converge. **ADR-0011
+   §15 was accepted on 2026-10-04.** L = 2,000 km and c_E = 2.91e12 (HS)
+   and 1.39e12 (Earth-like) are now the defaults. The step B records above
+   keep the values they were measured with (L = 1,000 km).
 
 `planet_cli zonal-circulation` gained `--eddy-scale L` for these runs.
 
