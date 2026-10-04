@@ -1,7 +1,7 @@
 # Task M6-04 — Climate-mode balanced circulation
 
 - **Milestone:** P0 / M6 (fourth task; M6-01 to M6-03 are complete)
-- **Status:** in progress — steps A, B and C done; ADR-0011 §14 and §15 accepted, §16 proposed (2026-10-04)
+- **Status:** in progress — steps A, B and C done; ADR-0011 §14, §15 and §16 accepted (2026-10-04); step D next
 - **Scope:** ADR-0011 §4.4–4.6 in four steps.
   - **Step A, the method.** Zonal-mean reference data, the eddy closure
     and the solution method decided against it (§14).
@@ -446,7 +446,7 @@ poorly conditioned direction; to be looked at with the N = 5 jet bias.
 
 - **Chosen: the last row.** It keeps the extratropical, nearly
   geostrophic flow and its realistic 7–15 m/s, and holds the deep tropics.
-  It is proposed as ADR-0011 §16.
+  It was accepted as ADR-0011 §16 on 2026-10-04.
 - **This is a stopgap for the uncoupled input.** The tropical departures
   belong to the uncoupled slow state. Once the circulation carries heat
   (§4.7), the coupled step should flatten them (the weak-temperature-
