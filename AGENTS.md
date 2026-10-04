@@ -57,6 +57,12 @@ The next task is M6-04 (the climate-mode balanced circulation; its
 zonal-mean closure is decided by amendment first, ADR-0011 §4.5). Do not implement M7 or later
 milestones unless explicitly requested.
 
+The rendering track (specification §31.10) runs in parallel with the P0
+milestones. Its first task is
+[`docs/tasks/R1-01-presentation-library-and-channels.md`](docs/tasks/R1-01-presentation-library-and-channels.md),
+under ADR-0018 (proposed). Start it only once ADR-0018 is accepted, and
+never let it change a solver, a field's meaning or the PSNAP format.
+
 ## Hard rules
 
 -   C++20.
