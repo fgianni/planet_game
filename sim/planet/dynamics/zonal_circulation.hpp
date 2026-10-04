@@ -48,6 +48,11 @@ struct ZonalCirculationParameters {
     double reference_pressure_Pa = 100'000.0;
     // Numerical viscosity of ū, v̄ and θ̄: the smallest that converges.
     double viscosity_m2_s = 5.0e4;
+    // Vertical momentum diffusion K_v between adjacent layers. Without it,
+    // any solid-body wind aloft is steady where the circulation is weak, a
+    // null space of the steady problem; Δz²/K_v is about 140 days for three
+    // layers.
+    double vertical_viscosity_m2_s = 1.0;
 
     // The eddy closure (§14). c_E is the fitted constant; the lengths are
     // measured from reference mode.
@@ -67,6 +72,13 @@ struct ZonalCirculationParameters {
     double limiter_angular_momentum_m2_s = 6.4e5;   // a × 0.1 m/s
     double limiter_temperature_K = 0.01;
     double minimum_buoyancy_frequency_sq_s2 = 1.0e-6;
+
+    // Convective relaxation (§14): where the lapse rate exceeds Γ_c between
+    // adjacent layers, enthalpy moves up towards neutral within τ_c. Γ_c = 0
+    // turns it off (Held–Suarez); the Earth-like planet takes ADR-0010's.
+    double critical_lapse_rate_K_m = 0.0;
+    double convective_time_s = 3.0 * 3'600.0;
+    double convective_smoothing_K = 0.01;
 
     // The initial guess's thermal wind uses f / (f² + f_*²) for 1 / f,
     // f_* = 2Ω sin(regularisation latitude).

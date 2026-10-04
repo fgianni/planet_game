@@ -293,4 +293,39 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
                                             const SurfaceFractions& fractions, int years,
                                             std::size_t worker_count = 1U);
 
+
+// The atmosphere's diabatic heating at the slow state, for the climate
+// mode's circulation (ADR-0011 §14): per layer and cell (layer-major),
+//   Q⁰_k = [ε_k (U_k + D_{k+1}) − 2 ε_k σ T_k⁴ + δ_k0 H] / C,
+// the column physics' longwave and sensible heating of the step at the
+// slow state's layer temperatures, in K/s (C = c_p p_s / (g N)). The surface
+// is held: its tiles step over one minute under this insolation, so land and
+// open water keep their slow-state temperatures while sea-ice floes, which
+// store no heat, take their balance temperature. (A climate step's whole Δt
+// would let the surface run ahead of the held air: on the Earth-like planet
+// the air then gained a net 33 W/m².) Λ_k = ∂Q_k/∂T_k holds the surface too
+// (only its reflection follows the air, and the sensible heat follows only
+// the air): the column's radiative and sensible damping, negative
+// (ADR-0010 §4.6). Convective adjustment is not included; the
+// circulation applies its own. Each cell is independent, so the result is
+// the same for any worker count. Throws std::invalid_argument without an
+// atmosphere.
+struct AtmosphereHeating {
+    Field3D<double> rate_K_s;
+    Field3D<double> derivative_s;
+    // The columns' radiation budget per cell (W/m²), for checks: outgoing
+    // longwave, the longwave the surface sends up and receives, and the
+    // sensible heat it gives the air.
+    Field2D<double> outgoing_W_m2;
+    Field2D<double> surface_upward_W_m2;
+    Field2D<double> surface_downward_W_m2;
+    Field2D<double> sensible_W_m2;
+};
+
+void compute_atmosphere_heating(const PlanetState& state, const PlanetParameters& parameters,
+                                const SurfaceEnergyParameters& surface,
+                                const SurfaceFractions& fractions,
+                                const Field2D<float>& insolation_W_m2,
+                                AtmosphereHeating& heating, std::size_t worker_count = 1U);
+
 }  // namespace planetsim

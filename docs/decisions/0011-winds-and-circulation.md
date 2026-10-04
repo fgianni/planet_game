@@ -681,6 +681,22 @@ amendment.
   - **Cost.** 17–23 ms at N = 3 and 110–130 ms at N = 5 (Earth's Ω), above
     §14's estimate.
   - Details are in `docs/tasks/M6-04-balanced-circulation.md`.
+- **M6-04, step B part 2 (2026-10-04).** Covers §14's heating and
+  convection, and the Earth-like planet.
+  - **Q⁰ and Λ.** Taken at the slow state with the surface held: its tiles
+    step for one minute, so floes still balance. Λ < 0 everywhere, and Q⁰
+    closes the column budget to 1e-9 W/m².
+  - **Convection.** It relaxes towards Γ_c in τ_c = 3 h, conserving
+    enthalpy.
+  - **Vertical momentum diffusion.** K_v = 1 m²/s, which §14 does not
+    list, removes a null space of the steady problem (any solid-body wind
+    aloft where nothing moves). It conserves angular momentum.
+  - **c_E for the Earth-like planet** is 7.8e11, reference mode's own fit.
+    HS's 1.7e12 gives wandering multiple jets and no steady state.
+  - **Over a climate year** every month converges (15 ms on average at
+    N = 3). The upper-level jet follows reference mode: 30 m/s at 52.5°
+    against 28 m/s at 52.5°. The eddy energy is half the reference's, and
+    the surface westerlies are confined to 42.5–57.5°.
 
 ## 12. Amendment: V2 as measured for the TRiSK operators (accepted 2026-10-02)
 

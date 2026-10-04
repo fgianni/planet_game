@@ -45,6 +45,7 @@ add_library(PlanetSim STATIC
     sim/planet/dynamics/shallow_water.cpp
     sim/planet/dynamics/williamson_cases.cpp
     sim/planet/dynamics/zonal_circulation.cpp
+    sim/planet/dynamics/zonal_coupling.cpp
     sim/planet/dynamics/zonal_statistics.cpp
     sim/planet/geology/crust.cpp
     sim/planet/geology/geology_generator.cpp

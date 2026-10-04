@@ -79,6 +79,9 @@ class PlanetRun {
     [[nodiscard]] const PlanetParameters& parameters() const noexcept { return parameters_; }
     [[nodiscard]] const PlanetState& state() const noexcept { return state_; }
     [[nodiscard]] const SurfaceFractions& fractions() const noexcept { return fractions_; }
+    [[nodiscard]] const SurfaceEnergyParameters& surface_parameters() const noexcept {
+        return surface_;
+    }
     [[nodiscard]] const Scheduler& scheduler() const noexcept { return *scheduler_; }
     [[nodiscard]] const SurfaceEnergyDiagnostics& last_step() const noexcept { return last_; }
     // The winds of reference mode (ADR-0011 §4.3); null without an atmosphere.

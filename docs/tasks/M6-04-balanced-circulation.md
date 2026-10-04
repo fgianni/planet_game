@@ -1,7 +1,7 @@
 # Task M6-04 — Climate-mode balanced circulation
 
 - **Milestone:** P0 / M6 (fourth task; M6-01 to M6-03 are complete)
-- **Status:** in progress — step A done; ADR-0011 §14 accepted (2026-10-04); step B part 1 (the zonal-mean model) done
+- **Status:** in progress — step A done; ADR-0011 §14 accepted (2026-10-04); step B done (part 1 the zonal-mean model, part 2 heating, convection and the Earth-like planet)
 - **Scope:** ADR-0011 §4.4–4.6 in four steps.
   - **Step A, the method.** Zonal-mean reference data, the eddy closure
     and the solution method decided against it (§14).
@@ -219,6 +219,126 @@ The solve is sequential, so the plan's "1, 2 and 8 workers" check does not
 apply to it. It applies to the band means and the mapping to the mesh,
 which step B part 2 adds.
 
+## Step B, part 2 — heating, convection and the Earth-like planet (2026-10-04)
+
+**Code.**
+- `compute_atmosphere_heating` (`sim/planet/surface/surface_energy.{hpp,cpp}`)
+  gives Q⁰ and Λ per layer and cell at the slow state.
+- `sim/planet/dynamics/zonal_coupling.{hpp,cpp}`:
+  - `zonal_circulation_parameters` sets the model up for a planet.
+  - `zonal_forcing_from_state` takes the band means.
+- `ZonalCirculation` gains convective relaxation and vertical momentum
+  diffusion.
+- `planet_cli zonal-circulation --planet` runs a climate year and solves
+  each month.
+- Tests: `tests/physics/test_zonal_coupling.cpp`, and a convection case in
+  `test_zonal_circulation`.
+
+**The heating.**
+- **Definition.** Q⁰_k is the column's longwave heating, plus the sensible
+  heat in the bottom layer, at the slow state's layer temperatures, in
+  K/s.
+- **The surface is held.** Its tiles step over one minute under the
+  sub-step's insolation. Land and open water then keep their slow-state
+  temperatures, while sea-ice floes, which store no heat, take their
+  balance temperature.
+  - The first version stepped the tiles over the whole month with the air
+    held. The surface ran ahead of the air, and the sensible heat gave a
+    different Q⁰.
+- **Λ_k** holds the surface too: only its reflection follows the air, and
+  the sensible heat follows only the air.
+  - It is negative in every cell.
+  - Its damping time is about 2.5 days in the bottom layer (the sensible
+    exchange), 24–34 days in the middle layer and 110–160 days in the top
+    layer.
+- **Checks.**
+  - Σ_k Q⁰_k C equals U + H − D − OLR to 1e-9 W/m² in every cell.
+  - The result is identical for 1 and 4 workers.
+- **The net heating is positive.** At the slow state the atmosphere's
+  Q⁰ sums to +48 W/m² globally (bottom layer +60, others −13).
+  - The cause is convection, not a fault. The slow state has just been
+    adjusted convectively, which leaves the bottom layer cooler than its
+    radiative and sensible balance.
+  - The zonal model's own convection carries that excess up (an excess of
+    about 0.3 K at τ_c = 3 h), and Λ takes the remainder.
+  - Because Λ is diagonal, the zonal model's temperature departs from T⁰ by
+    a few kelvin where the column convects. Step C's coupling should
+    measure this.
+
+**Band means.** Taken in cell order, so independent of the worker count:
+- p_s and the dynamics' smoothed height by area;
+- T⁰, Q⁰ and Λ by mass (area × p_s);
+- C_D from the land fraction (ocean 1.5e-3, land 4e-3).
+
+The bands' mass equals the atmosphere's to 1e-12.
+
+**Convection.**
+- **Where.** Between adjacent layers where θ_c = T / σ^κ_c falls upward
+  (κ_c = R Γ_c / g, as ADR-0010).
+- **How.** The exchange δ that would make the pair neutral moves up at
+  the rate ρ(δ)/τ_c, with τ_c = 3 h and ρ(δ) = δ² / √(δ² + δ₀²) for δ > 0.
+  This conserves the pair's enthalpy.
+- **Test.** A uniform superadiabatic column (about 9 K/km) settles with
+  Σ_k (T − T⁰) = 0 to 1e-6, and its instability is more than halved.
+
+**Vertical momentum diffusion** (K_v = 1 m²/s, Δz²/K_v ≈ 140 days). It
+is not in §14's text, but it is needed:
+- **The problem.** Where nothing moves and no drag acts aloft, any
+  solid-body wind aloft is steady. The steady problem then has a null
+  space, and Newton picks an arbitrary U.
+  - The uniform-column test reached 46 m/s.
+  - The no-eddy Earth case had a 24 m/s solid-body westerly aloft.
+- **The fix.** The diffusion conserves the column's angular momentum, so
+  V9 is unchanged.
+- **Effect on Held–Suarez, N = 3.** Essentially none: a 23.9 m/s jet at
+  27.5°. The Hadley edge moved from 25° to 30°, so V8 now reads 40°, 30°
+  and 20° for Ω × ½, 1, 2.
+- **What remains without eddies.** A 14 m/s equatorial westerly aloft
+  (2 m/s at K_v = 10). The lateral viscosity ν diffuses subtropical
+  westerly momentum into a near-stagnant equator; with eddies on, the
+  equator turns easterly.
+
+**c_E for the Earth-like planet.** It is 7.8e11, reference mode's own fit
+(`momentum.py` on `ref_L4_N3.csv`). It is provisional until §4.8's joint
+fit with τ₀.
+- **HS's value fails here.** With 1.7e12, continuation never settles:
+  sharp multiple jets (50 m/s at 52.5° S and 32.5° S, E up to 80)
+  wander.
+- **At 7.8e11** the months converge, most by Newton directly.
+- **At 1.2e12** all converge, mostly by continuation, at 20–50 ms each.
+
+**Earth-like, climate year** (L4, seed 1, two years' spin-up; the mean of
+the twelve monthly solves; `planet_cli zonal-circulation --planet
+--reference tools/zonal_mean_prototype/data/ref_L4_N3.csv`):
+
+| | Zonal model | Reference mode (L4, two-year mean) |
+|---|---|---|
+| Jet | 30.2 m/s at 52.5° | 27.7 m/s at 52.5° |
+| Top wind, 2.5° / 32.5° / 62.5° / 82.5° | −3.0 / 19.0 / 14.4 / 2.4 | −7.2 / 16.0 / 18.5 / 4.0 |
+| E maximum | 22 at 52.5° | 52 at 62.5° |
+| Bottom winds, 2.5–87.5° N | EWWEEEE0WWWWEEEEEE | WWEEEWWWWWWWWWWWWW |
+| Bottom-layer contrast | 33.4 K (the slow state's) | 49.8 K |
+
+- **What matches.** The upper-level jet follows reference mode from the
+  subtropics to the pole.
+- **What doesn't.**
+  - The eddy energy is half the reference's.
+  - The surface westerlies are confined to 42.5–57.5°, with polar
+    easterlies beyond; reference mode is westerly from 27.5° to the pole.
+  - The equatorial easterlies aloft are weaker.
+- **Not comparable yet.** The temperature contrast is the climate-mode
+  slow state's, still shaped by the diffusive transport. A like-for-like
+  comparison waits for the circulation to carry the climate's heat.
+- **Cost.** Every month converges: 8 of 12 by Newton directly (10–12
+  Jacobians), 4 by continuation (29–46). A month takes 8–38 ms, 15 ms on
+  average, at N = 3.
+- **Torque.** The mean monthly torque is 1e-13 of the gross.
+
+**N = 5 at Ω: two starts no longer agree.** Since K_v, the start from T_eq
+and the start from the equilibrated temperatures end 0.16 m/s apart
+(previously 5e-9). This is either another case of non-uniqueness or a
+poorly conditioned direction; to be looked at with the N = 5 jet bias.
+
 ## Plan for steps B–D
 
 1. **`ZonalCirculation`** (`sim/planet/dynamics/zonal_circulation.{hpp,cpp}`)
@@ -237,7 +357,7 @@ which step B part 2 adds.
      - V8 (Ω × {0, ½, 1, 2});
      - V9 for the zonal part (the eddy torque is zero to rounding; the drag
        torque balances).
-2. **Column heating**:
+2. **Column heating** — done, step B part 2 above:
    - Q⁰ and Λ from the column physics at the slow state, as a function
      beside the column solve;
    - convective relaxation;

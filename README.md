@@ -235,8 +235,16 @@ Climate mode's circulation (ADR-0011 §14, task M6-04) is under way:
 - **Held–Suarez.** At N = 3 it gives trades, westerlies and polar
   easterlies, with a 24 m/s jet at 27.5°; the reference core has 26 m/s at
   32.5°. A solve takes about 20 ms.
+- **The Earth-like planet.**
+  `planet_cli zonal-circulation --planet --reference
+  tools/zonal_mean_prototype/data/ref_L4_N3.csv` solves each month of a
+  climate year.
+  - The forcing is the column physics' heating at the slow state, with
+    convective relaxation towards Γ_c.
+  - The upper-level jet matches reference mode's: 30 m/s at 52.5°, against
+    28 m/s at 52.5°.
 - **Not yet active.** Climate mode still carries heat by diffusion until
-  the circulation is coupled to the column physics.
+  the circulation is coupled to the transport.
 
 ## Persistent snapshots
 

@@ -1107,4 +1107,104 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
     return summary;
 }
 
+
+void compute_atmosphere_heating(const PlanetState& state, const PlanetParameters& parameters,
+                                const SurfaceEnergyParameters& surface,
+                                const SurfaceFractions& fractions,
+                                const Field2D<float>& insolation_W_m2,
+                                AtmosphereHeating& heating, std::size_t worker_count) {
+    constexpr double dt_s = 60.0;   // the held surface's step
+    const PlanetMesh& mesh = state.mesh();
+    const SlowState& slow = state.slow();
+    const std::size_t cells = mesh.cell_count();
+    const AtmosphereParameters& atmosphere = surface.atmosphere;
+    const std::size_t layers = atmosphere.layer_count;
+    if (layers == 0U || slow.atmosphere_layer_count() != layers) {
+        throw std::invalid_argument("atmosphere heating needs the state's atmosphere");
+    }
+    validate_atmosphere_parameters(atmosphere);
+    const Field2D<float>& precipitation = state.forcing().prescribed_precipitation_kg_m2_s;
+    if (insolation_W_m2.size() != cells || fractions.land_fraction.size() != cells ||
+        precipitation.size() != cells) {
+        throw std::invalid_argument("atmosphere heating inputs do not match the mesh");
+    }
+    const ColumnProperties land = column_properties(surface.land_material, parameters);
+    const ColumnProperties ocean = column_properties(SurfaceMaterial::ocean, parameters);
+    const double gravity = surface_gravity_m_s2(parameters);
+    const double exchange = surface.air_exchange_W_m2_K;
+    heating.rate_K_s = Field3D<double>(layers, cells);
+    heating.derivative_s = Field3D<double>(layers, cells);
+    heating.outgoing_W_m2 = Field2D<double>(cells);
+    heating.surface_upward_W_m2 = Field2D<double>(cells);
+    heating.surface_downward_W_m2 = Field2D<double>(cells);
+    heating.sensible_W_m2 = Field2D<double>(cells);
+    for_each_deterministic_block(
+        mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+            for (std::size_t cell = block.begin; cell < block.end; ++cell) {
+                const double insolation = insolation_W_m2[cell];
+                const LandSnowSystem land_tile = prepare_land_tile(
+                    land,
+                    {slow.land_surface_temperature_K[cell], slow.land_ground_temperature_K[cell]},
+                    slow.land_snow_water_equivalent_kg_m2[cell], insolation, precipitation[cell],
+                    surface.grey_emissivity, dt_s);
+                const OceanTileSystem ocean_tile = prepare_ocean_tile(
+                    ocean,
+                    {slow.ocean_mixed_layer_temperature_K[cell],
+                     slow.ocean_deep_temperature_K[cell]},
+                    slow.sea_ice_mass_kg_m2[cell], insolation, surface.grey_emissivity, dt_s);
+                CellSurface cell_surface;
+                cell_surface.land = &land_tile;
+                cell_surface.ocean = &ocean_tile;
+                cell_surface.land_fraction = fractions.land_fraction[cell];
+                cell_surface.ocean_fraction = fractions.ocean_fraction[cell];
+                cell_surface.exchange = exchange;
+
+                const ColumnRadiation column =
+                    column_radiation(atmosphere, slow.atmosphere_surface_pressure_Pa[cell], gravity);
+                LayerArray temperature{};
+                LayerArray emission{};
+                for (std::size_t k = 0; k < layers; ++k) {
+                    temperature[k] = slow.atmosphere_temperature_K.layer(k)[cell];
+                    const double t2 = temperature[k] * temperature[k];
+                    emission[k] = column.emissivity[k] * column_stefan_boltzmann_W_m2_K4 * t2 * t2;
+                }
+                const double down = downward_surface_longwave(column, emission);
+                const double air_K = column.air_factor * temperature[0];
+                const SurfaceExchange surface_exchange = cell_surface(down, air_K);
+                const LongwaveFluxes fluxes =
+                    longwave_fluxes(column, emission, surface_exchange.upward_W_m2);
+
+                // The held surface reflects (1 − ε_t) of D on its tiles and
+                // all of it where no tile has area.
+                const double land_fraction = fractions.land_fraction[cell];
+                const double ocean_fraction = fractions.ocean_fraction[cell];
+                const double reflectivity =
+                    1.0 - land_fraction * land_tile.column.emissivity -
+                    ocean_fraction * ocean_tile.column.emissivity;
+                const double capacity = column.layer_heat_capacity_J_m2_K;
+                for (std::size_t k = 0; k < layers; ++k) {
+                    double q = fluxes.absorbed_in[k] - 2.0 * emission[k];
+                    if (k == 0U) {
+                        q += surface_exchange.sensible_W_m2;
+                    }
+                    heating.rate_K_s.layer(k)[cell] = q / capacity;
+                    LayerArray d_emission{};
+                    d_emission[k] = 4.0 * emission[k] / temperature[k];
+                    const double d_down = downward_surface_longwave(column, d_emission);
+                    const LongwaveFluxes d_fluxes =
+                        longwave_fluxes(column, d_emission, reflectivity * d_down);
+                    double dq = d_fluxes.absorbed_in[k] - 2.0 * d_emission[k];
+                    if (k == 0U) {
+                        dq -= exchange * (land_fraction + ocean_fraction) * column.air_factor;
+                    }
+                    heating.derivative_s.layer(k)[cell] = dq / capacity;
+                }
+                heating.outgoing_W_m2[cell] = fluxes.outgoing_W_m2;
+                heating.surface_upward_W_m2[cell] = surface_exchange.upward_W_m2;
+                heating.surface_downward_W_m2[cell] = fluxes.downward_surface_W_m2;
+                heating.sensible_W_m2[cell] = surface_exchange.sensible_W_m2;
+            }
+        });
+}
+
 }  // namespace planetsim

@@ -238,7 +238,57 @@ int main() {
     PLANETSIM_EXPECT(test, edges[1] >= edges[2] && edges[2] >= edges[3] && edges[3] < edges[1]);
     PLANETSIM_EXPECT(test, edges[2] >= 20.0 && edges[2] <= 35.0);
 
-    // 6. Five layers converge too; invalid forcing is refused.
+    // 6. Convective relaxation. Every band carries the same column, cooling
+    // faster than Γ_c upward, with no heating but the damping Λ (T − T⁰):
+    // with surface drag nothing moves (without it any solid-body rotation
+    // would be steady), and the steady state balances convection against the
+    // damping. Convection conserves the column's enthalpy, so Σ_k (T_k − T⁰_k)
+    // vanishes, and it leaves the column closer to Γ_c.
+    {
+        ZonalCirculationParameters convecting;
+        convecting.critical_lapse_rate_K_m = 6.5e-3;
+        convecting.eddies = false;
+        const ZonalCirculation convecting_model(convecting);
+        const std::size_t band_count = convecting.bands;
+        const std::size_t layers = convecting.layer_count;
+        planetsim::ZonalForcing column;
+        column.surface_pressure_Pa.assign(band_count, 1.0e5);
+        column.surface_height_m.assign(band_count, 0.0);
+        column.drag_coefficient.assign(band_count, 1.5e-3);   // anchors the winds
+        column.heating_K_s.assign(band_count * layers, 0.0);
+        column.heating_derivative_s.assign(band_count * layers, -1.0 / (20.0 * 86'400.0));
+        column.rayleigh_friction_s.assign(band_count * layers, 0.0);
+        const std::vector<double> profile{300.0, 245.0, 185.0};   // about 9 K/km
+        for (std::size_t k = 0; k < layers; ++k) {
+            for (std::size_t j = 0; j < band_count; ++j) {
+                column.temperature_K.push_back(profile[k]);
+            }
+        }
+        const auto result = convecting_model.solve(column);
+        PLANETSIM_EXPECT(test, result.residual < convecting.tolerance);
+        PLANETSIM_EXPECT_NEAR(test, max_abs(result.eastward_m_s), 0.0, 1e-6);
+        const double kappa_c = convecting.gas_constant_J_kg_K * 6.5e-3 / convecting.gravity_m_s2;
+        const auto theta_c = [&](const std::vector<double>& t, std::size_t k, std::size_t j) {
+            const double sigma = 1.0 - (static_cast<double>(k) + 0.5) / 3.0;
+            return t[k * band_count + j] / std::pow(sigma, kappa_c);
+        };
+        for (const std::size_t j : {std::size_t{0}, std::size_t{17}, std::size_t{35}}) {
+            double change = 0.0;
+            for (std::size_t k = 0; k < layers; ++k) {
+                change += result.at_band(result.temperature_K, k, j) - profile[k];
+            }
+            PLANETSIM_EXPECT_NEAR(test, change, 0.0, 1e-6);
+            for (std::size_t k = 0; k + 1U < layers; ++k) {
+                const double before = theta_c(column.temperature_K, k, j) -
+                                      theta_c(column.temperature_K, k + 1U, j);
+                const double after = theta_c(result.temperature_K, k, j) -
+                                     theta_c(result.temperature_K, k + 1U, j);
+                PLANETSIM_EXPECT(test, before > 0.0 && after < 0.5 * before);
+            }
+        }
+    }
+
+    // 7. Five layers converge too; invalid forcing is refused.
     {
         ZonalCirculationParameters five;
         five.layer_count = 5;

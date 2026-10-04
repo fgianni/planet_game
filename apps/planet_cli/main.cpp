@@ -10,6 +10,7 @@
 #include "sim/planet/dynamics/shallow_water.hpp"
 #include "sim/planet/dynamics/williamson_cases.hpp"
 #include "sim/planet/dynamics/zonal_circulation.hpp"
+#include "sim/planet/dynamics/zonal_coupling.hpp"
 #include "sim/planet/dynamics/zonal_statistics.hpp"
 #include "sim/planet/mesh/icosphere.hpp"
 #include "sim/planet/mesh/mesh_diagnostics.hpp"
@@ -182,7 +183,8 @@ void print_usage(std::ostream& output) {
            << "  planet_cli reference [--subdivision LEVEL] [--seed N] [--layers N]"
               " [--spin-up-years N] [--days D] [--average-days D] [--workers W]"
               " [--zonal-csv FILE.csv]\n"
-           << "  planet_cli zonal-circulation [--layers N] [--rotation-factor S]"
+           << "  planet_cli zonal-circulation [--planet [--subdivision LEVEL] [--seed N]"
+              " [--spin-up-years N] [--workers W]] [--layers N] [--rotation-factor S]"
               " [--viscosity NU] [--eddy-generation C_E] [--no-eddies]"
               " [--reference FILE.csv] [--csv FILE.csv]\n";
 }
@@ -1560,6 +1562,11 @@ int run_reference(const ReferenceOptions& options) {
 }
 
 struct ZonalCirculationOptions {
+    bool planet = false;   // the Earth-like planet's climate year, not Held–Suarez
+    std::uint32_t subdivision = 4;
+    std::uint64_t seed = 1;
+    int spin_up_years = 2;
+    std::size_t workers = 0;
     std::size_t layers = 3;
     double rotation_factor = 1.0;
     std::optional<double> viscosity_m2_s;
@@ -1578,12 +1585,24 @@ struct ZonalCirculationOptions {
             options.eddies = false;
             continue;
         }
+        if (argument == "--planet") {
+            options.planet = true;
+            continue;
+        }
         if (++index >= argument_count) {
             throw std::invalid_argument(std::string(argument) + " requires a value");
         }
         const std::string_view value{arguments[index]};
         if (argument == "--layers") {
             options.layers = static_cast<std::size_t>(parse_unsigned(value, "layers"));
+        } else if (argument == "--subdivision") {
+            options.subdivision = parse_subdivision(value);
+        } else if (argument == "--seed") {
+            options.seed = parse_unsigned(value, "seed");
+        } else if (argument == "--spin-up-years") {
+            options.spin_up_years = static_cast<int>(parse_unsigned(value, "spin-up years"));
+        } else if (argument == "--workers") {
+            options.workers = static_cast<std::size_t>(parse_unsigned(value, "workers"));
         } else if (argument == "--rotation-factor") {
             options.rotation_factor = parse_double(value, "rotation factor");
         } else if (argument == "--viscosity") {
@@ -1664,19 +1683,116 @@ int run_zonal_circulation(const ZonalCirculationOptions& options) {
     if (options.eddy_generation) {
         parameters.eddy_generation_m4_s2_K2 = *options.eddy_generation;
     }
-    planetsim::HeldSuarezForcing held_suarez;
-    held_suarez.enabled = true;
-    const planetsim::ZonalCirculation model(parameters);
-    const auto forcing = planetsim::held_suarez_zonal_forcing(parameters, held_suarez);
-    const auto start = std::chrono::steady_clock::now();
-    const auto solution = model.solve(forcing);
-    const double elapsed_ms =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
-            .count();
+    planetsim::ZonalCirculationSolution solution;
+    double elapsed_ms = 0.0;
+    std::size_t unknowns = 0;
+    if (options.planet) {
+        // The Earth-like planet: a climate year after spin-up; each monthly
+        // step's state (with that step's insolation and length) is solved,
+        // and the twelve solutions are averaged.
+        const std::size_t workers =
+            options.workers != 0U ? options.workers
+                                  : std::max<std::size_t>(1U, std::thread::hardware_concurrency());
+        planetsim::Scenario scenario;
+        scenario.seed = options.seed;
+        scenario.subdivision = options.subdivision;
+        scenario.spin_up_years = options.spin_up_years;
+        scenario.atmosphere_layers = static_cast<std::uint32_t>(options.layers);
+        planetsim::PlanetRun run(scenario, workers);
+        const auto& mesh = run.state().mesh();
+        const auto& surface = run.surface_parameters();
+        auto planet_parameters =
+            planetsim::zonal_circulation_parameters(run.parameters(), surface.atmosphere);
+        planet_parameters.rotation_rate_rad_s *= options.rotation_factor;
+        planet_parameters.eddies = parameters.eddies;
+        planet_parameters.viscosity_m2_s = parameters.viscosity_m2_s;
+        if (options.eddy_generation) {
+            planet_parameters.eddy_generation_m4_s2_K2 = *options.eddy_generation;
+        }
+        parameters = planet_parameters;
+        const planetsim::ZonalCirculation model(parameters);
+        unknowns = model.unknown_count();
+        planetsim::Field2D<double> height;
+        planetsim::compute_surface_height(mesh, run.state().slow(), run.fractions(), height);
+        const auto dynamics_height =
+            planetsim::limit_dynamics_orography_steps(mesh, height, 800.0, 256U, workers).height_m;
+        std::cout << "planet=earth_like subdivision=" << options.subdivision
+                  << " spin_up_years=" << options.spin_up_years << '\n';
+        const planetsim::SimulationTick year_end =
+            planetsim::orbital_year_begin_tick(1, run.parameters());
+        std::size_t months = 0;
+        planetsim::AtmosphereHeating heating;
+        while (run.tick() < year_end) {
+            const planetsim::SimulationTick begin = run.tick();
+            // One climate sub-step.
+            run.run_until(planetsim::climate_substep_containing(begin, run.parameters()).end_tick);
+            planetsim::compute_atmosphere_heating(
+                run.state(), run.parameters(), surface, run.fractions(),
+                run.state().forcing().substep_mean_insolation_W_m2, heating, workers);
+            const auto forcing = planetsim::zonal_forcing_from_state(
+                mesh, run.state().slow(), heating, dynamics_height, run.fractions(),
+                parameters.bands);
+            const auto start = std::chrono::steady_clock::now();
+            const auto month = model.solve(forcing);
+            const double ms =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
+                    .count();
+            elapsed_ms += ms;
+            std::cout << std::fixed << std::setprecision(1) << "month=" << months
+                      << " method="
+                      << (month.method == planetsim::ZonalSolutionMethod::newton ? "newton"
+                                                                                : "continuation")
+                      << " jacobians=" << month.statistics.jacobians << " solve_ms=" << ms
+                      << '\n';
+            if (months == 0U) {
+                solution = month;
+            } else {
+                const auto add = [](std::vector<double>& sum, const std::vector<double>& x) {
+                    for (std::size_t c = 0; c < sum.size(); ++c) {
+                        sum[c] += x[c];
+                    }
+                };
+                add(solution.eastward_m_s, month.eastward_m_s);
+                add(solution.temperature_K, month.temperature_K);
+                add(solution.northward_m_s, month.northward_m_s);
+                add(solution.streamfunction_kg_s, month.streamfunction_kg_s);
+                add(solution.eddy_kinetic_m2_s2, month.eddy_kinetic_m2_s2);
+                add(solution.surface_torque_N_m, month.surface_torque_N_m);
+                solution.total_torque_N_m += month.total_torque_N_m;
+                solution.gross_torque_N_m += month.gross_torque_N_m;
+                solution.statistics.jacobians += month.statistics.jacobians;
+                solution.residual = std::max(solution.residual, month.residual);
+            }
+            ++months;
+        }
+        const double scale = 1.0 / static_cast<double>(months);
+        for (auto* field : {&solution.eastward_m_s, &solution.temperature_K,
+                            &solution.northward_m_s, &solution.streamfunction_kg_s,
+                            &solution.eddy_kinetic_m2_s2, &solution.surface_torque_N_m}) {
+            for (double& x : *field) {
+                x *= scale;
+            }
+        }
+        solution.total_torque_N_m *= scale;
+        solution.gross_torque_N_m *= scale;
+        elapsed_ms *= scale;
+    } else {
+        planetsim::HeldSuarezForcing held_suarez;
+        held_suarez.enabled = true;
+        const planetsim::ZonalCirculation model(parameters);
+        unknowns = model.unknown_count();
+        const auto forcing = planetsim::held_suarez_zonal_forcing(parameters, held_suarez);
+        const auto start = std::chrono::steady_clock::now();
+        solution = model.solve(forcing);
+        elapsed_ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
+                .count();
+    }
     const std::size_t n = solution.layers;
     const std::size_t bands = solution.bands;
-    std::cout << "test=held-suarez layers=" << n << " bands=" << bands
-              << " unknowns=" << model.unknown_count() << " rotation_factor="
+    std::cout << "test=" << (options.planet ? "planet (twelve-month mean)" : "held-suarez")
+              << " layers=" << n << " bands=" << bands
+              << " unknowns=" << unknowns << " rotation_factor="
               << options.rotation_factor << " viscosity_m2_s=" << parameters.viscosity_m2_s
               << " eddy_generation=" << parameters.eddy_generation_m4_s2_K2
               << " eddies=" << (parameters.eddies ? "on" : "off") << '\n'

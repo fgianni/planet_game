@@ -146,6 +146,7 @@ struct Setup {
     // Layers.
     std::vector<double> heat_shape;                 // s_k
     std::vector<double> momentum_weight;            // N / n_free in σ < σ_free
+    std::vector<double> convective_exner;           // σ_k^κ_c; empty: no convection
 
     [[nodiscard]] std::size_t u(std::size_t k, std::size_t j) const { return j * block + k; }
     [[nodiscard]] std::size_t theta(std::size_t k, std::size_t j) const {
@@ -236,6 +237,13 @@ Setup make_setup(const ZonalCirculationParameters& p, const ZonalForcing& forcin
         s.drag_b[i] = 0.5 * (s.drag_band[i] + s.drag_band[i + 1U]);
     }
 
+    if (p.critical_lapse_rate_K_m > 0.0) {
+        const double kappa_c = p.gas_constant_J_kg_K * p.critical_lapse_rate_K_m / p.gravity_m_s2;
+        s.convective_exner.resize(n);
+        for (std::size_t k = 0; k < n; ++k) {
+            s.convective_exner[k] = std::pow(1.0 - (static_cast<double>(k) + 0.5) / n_d, kappa_c);
+        }
+    }
     s.heat_shape.resize(n);
     s.momentum_weight.assign(n, 0.0);
     double mean_sq = 0.0;
@@ -446,6 +454,45 @@ void evaluate(const Setup& s, const ZonalCirculationParameters& p, std::span<con
                                (s.q_ref[c] + s.lambda[c] * (t[c] - s.t_ref[c])) /
                                    s.exner_mean[c];
         }
+        // Vertical momentum diffusion between adjacent equal-mass layers,
+        // K_v (u_m − u_{m−1}) / Δz², Δz = (R T̄ / g) ln(p_{m−1} / p_m): it
+        // conserves the column's angular momentum and ties the winds aloft to
+        // the surface drag, which removes the steady problem's null space
+        // (any solid-body wind aloft where nothing moves).
+        if (p.vertical_viscosity_m2_s > 0.0) {
+            for (std::size_t m = 1; m < n; ++m) {
+                const std::size_t below = (m - 1U) * nb + j;
+                const std::size_t above = m * nb + j;
+                const S thickness = s.gas * 0.5 * (t[below] + t[above]) / s.g *
+                                    (s.log_pressure[below] - s.log_pressure[above]);
+                const S exchange =
+                    p.vertical_viscosity_m2_s * (u[above] - u[below]) / (thickness * thickness);
+                r[s.u(m - 1U, j)] += exchange;
+                r[s.u(m, j)] -= exchange;
+            }
+        }
+        // Convective relaxation: where θ_c = T / σ^κ_c falls upward across an
+        // interface, the exchange δ that would make the two layers neutral,
+        // δ = (T_b π_a − T_a π_b) / (π_a + π_b), moves up at the rate
+        // ρ(δ) / τ_c, conserving their enthalpy. ρ(δ) = δ² / √(δ² + δ₀²) for
+        // δ > 0 and 0 otherwise keeps the residual differentiable.
+        if (!s.convective_exner.empty()) {
+            const double d0 = p.convective_smoothing_K;
+            for (std::size_t m = 1; m < n; ++m) {
+                const std::size_t below = (m - 1U) * nb + j;
+                const std::size_t above = m * nb + j;
+                const double pi_b = s.convective_exner[m - 1U];
+                const double pi_a = s.convective_exner[m];
+                const S excess = (t[below] * pi_a - t[above] * pi_b) / (pi_a + pi_b);
+                if (value(excess) <= 0.0) {
+                    continue;
+                }
+                const S rate =
+                    excess * excess / sqrt(excess * excess + d0 * d0) / p.convective_time_s;
+                r[s.theta(m - 1U, j)] -= rate / s.exner_mean[below];
+                r[s.theta(m, j)] += rate / s.exner_mean[above];
+            }
+        }
         // (1 − L²∇²) E = c_E G, no flux through the poles.
         S laplacian = 0.0;
         if (j + 1U < nb) {
@@ -515,7 +562,10 @@ ZonalCirculation::ZonalCirculation(ZonalCirculationParameters parameters)
         !(p.heat_mixing_length_m >= 0.0) || !(p.momentum_mixing_length_m >= 0.0) ||
         !(p.minimum_eddy_velocity_m_s > 0.0) || !(p.upwind_smoothing_m_s > 0.0) || !(p.minimum_buoyancy_frequency_sq_s2 > 0.0) ||
         !(p.tolerance > 0.0) || !(p.initial_pseudo_step_s > 0.0) ||
-        !(p.pseudo_step_growth >= 1.0) || !(p.continuation_rejection >= 1.0)) {
+        !(p.pseudo_step_growth >= 1.0) || !(p.continuation_rejection >= 1.0) ||
+        !(p.critical_lapse_rate_K_m >= 0.0) || !(p.convective_time_s > 0.0) ||
+        !(p.vertical_viscosity_m2_s >= 0.0) ||
+        !(p.convective_smoothing_K > 0.0)) {
         throw std::invalid_argument("invalid zonal circulation parameters");
     }
 }
