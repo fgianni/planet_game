@@ -5,7 +5,7 @@
 - **Accepted:** 2026-10-02
 - **Amended:** 2026-10-02 — §12: V2 gates for the TRiSK operators, as measured in M6-01
 - **Amended:** 2026-10-02 — §13: the orography the winds see; the sub-step rule's wind bound
-- **Proposed amendment:** 2026-10-04 — §14: the zonal-mean circulation, its eddy closure and its solution
+- **Amended:** 2026-10-04 — §14: the zonal-mean circulation, its eddy closure and its solution (replaces §4.5)
 - **Milestone:** P0 / M6 (wind and Coriolis)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §6 (`AtmosphereState`), §8 (multi-rate), §9.2, §13 M6, §15.5 (zero-rotation experiment), §23, §24; Planetary Civilization Simulator — Design Record v0.9, §5.4, §15.2–15.5, §25 (M5 row: "planetary circulation direction and latitude dependence"), §28
 - **Related:** ADR-0001 (modes, partition, budget, §8 milestone mapping), ADR-0002 (mesh, operators, §4.2 advection, field layout), ADR-0003 (determinism, replay), ADR-0006 (sub-steps), ADR-0009 (implicit transport, coarse graph), ADR-0010 (layered atmosphere; its §7 M6 row)
@@ -366,6 +366,9 @@ Steps 2–4 run on the coarse mesh of ADR-0009 §12. That mesh is a
 Fluxes act on the agglomerated graph, as the transport already does.
 
 ### 4.5 Zonal-mean circulation
+
+*Replaced by §14 (accepted 2026-10-04): the eddy closure and the solution
+method below are superseded there; the rest stands as context.*
 
 - **The model.** An axisymmetric primitive-equation model on the bands and
   the N layers.
@@ -758,7 +761,7 @@ Earth-like terrain is not:
 - The cost is about 11 % more steps.
 
 
-## 14. Amendment: the zonal-mean circulation, its eddy closure and its solution (proposed 2026-10-04)
+## 14. Amendment: the zonal-mean circulation, its eddy closure and its solution (accepted 2026-10-04)
 
 **Finding (task M6-04, step A).** §4.5 deferred the solution method to
 M6-04 and fixed the closure: Green's diffusivity for heat and potential

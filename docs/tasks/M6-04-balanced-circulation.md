@@ -1,7 +1,7 @@
 # Task M6-04 — Climate-mode balanced circulation
 
 - **Milestone:** P0 / M6 (fourth task; M6-01 to M6-03 are complete)
-- **Status:** in progress — step A done; ADR-0011 §14 proposed (2026-10-04)
+- **Status:** in progress — step A done; ADR-0011 §14 accepted (2026-10-04); step B under way
 - **Scope:** ADR-0011 §4.4–4.6 in four steps.
   - **Step A, the method.** Zonal-mean reference data, the eddy closure
     and the solution method decided against it (§14).
@@ -16,7 +16,7 @@
     fields; the climatology fields; the presentation snapshot; reference
     mode starting from the balanced circulation; the first L6 timing. V7
     provisional.
-- **Governing decisions:** ADR-0011 §4.4–4.6, §14 (once accepted), V7–V9;
+- **Governing decisions:** ADR-0011 §4.4–4.6, §14, V7–V9;
   ADR-0010 §4.4, §4.6; ADR-0001 §4.1–4.3 (derived fields, fitted to
   reference mode)
 
@@ -60,7 +60,7 @@ The CSVs and the analysis scripts are in `tools/zonal_mean_prototype/`.
 - **Closure:** the EKE-gradient closure of §14.
 - **Solution:** Newton to the steady state of the nonlinear axisymmetric
   model, with pseudo-transient continuation as the fallback.
-- §14 is proposed; its acceptance precedes step B.
+- §14 was accepted on 2026-10-04.
 
 ## Plan for steps B–D
 

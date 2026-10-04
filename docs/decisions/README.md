@@ -18,7 +18,7 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0008 | [Snow, sea ice and the ice–albedo feedback](0008-snow-and-sea-ice.md) | Accepted (amended 2026-10-01, V7 and §10 floes and leads; implementation record §9–9.2) | 2026-09-30 |
 | 0009 | [Diffusive horizontal heat transport before the atmosphere](0009-diffusive-heat-transport.md) | Accepted (amended 2026-09-30, §10–12) | 2026-09-30 |
 | 0010 | [A layered atmosphere: hydrostatic columns, grey longwave and convection](0010-layered-atmosphere.md) | Accepted (amended 2026-10-02, §11) | 2026-10-01 |
-| 0011 | [Winds: a C-grid dynamical core in reference mode and a balanced circulation in climate mode](0011-winds-and-circulation.md) | Accepted (amended 2026-10-02, §12, §13) | 2026-10-02 |
+| 0011 | [Winds: a C-grid dynamical core in reference mode and a balanced circulation in climate mode](0011-winds-and-circulation.md) | Accepted (amended 2026-10-02, §12, §13; 2026-10-04, §14) | 2026-10-02 |
 | 0018 | [Presentation boundary, semantic channels and style packs](0018-presentation-channels-and-style-packs.md) | Accepted | 2026-10-04 |
 
 Records cite the design record by version and section (for example "Design
