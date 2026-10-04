@@ -4,8 +4,10 @@
 #include "tests/test_support.hpp"
 
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <iostream>
 #include <vector>
 
 namespace {
@@ -100,11 +102,45 @@ void check_recording_is_non_authoritative(planetsim::test::Context& test) {
     PLANETSIM_EXPECT(test, same_checkpoints);
 }
 
+void check_performance(planetsim::test::Context& test) {
+    for (const auto level : {5U, 6U}) {
+        const std::size_t cells = 10U * (1U << (2U * level)) + 2U;
+        TerrainSnapshot terrain;
+        terrain.mean_elevation_m.assign(cells, 300.0F);
+        terrain.land_fraction.assign(cells, 0.6F);
+        const auto state = snapshot(200.0F, 271.0F, 4.0F, 100.0F);
+        StateSnapshot large = state;
+        for (auto* values : {&large.top_of_atmosphere_insolation_W_m2, &large.surface_temperature_K,
+                 &large.land_snow_water_equivalent_kg_m2, &large.sea_ice_mass_kg_m2,
+                 &large.climatology_surface_temperature_mean_K,
+                 &large.climatology_surface_temperature_variance_K2}) {
+            values->resize(cells, values->front());
+        }
+        const std::array frames{large};
+        const auto reference = planetsim::presentation::make_presentation_reference(frames);
+        constexpr int repetitions = 8;
+        const auto begin = std::chrono::steady_clock::now();
+        std::size_t values = 0U;
+        for (int iteration = 0; iteration < repetitions; ++iteration) {
+            values += planetsim::presentation::make_visual_frame(large, terrain, reference)
+                          .channels[channel(ChannelId::surface_class)].values.size();
+        }
+        const double milliseconds = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - begin).count() / repetitions;
+        std::cout << "presentation L" << level << " make_visual_frame_ms=" << milliseconds
+                  << " values=" << values << '\n';
+        PLANETSIM_EXPECT(test, values == repetitions * cells *
+                               planetsim::presentation::surface_class_weight_count);
+        if (level == 6U) PLANETSIM_EXPECT(test, milliseconds < 10.0);
+    }
+}
+
 }  // namespace
 
 int main() {
     planetsim::test::Context test;
     check_channels(test);
     check_recording_is_non_authoritative(test);
+    check_performance(test);
     return test.result();
 }
