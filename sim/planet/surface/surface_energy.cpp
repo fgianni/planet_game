@@ -15,6 +15,7 @@
 #include "sim/planet/surface/heat_transport.hpp"
 #include "sim/planet/surface/land_snow.hpp"
 #include "sim/planet/surface/sea_ice.hpp"
+#include "sim/planet/surface/cover_fractions.hpp"
 #include "sim/planet/terrain/surface_fractions.hpp"
 
 #include <algorithm>
@@ -816,8 +817,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                             land_weight;
                     }
                     (north ? partial.snow_cover_north_m2 : partial.snow_cover_south_m2) +=
-                        land_weight * land_tile.snow_kg_m2 /
-                        (land_tile.snow_kg_m2 + snow_masking_kg_m2);
+                        land_weight * snow_cover_fraction(land_tile.snow_kg_m2);
                 }
                 if (ocean_weight > 0.0) {
                     const double ice = slow.sea_ice_mass_kg_m2[cell];
@@ -828,10 +828,9 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     partial.ice_melted_kg += ocean_weight * ocean_tile.melted_kg_m2;
                     partial.ice_change_kg += ocean_weight * (ocean_tile.ice_kg_m2 - ice);
                     partial.ice_kg += ocean_weight * ocean_tile.ice_kg_m2;
-                    const double thickness_m = ocean_tile.ice_kg_m2 / sea_ice_density_kg_m3;
                     (mesh.cells()[cell].center_unit.z > 0.0 ? partial.ice_cover_north_m2
                                                             : partial.ice_cover_south_m2) +=
-                        ocean_weight * std::min(1.0, thickness_m / sea_ice_albedo_ramp_m);
+                        ocean_weight * sea_ice_cover_fraction(ocean_tile.ice_kg_m2);
                     if (ocean_tile.ice_kg_m2 > 0.0) {
                         const bool north = mesh.cells()[cell].center_unit.z > 0.0;
                         (north ? partial.ice_area_north_m2 : partial.ice_area_south_m2) +=

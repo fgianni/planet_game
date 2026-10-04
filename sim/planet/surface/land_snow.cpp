@@ -1,5 +1,6 @@
 #include "sim/planet/surface/land_snow.hpp"
 
+#include "sim/planet/surface/cover_fractions.hpp"
 #include "sim/planet/surface/cryosphere_constants.hpp"
 
 #include <cmath>
@@ -8,7 +9,7 @@
 namespace planetsim {
 
 double snow_covered_albedo(double ground_albedo, double snow_kg_m2) noexcept {
-    const double cover = snow_kg_m2 / (snow_kg_m2 + snow_masking_kg_m2);
+    const double cover = snow_cover_fraction(snow_kg_m2);
     return ground_albedo + (snow_albedo - ground_albedo) * cover;
 }
 

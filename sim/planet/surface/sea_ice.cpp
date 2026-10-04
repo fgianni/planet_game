@@ -1,5 +1,7 @@
 #include "sim/planet/surface/sea_ice.hpp"
 
+#include "sim/planet/surface/cover_fractions.hpp"
+
 #include "sim/planet/surface/cryosphere_constants.hpp"
 
 #include <algorithm>
@@ -78,9 +80,8 @@ struct IceSurface {
 }  // namespace
 
 double sea_ice_covered_albedo(double ocean_albedo, double ice_kg_m2) noexcept {
-    const double thickness_m = ice_kg_m2 / sea_ice_density_kg_m3;
     return ocean_albedo +
-           (sea_ice_albedo - ocean_albedo) * std::min(1.0, thickness_m / sea_ice_albedo_ramp_m);
+           (sea_ice_albedo - ocean_albedo) * sea_ice_cover_fraction(ice_kg_m2);
 }
 
 OceanTileSystem prepare_ocean_tile(const ColumnProperties& ocean, ColumnState state,
@@ -101,7 +102,7 @@ OceanTileSystem prepare_ocean_tile(const ColumnProperties& ocean, ColumnState st
     tile.dt_s = dt_s;
     // ADR-0008 §10: the cover that also sets the albedo; floes and leads
     // absorb with their own albedos, which average to the tile's.
-    tile.cover = std::min(1.0, ice_kg_m2 / (sea_ice_density_kg_m3 * sea_ice_albedo_ramp_m));
+    tile.cover = sea_ice_cover_fraction(ice_kg_m2);
     tile.floe_absorbed_W_m2 = (1.0 - sea_ice_albedo) * insolation_W_m2;
     tile.lead_absorbed_W_m2 = (1.0 - ocean.albedo) * insolation_W_m2;
     return tile;

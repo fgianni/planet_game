@@ -1,5 +1,6 @@
 #include "sim/planet/planet_parameters.hpp"
 #include "sim/planet/surface/column_step.hpp"
+#include "sim/planet/surface/cover_fractions.hpp"
 #include "sim/planet/surface/cryosphere_constants.hpp"
 #include "sim/planet/surface/sea_ice.hpp"
 #include "sim/planet/surface/surface_materials.hpp"
@@ -207,6 +208,9 @@ void check_closure_and_invariants(planetsim::test::Context& test) {
 }
 
 void check_albedo(planetsim::test::Context& test) {
+    PLANETSIM_EXPECT(test, planetsim::sea_ice_cover_fraction(0.0) == 0.0);
+    PLANETSIM_EXPECT_NEAR(test, planetsim::sea_ice_cover_fraction(0.25 * 917.0), 0.5, 1e-15);
+    PLANETSIM_EXPECT(test, planetsim::sea_ice_cover_fraction(2'000.0) == 1.0);
     PLANETSIM_EXPECT(test, planetsim::sea_ice_covered_albedo(0.06, 0.0) == 0.06);
     PLANETSIM_EXPECT_NEAR(test, planetsim::sea_ice_covered_albedo(0.06, 0.25 * 917.0),
                           0.06 + 0.5 * (planetsim::sea_ice_albedo - 0.06), 1e-15);

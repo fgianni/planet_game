@@ -1,5 +1,6 @@
 #include "sim/planet/planet_parameters.hpp"
 #include "sim/planet/surface/column_step.hpp"
+#include "sim/planet/surface/cover_fractions.hpp"
 #include "sim/planet/surface/cryosphere_constants.hpp"
 #include "sim/planet/surface/land_snow.hpp"
 #include "sim/planet/surface/surface_materials.hpp"
@@ -234,6 +235,8 @@ void check_source_and_slope(planetsim::test::Context& test) {
 }
 
 void check_albedo(planetsim::test::Context& test) {
+    PLANETSIM_EXPECT(test, planetsim::snow_cover_fraction(0.0) == 0.0);
+    PLANETSIM_EXPECT_NEAR(test, planetsim::snow_cover_fraction(10.0), 0.5, 1e-15);
     PLANETSIM_EXPECT(test, planetsim::snow_covered_albedo(0.3, 0.0) == 0.3);
     PLANETSIM_EXPECT_NEAR(test, planetsim::snow_covered_albedo(0.3, 10.0), 0.525, 1e-15);
     PLANETSIM_EXPECT(test, planetsim::snow_covered_albedo(0.3, 1e6) < planetsim::snow_albedo);
