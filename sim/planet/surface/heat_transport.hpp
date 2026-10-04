@@ -5,6 +5,8 @@
 
 #include <cstddef>
 #include <functional>
+#include <memory>
+#include <span>
 #include <vector>
 
 namespace planetsim {
@@ -42,6 +44,36 @@ struct TransportGraph {
 // the process; `group_of_cell` points at each fine cell's group.
 [[nodiscard]] const TransportGraph& agglomerated_transport_graph(
     const PlanetMesh& mesh, const std::vector<std::size_t>*& group_of_cell);
+
+// The mesh one level coarser that the agglomerated graph's groups are the
+// cells of (the mesh itself at level 0), cached with the graph.
+[[nodiscard]] const PlanetMesh& agglomerated_mesh(const PlanetMesh& mesh);
+
+// The transport's aggregation-multigrid V-cycle (ADR-0009 §4.3), for other
+// solves on a transport graph (ADR-0011 §4.6 preconditions the balanced
+// surface pressure with it). The hierarchy follows the graph's two-point
+// weights; set_matrix gives the fine matrix (diagonal, and off-diagonals in
+// the graph's CSR order), which must be symmetric with a positive definite
+// Galerkin coarsest level. One V-cycle with symmetric Gauss–Seidel
+// smoothing approximates its inverse. Fine-level work runs over the graph's
+// fixed blocks, so the result does not depend on the worker count.
+class GraphMultigrid {
+  public:
+    explicit GraphMultigrid(const TransportGraph& graph);
+    ~GraphMultigrid();
+    GraphMultigrid(const GraphMultigrid&) = delete;
+    GraphMultigrid& operator=(const GraphMultigrid&) = delete;
+    GraphMultigrid(GraphMultigrid&&) noexcept;
+    GraphMultigrid& operator=(GraphMultigrid&&) noexcept;
+
+    void set_matrix(std::span<const double> diagonal, std::span<const double> off_diagonal);
+    void precondition(const std::vector<double>& rhs, std::vector<double>& solution,
+                      std::size_t worker_count = 1U) const;
+
+  private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
 
 using TransportResponse = std::function<void(const Field2D<double>& source_W_m2,
                                              Field2D<double>& mean_K,

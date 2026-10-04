@@ -244,6 +244,14 @@ Climate mode's circulation (ADR-0011 §14, task M6-04) is under way:
   - With ADR-0011 §15's eddy scale (2,000 km), the upper-level jet matches
     reference mode's: 27 m/s at 52.5°, against 28 m/s at 52.5°. Eddy
     energy is within about 20% of the reference.
+- **Azonal circulation.** `--balanced` adds §4.6's azonal circulation and
+  balanced surface pressure on the coarse mesh.
+  - The departures from the zonal mean are in frictional-geostrophic
+    balance on every edge and layer.
+  - The surface pressure makes the column mass divergence vanish. It is
+    solved by BiCGSTAB with the transport's multigrid, in 12–44 ms a month
+    at L4–L5.
+  - The layer and vertical mass fluxes close every layer's mass exactly.
 - **Not yet active.** Climate mode still carries heat by diffusion until
   the circulation is coupled to the transport.
 

@@ -1,7 +1,7 @@
 # Task M6-04 — Climate-mode balanced circulation
 
 - **Milestone:** P0 / M6 (fourth task; M6-01 to M6-03 are complete)
-- **Status:** in progress — step A done; ADR-0011 §14 accepted (2026-10-04); step B done (part 1 the zonal-mean model, part 2 heating, convection and the Earth-like planet)
+- **Status:** in progress — steps A, B and C done; ADR-0011 §14 and §15 accepted, §16 proposed (2026-10-04)
 - **Scope:** ADR-0011 §4.4–4.6 in four steps.
   - **Step A, the method.** Zonal-mean reference data, the eddy closure
     and the solution method decided against it (§14).
@@ -375,6 +375,121 @@ poorly conditioned direction; to be looked at with the N = 5 jet bias.
 
 `planet_cli zonal-circulation` gained `--eddy-scale L` for these runs.
 
+## Step C — azonal balance and balanced p_s (2026-10-04)
+
+**Code.**
+- `BalancedCirculation` (`sim/planet/dynamics/balanced_circulation.{hpp,cpp}`)
+  implements §4.6 and §4.4 steps 3–4 on the coarse mesh of ADR-0009 §12.
+- `GraphMultigrid` and `agglomerated_mesh` (`heat_transport.{hpp,cpp}`):
+  - `GraphMultigrid` makes the transport's aggregation multigrid usable by
+    other solves. Its code is unchanged, so the transport's results stay
+    bit-identical.
+  - The agglomeration cache keeps the coarse `PlanetMesh`, whose C-grid
+    the balance needs.
+- `planet_cli zonal-circulation --planet --balanced` adds the balance to
+  every month.
+- Test: `tests/physics/test_balanced_circulation.cpp`.
+
+**The discretisation.**
+- **Coarse fields.** The groups' means, as the transport's: p_s, height
+  and land fraction by area; T by mass. Layer geopotentials follow task
+  M6-03's vertical structure.
+- **Zonal means.** Band means (the most of 36, 18, 12, 9 or 6 equal bands
+  that each hold three coarse cells), interpolated linearly in latitude
+  between band centres. Plain band means are step functions, and gave
+  steps in s at the band edges.
+- **The edge balance**, per layer:
+  u_n = (r G_n + f G_t) / (r² + f²),  G = −∇Φ' − R T̂ ∇s.
+  - f is taken at the edge midpoint.
+  - The normal derivative uses the two cells; the tangential one uses the
+    barycentric corner values (`interpolation_weight`), as the C-grid
+    convention requires.
+- **The equation for s.** Σ_k div(μ̂ u_n) = 0, area-integrated, is
+  assembled in the coarse graph's CSR pattern. The corner cells are all
+  in the row's ring.
+  - The rows sum to zero for any s (flux form), so the right-hand side is
+    projected onto that direction's complement.
+  - BiCGSTAB is right-preconditioned by one V-cycle of the multigrid on
+    the symmetric (friction) part. Its diagonal is raised by 1e-8 to
+    regularise the constant mode.
+  - s is then given zero area mean, and the balanced p_s = the zonal
+    model's profile (interpolated in latitude) × exp(s), scaled so the
+    groups hold the atmosphere's mass.
+- **Layer fluxes.** The azonal flux, plus the overturning
+  μ̂ v̄_k(φ_e) n_e·ê_north with v̄ interpolated in latitude (zero at the
+  poles). The overturning's column sum is zero on every edge, because
+  Σ_k v̄_k = 0 (the zonal model's lid).
+- **Vertical fluxes.** W_{k+1} = W_k − div F_k per cell, so every layer's
+  mass closes exactly. W_N is the column divergence the solver leaves.
+- The zonal-mean zonal wind is not part of the edge fluxes, as §4.4
+  lists them (overturning plus azonal). Whether the transport should
+  carry it is §4.7's question.
+
+**Damping.**
+- **Aloft:** 1/r = 5 days (§4.6's "a few days").
+- **Bottom layer:** adds the bulk drag linearised at 8 m/s,
+  C_D V g N / (R T): about 1/(2.7 days) over the ocean and 1/(1 day)
+  over land at N = 3.
+- **The deep tropics are the problem.** The slow state, shaped by the
+  diffusive transport, carries temperature departures of about 4.5 K rms
+  within 15° of the equator. With f → 0 the balance turns them into
+  frictional flow u = G/r.
+
+  Top-layer azonal winds at L4, rms:
+
+  | Damping aloft | 0–15° | 15–30° | 30–60° | Max | BiCGSTAB iterations |
+  |---|---|---|---|---|---|
+  | 5 days | 105 m/s | 15.5 | 9.3 | 869 m/s | 133 |
+  | 1 day | 43 | 14.4 | 8.1 | 260 | 28 |
+  | 0.25 day | 16.5 | 12.1 | 7.4 | 80 | 20 |
+  | 5 days, plus 0.25 day × exp(−(φ/10°)²) | 21.6 | 15.0 | 9.3 | 122 | 130 |
+
+- **Chosen: the last row.** It keeps the extratropical, nearly
+  geostrophic flow and its realistic 7–15 m/s, and holds the deep tropics.
+  It is proposed as ADR-0011 §16.
+- **This is a stopgap for the uncoupled input.** The tropical departures
+  belong to the uncoupled slow state. Once the circulation carries heat
+  (§4.7), the coupled step should flatten them (the weak-temperature-
+  gradient tropics), and step D must check how the fixed-flux transport
+  behaves with them.
+
+**Measured** (Earth-like, two years' spin-up, a climate year with
+`--balanced`):
+
+| | L4 (coarse L3, 642 cells, 18 bands) | L5 (coarse L4, 2,562 cells, 36 bands) |
+|---|---|---|
+| BiCGSTAB iterations | 124–140 | 103–114 |
+| Balance time per month | 12–15 ms | 27–44 ms (one 143 ms outlier) |
+| Relative column divergence | 3e-11 – 4e-10 | 2e-10 – 8e-10 |
+| Balanced p_s range | 783–1046 hPa | 745–1043 hPa |
+| Top-layer azonal rms, < 20° / 20–60° | 20–22 / 8–9 m/s | 27–28 / 15–16 m/s |
+
+- **Why so many iterations.** The operator is genuinely non-symmetric.
+  Away from the equator the Coriolis (β-like) term outweighs the friction
+  term about tenfold, as in Stommel's problem, so a preconditioner built
+  from the symmetric part leaves 100–140 iterations.
+
+**Tests** (`test_balanced_circulation`, 0.2 s):
+- **Isothermal rest over terrain.** The balance recovers s + g z/(R T) as
+  a function of latitude alone (to 1e-8, over more than 100 pairs of
+  cells on equal latitudes). Every flux stays below 1e-6 m/s.
+- **The Earth-like month.**
+  - Identical for 1 and 4 workers.
+  - Residual below 1e-9; column divergence below 1e-8 of the layers'.
+  - The groups hold the atmosphere's mass to 1e-13.
+  - W_N below 1e-8 of the interior W.
+  - Top-layer azonal rms of 3–30 m/s at 30–60°.
+- **The overturning.**
+  - Its column sum is zero on every edge to 1e-12.
+  - It carries the zonal model's mass transport across 30° N to within
+    10%.
+
+**Not in step C:**
+- Writing the balanced p_s back to the slow state, and mapping it to the
+  fine cells.
+- The transport by these fluxes (§4.7).
+- The derived winds (step D).
+
 ## Plan for steps B–D
 
 1. **`ZonalCirculation`** (`sim/planet/dynamics/zonal_circulation.{hpp,cpp}`)
@@ -398,7 +513,8 @@ poorly conditioned direction; to be looked at with the N = 5 jet bias.
      beside the column solve;
    - convective relaxation;
    - the Earth-like zonal solve at L4 and L5, compared with the V6 data.
-3. **Azonal balance and balanced `p_s`** (§4.6) on the coarse mesh:
+3. **Azonal balance and balanced `p_s`** (§4.6) on the coarse mesh — done,
+   step C above:
    - BiCGSTAB with the existing multigrid as preconditioner;
    - total mass exact;
    - the layer mass fluxes and the vertical fluxes from discrete

@@ -455,6 +455,7 @@ namespace {
 struct Agglomeration {
     TransportGraph graph;
     std::vector<std::size_t> group_of_cell;
+    std::shared_ptr<const PlanetMesh> coarse_mesh;   // null at level 0: the mesh itself
 };
 
 // Each fine cell joins the nearest cell of the mesh one level coarser (a
@@ -472,7 +473,9 @@ struct Agglomeration {
         }
         return result;
     }
-    const PlanetMesh coarse = make_icosphere(mesh.subdivision() - 1U, mesh.radius_m());
+    result.coarse_mesh = std::make_shared<const PlanetMesh>(
+        make_icosphere(mesh.subdivision() - 1U, mesh.radius_m()));
+    const PlanetMesh& coarse = *result.coarse_mesh;
     result.graph = mesh_transport_graph(coarse);
     std::fill(result.graph.area_m2.begin(), result.graph.area_m2.end(), 0.0);
     result.group_of_cell.resize(mesh.cell_count());
@@ -509,10 +512,11 @@ struct Agglomeration {
 
 }  // namespace
 
-const TransportGraph& agglomerated_transport_graph(const PlanetMesh& mesh,
-                                                   const std::vector<std::size_t>*& group_of_cell) {
-    // One agglomeration per mesh level and radius for the process: building
-    // the coarse mesh takes about 0.1 s at L5.
+namespace {
+
+// One agglomeration per mesh level and radius for the process: building
+// the coarse mesh takes about 0.1 s at L5.
+const Agglomeration& cached_agglomeration(const PlanetMesh& mesh) {
     static std::mutex mutex;
     static std::map<std::pair<std::uint32_t, double>, std::unique_ptr<Agglomeration>> cache;
     const std::lock_guard lock(mutex);
@@ -520,8 +524,55 @@ const TransportGraph& agglomerated_transport_graph(const PlanetMesh& mesh,
     if (!entry || entry->group_of_cell.size() != mesh.cell_count()) {
         entry = std::make_unique<Agglomeration>(build_agglomeration(mesh));
     }
-    group_of_cell = &entry->group_of_cell;
-    return entry->graph;
+    return *entry;
+}
+
+}  // namespace
+
+const TransportGraph& agglomerated_transport_graph(const PlanetMesh& mesh,
+                                                   const std::vector<std::size_t>*& group_of_cell) {
+    const Agglomeration& entry = cached_agglomeration(mesh);
+    group_of_cell = &entry.group_of_cell;
+    return entry.graph;
+}
+
+const PlanetMesh& agglomerated_mesh(const PlanetMesh& mesh) {
+    const Agglomeration& entry = cached_agglomeration(mesh);
+    return entry.coarse_mesh ? *entry.coarse_mesh : mesh;
+}
+
+struct GraphMultigrid::Impl {
+    std::vector<Level> levels;
+    std::vector<CellBlock> blocks;
+};
+
+GraphMultigrid::GraphMultigrid(const TransportGraph& graph) : impl_(std::make_unique<Impl>()) {
+    impl_->levels = build_hierarchy(graph, graph.size());
+    impl_->blocks = graph.blocks;
+}
+
+GraphMultigrid::~GraphMultigrid() = default;
+GraphMultigrid::GraphMultigrid(GraphMultigrid&&) noexcept = default;
+GraphMultigrid& GraphMultigrid::operator=(GraphMultigrid&&) noexcept = default;
+
+void GraphMultigrid::set_matrix(std::span<const double> diagonal,
+                                std::span<const double> off_diagonal) {
+    Level& fine = impl_->levels.front();
+    if (diagonal.size() != fine.size || off_diagonal.size() != fine.value.size()) {
+        throw std::invalid_argument("multigrid matrix does not match the graph");
+    }
+    std::copy(diagonal.begin(), diagonal.end(), fine.diagonal.begin());
+    std::copy(off_diagonal.begin(), off_diagonal.end(), fine.value.begin());
+    for (std::size_t index = 0; index + 1U < impl_->levels.size(); ++index) {
+        coarsen_values(impl_->levels[index], impl_->levels[index + 1U]);
+    }
+    factor_dense(impl_->levels.back());
+}
+
+void GraphMultigrid::precondition(const std::vector<double>& rhs, std::vector<double>& solution,
+                                  std::size_t worker_count) const {
+    const Parallel parallel{impl_->blocks, worker_count};
+    v_cycle(impl_->levels, 0U, rhs, solution, parallel);
 }
 
 void diffusion_source(const TransportGraph& graph, double conductance_W_K,

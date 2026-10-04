@@ -7,6 +7,7 @@
 - **Amended:** 2026-10-02 — §13: the orography the winds see; the sub-step rule's wind bound
 - **Amended:** 2026-10-04 — §14: the zonal-mean circulation, its eddy closure and its solution (replaces §4.5)
 - **Amended:** 2026-10-04 — §15: the eddy scale L = 2,000 km and c_E fitted in the model's form
+- **Proposed amendment:** 2026-10-04 — §16: the azonal balance's damping and zonal means
 - **Milestone:** P0 / M6 (wind and Coriolis)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §6 (`AtmosphereState`), §8 (multi-rate), §9.2, §13 M6, §15.5 (zero-rotation experiment), §23, §24; Planetary Civilization Simulator — Design Record v0.9, §5.4, §15.2–15.5, §25 (M5 row: "planetary circulation direction and latitude dependence"), §28
 - **Related:** ADR-0001 (modes, partition, budget, §8 milestone mapping), ADR-0002 (mesh, operators, §4.2 advection, field layout), ADR-0003 (determinism, replay), ADR-0006 (sub-steps), ADR-0009 (implicit transport, coarse graph), ADR-0010 (layered atmosphere; its §7 M6 row)
@@ -698,6 +699,17 @@ amendment.
     N = 3). The upper-level jet follows reference mode: 30 m/s at 52.5°
     against 28 m/s at 52.5°. The eddy energy is half the reference's, and
     the surface westerlies are confined to 42.5–57.5°.
+- **M6-04, step C (2026-10-04).** Covers §4.6 and §4.4 steps 3–4 on the
+  coarse mesh: `BalancedCirculation`.
+  - **The solve.** BiCGSTAB preconditioned by the transport's multigrid
+    on the symmetric part takes 100–140 iterations. It costs 12–15 ms at
+    L4 and 27–44 ms at L5 per month.
+  - **Conservation.** Every layer's mass closes exactly, the column to
+    below 1e-9, and the atmosphere's mass is held to 1e-13.
+  - **Rest.** An isothermal atmosphere at rest over terrain is exact.
+  - **The tropics.** The slow state's tropical departures (4.5 K rms)
+    need the equatorial damping of §16.
+  - Details are in `docs/tasks/M6-04-balanced-circulation.md`.
 
 ## 12. Amendment: V2 as measured for the TRiSK operators (accepted 2026-10-02)
 
@@ -1018,4 +1030,43 @@ reference mode before the C++ model existed.
 **Not decided by this amendment.** The five-layer behaviour, a change of
 the closure's form (for example screening the momentum flux as well), and
 the vertical shape of the momentum flux.
+
+## 16. Amendment: the azonal balance's damping and zonal means (proposed 2026-10-04)
+
+**Finding (task M6-04, step C).** §4.6 left the damping r_k as documented
+constants: "a few days" aloft, and the linearised surface drag in the
+bottom layer.
+- **The tropics.** The slow state carries azonal temperature departures
+  of about 4.5 K rms within 15° of the equator. Its heat still moves by
+  diffusion.
+- **The response.** Where f vanishes the balance becomes frictional flow,
+  u = G/r. With 5 days aloft the top-layer azonal wind is 105 m/s rms
+  within 15° (869 m/s at most), while 7–15 m/s, nearly geostrophic,
+  elsewhere.
+- **Uniform damping is a poor fix.** A uniformly stronger damping weakens
+  the realistic extratropical flow too.
+- **Band means need smoothing.** Zonal means taken as plain band means
+  are step functions in latitude, and they put steps into the balanced
+  p_s at the band edges.
+
+**Proposed change.**
+- **Aloft:** r = 1/(5 days) + exp(−(φ/10°)²) / (0.25 day). This is an
+  equatorial enhancement in the spirit of Gill's (1980) regularisation.
+  - It gives 22 m/s rms within 15° at L4 and 28 m/s at L5, with the
+    extratropics unchanged.
+- **Bottom layer:** adds C_D V g N / (R T), the bulk drag linearised at
+  V = 8 m/s, with §4.3's C_D by land fraction.
+- **Zonal means on the coarse mesh:**
+  - Band means over the most of 36, 18, 12, 9 or 6 equal bands that each
+    hold three coarse cells.
+  - Interpolated linearly in latitude between the band centres.
+- **Recorded, not decided:** the edge fluxes carry the overturning and the
+  azonal flow, as §4.4 lists them, not the zonal-mean zonal wind. Whether
+  §4.7's transport needs it (advection of the azonal temperature by ū) is
+  for that task.
+
+**To be revisited.** The tropical enhancement answers the uncoupled slow
+state. Once the circulation carries heat (§4.7), the tropical departures
+should flatten, and step D measures whether the enhancement is still
+needed.
 

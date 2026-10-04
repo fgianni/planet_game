@@ -6,6 +6,7 @@
 #include "sim/core/serialization/snapshot_file.hpp"
 #include "sim/planet/atmosphere/atmosphere.hpp"
 #include "sim/planet/dynamics/orography.hpp"
+#include "sim/planet/dynamics/balanced_circulation.hpp"
 #include "sim/planet/dynamics/primitive_equations.hpp"
 #include "sim/planet/dynamics/shallow_water.hpp"
 #include "sim/planet/dynamics/williamson_cases.hpp"
@@ -183,8 +184,8 @@ void print_usage(std::ostream& output) {
            << "  planet_cli reference [--subdivision LEVEL] [--seed N] [--layers N]"
               " [--spin-up-years N] [--days D] [--average-days D] [--workers W]"
               " [--zonal-csv FILE.csv]\n"
-           << "  planet_cli zonal-circulation [--planet [--subdivision LEVEL] [--seed N]"
-              " [--spin-up-years N] [--workers W]] [--layers N] [--rotation-factor S]"
+           << "  planet_cli zonal-circulation [--planet [--balanced] [--subdivision LEVEL]"
+              " [--seed N] [--spin-up-years N] [--workers W]] [--layers N] [--rotation-factor S]"
               " [--viscosity NU] [--eddy-generation C_E] [--eddy-scale L] [--no-eddies]"
               " [--reference FILE.csv] [--csv FILE.csv]\n";
 }
@@ -1563,6 +1564,7 @@ int run_reference(const ReferenceOptions& options) {
 
 struct ZonalCirculationOptions {
     bool planet = false;   // the Earth-like planet's climate year, not Held–Suarez
+    bool balanced = false; // with --planet: also the azonal balance (§4.6) each month
     std::uint32_t subdivision = 4;
     std::uint64_t seed = 1;
     int spin_up_years = 2;
@@ -1588,6 +1590,10 @@ struct ZonalCirculationOptions {
         }
         if (argument == "--planet") {
             options.planet = true;
+            continue;
+        }
+        if (argument == "--balanced") {
+            options.balanced = true;
             continue;
         }
         if (++index >= argument_count) {
@@ -1723,6 +1729,10 @@ int run_zonal_circulation(const ZonalCirculationOptions& options) {
         planetsim::compute_surface_height(mesh, run.state().slow(), run.fractions(), height);
         const auto dynamics_height =
             planetsim::limit_dynamics_orography_steps(mesh, height, 800.0, 256U, workers).height_m;
+        std::unique_ptr<planetsim::BalancedCirculation> balance;
+        if (options.balanced) {
+            balance = std::make_unique<planetsim::BalancedCirculation>(mesh, parameters);
+        }
         std::cout << "planet=earth_like subdivision=" << options.subdivision
                   << " spin_up_years=" << options.spin_up_years << '\n';
         const planetsim::SimulationTick year_end =
@@ -1749,8 +1759,50 @@ int run_zonal_circulation(const ZonalCirculationOptions& options) {
                       << " method="
                       << (month.method == planetsim::ZonalSolutionMethod::newton ? "newton"
                                                                                 : "continuation")
-                      << " jacobians=" << month.statistics.jacobians << " solve_ms=" << ms
-                      << '\n';
+                      << " jacobians=" << month.statistics.jacobians << " solve_ms=" << ms;
+            if (balance) {
+                const auto balance_start = std::chrono::steady_clock::now();
+                const auto azonal = balance->solve(run.state().slow(), dynamics_height,
+                                                   run.fractions(), month, workers);
+                const double balance_ms = std::chrono::duration<double, std::milli>(
+                                              std::chrono::steady_clock::now() - balance_start)
+                                              .count();
+                // Top-layer azonal wind, rms by latitude zone.
+                const auto& coarse = balance->coarse_mesh();
+                const std::size_t coarse_edges = coarse.edge_count();
+                const std::size_t top = parameters.layer_count - 1U;
+                std::array<double, 2> sum{};
+                std::array<double, 2> count{};
+                for (std::size_t e = 0; e < coarse_edges; ++e) {
+                    const auto& edge =
+                        coarse.edge(planetsim::EdgeId{static_cast<planetsim::EdgeId::value_type>(e)});
+                    const double latitude = std::abs(std::asin(std::clamp(
+                        balance->coarse_grid().edges()[e].midpoint_unit.z, -1.0, 1.0))) *
+                        180.0 / std::numbers::pi;
+                    const std::size_t zone = latitude < 20.0 ? 0U : (latitude < 60.0 ? 1U : 2U);
+                    if (zone > 1U) {
+                        continue;
+                    }
+                    const double mu = 0.5 *
+                                      (azonal.surface_pressure_Pa[edge.first_cell.to_index()] +
+                                       azonal.surface_pressure_Pa[edge.second_cell.to_index()]) /
+                                      (parameters.gravity_m_s2 *
+                                       static_cast<double>(parameters.layer_count));
+                    const double u = azonal.azonal_mass_flux_kg_m_s[top * coarse_edges + e] / mu;
+                    sum[zone] += u * u;
+                    count[zone] += 1.0;
+                }
+                const auto [low, high] = std::minmax_element(azonal.surface_pressure_Pa.begin(),
+                                                             azonal.surface_pressure_Pa.end());
+                std::cout << " balance_iterations=" << azonal.iterations
+                          << " balance_ms=" << balance_ms << std::scientific
+                          << std::setprecision(1)
+                          << " column_divergence=" << azonal.relative_column_divergence
+                          << std::fixed << " ps_hPa=" << *low / 100.0 << ".." << *high / 100.0
+                          << " azonal_top_rms_m_s(<20,20-60)=" << std::sqrt(sum[0] / count[0])
+                          << ',' << std::sqrt(sum[1] / count[1]);
+            }
+            std::cout << '\n';
             if (months == 0U) {
                 solution = month;
             } else {
