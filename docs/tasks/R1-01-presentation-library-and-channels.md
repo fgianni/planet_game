@@ -75,10 +75,30 @@
 
 ## 3. Report
 
-- The measured V4 values (both snapshots, the regions used).
-- The `make_visual_frame` time at L5 and L6.
-- The `surface_class` thresholds chosen and a one-line justification.
-- How `PresentationReference` gets the annual maximum insolation, and its
-  cost.
-- Anything in ADR-0018 that turned out wrong or underspecified, as a
-  proposed amendment rather than a silent change.
+- **V4/V4b.** The controlled cold/warm snapshot pair uses a representative
+  land cell and an ocean cell: cold/warm land snow cover is 0.666667/0.0
+  (Δ = 0.666667), cold/warm sea-ice cover is 1.0/0.0 (Δ = 1.0), and the
+  corresponding temperature anomalies are −0.666667/+0.666667. Daylight is
+  0 on the constructed night-side cell and 1 at the recorded annual maximum;
+  relief is 0 at sea level; every surface-class weight tuple sums to 1 within
+  1e-6. The regression also runs a one-year recorded L1 scenario and calls
+  `make_visual_frame` on every callback; its final and checkpoint hashes are
+  identical to the uncaptured run.
+- **Performance.** Release single-threaded `make_visual_frame`, averaged over
+  eight frames of synthetic cell-major data, measured 0.245 ms at L5 (10,242
+  cells) and 0.985 ms at L6 (40,962 cells), below the 10 ms gate.
+- **Surface class.** The temporary bare-land split is sand at relief ≤ 200 m,
+  soil from 200 m to below 1,500 m, and rock at relief ≥ 1,500 m. This makes
+  low coastal land and high relief visually distinct while retaining an
+  explicit, small placeholder until M10 supplies surface/vegetation classes.
+- **Annual maximum insolation.** `PresentationReference` scans the TOA
+  insolation in a recorded orbital year's `StateSnapshot` frames and retains
+  the per-cell maximum. The one-off cost is O(frames × cells), with one
+  float per cell retained; it respects the snapshots-only presentation
+  boundary and does not require mesh or solver access.
+- **Proposed ADR-0018 clarification.** Schema-3 climatology vectors are
+  sample-weighted annual mean and population variance pooled from the twelve
+  monthly layers (including between-month variance), rather than an
+  unspecified month. R1 also adds the non-authoritative `PFRAME01` sidecar
+  for recorded presentation snapshots; it is neither PSNAP nor solver input
+  and never contributes to a state hash.
