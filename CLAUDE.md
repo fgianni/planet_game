@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-Read `docs/DEVELOPMENT_SPEC_v0_7.md` before making changes. It is the
+Read `docs/DEVELOPMENT_SPEC_v0_8.md` before making changes. It is the
 development specification. The design document is
-`docs/planetary_civilization_simulator_design_v1_2.docx`.
+`docs/planetary_civilization_simulator_design_v1_3.docx`.
 
 Accepted ADRs in `docs/decisions/` take precedence where they conflict
 with the specification (notably ADR-0002 on the mesh: a

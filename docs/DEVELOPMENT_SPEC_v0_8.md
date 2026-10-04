@@ -1,12 +1,12 @@
 # Planetary Civilization Simulator --- Development Specification
 
-Version: 0.7 (reconciled with design v1.2 and accepted ADRs 0001--0011 in
+Version: 0.8 (reconciled with design v1.3 and accepted ADRs 0001--0011 in
 `docs/decisions/`)\
 Purpose: implementation contract for Codex / Claude Code\
 Primary target: PC/Linux, C++20 + Godot 4\
 Current phase: P0 --- Living Planet (M0 through M5 complete, M6 in progress)
 
-Design document: `docs/planetary_civilization_simulator_design_v1_2.docx`.
+Design document: `docs/planetary_civilization_simulator_design_v1_3.docx`.
 Accepted decision records take precedence over this specification where they
 conflict.
 
@@ -14,8 +14,25 @@ Decision records live in one directory, `docs/decisions/`, with an index in
 `docs/decisions/README.md`; superseded records are kept under
 `docs/decisions/archive/`.
 
-What is new in v0.7, relative to v0.6 --- all of it from design v1.2
-section 42, which v0.6 predates:
+What is new in v0.8, relative to v0.7 --- all of it from design v1.3
+section 44, which v0.7 predates:
+
+- **the fog of knowledge** (section 32): five layers --- geographic,
+  observation, understanding, social and foreign --- built on the
+  observation architecture of section 17;
+- **a guessed map** for unexplored areas, generated as a pure function of
+  the seed and corrected by exploration (section 32.4);
+- **exploration** commands and passive sources, and a last-seen record so old
+  knowledge can be out of date (sections 32.5, 32.6);
+- **social estimates** with polling error and preference falsification under
+  censorship, so the government sees its people through statistics
+  (section 32.7); **foreign estimates** and verification (section 32.8);
+- five fog channels added to the semantic channels, with readability
+  signals (section 32.9), acceptance experiments (section 32.10), and
+  ADR-0019 (section 26.1).
+
+What v0.7 added, relative to v0.6 --- all of it from design v1.2
+section 42 --- and which still stands:
 
 - **a presentation boundary** (section 31.1): a Godot-free `sim/presentation`
   library turns snapshots into a `VisualFrame` of semantic channels;
@@ -422,6 +439,9 @@ EstimatedState      the civilization's reconstruction of SlowState, with a
                     per-field uncertainty; the seed for every projection run
 ProjectionEnsemble  N forward runs from EstimatedState + committed-warming run
 ConsequenceLedger   per-region fast-loop changes and their attributed causes
+FogState            explored cells, last-seen record, territory (section 32)
+SocialEstimate      the government's estimate of its own cohorts (32.7)
+ForeignEstimate     estimates of other civilizations (32.8)
 ```
 
 `EstimatedState` has the same field identities as `SlowState` so that a
@@ -1773,6 +1793,9 @@ Architectural consequences:
 -   **missing views are a designed state, not a broken interface.** Onboarding
     must present the absent climate view as the intended starting point
     (design v0.9 §37.1);
+-   **five layers.** Design v1.3 extends this section into a fog of
+    knowledge over the map, the civilization's own society and other
+    civilizations (section 32);
 -   **P0 exemption.** `climate_lab` bypasses all of this. It must be a
     separate presentation path, so that removing it cannot leave a hole in the
     gameplay UI --- and so that the gameplay UI cannot quietly come to depend
@@ -2194,7 +2217,7 @@ Foundation work completed before M2 terrain starts (task
 7.  ~~Consolidate the two decision-record directories and add an index.~~
     Done: `docs/decisions/` with `README.md` and `archive/`.
 
-### 26.1 Decision records required by designs v0.9 to v1.2
+### 26.1 Decision records required by designs v0.9 to v1.3
 
 None of these blocks M2 terrain. All of them block the milestone named.
 
@@ -2256,6 +2279,15 @@ Decision record required by design v1.2.
 11. **ADR-0018: presentation boundary, semantic channels and style packs**
     (sections 31.1--31.3, 31.8). *Blocks R1.*
 
+Decision record required by design v1.3.
+
+12. **ADR-0019: the fog of knowledge** (section 32). Where fog state lives
+    and how it is snapshotted (extending ADR-0012), the guessed-map function
+    and its parameters, exploration rules, the last-seen record, the social
+    estimate model and its RNG streams, and the extended no-effect
+    assertion. *Blocks the P1 exploration work; the fog channels are
+    reserved in ADR-0018.*
+
 ### 26.2 Work introduced by design v0.9
 
 | Item | Section | Phase |
@@ -2309,6 +2341,11 @@ Section 30.1 is the complete placement table. The P0 items are:
 The rendering track of section 31.10. R1 can start now: it needs only the
 existing snapshots and ADR-0018, and it makes every later visual layer
 style-independent from the start.
+
+### 26.6 Work introduced by design v1.3
+
+Section 32.1 places each layer. Nothing is P0 work; R1 reserves the five fog
+channels so both styles implement them from the start.
 
 ## 27. Open questions
 
@@ -2382,6 +2419,16 @@ New from design v1.2:
 -   May community style packs carry scripts, or only data and shaders?
 -   How much procedural detail may be added inside a cell before it
     misleads (section 31.5)?
+
+New from design v1.3:
+
+-   How wrong may the guessed map be: wrong enough to surprise, never so
+    wrong that an early decision feels like a trick? Amplitudes in section
+    32.4 are scenario data so this can be tuned.
+-   Should scenarios after the age of exploration start without geographic
+    fog, or keep fog over remote interiors and the deep ocean?
+-   How visible should the gap between polls and true opinion be, so the
+    player learns to distrust polls without feeling cheated?
 
 ## 28. Traceability: design v0.9 to this specification
 
@@ -2499,6 +2546,20 @@ Design v1.0 added section 38, rewrote section 8.4, extended sections 7, 16,
 | 42.10 | accessibility | 31.7; 31.8 |
 | 42.11 | performance | 31.9 |
 | 42.12 | rendering track R0--R8 | 31.10 |
+
+### 28.4 Design v1.3 to this specification
+
+| Design v1.3 | Requirement | Specification |
+|---|---|---|
+| 44.1 | five layers of fog | 32.1 |
+| 44.2 | fog changes knowledge, not the world; own land visible; knowledge ages; lifting fog costs | 32.2; 32.6; 32.5 |
+| 44.3 | mistaken maps corrected by exploration; satellites end geographic fog | 32.4; 32.5 |
+| 44.4 | observation fog on the map | 17; 32.6 |
+| 44.5 | understanding fog | 17.1; 17.2 |
+| 44.6 | census, polls, press; the dictator's dilemma; truth by events | 32.7 |
+| 44.7 | foreign fog and verification | 32.8 |
+| 44.8 | fog drawn by every style; readability | 32.9; 31.8 |
+| 44.9 | staging | 32.1 |
 
 ## 29. Population and society
 
@@ -3504,3 +3565,190 @@ presentation RNG stream, and the readability threshold. It blocks R1.
 -   any gameplay difference between styles;
 -   scripts in style packs, until section 27's question is answered;
 -   presentation-side physics: a style may animate, never simulate.
+
+## 32. The fog of knowledge
+
+Design v1.3 section 44 extends the observation architecture of section 17
+into five layers of fog: geographic, observation, understanding, social and
+foreign. This section specifies the state behind them, how each layer lifts,
+and how fog reaches the screen.
+
+### 32.1 Placement
+
+| Layer | Design v1.3 | Stage | State | Built on |
+|---|---|---|---|---|
+| Geographic | 44.3 | P1 | `FogState.explored`, guessed map | terrain, transport, budget |
+| Observation | 44.4 | P2 | `ObservationState` (section 17), last-seen record | instruments |
+| Understanding | 44.5 | P2 | `KnowledgeState` (section 17.1) | knowledge stages |
+| Social | 44.6 | P3 | `SocialEstimate` | section 29 |
+| Foreign | 44.7 | P4 | `ForeignEstimate` | other civilizations |
+| Rendering | 44.8 | R1 (channels), R8 (drawing) | section 31 channels | style packs |
+
+### 32.2 Invariants
+
+-   **Fog has no physical or social effect.** Fog state is consumed by the
+    civilization's decisions and by presentation only. Two runs that differ
+    only in fog state are bit-identical in `SlowState` and in
+    `SocietyState`, until a player or AI decision based on the fog is
+    issued as a command. This extends the assertion of section 17.2;
+-   **own land is visible.** Natural-view channels (vegetation, snow, water,
+    smoke, haze, urban) are never fogged inside the civilization's territory
+    or within sight of its settlements. What fog hides there is the
+    measured overlay, the history and the cause;
+-   **fog is generated deterministically.** Guesses, exploration outcomes and
+    estimate errors use the keyed RNG with reserved streams, and a replay
+    reproduces them;
+-   the climate lab bypasses fog through the separate path of section 17.2.
+
+### 32.3 State
+
+Fog state belongs to a civilization and is snapshotted with the
+civilization-side state (ADR-0012, extended by ADR-0019).
+
+``` text
+FogState (per civilization)
+  explored            per cell, 0..1           geographic knowledge
+  last_seen_tick      per cell, SimulationTick last natural observation
+  last_seen           per cell, a reduced record of the natural channels
+                      at last_seen_tick: snow_cover, vegetation_vigour,
+                      water_extent, urban, sea_ice (5 x float)
+  territory_mask      per cell, derived from settlements and borders
+SocialEstimate (per civilization, per own cohort)
+  opinion_estimate, salience_estimate, support_estimate, need_estimate
+  estimate_sigma      per quantity
+  census_tick, statistics_capacity, polling_capacity
+ForeignEstimate (per pair of civilizations)
+  emissions_estimate, land_use_estimate, military_estimate, sigma
+  monitoring_level    0..1, raised by satellites and agreements
+```
+
+At L6 the per-cell part is about 40,962 cells × (1 + 1 + 5) values, under
+2 MB per civilization. The guessed map is **not** stored: it is a pure
+function of `(world_seed, cell)` (section 32.4), so it costs nothing in a
+snapshot and cannot drift.
+
+### 32.4 Guessed map
+
+For unexplored cells, presentation draws a guess instead of the truth:
+
+``` text
+guess_elevation(cell) = true_elevation(cell)
+                      + A_large * N_large(cell)        (low-order noise on
+                                                        the sphere, seeded)
+                      + feature_edits(cell)
+feature_edits: a small seeded set per continent, drawn from
+               {phantom inland sea, coastline shift, merged or split
+                mountain ranges, missing river, phantom river}
+```
+
+-   amplitudes and feature counts are scenario data;
+-   guesses are plausible: the guessed land fraction of each continent stays
+    within a set tolerance of the truth, and no phantom feature is placed
+    within the civilization's starting territory;
+-   when a cell becomes explored, presentation shows the correction (the
+    guess fading into the truth) and records a discovery event for the
+    newspaper.
+
+### 32.5 Exploration
+
+Exploration is a P1 command and a set of passive sources:
+
+| Source | Reveals | Rate | Risk |
+|---|---|---|---|
+| `send_expedition(kind, route)` by sea | coast cells along the route, inland to a radius | per sub-step along the route | weather and distance, keyed draw |
+| `send_expedition(kind, route)` by land | cells along the route, a radius by terrain | slower in mountains, desert, ice | terrain, supply, keyed draw |
+| Trade routes | keeps `explored` and `last_seen` current along the route | continuous | none |
+| Settlements and territory | all cells in sight | continuous | none |
+| Aerial survey (technology) | wide swaths per flight | fast | small |
+| Satellites (knowledge stage, section 17.1) | every cell's geography | complete | none |
+
+Expeditions cost budget (section 30.7) and take simulated time. A lost
+expedition reveals nothing beyond where it was lost. `explored` never
+decreases; what ages is `last_seen`.
+
+### 32.6 Aging and the last-seen record
+
+Each time a cell is naturally observed (by territory, route, expedition or
+satellite imaging), `last_seen` and `last_seen_tick` are refreshed. Outside
+current observation, presentation draws `last_seen`, not the truth, faded by
+age:
+
+``` text
+knowledge_age(cell) = clamp((tick - last_seen_tick) / T_age, 0, 1)
+```
+
+So an old map can be dangerously out of date: a coastline mapped before the
+sea rose, a forest that has since burned. Measured overlays follow
+`ObservationState` and `KnowledgeState` exactly as in section 17.
+
+### 32.7 Social estimates
+
+The government's view of its own cohorts is an estimate, refreshed by its
+statistical and polling capacity:
+
+``` text
+reported_ci  = x_ci + r_c * (gov_position_i - x_ci)      (preference
+                                                          falsification)
+r_c          = ρ_censor * censorship + ρ_repr * repression
+poll_ci      = reported_ci + bias_reach_c + ε,
+               ε ~ N(0, σ_poll / sqrt(sample_c))         (keyed draw)
+sample_c     ∝ polling_capacity * reachability_c
+reachability = f(urban share, literacy, technology)
+census       : population, income and need estimates refreshed every
+               census_interval, error σ_census / statistics_capacity
+```
+
+-   censorship and repression make people report what the government wants
+    to hear, so the estimate worsens exactly when unrest is building (the
+    dictator's dilemma of design v1.3 §44.6);
+-   election results, protest sizes and revolts are observed exactly when
+    they happen; they are how truth arrives;
+-   the cohort map, promise tracker and opinion overlays of section 31.7
+    show these estimates with their `estimate_sigma`, never `SocietyState`
+    itself, outside the climate lab;
+-   AI governments and political actors use the same estimates, not the
+    truth, so they can be surprised too.
+
+### 32.8 Foreign estimates
+
+Each civilization holds estimates of the others' emissions, land use and
+military strength, with an error that shrinks with trade volume, embassies,
+intelligence spending and `monitoring_level`. Satellite monitoring of
+emissions and forests (from the satellite knowledge stage) raises
+`monitoring_level`, which is what makes a climate agreement verifiable: an
+agreement's compliance check (phase S7, section 29.1) uses the estimate, not the
+truth.
+
+### 32.9 Fog channels
+
+Appended to the semantic channels of section 31.2 (channel-set version
+bump); prepared in R1 so styles implement them from the start, drawn in R8:
+
+| Channel | Range | Meaning |
+|---|---|---|
+| `known` | 0--1 | explored fraction of the cell |
+| `guessed` | 0--1 | weight of the guessed map in what is drawn |
+| `knowledge_age` | 0--1 | age of the last natural observation |
+| `observation_uncertainty` | 0--1 | from `ObservationState`, for overlays |
+| `estimate_uncertainty` | 0--1 | per region, from `SocialEstimate`, for society views |
+
+The readability harness of section 31.8 adds five fog signals: unexplored
+and guessed, explored but not observed, observed long ago, observed but
+uncertain, and observed and understood. Each must be distinguishable from
+the others in every style.
+
+### 32.10 Acceptance experiments
+
+| Stage | Experiment | Acceptance |
+|---|---|---|
+| P1 | No physical effect | runs differing only in fog state are bit-identical in `SlowState` and `SocietyState` before any fog-based command |
+| P1 | Own land | natural channels are never fogged inside territory, over a full run |
+| P1 | Guess plausibility | for many seeds, guessed land fraction per continent within tolerance; at least one feature edit per continent; none in starting territory |
+| P1 | Guess determinism | the same seed gives the same guessed map without any stored state |
+| P1 | Exploration | `explored` never decreases; a lost expedition reveals nothing past its loss point |
+| P1 | Aging | after a sea-level rise, a coast last seen before the rise is drawn at its old position until revisited |
+| P3 | Polling error | estimate error falls with polling capacity, roughly as one over the square root of the sample |
+| P3 | Dictator's dilemma | at equal true grievance, higher censorship gives a larger gap between estimated and true support |
+| P3 | Truth by events | the election result matches the true vote exactly, whatever the polls said |
+| P4 | Verification | with low monitoring, agreement compliance checks miss violations more often; satellites reduce the miss rate |
+| R8 | Fog readability | the five fog signals pass in both styles, including colour-blind variants |
