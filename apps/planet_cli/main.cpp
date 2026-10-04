@@ -9,6 +9,7 @@
 #include "sim/planet/dynamics/primitive_equations.hpp"
 #include "sim/planet/dynamics/shallow_water.hpp"
 #include "sim/planet/dynamics/williamson_cases.hpp"
+#include "sim/planet/dynamics/zonal_statistics.hpp"
 #include "sim/planet/mesh/icosphere.hpp"
 #include "sim/planet/mesh/mesh_diagnostics.hpp"
 #include "sim/planet/operators/operator_validation.hpp"
@@ -175,9 +176,11 @@ void print_usage(std::ostream& output) {
               " [--workers W] [--damping-hours H] [--reference-subdivision LEVEL]\n"
            << "  planet_cli dynamics [--test rest|held-suarez] [--subdivision LEVEL]"
               " [--layers N] [--days D] [--average-days D] [--damping-hours H] [--seed N]"
-              " [--lapse-rate K_PER_KM] [--orography-passes P | --orography-step M] [--workers W]\n"
+              " [--lapse-rate K_PER_KM] [--orography-passes P | --orography-step M] [--workers W]"
+              " [--zonal-csv FILE.csv]\n"
            << "  planet_cli reference [--subdivision LEVEL] [--seed N] [--layers N]"
-              " [--spin-up-years N] [--days D] [--average-days D] [--workers W]\n";
+              " [--spin-up-years N] [--days D] [--average-days D] [--workers W]"
+              " [--zonal-csv FILE.csv]\n";
 }
 
 [[nodiscard]] std::uint32_t parse_subdivision(std::string_view text) {
@@ -1158,6 +1161,7 @@ struct DynamicsOptions {
     double lapse_rate_K_m = 0.0;   // rest test: 0 isothermal (250 K), else T(z) = 288 − Γ z
     std::size_t orography_passes = 0;
     std::optional<double> orography_step_m;
+    std::string zonal_csv;
 };
 
 [[nodiscard]] DynamicsOptions parse_dynamics_options(int argument_count, char** arguments) {
@@ -1194,6 +1198,8 @@ struct DynamicsOptions {
                 static_cast<std::size_t>(parse_unsigned(value, "orography passes"));
         } else if (argument == "--lapse-rate") {
             options.lapse_rate_K_m = parse_double(value, "lapse rate") / 1000.0;
+        } else if (argument == "--zonal-csv") {
+            options.zonal_csv = value;
         } else {
             throw std::invalid_argument("unknown dynamics option: " + std::string(argument));
         }
@@ -1203,6 +1209,63 @@ struct DynamicsOptions {
         throw std::invalid_argument("invalid dynamics options");
     }
     return options;
+}
+
+// Zonal means of a run of the winds (ADR-0011 V5, V6): the time-mean
+// eastward wind, transient eddy kinetic energy, temperature and eddy fluxes
+// per layer, and the meridional mass streamfunction at the layer tops.
+// The optional CSV holds one row per band and layer.
+void print_zonal_profile(const planetsim::ZonalProfile& profile, const std::string& csv_path) {
+    const std::size_t n = profile.layers;
+    std::cout << std::fixed << std::setprecision(2) << "averaged_days=" << profile.samples
+              << '\n' << "latitude_deg";
+    for (std::size_t k = 0; k < n; ++k) {
+        std::cout << " u_layer" << k << " eke_layer" << k;
+    }
+    for (std::size_t k = 0; k < n; ++k) {
+        std::cout << " T_layer" << k;
+    }
+    for (std::size_t m = 1; m < n; ++m) {
+        std::cout << " psi" << m << "_1e9_kg_s";
+    }
+    std::cout << '\n';
+    for (std::size_t b = 0; b < profile.bands; ++b) {
+        std::cout << profile.latitude_deg[b];
+        for (std::size_t k = 0; k < n; ++k) {
+            std::cout << ' ' << profile.at(profile.eastward_m_s, k, b) << ' '
+                      << profile.at(profile.eddy_kinetic_m2_s2, k, b);
+        }
+        for (std::size_t k = 0; k < n; ++k) {
+            std::cout << ' ' << profile.at(profile.temperature_K, k, b);
+        }
+        for (std::size_t m = 1; m < n; ++m) {
+            std::cout << ' ' << profile.streamfunction_kg_s[m * profile.bands + b] / 1e9;
+        }
+        std::cout << '\n';
+    }
+    if (csv_path.empty()) {
+        return;
+    }
+    std::ofstream csv(csv_path);
+    if (!csv) {
+        throw std::runtime_error("cannot write " + csv_path);
+    }
+    csv << std::setprecision(9)
+        << "latitude_deg,layer,surface_pressure_Pa,eastward_m_s,northward_m_s,temperature_K,"
+           "eddy_kinetic_m2_s2,eddy_momentum_flux_m2_s2,eddy_heat_flux_K_m_s,"
+           "streamfunction_top_kg_s\n";
+    for (std::size_t b = 0; b < profile.bands; ++b) {
+        for (std::size_t k = 0; k < n; ++k) {
+            csv << profile.latitude_deg[b] << ',' << k << ',' << profile.surface_pressure_Pa[b]
+                << ',' << profile.at(profile.eastward_m_s, k, b) << ','
+                << profile.at(profile.northward_m_s, k, b) << ','
+                << profile.at(profile.temperature_K, k, b) << ','
+                << profile.at(profile.eddy_kinetic_m2_s2, k, b) << ','
+                << profile.at(profile.eddy_momentum_flux_m2_s2, k, b) << ','
+                << profile.at(profile.eddy_heat_flux_K_m_s, k, b) << ','
+                << profile.streamfunction_kg_s[(k + 1U) * profile.bands + b] << '\n';
+        }
+    }
 }
 
 // ADR-0011 V4 (rest over terrain) and V5 (Held–Suarez) for the dry core.
@@ -1304,14 +1367,14 @@ int run_dynamics(const DynamicsOptions& options) {
     const auto initial = model.diagnose(state, workers);
     const planetsim::SubstepRule rule;
 
-    // Time means of the cell winds over the averaging window, for zonal
-    // means and transient eddy kinetic energy.
-    std::vector<double> mean_east(n * cells, 0.0);
-    std::vector<double> mean_square(n * cells, 0.0);
-    std::size_t samples = 0;
+    // Daily samples over the averaging window, for the zonal means.
+    planetsim::ZonalStatistics statistics(*mesh, n, 36U, parameters.gravity_m_s2);
     planetsim::EdgeField<double> layer_u(mesh->edge_count());
     planetsim::Field2D<double> east(cells);
     planetsim::Field2D<double> north(cells);
+    planetsim::Field3D<double> east_layers(n, cells);
+    planetsim::Field3D<double> north_layers(n, cells);
+    planetsim::Field3D<double> layer_temperature(n, cells);
 
     std::cout << std::setprecision(6) << std::scientific << "dynamics test=" << options.test
               << " subdivision=" << options.subdivision << " layers=" << n
@@ -1328,12 +1391,14 @@ int run_dynamics(const DynamicsOptions& options) {
                 std::copy(state.normal_velocity_m_s.layer(k).begin(),
                           state.normal_velocity_m_s.layer(k).end(), layer_u.values().begin());
                 planetsim::reconstruct_cell_vector(*mesh, grid, layer_u, east, north, workers);
-                for (std::size_t i = 0; i < cells; ++i) {
-                    mean_east[k * cells + i] += east[i];
-                    mean_square[k * cells + i] += east[i] * east[i] + north[i] * north[i];
-                }
+                std::copy(east.values().begin(), east.values().end(),
+                          east_layers.layer(k).begin());
+                std::copy(north.values().begin(), north.values().end(),
+                          north_layers.layer(k).begin());
             }
-            ++samples;
+            model.temperatures(state, layer_temperature, workers);
+            statistics.add(east_layers, north_layers, layer_temperature,
+                           state.surface_pressure_Pa);
         }
         if (rest || (day + 1U) % 50U == 0U || day + 1U == whole_days) {
             const auto now = model.diagnose(state, workers);
@@ -1349,44 +1414,8 @@ int run_dynamics(const DynamicsOptions& options) {
               << " relative_energy_change="
               << (final.energy_J() - initial.energy_J()) / initial.energy_J() << '\n';
 
-    if (samples > 0U) {
-        // Zonal means in 5° bands, area-weighted, of the time-mean eastward
-        // wind and the transient eddy kinetic energy ½(|u|² mean − ū²).
-        constexpr int bands = 36;
-        std::vector<double> band_area(bands, 0.0);
-        std::vector<double> band_u(n * bands, 0.0);
-        std::vector<double> band_eke(n * bands, 0.0);
-        for (const auto& cell : mesh->cells()) {
-            const double latitude = planetsim::latitude_rad(cell.center_unit);
-            const int band = std::clamp(
-                static_cast<int>((latitude + std::numbers::pi_v<double> / 2.0) /
-                                 (std::numbers::pi_v<double> / bands)),
-                0, bands - 1);
-            band_area[static_cast<std::size_t>(band)] += cell.area_m2;
-            for (std::size_t k = 0; k < n; ++k) {
-                const std::size_t index = k * cells + cell.id.to_index();
-                const double mean = mean_east[index] / static_cast<double>(samples);
-                const double square = mean_square[index] / static_cast<double>(samples);
-                band_u[k * bands + static_cast<std::size_t>(band)] += cell.area_m2 * mean;
-                band_eke[k * bands + static_cast<std::size_t>(band)] +=
-                    cell.area_m2 * 0.5 * std::max(0.0, square - mean * mean);
-            }
-        }
-        std::cout << std::fixed << std::setprecision(2) << "averaged_days=" << samples << '\n'
-                  << "latitude_deg";
-        for (std::size_t k = 0; k < n; ++k) {
-            std::cout << " u_layer" << k << " eke_layer" << k;
-        }
-        std::cout << '\n';
-        for (int band = 0; band < bands; ++band) {
-            std::cout << -90.0 + 5.0 * (band + 0.5);
-            for (std::size_t k = 0; k < n; ++k) {
-                const double area = band_area[static_cast<std::size_t>(band)];
-                std::cout << ' ' << band_u[k * bands + static_cast<std::size_t>(band)] / area
-                          << ' ' << band_eke[k * bands + static_cast<std::size_t>(band)] / area;
-            }
-            std::cout << '\n';
-        }
+    if (statistics.samples() > 0U) {
+        print_zonal_profile(statistics.profile(), options.zonal_csv);
     }
     return 0;
 }
@@ -1399,6 +1428,7 @@ struct ReferenceOptions {
     double days = 30.0;
     double average_days = 0.0;
     std::size_t workers = 0;
+    std::string zonal_csv;
 };
 
 [[nodiscard]] ReferenceOptions parse_reference_options(int argument_count, char** arguments) {
@@ -1423,6 +1453,8 @@ struct ReferenceOptions {
             options.average_days = parse_double(value, "average days");
         } else if (argument == "--workers") {
             options.workers = static_cast<std::size_t>(parse_unsigned(value, "workers"));
+        } else if (argument == "--zonal-csv") {
+            options.zonal_csv = value;
         } else {
             throw std::invalid_argument("unknown reference option: " + std::string(argument));
         }
@@ -1469,12 +1501,14 @@ int run_reference(const ReferenceOptions& options) {
               << options.subdivision << " layers=" << n
               << " orography_passes=" << dynamics.orography_passes()
               << " spin_up_years=" << options.spin_up_years << '\n';
-    std::vector<double> mean_east(n * cells, 0.0);
-    std::size_t samples = 0;
+    planetsim::ZonalStatistics statistics(mesh, n, 36U,
+                                          dynamics.model().parameters().gravity_m_s2);
     double dynamics_energy_change = 0.0;
     planetsim::EdgeField<double> layer_u(mesh.edge_count());
     planetsim::Field2D<double> east(cells);
     planetsim::Field2D<double> north(cells);
+    planetsim::Field3D<double> east_layers(n, cells);
+    planetsim::Field3D<double> north_layers(n, cells);
     const auto start = std::chrono::steady_clock::now();
     const auto whole_days = static_cast<std::int64_t>(std::ceil(options.days));
     for (std::int64_t day = 1; day <= whole_days; ++day) {
@@ -1492,11 +1526,13 @@ int run_reference(const ReferenceOptions& options) {
                           layer_u.values().begin());
                 planetsim::reconstruct_cell_vector(mesh, dynamics.grid(), layer_u, east, north,
                                                    workers);
-                for (std::size_t i = 0; i < cells; ++i) {
-                    mean_east[k * cells + i] += east[i];
-                }
+                std::copy(east.values().begin(), east.values().end(),
+                          east_layers.layer(k).begin());
+                std::copy(north.values().begin(), north.values().end(),
+                          north_layers.layer(k).begin());
             }
-            ++samples;
+            statistics.add(east_layers, north_layers, run.state().slow().atmosphere_temperature_K,
+                           run.state().slow().atmosphere_surface_pressure_Pa);
         }
         if (day % 30 == 0 || day == whole_days) {
             std::cout << "day=" << day
@@ -1513,38 +1549,8 @@ int run_reference(const ReferenceOptions& options) {
     std::cout << "wall_s=" << seconds << " atmosphere_energy_J=" << initial_energy
               << " dynamics_energy_drift_per_year="
               << dynamics_energy_change / initial_energy / years << '\n';
-    if (samples > 0U) {
-        constexpr int bands = 18;
-        std::vector<double> band_area(bands, 0.0);
-        std::vector<double> band_u(n * bands, 0.0);
-        for (const auto& cell : mesh.cells()) {
-            const double latitude = planetsim::latitude_rad(cell.center_unit);
-            const int band = std::clamp(
-                static_cast<int>((latitude + std::numbers::pi_v<double> / 2.0) /
-                                 (std::numbers::pi_v<double> / bands)),
-                0, bands - 1);
-            band_area[static_cast<std::size_t>(band)] += cell.area_m2;
-            for (std::size_t k = 0; k < n; ++k) {
-                band_u[k * bands + static_cast<std::size_t>(band)] +=
-                    cell.area_m2 * mean_east[k * cells + cell.id.to_index()] /
-                    static_cast<double>(samples);
-            }
-        }
-        std::cout << std::fixed << std::setprecision(2) << "averaged_days=" << samples
-                  << "\nlatitude_deg";
-        for (std::size_t k = 0; k < n; ++k) {
-            std::cout << " u_layer" << k;
-        }
-        std::cout << '\n';
-        for (int band = 0; band < bands; ++band) {
-            std::cout << -90.0 + 10.0 * (band + 0.5);
-            for (std::size_t k = 0; k < n; ++k) {
-                std::cout << ' '
-                          << band_u[k * bands + static_cast<std::size_t>(band)] /
-                                 band_area[static_cast<std::size_t>(band)];
-            }
-            std::cout << '\n';
-        }
+    if (statistics.samples() > 0U) {
+        print_zonal_profile(statistics.profile(), options.zonal_csv);
     }
     return 0;
 }
