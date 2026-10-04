@@ -212,6 +212,13 @@ if(PLANETSIM_BUILD_TESTS)
                 "$<TARGET_FILE:planet_cli>"
     )
     add_test(
+        NAME test_channel_registry_check
+        COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/test_channel_registry_check.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/ci/check_channel_registry.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/ci/channel_registry_baseline.tsv"
+                "$<TARGET_FILE:planet_cli>"
+    )
+    add_test(
         NAME planet_cli_snapshot_write_smoke
         COMMAND planet_cli snapshot write --subdivision 0
                 --out "${PLANETSIM_SNAPSHOT_SMOKE_FILE}"

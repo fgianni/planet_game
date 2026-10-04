@@ -4,6 +4,7 @@
 #include "sim/core/serialization/run_manifest.hpp"
 #include "sim/core/serialization/history_store.hpp"
 #include "sim/core/serialization/snapshot_file.hpp"
+#include "sim/presentation/channel_registry.hpp"
 #include "sim/planet/atmosphere/atmosphere.hpp"
 #include "sim/planet/dynamics/orography.hpp"
 #include "sim/planet/dynamics/balanced_circulation.hpp"
@@ -175,6 +176,7 @@ void print_usage(std::ostream& output) {
               " [--snapshot FILE.psnap] [--min-years-per-minute R] [--max-seconds S]\n"
            << "    commands: set_mode,climate|reference; set_solar_luminosity_factor,F\n"
            << "  planet_cli replay FILE.prun [--workers W]\n"
+           << "  planet_cli channels dump\n"
            << "  planet_cli shallow-water [--case 2|5] [--subdivision LEVEL] [--days D]"
               " [--workers W] [--damping-hours H] [--reference-subdivision LEVEL]\n"
            << "  planet_cli dynamics [--test rest|held-suarez] [--subdivision LEVEL]"
@@ -2183,6 +2185,17 @@ int run_registry_dump() {
     return 0;
 }
 
+int run_channel_dump() {
+    for (const auto& descriptor : planetsim::presentation::channel_registry) {
+        std::cout << static_cast<std::uint16_t>(descriptor.id) << '\t' << descriptor.name << '\t'
+                  << planetsim::presentation::channel_kind_name(descriptor.kind) << '\t'
+                  << descriptor.minimum << '\t' << descriptor.maximum << '\t'
+                  << descriptor.introducing_track << '\t' << descriptor.required_in_style << '\t'
+                  << descriptor.overlay_only << '\n';
+    }
+    return 0;
+}
+
 int run_snapshot_write(const SnapshotWriteOptions& options) {
     auto mesh = std::make_shared<const planetsim::PlanetMesh>(
         planetsim::make_icosphere(options.subdivision, 6'371'000.0));
@@ -2787,6 +2800,12 @@ int main(int argument_count, char** arguments) {
                 return run_registry_dump();
             }
             throw std::invalid_argument("registry requires dump");
+        }
+        if (command == "channels") {
+            if (argument_count == 3 && std::string_view{arguments[2]} == "dump") {
+                return run_channel_dump();
+            }
+            throw std::invalid_argument("channels requires dump");
         }
         if (command == "snapshot") {
             if (argument_count < 3) {
