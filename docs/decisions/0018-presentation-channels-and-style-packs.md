@@ -1,7 +1,8 @@
 # ADR-0018 — Presentation boundary, semantic channels and style packs
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-04
+- **Accepted:** 2026-10-04
 - **Milestone:** rendering track R1 (specification §31.10), in parallel with P0 / M6
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_8.md` §2, §3, §7, §8 (pacing is presentation), §17.2, §31, §32.9; Planetary Civilization Simulator — Design Record v1.3, §3.4, §21.4, §42, §44.8
 - **Related:** ADR-0002 (mesh, cell and corner layout), ADR-0003 (snapshots, history store, determinism scope), ADR-0005 (land fraction, hypsometry), ADR-0008 (snow and sea-ice cover), ADR-0012 and ADR-0019 (not yet written; this record reserves their channels)

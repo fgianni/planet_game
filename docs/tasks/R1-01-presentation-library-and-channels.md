@@ -1,7 +1,7 @@
 # Task R1-01 — Presentation library and semantic channels
 
 - **Track:** rendering R1 (specification §31.10), in parallel with P0 / M6
-- **Status:** ready once ADR-0018 is accepted
+- **Status:** ready (ADR-0018 accepted 2026-10-04)
 - **Scope:** the headless half of R1. A Godot-free `sim/presentation`
   library, the channel registry, the R1 channels, presentation snapshot
   schema 3, and the shared cover functions. No Godot or shader work; that

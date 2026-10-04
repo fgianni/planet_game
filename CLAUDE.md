@@ -40,8 +40,8 @@ next is M6-04 (climate-mode balanced circulation).
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is
 [`docs/tasks/R1-01-presentation-library-and-channels.md`](docs/tasks/R1-01-presentation-library-and-channels.md),
-under ADR-0018 (proposed). Start it only once ADR-0018 is accepted, and
-never let it change a solver, a field's meaning or the PSNAP format.
+under ADR-0018 (accepted 2026-10-04). It may proceed alongside M6-04, but
+must never change a solver, a field's meaning or the PSNAP format.
 
 When starting work, first audit the repository and propose the concrete
 implementation plan for the current milestone against the specification. Then implement in
