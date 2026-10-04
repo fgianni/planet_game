@@ -67,18 +67,22 @@ void check_recording_is_non_authoritative(planetsim::test::Context& test) {
     scenario.subdivision = 1U;
     planetsim::PlanetRun baseline(scenario);
     const auto end = planetsim::orbital_year_begin_tick(1, baseline.parameters());
-    baseline.run_until(end);
+    std::vector<StateSnapshot> baseline_frames;
+    baseline.run_until(end, [&baseline_frames](const StateSnapshot& frame) {
+        baseline_frames.push_back(frame);
+    });
+
+    TerrainSnapshot terrain;
+    terrain.mean_elevation_m.assign(baseline.state().mesh().cell_count(), 0.0F);
+    terrain.land_fraction.assign(baseline.state().mesh().cell_count(), 0.5F);
+    const auto reference = planetsim::presentation::make_presentation_reference(baseline_frames);
 
     planetsim::PlanetRun recorded(scenario);
     std::vector<StateSnapshot> frames;
-    recorded.run_until(end, [&frames](const StateSnapshot& frame) { frames.push_back(frame); });
-    TerrainSnapshot terrain;
-    terrain.mean_elevation_m.assign(recorded.state().mesh().cell_count(), 0.0F);
-    terrain.land_fraction.assign(recorded.state().mesh().cell_count(), 0.5F);
-    const auto reference = planetsim::presentation::make_presentation_reference(frames);
-    for (const auto& frame : frames) {
+    recorded.run_until(end, [&frames, &terrain, &reference](const StateSnapshot& frame) {
+        frames.push_back(frame);
         static_cast<void>(planetsim::presentation::make_visual_frame(frame, terrain, reference));
-    }
+    });
     const auto path = std::filesystem::temp_directory_path() / "planetsim_r1_test.pframe";
     planetsim::presentation::write_presentation_record(path, frames);
     const auto loaded = planetsim::presentation::read_presentation_record(path);
