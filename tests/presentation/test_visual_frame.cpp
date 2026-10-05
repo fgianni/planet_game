@@ -84,12 +84,21 @@ void check_recording_is_non_authoritative(planetsim::test::Context& test) {
         static_cast<void>(planetsim::presentation::make_visual_frame(frame, terrain, reference));
     });
     const auto path = std::filesystem::temp_directory_path() / "planetsim_r1_test.pframe";
-    planetsim::presentation::write_presentation_record(path, frames);
+    planetsim::presentation::PresentationRecord record;
+    record.mesh = planetsim::presentation::PresentationMeshDescriptor{
+        scenario.subdivision, recorded.parameters().radius_m};
+    record.terrain = recorded.terrain_snapshot();
+    record.frames = frames;
+    planetsim::presentation::write_presentation_record(path, record);
     const auto loaded = planetsim::presentation::read_presentation_record(path);
     std::filesystem::remove(path);
-    PLANETSIM_EXPECT(test, loaded.size() == frames.size());
-    PLANETSIM_EXPECT(test, !loaded.empty() &&
-                               loaded.back().top_of_atmosphere_insolation_W_m2 ==
+    PLANETSIM_EXPECT(test, loaded.is_playback_ready());
+    PLANETSIM_EXPECT(test, loaded.frames.size() == frames.size());
+    PLANETSIM_EXPECT(test, loaded.terrain.has_value() &&
+                               loaded.terrain->mean_elevation_m ==
+                                   recorded.terrain_snapshot().mean_elevation_m);
+    PLANETSIM_EXPECT(test, !loaded.frames.empty() &&
+                               loaded.frames.back().top_of_atmosphere_insolation_W_m2 ==
                                    frames.back().top_of_atmosphere_insolation_W_m2);
     PLANETSIM_EXPECT(test, baseline.state_hash() == recorded.state_hash());
     const auto baseline_manifest = baseline.manifest();

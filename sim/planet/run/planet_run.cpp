@@ -166,8 +166,9 @@ PlanetRun::PlanetRun(const Scenario& scenario, std::size_t worker_count)
       mesh_(std::make_shared<const PlanetMesh>(
           make_icosphere(scenario_.subdivision, base_parameters_.radius_m))),
       state_(mesh_) {
-    static_cast<void>(generate_terrain(state_, scenario_.seed,
-                                       geology_parameters_for(scenario_.preset), worker_count_));
+    const TerrainGeneration generation = generate_terrain(
+        state_, scenario_.seed, geology_parameters_for(scenario_.preset), worker_count_);
+    terrain_ = make_terrain_snapshot(state_, generation.geology, generation.drainage, worker_count_);
     fractions_ = compute_surface_fractions(*mesh_, state_.slow().hypsometry_m,
                                            state_.slow().sea_level_m, worker_count_);
     initialise_climate(*mesh_, state_.slow(), parameters_, surface_, worker_count_);

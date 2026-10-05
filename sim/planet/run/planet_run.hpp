@@ -9,6 +9,7 @@
 #include "sim/planet/planet_state.hpp"
 #include "sim/planet/surface/surface_energy.hpp"
 #include "sim/planet/terrain/surface_fractions.hpp"
+#include "sim/planet/terrain/terrain_snapshot.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -81,6 +82,9 @@ class PlanetRun {
     [[nodiscard]] const Scenario& scenario() const noexcept { return scenario_; }
     [[nodiscard]] const PlanetParameters& parameters() const noexcept { return parameters_; }
     [[nodiscard]] const PlanetState& state() const noexcept { return state_; }
+    // Immutable terrain copy for read-only presentation clients. It is made
+    // during generation and does not participate in scheduler state or hashes.
+    [[nodiscard]] const TerrainSnapshot& terrain_snapshot() const noexcept { return terrain_; }
     [[nodiscard]] const SurfaceFractions& fractions() const noexcept { return fractions_; }
     [[nodiscard]] const SurfaceEnergyParameters& surface_parameters() const noexcept {
         return surface_;
@@ -106,6 +110,7 @@ class PlanetRun {
     SurfaceEnergyParameters surface_;
     std::shared_ptr<const PlanetMesh> mesh_;
     PlanetState state_;
+    TerrainSnapshot terrain_;
     SurfaceFractions fractions_;
     SimulationClock clock_;
     std::unique_ptr<AtmosphereDynamics> dynamics_;
