@@ -2691,8 +2691,13 @@ int run_scenario(const RunOptions& options) {
         std::cout << "snapshot_written: " << options.snapshot_path->string() << '\n';
     }
     if (options.presentation_record_path) {
+        planetsim::presentation::PresentationRecord presentation_record;
+        presentation_record.mesh = planetsim::presentation::PresentationMeshDescriptor{
+            options.scenario.subdivision, run.parameters().radius_m};
+        presentation_record.terrain = run.terrain_snapshot();
+        presentation_record.frames = std::move(presentation_frames);
         planetsim::presentation::write_presentation_record(*options.presentation_record_path,
-                                                            presentation_frames);
+                                                            presentation_record);
         std::cout << "presentation_record_written: "
                   << options.presentation_record_path->string() << " frames="
                   << presentation_frames.size() << '\n';
