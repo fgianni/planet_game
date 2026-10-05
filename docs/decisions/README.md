@@ -20,13 +20,14 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0010 | [A layered atmosphere: hydrostatic columns, grey longwave and convection](0010-layered-atmosphere.md) | Accepted (amended 2026-10-02, §11) | 2026-10-01 |
 | 0011 | [Winds: a C-grid dynamical core in reference mode and a balanced circulation in climate mode](0011-winds-and-circulation.md) | Accepted (amended 2026-10-02, §12, §13; 2026-10-04, §14, §15, §16) | 2026-10-02 |
 | 0018 | [Presentation boundary, semantic channels and style packs](0018-presentation-channels-and-style-packs.md) | Accepted | 2026-10-04 |
+| 0020 | [The planet's read contract: published snapshots, field descriptors, accumulators, regions and the observation interface](0020-planet-read-contract.md) | Proposed | — |
 
 Records cite the design record by version and section (for example "Design
 Record v0.4, §28"). The current design record is
-`docs/planetary_civilization_simulator_design_v1_3.docx`, the only version
+`docs/planetary_civilization_simulator_design_v1_4.docx`, the only version
 kept in the tree; earlier versions are in git history. Accepted records
 retain the design-version citations against which their decisions were made,
-and every section they cite has the same number and title in v1.3.
+and every section they cite has the same number and title in v1.4.
 
 ## Historical records
 

@@ -549,7 +549,7 @@ not alter persistent `PSNAP` files.
 The development specification is
 [`docs/DEVELOPMENT_SPEC_v0_8.md`](docs/DEVELOPMENT_SPEC_v0_8.md) and the design
 document is
-[`docs/planetary_civilization_simulator_design_v1_3.docx`](docs/planetary_civilization_simulator_design_v1_3.docx),
+[`docs/planetary_civilization_simulator_design_v1_4.docx`](docs/planetary_civilization_simulator_design_v1_4.docx),
 whose figures are also in [`docs/pngs/`](docs/pngs/).
 Accepted decision records take precedence over the specification where they
 conflict.

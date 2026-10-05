@@ -6,7 +6,10 @@ Purpose: implementation contract for Codex / Claude Code\
 Primary target: PC/Linux, C++20 + Godot 4\
 Current phase: P0 --- Living Planet (M0 through M5 complete, M6 in progress)
 
-Design document: `docs/planetary_civilization_simulator_design_v1_3.docx`.
+Design document: `docs/planetary_civilization_simulator_design_v1_4.docx`. Design v1.4 adds
+section 46 (systems architecture) and changes nothing earlier; this
+specification is reconciled with v1.3 and does not yet trace section 46
+(ADR-0020 proposes its PlanetSim part).
 Accepted decision records take precedence over this specification where they
 conflict.
 

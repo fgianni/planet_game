@@ -2,11 +2,17 @@
 
 Read `docs/DEVELOPMENT_SPEC_v0_8.md` before making changes. It is the
 development specification. The design document is
-`docs/planetary_civilization_simulator_design_v1_3.docx`.
+`docs/planetary_civilization_simulator_design_v1_4.docx`.
 
 Accepted ADRs in `docs/decisions/` take precedence where they conflict
 with the specification (notably ADR-0002 on the mesh: a
 hexagonal--pentagonal centroidal Voronoi tessellation).
+Design v1.4 §46 (systems architecture: interpretation layer, PopSim,
+population knowledge, presentation, player levers) is not yet traced into
+the specification; where it conflicts with the specification or an
+accepted ADR, they win. Its PlanetSim part (§46.3) is reconciled with them
+in the proposed ADR-0020 (`docs/decisions/0020-planet-read-contract.md`),
+which is not yet accepted and must not be implemented until it is.
 Only the current specification and design record are kept in the tree;
 earlier versions are in git history. Accepted ADRs and completed task
 documents keep the version citations they were written against.
