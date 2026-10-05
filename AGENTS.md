@@ -54,19 +54,21 @@ and M5-04 (refit of τ₀ and D, the Earth-like preset on three layers, the
 plateau experiment, performance gates). Most recently completed task:
 [`docs/tasks/M5-04-calibration-and-close.md`](docs/tasks/M5-04-calibration-and-close.md).
 M6 (wind and Coriolis) is in progress under ADR-0011 (accepted
-2026-10-02, amended §12, §13): tasks M6-01 (C-grid geometry and vector
-operators), M6-02 (shallow-water core) and M6-03 (primitive equations,
-Held–Suarez, the winds in reference mode) are complete. Most recently
+2026-10-02, amended §12–§16): tasks M6-01 (C-grid geometry and vector
+operators), M6-02 (shallow-water core), M6-03 (primitive equations,
+Held–Suarez, the winds in reference mode) and M6-04 (the climate-mode
+balanced circulation, derived outputs only) are complete. Most recently
 completed task:
-[`docs/tasks/M6-03-primitive-equations.md`](docs/tasks/M6-03-primitive-equations.md).
-The next task is M6-04 (the climate-mode balanced circulation; its
-zonal-mean closure is decided by amendment first, ADR-0011 §4.5). Do not implement M7 or later
-milestones unless explicitly requested.
+[`docs/tasks/M6-04-balanced-circulation.md`](docs/tasks/M6-04-balanced-circulation.md).
+The next task is M6-05 (transport by the circulation, the balanced p_s
+written to the slow state, refit and close), starting from M6-04's open
+points. Do not implement M7 or later milestones unless explicitly
+requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is
 [`docs/tasks/R1-01-presentation-library-and-channels.md`](docs/tasks/R1-01-presentation-library-and-channels.md),
-under ADR-0018 (accepted 2026-10-04). It may proceed alongside M6-04, but
+under ADR-0018 (accepted 2026-10-04). It may proceed alongside M6-05, but
 must never change a solver, a field's meaning or the PSNAP format.
 
 ## Hard rules

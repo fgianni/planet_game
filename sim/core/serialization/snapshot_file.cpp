@@ -254,6 +254,16 @@ void append_json_string(std::string& output, std::string_view value) {
     case FieldId::climatology_land_snow_mean_kg_m2:
     case FieldId::climatology_sea_ice_mean_kg_m2:
     case FieldId::atmosphere_edge_normal_wind_m_s:
+    case FieldId::atmosphere_eastward_wind_m_s:
+    case FieldId::atmosphere_northward_wind_m_s:
+    case FieldId::atmosphere_vertical_mass_flux_kg_m2_s:
+    case FieldId::sea_level_pressure_Pa:
+    case FieldId::surface_wind_stress_east_N_m2:
+    case FieldId::surface_wind_stress_north_N_m2:
+    case FieldId::atmosphere_balanced_surface_pressure_Pa:
+    case FieldId::climatology_surface_eastward_wind_mean_m_s:
+    case FieldId::climatology_surface_northward_wind_mean_m_s:
+    case FieldId::climatology_sea_level_pressure_mean_Pa:
         return 0U;
     }
     return 0U;
@@ -347,6 +357,16 @@ void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& fi
     case FieldId::climatology_land_snow_mean_kg_m2:
     case FieldId::climatology_sea_ice_mean_kg_m2:
     case FieldId::atmosphere_edge_normal_wind_m_s:
+    case FieldId::atmosphere_eastward_wind_m_s:
+    case FieldId::atmosphere_northward_wind_m_s:
+    case FieldId::atmosphere_vertical_mass_flux_kg_m2_s:
+    case FieldId::sea_level_pressure_Pa:
+    case FieldId::surface_wind_stress_east_N_m2:
+    case FieldId::surface_wind_stress_north_N_m2:
+    case FieldId::atmosphere_balanced_surface_pressure_Pa:
+    case FieldId::climatology_surface_eastward_wind_mean_m_s:
+    case FieldId::climatology_surface_northward_wind_mean_m_s:
+    case FieldId::climatology_sea_level_pressure_mean_Pa:
         throw std::logic_error("derived forcing field cannot be persisted");
     }
 
@@ -1069,6 +1089,16 @@ void decode_chunk(const FieldDescriptor& descriptor,
     case FieldId::climatology_land_snow_mean_kg_m2:
     case FieldId::climatology_sea_ice_mean_kg_m2:
     case FieldId::atmosphere_edge_normal_wind_m_s:
+    case FieldId::atmosphere_eastward_wind_m_s:
+    case FieldId::atmosphere_northward_wind_m_s:
+    case FieldId::atmosphere_vertical_mass_flux_kg_m2_s:
+    case FieldId::sea_level_pressure_Pa:
+    case FieldId::surface_wind_stress_east_N_m2:
+    case FieldId::surface_wind_stress_north_N_m2:
+    case FieldId::atmosphere_balanced_surface_pressure_Pa:
+    case FieldId::climatology_surface_eastward_wind_mean_m_s:
+    case FieldId::climatology_surface_northward_wind_mean_m_s:
+    case FieldId::climatology_sea_level_pressure_mean_Pa:
         break;
     }
     field_error(static_cast<std::uint32_t>(descriptor.id), "field has no persistent decoder");

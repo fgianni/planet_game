@@ -41,6 +41,7 @@ add_library(PlanetSim STATIC
     sim/planet/coordinates/local_tangent_basis.cpp
     sim/planet/dynamics/atmosphere_dynamics.cpp
     sim/planet/dynamics/balanced_circulation.cpp
+    sim/planet/dynamics/climate_circulation.cpp
     sim/planet/dynamics/orography.cpp
     sim/planet/dynamics/primitive_equations.cpp
     sim/planet/dynamics/shallow_water.cpp

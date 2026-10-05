@@ -157,7 +157,8 @@ SimulationTick orbital_year_begin_tick(std::int64_t year, const PlanetParameters
     return climate_substep(year * climate_substeps_per_year, parameters).begin_tick;
 }
 
-PlanetRun::PlanetRun(const Scenario& scenario, std::size_t worker_count)
+PlanetRun::PlanetRun(const Scenario& scenario, std::size_t worker_count,
+                     bool climate_circulation)
     : scenario_(validated(scenario)),
       worker_count_(std::max<std::size_t>(1U, worker_count)),
       base_parameters_(scenario_parameters(scenario_)),
@@ -189,6 +190,13 @@ PlanetRun::PlanetRun(const Scenario& scenario, std::size_t worker_count)
                                                          AtmosphereDynamicsParameters{},
                                                          worker_count_);
         register_atmosphere_dynamics(*scheduler_, state_, *dynamics_);
+        if (climate_circulation && climate_circulation_resolves(*mesh_)) {
+            circulation_ = std::make_unique<ClimateCirculation>(*mesh_, state_.slow(),
+                                                                parameters_, surface_,
+                                                                fractions_);
+            register_climate_circulation(*scheduler_, state_, parameters_, surface_,
+                                         *circulation_, worker_count_);
+        }
     }
 
     manifest_.engine_version = std::string(snapshot_engine_version());
@@ -234,7 +242,11 @@ void PlanetRun::apply(const RunCommand& command) {
 
 void PlanetRun::run_until(SimulationTick target_tick,
                           const std::function<void(const StateSnapshot&)>& snapshot_observer) {
-    while (scheduler_->next_step().end_tick <= target_tick) {
+    for (;;) {
+        // Commands due at this boundary first: a mode change decides the
+        // next step's length, so a switch to reference mode needs only a
+        // reference step to fit before the target, not the climate step it
+        // replaces. They take effect at the same boundary either way.
         const SimulationTick boundary = clock_.tick();
         while (!pending_.empty() && pending_.front().tick <= boundary) {
             RunCommand command = std::move(pending_.front());
@@ -242,7 +254,6 @@ void PlanetRun::run_until(SimulationTick target_tick,
             command.tick = boundary;
             apply(command);
         }
-        // A mode change may have lengthened the step past the target.
         if (scheduler_->next_step().end_tick > target_tick) {
             break;
         }

@@ -4,6 +4,7 @@
 #include "sim/core/serialization/run_manifest.hpp"
 #include "sim/core/serialization/state_snapshot.hpp"
 #include "sim/planet/dynamics/atmosphere_dynamics.hpp"
+#include "sim/planet/dynamics/climate_circulation.hpp"
 #include "sim/planet/geology/geology_parameters.hpp"
 #include "sim/planet/planet_parameters.hpp"
 #include "sim/planet/planet_state.hpp"
@@ -62,7 +63,11 @@ inline constexpr std::string_view run_command_set_solar_luminosity_factor =
 // count or on how run_until calls are chunked.
 class PlanetRun {
   public:
-    explicit PlanetRun(const Scenario& scenario, std::size_t worker_count = 1U);
+    // `climate_circulation` false leaves out the climate mode's circulation
+    // (ADR-0011 §4.4), whose outputs are derived until M6-05: the slow state
+    // and every hash are the same either way.
+    explicit PlanetRun(const Scenario& scenario, std::size_t worker_count = 1U,
+                       bool climate_circulation = true);
     PlanetRun(const PlanetRun&) = delete;
     PlanetRun& operator=(const PlanetRun&) = delete;
     PlanetRun(PlanetRun&&) = delete;
@@ -89,6 +94,12 @@ class PlanetRun {
     [[nodiscard]] const SurfaceEnergyDiagnostics& last_step() const noexcept { return last_; }
     // The winds of reference mode (ADR-0011 §4.3); null without an atmosphere.
     [[nodiscard]] const AtmosphereDynamics* dynamics() const noexcept { return dynamics_.get(); }
+    // The climate mode's circulation (ADR-0011 §4.4); null without an
+    // atmosphere, when left out, or below the mesh level that resolves its
+    // bands (climate_circulation_resolves).
+    [[nodiscard]] const ClimateCirculation* circulation() const noexcept {
+        return circulation_.get();
+    }
     [[nodiscard]] std::uint64_t state_hash() const;
 
     // The inputs so far and the checkpoints, with end_tick set to the
@@ -109,6 +120,7 @@ class PlanetRun {
     SurfaceFractions fractions_;
     SimulationClock clock_;
     std::unique_ptr<AtmosphereDynamics> dynamics_;
+    std::unique_ptr<ClimateCirculation> circulation_;
     std::unique_ptr<Scheduler> scheduler_;
     SurfaceEnergyDiagnostics last_;
     std::deque<RunCommand> pending_;

@@ -710,6 +710,34 @@ amendment.
   - **The tropics.** The slow state's tropical departures (4.5 K rms)
     need the equatorial damping of §16.
   - Details are in `docs/tasks/M6-04-balanced-circulation.md`.
+- **M6-04, step D (2026-10-05).** Covers §4.4 step 5, the derived and
+  climatology fields of §4.1, the presentation fields of §8, the balanced
+  start of §4.3, V7 provisional and the first L6 timing.
+  - **Derived only, by decision.** The balanced p_s is not yet written
+    into the slow state (§4.1, §4.6); that moves to M6-05 with the
+    transport and the refit. Every hash is unchanged.
+  - **A scheduler process.** `ClimateCirculation` solves every climate
+    month from the slow state alone (cold start), keeps the last month on a
+    failure, and needs L3 or finer for its 36 bands.
+  - **The cells' p_s goes through sea-level pressure.** The balance's p_s
+    rests on the smoothed heights of §13; shared among a group's cells it
+    moved up to 17% of a group's mass onto or off its mountains (L3). M6-05's
+    write-back must take the same route.
+  - **Reference mode starts from it,** with p_s brought up to the winds'
+    orography rather than the true terrain: the core sheds a true-terrain
+    p_s within two days (32 hPa at L3), as it sheds the rest state's. The
+    balanced start sheds 10 hPa.
+  - **Cost.** The zonal Jacobian's colours run in parallel, and ILU(0) of
+    the full operator follows the V-cycle in the balance's preconditioner
+    (BiCGSTAB 110 → 40 iterations at L5), with no change to any result.
+    The 250-year gates: L5 217 s (240); L6 600.6 s (600), failed by 0.6 s
+    at the balance's 1e-10 tolerance; the climate circulation now sets it to
+    1e-8 (a fifth fewer iterations), and L6 passes in 546 s.
+  - **V7 (provisional), L5 decade:** Hadley edges at 35° N and 34° S pass;
+    the northern trades (+0.06 m/s) and the southern jet (57.5°) fail, and
+    the bottom-layer winds are under 1.2 m/s. V9: 7.6e-13.
+  - Details, V7 and the timings are in
+    `docs/tasks/M6-04-balanced-circulation.md`.
 
 ## 12. Amendment: V2 as measured for the TRiSK operators (accepted 2026-10-02)
 

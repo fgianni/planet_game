@@ -38,15 +38,17 @@ state/fluxes rather than scripted climate modifiers; - production code
 and tests together; - do not proceed to M7 unless explicitly requested.
 
 Current milestone: **P0 / M6 --- Wind and Coriolis** (ADR-0011, accepted
-2026-10-02; amended §12, §13). M6-01 (C-grid operators), M6-02
-(shallow-water core) and M6-03 (primitive equations and the winds in
-reference mode, `docs/tasks/M6-03-primitive-equations.md`) are complete;
-next is M6-04 (climate-mode balanced circulation).
+2026-10-02; amended §12--§16). M6-01 (C-grid operators), M6-02
+(shallow-water core), M6-03 (primitive equations and the winds in
+reference mode) and M6-04 (climate-mode balanced circulation, derived
+outputs only, `docs/tasks/M6-04-balanced-circulation.md`) are complete;
+next is M6-05 (transport by the circulation, the balanced p_s written to
+the slow state, refit and close), starting from M6-04's open points.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is
 [`docs/tasks/R1-01-presentation-library-and-channels.md`](docs/tasks/R1-01-presentation-library-and-channels.md),
-under ADR-0018 (accepted 2026-10-04). It may proceed alongside M6-04, but
+under ADR-0018 (accepted 2026-10-04). It may proceed alongside M6-05, but
 must never change a solver, a field's meaning or the PSNAP format.
 
 When starting work, first audit the repository and propose the concrete

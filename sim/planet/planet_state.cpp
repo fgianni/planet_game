@@ -36,6 +36,12 @@ PlanetState::PlanetState(std::shared_ptr<const PlanetMesh> mesh) : mesh_(std::mo
     climatology_.land_snow_mean_kg_m2 =
         make_field<FieldId::climatology_land_snow_mean_kg_m2>(*mesh_);
     climatology_.sea_ice_mean_kg_m2 = make_field<FieldId::climatology_sea_ice_mean_kg_m2>(*mesh_);
+    climatology_.surface_eastward_wind_mean_m_s =
+        make_field<FieldId::climatology_surface_eastward_wind_mean_m_s>(*mesh_);
+    climatology_.surface_northward_wind_mean_m_s =
+        make_field<FieldId::climatology_surface_northward_wind_mean_m_s>(*mesh_);
+    climatology_.sea_level_pressure_mean_Pa =
+        make_field<FieldId::climatology_sea_level_pressure_mean_Pa>(*mesh_);
 }
 
 FastState& PlanetState::open_fast_state() {

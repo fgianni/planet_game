@@ -1,7 +1,7 @@
 # Task M6-04 — Climate-mode balanced circulation
 
 - **Milestone:** P0 / M6 (fourth task; M6-01 to M6-03 are complete)
-- **Status:** in progress — steps A, B and C done; ADR-0011 §14, §15 and §16 accepted (2026-10-04); step D next
+- **Status:** complete (2026-10-05) — steps A–D done; ADR-0011 §14, §15 and §16 accepted (2026-10-04); open points for M6-05 below
 - **Scope:** ADR-0011 §4.4–4.6 in four steps.
   - **Step A, the method.** Zonal-mean reference data, the eddy closure
     and the solution method decided against it (§14).
@@ -489,6 +489,182 @@ poorly conditioned direction; to be looked at with the N = 5 jet bias.
   fine cells.
 - The transport by these fluxes (§4.7).
 - The derived winds (step D).
+
+## Step D — outputs (2026-10-05)
+
+**Decided with the user (2026-10-05).** Step D's outputs are derived only.
+Writing the balanced p_s into the slow state every month (§4.1, §4.6)
+moves to M6-05, with the transport and the refit, so every change that
+moves the calibrated climate lands in one task. The climate-mode slow
+state, the golden saves and every replay hash are unchanged by step D.
+
+**Code.**
+- `ClimateCirculation` (`sim/planet/dynamics/climate_circulation.{hpp,cpp}`)
+  is the climate mode's circulation as a scheduler process
+  (`register_climate_circulation`). It runs after the surface step, on the
+  month just stepped (M6-05 moves it ahead of the column solve, §4.4).
+  - Each month: the column heating at the slow state, the bands' means, the
+    zonal solve and the azonal balance, then the cells' fields.
+  - **Cold start every month.** The zonal model starts from its own initial
+    guess, never from last month's answer, so the circulation is a function
+    of the slow state alone and a run continued from a snapshot computes
+    the same months as an uninterrupted one (tested).
+  - **A failed month** (the zonal model's caps, or BiCGSTAB) keeps the last
+    solved month's fields and is counted; it never stops the run.
+  - **Coarse meshes.** The 36 bands each need a cell centre (§4.4 keeps the
+    band count independent of the mesh), so L0–L2 have no climate
+    circulation: `climate_circulation_resolves`.
+- `PlanetRun` owns it on presets with an atmosphere; a third constructor
+  argument leaves it out (for tests and comparisons).
+- `CirculationState` (`PlanetState::circulation()`) holds the cells' fields:
+  derived, never persisted, empty until a month is solved.
+- Registry group `0x0006` gains the seven derived fields of §4.1 and the
+  balanced p_s (`0x0006'0002`–`0x0006'0008`), and the three climatology
+  fields (`0x0006'0009`–`0x0006'000B`). The balanced p_s is not in §4.1's
+  list: it is the slow state's p_s there, and stays derived until M6-05.
+- `planet_cli run --circulation-report YEARS` prints the zonal means over
+  the last YEARS years and reads V7 and V9 from them; `run` also prints the
+  circulation's timing and failures. `zonal-circulation --balanced` gains
+  `--balance-tolerance`.
+- Tests: `tests/physics/test_climate_circulation.cpp`; the presentation
+  record's schema 4 round trip in `test_presentation`.
+
+**The cells' fields (§4.4 step 5).**
+- **Interpolation.** Each cell takes three coarse cells: the dual triangle
+  of its group's corners that holds its centre, with spherical barycentric
+  weights.
+- **Winds per layer.** The zonal ū (band centres) and the overturning v̄
+  (boundaries, zero at the poles) interpolated in latitude, plus the azonal
+  flow: the balance's azonal edge velocities reconstructed on the coarse
+  cells (Perot) and interpolated as 3-D vectors.
+- **Vertical mass flux** through the top of each layer, interpolated.
+- **The balanced p_s, through sea-level pressure.** The balance's p_s rests
+  on the groups' smoothed (dynamics) heights. Shared among a group's cells
+  directly, it put a mountain group's air at 847 hPa on a cell whose own
+  terrain holds 672 hPa (L3; groups departed from the true-terrain mass by
+  up to 17%). So each group's p_s is reduced to sea level at its own height
+  and temperature, interpolated, and brought back up to each cell's true
+  height; one global factor holds the atmosphere's mass to 1e-12.
+- **Sea-level pressure.** Reduced along Γ_c from the surface air
+  temperature T_0 σ_0^(−RΓ_c/g), with the ECMWF rule for the fictitious
+  column (Trenberth, Berry and Buja, 1993). L3 after a year: 979–1081 hPa.
+- **Surface stress.** ρ C_D |V| V of the bottom-layer wind, C_D from the land
+  fraction as the balance's drag; the air's stress on the surface, along
+  the wind.
+
+**Climatology.** Monthly means of the bottom-layer wind and the sea-level
+pressure, with their own sample counts, so a failed month adds nothing.
+
+**Presentation snapshot, schema 4.** `StateSnapshot` gains the sea-level
+pressure and the bottom-layer wind (ADR-0011 §8), empty until the
+circulation has solved a month. Presentation records carry each frame's
+schema, so schema 3 records still load. No channel goes live (R3).
+
+**Reference mode starts from the balanced circulation (§4.3).**
+- The cell winds, averaged to the edges and projected on the normals,
+  start the fast winds.
+- **p_s on the winds' orography.** The first version took the balanced
+  p_s on the true terrain. The core shed it within two days, as it sheds
+  the rest state's: at L3 the mean |Δp_s| over two days was 32.6 hPa from
+  rest and 31.8 hPa from that start. The core sees the smoothed
+  orography (§13), so the start now brings the sea-level pressure up to
+  the dynamics' heights instead, holding the mass: 10.4 hPa over two days.
+- Deterministic (1 and 4 workers agree), mass held to 1e-12.
+- **`PlanetRun::run_until`** now applies the commands due at a boundary
+  before deciding whether the next step fits the target. A switch to
+  reference mode used to wait for a whole climate step to fit; effective
+  ticks are unchanged.
+
+**Cost.** Before step D a climate month cost 32 ms at L5 and 91 ms at L6
+(clang Release, 4 workers). The circulation as first wired added 69 ms at
+L5 and 141 ms at L6, which would have failed both 250-year gates. Two
+changes, neither of which changes a result:
+- **The zonal Jacobian's colours run in parallel**, each filling its own
+  columns: the zonal solve fell from 33 to 17 ms a month at L5.
+- **The balance's preconditioner** adds ILU(0) of the full operator after
+  the V-cycle. The V-cycle on the symmetric part does not see the Coriolis
+  part, which dominates away from the equator. BiCGSTAB went from 104–115
+  to 39–41 iterations at L5 (23 → 12 ms) and from about 140 to 101–104 at
+  L6 (105 → 62 ms). Loosening the tolerance instead gained at most half
+  (55 iterations at 1e-4).
+
+- **The balance's tolerance** is 1e-8 in the climate circulation (the
+  balance's own default stays 1e-10). It leaves a column divergence near
+  2e-8 of the layers' and takes 83 iterations at L6 instead of 102.
+
+**Hashes.** With the circulation on, the L5 10-year and L6 3-year runs end
+on the same state hashes as before step D (`07f219883176ee03`,
+`f04b193b606c4b60`), and the tests compare checkpoints with and without it.
+
+**The 250-year gates** (ADR-0001, `planet_cli run --years 250`, clang
+Release, 4 workers, at the 1e-10 tolerance):
+
+| | L5 (gate 240 s) | L6 (gate 600 s) |
+|---|---|---|
+| Total | 217.3 s, passed | 600.6 s, **failed by 0.6 s** |
+| Years per minute | 69.1 | 25.0 |
+| Circulation: heating / zonal / balance | 6.5 / 66.4 / 35.2 s | 20.8 / 38.7 / 190.6 s |
+| Failed months | 1 of 3,000 | 0 of 3,000 |
+
+- The balance's 1e-8 tolerance (above) followed that L6 failure. Re-measured
+  on an idle machine: **L6 546.4 s, passed** (27.5 years per minute; balance
+  151.2 s, zonal 39.1 s, heating 20.1 s; no failed month), with the same
+  final state hash (`f1bfacaf09f4dd18`).
+- **The failed L5 month** is the zonal model's: continuation reached its
+  400-iteration cap at a scaled residual of 1e-2 m/s per day. It is the
+  only one in 3,000; the policy above kept the previous month's
+  circulation. Coupled in M6-05, a failure will need a real answer.
+- **A latitude-row (snake) ILU ordering** was tried: 101 → 73 iterations at
+  L6 but 40 → 48 at L5, and slower at both, because the permuted
+  triangular solves lose locality. It was not kept.
+
+**V7, provisional** (`planet_cli run --subdivision 5 --spin-up-years 20
+--years 10 --circulation-report 10`: the decade's mean of the monthly zonal
+solutions):
+
+| | North | South | Gate |
+|---|---|---|---|
+| Bottom layer, 5–20° | +0.06 m/s | −0.42 m/s | easterly |
+| Bottom layer, 40–55° | +0.55 m/s | +0.42 m/s | westerly |
+| Hadley edge | 35.1° | −34.0° | 20–40° |
+| Top-layer jet | 25.9 m/s at 47.5° | 27.1 m/s at −57.5° | 25–50° |
+
+- **Two of eight criteria fail:** the northern trades are a weak westerly,
+  and the southern jet is 7.5° poleward of the gate.
+- **The bottom-layer winds are weak:** under 1.2 m/s everywhere, against
+  Earth's 5–8 m/s surface trades and westerlies. With three layers the
+  bottom layer is the lowest third of the mass, whose mean wind is weaker
+  than the surface's, but not by this much.
+- **The jet's latitude is shared with reference mode,** whose L4 jet is at
+  52.5° (step B). The gate of 25–50° may be Earth's, not this planet's.
+- Not yet comparable: the temperatures are still the diffusive transport's.
+  V7 becomes a gate in M6-05, once the circulation carries the heat.
+- **V9:** the decade's torque is 7.6e-13 of the gross. **V8** is unchanged
+  from step B: the zonal model's numerics are unchanged (its parallel
+  Jacobian is bit-identical).
+
+## Open points after step D (2026-10-05)
+
+1. **Performance margin.** L5 runs in 217 s of 240 and L6 in 546 s of 600.
+   M6-05's transport will need room: the zonal solve (39 s at L6, 66 s at
+   L5) is the next candidate, its line search and LU being sequential.
+2. **The balanced p_s in the slow state (M6-05).** §4.1 and §4.6 say the
+   balanced p_s replaces the slow state's every climate step. Directly, that
+   would move up to 17% of a group's mass between mountains and lowlands
+   (it rests on the smoothed heights); the cells' field here goes through
+   sea-level pressure instead. M6-05 must write that field, not the
+   balance's groups, and should say so in an amendment.
+3. **Two meanings of p_s.** Climate mode keeps p_s on the true terrain; the
+   reference core sheds it to its smoothed orography within days (33 hPa at
+   L3), and the balanced start therefore uses the winds' orography. A mode
+   switch moves mass either way. M6-05 should decide which p_s the slow
+   state means.
+4. **Zonal solve failures** (1 in 3,000 months at L5): a coupled
+   circulation needs a fallback that is a function of the state, not of the
+   last month.
+5. **V7's northern trades and southern jet,** and the weak bottom-layer
+   winds, to be looked at once the transport is coupled.
+
 
 ## Plan for steps B–D
 

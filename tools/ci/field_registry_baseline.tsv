@@ -17,4 +17,14 @@
 327681	atmosphere_surface_pressure_Pa	slow	cell	float64	1	Pa
 327682	atmosphere_temperature_K	slow	cell_layers	float64	scenario	K
 393217	atmosphere_edge_normal_wind_m_s	fast	edge_layers	float64	scenario	m/s
+393218	atmosphere_eastward_wind_m_s	derived	cell_layers	float32	scenario	m/s
+393219	atmosphere_northward_wind_m_s	derived	cell_layers	float32	scenario	m/s
+393220	atmosphere_vertical_mass_flux_kg_m2_s	derived	cell_layers	float32	scenario	kg/m2/s
+393221	sea_level_pressure_Pa	derived	cell	float32	1	Pa
+393222	surface_wind_stress_east_N_m2	derived	cell	float32	1	N/m2
+393223	surface_wind_stress_north_N_m2	derived	cell	float32	1	N/m2
+393224	atmosphere_balanced_surface_pressure_Pa	derived	cell	float64	1	Pa
+393225	climatology_surface_eastward_wind_mean_m_s	climatology	cell_layers	float32	12	m/s
+393226	climatology_surface_northward_wind_mean_m_s	climatology	cell_layers	float32	12	m/s
+393227	climatology_sea_level_pressure_mean_Pa	climatology	cell_layers	float32	12	Pa
 # retired_field_id	196611

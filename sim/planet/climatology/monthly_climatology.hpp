@@ -20,4 +20,11 @@ void reset_climatology(PlanetState& state);
 void accumulate_climatology(PlanetState& state, std::int64_t substep_index,
                             std::size_t worker_count = 1U);
 
+// Adds the circulation of climate sub-step `substep_index` (the bottom-layer
+// wind and the sea-level pressure of state.circulation()) to its month, with
+// its own sample count (ADR-0011 §4.4 step 5). The circulation must be
+// available. Bit-identical for any worker count.
+void accumulate_circulation_climatology(PlanetState& state, std::int64_t substep_index,
+                                        std::size_t worker_count = 1U);
+
 }  // namespace planetsim

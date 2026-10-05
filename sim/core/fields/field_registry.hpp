@@ -28,6 +28,16 @@ enum class FieldId : std::uint32_t {
     atmosphere_surface_pressure_Pa = 0x0005'0001U,
     atmosphere_temperature_K = 0x0005'0002U,
     atmosphere_edge_normal_wind_m_s = 0x0006'0001U,
+    atmosphere_eastward_wind_m_s = 0x0006'0002U,
+    atmosphere_northward_wind_m_s = 0x0006'0003U,
+    atmosphere_vertical_mass_flux_kg_m2_s = 0x0006'0004U,
+    sea_level_pressure_Pa = 0x0006'0005U,
+    surface_wind_stress_east_N_m2 = 0x0006'0006U,
+    surface_wind_stress_north_N_m2 = 0x0006'0007U,
+    atmosphere_balanced_surface_pressure_Pa = 0x0006'0008U,
+    climatology_surface_eastward_wind_mean_m_s = 0x0006'0009U,
+    climatology_surface_northward_wind_mean_m_s = 0x0006'000AU,
+    climatology_sea_level_pressure_mean_Pa = 0x0006'000BU,
 };
 
 enum class FieldDataType : std::uint8_t {
@@ -119,7 +129,7 @@ struct FieldDescriptor {
     return {};
 }
 
-inline constexpr std::array<FieldDescriptor, 19> field_registry{{
+inline constexpr std::array<FieldDescriptor, 29> field_registry{{
     {FieldId::top_of_atmosphere_insolation_W_m2, "top_of_atmosphere_insolation_W_m2",
      FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
     {FieldId::substep_mean_insolation_W_m2, "substep_mean_insolation_W_m2",
@@ -177,6 +187,41 @@ inline constexpr std::array<FieldDescriptor, 19> field_registry{{
     {FieldId::atmosphere_edge_normal_wind_m_s, "atmosphere_edge_normal_wind_m_s",
      FieldPartition::fast, FieldLayout::edge_layers, FieldDataType::float64,
      scenario_layer_count, "m/s"},
+    // The climate mode's circulation on the cells (ADR-0011 §4.1, §4.4 step
+    // 5): derived each climate sub-step, layers from the bottom. The
+    // vertical mass flux is upward through the top of each layer (the
+    // column's top: the balance's residual divergence). The stress is the
+    // air's on the surface, along the bottom-layer wind.
+    {FieldId::atmosphere_eastward_wind_m_s, "atmosphere_eastward_wind_m_s",
+     FieldPartition::derived, FieldLayout::cell_layers, FieldDataType::float32,
+     scenario_layer_count, "m/s"},
+    {FieldId::atmosphere_northward_wind_m_s, "atmosphere_northward_wind_m_s",
+     FieldPartition::derived, FieldLayout::cell_layers, FieldDataType::float32,
+     scenario_layer_count, "m/s"},
+    {FieldId::atmosphere_vertical_mass_flux_kg_m2_s, "atmosphere_vertical_mass_flux_kg_m2_s",
+     FieldPartition::derived, FieldLayout::cell_layers, FieldDataType::float32,
+     scenario_layer_count, "kg/m2/s"},
+    {FieldId::sea_level_pressure_Pa, "sea_level_pressure_Pa", FieldPartition::derived,
+     FieldLayout::cell, FieldDataType::float32, 1U, "Pa"},
+    {FieldId::surface_wind_stress_east_N_m2, "surface_wind_stress_east_N_m2",
+     FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "N/m2"},
+    {FieldId::surface_wind_stress_north_N_m2, "surface_wind_stress_north_N_m2",
+     FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "N/m2"},
+    // The balanced surface pressure (ADR-0011 §4.6) on the cells. Derived
+    // until M6-05 writes it into the slow state's p_s every climate step.
+    {FieldId::atmosphere_balanced_surface_pressure_Pa, "atmosphere_balanced_surface_pressure_Pa",
+     FieldPartition::derived, FieldLayout::cell, FieldDataType::float64, 1U, "Pa"},
+    // The circulation's monthly climatology (ADR-0011 §4.1, §4.4 step 5):
+    // the bottom-layer wind and the sea-level pressure, one layer per
+    // sub-step k mod 12, over the months the circulation solved.
+    {FieldId::climatology_surface_eastward_wind_mean_m_s,
+     "climatology_surface_eastward_wind_mean_m_s", FieldPartition::climatology,
+     FieldLayout::cell_layers, FieldDataType::float32, 12U, "m/s"},
+    {FieldId::climatology_surface_northward_wind_mean_m_s,
+     "climatology_surface_northward_wind_mean_m_s", FieldPartition::climatology,
+     FieldLayout::cell_layers, FieldDataType::float32, 12U, "m/s"},
+    {FieldId::climatology_sea_level_pressure_mean_Pa, "climatology_sea_level_pressure_mean_Pa",
+     FieldPartition::climatology, FieldLayout::cell_layers, FieldDataType::float32, 12U, "Pa"},
 }};
 
 // Retired IDs are never registered again. Snapshots of the schemas that

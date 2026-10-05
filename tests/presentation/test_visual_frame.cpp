@@ -91,6 +91,40 @@ void check_recording_is_non_authoritative(planetsim::test::Context& test) {
     PLANETSIM_EXPECT(test, !loaded.empty() &&
                                loaded.back().top_of_atmosphere_insolation_W_m2 ==
                                    frames.back().top_of_atmosphere_insolation_W_m2);
+    // Schema 4 carries the circulation (ADR-0011 §8); a schema 3 frame,
+    // without it, still round-trips.
+    // (L1 resolves no circulation, so the fields here are set by hand.)
+    PLANETSIM_EXPECT(test, !loaded.empty() && loaded.back().schema_version == 4U &&
+                               loaded.back().sea_level_pressure_Pa.empty());
+    if (!frames.empty()) {
+        StateSnapshot current = frames.back();
+        const std::size_t cells = current.surface_temperature_K.size();
+        current.sea_level_pressure_Pa.assign(cells, 101'000.0F);
+        current.surface_eastward_wind_m_s.assign(cells, 5.0F);
+        current.surface_northward_wind_m_s.assign(cells, -1.0F);
+        planetsim::presentation::write_presentation_record(path, {current});
+        const auto loaded_current = planetsim::presentation::read_presentation_record(path);
+        std::filesystem::remove(path);
+        PLANETSIM_EXPECT(test, loaded_current.size() == 1U &&
+                                   loaded_current[0].sea_level_pressure_Pa ==
+                                       current.sea_level_pressure_Pa &&
+                                   loaded_current[0].surface_eastward_wind_m_s ==
+                                       current.surface_eastward_wind_m_s &&
+                                   loaded_current[0].surface_northward_wind_m_s ==
+                                       current.surface_northward_wind_m_s);
+
+        StateSnapshot old = frames.back();
+        old.schema_version = 3U;
+        old.sea_level_pressure_Pa.clear();
+        old.surface_eastward_wind_m_s.clear();
+        old.surface_northward_wind_m_s.clear();
+        planetsim::presentation::write_presentation_record(path, {old});
+        const auto loaded_old = planetsim::presentation::read_presentation_record(path);
+        std::filesystem::remove(path);
+        PLANETSIM_EXPECT(test, loaded_old.size() == 1U && loaded_old[0].schema_version == 3U &&
+                                   loaded_old[0].sea_level_pressure_Pa.empty() &&
+                                   loaded_old[0].surface_temperature_K == old.surface_temperature_K);
+    }
     PLANETSIM_EXPECT(test, baseline.state_hash() == recorded.state_hash());
     const auto baseline_manifest = baseline.manifest();
     const auto recorded_manifest = recorded.manifest();

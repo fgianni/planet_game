@@ -186,8 +186,10 @@ class ZonalCirculation {
     }
 
     // Solves for the steady state; throws std::runtime_error if it is not
-    // reached within the iteration caps (no silent failure, §14).
-    [[nodiscard]] ZonalCirculationSolution solve(const ZonalForcing& forcing) const;
+    // reached within the iteration caps (no silent failure, §14). Workers
+    // share each Jacobian's colours; the result is the same for any count.
+    [[nodiscard]] ZonalCirculationSolution solve(const ZonalForcing& forcing,
+                                                 std::size_t worker_count = 1U) const;
 
     // Pieces of the solve, for tests and diagnostics. States are unknown
     // vectors in the order above.
@@ -195,7 +197,8 @@ class ZonalCirculation {
     [[nodiscard]] std::vector<double> residual(const ZonalForcing& forcing,
                                                std::span<const double> state) const;
     [[nodiscard]] BandedMatrix jacobian(const ZonalForcing& forcing,
-                                        std::span<const double> state) const;
+                                        std::span<const double> state,
+                                        std::size_t worker_count = 1U) const;
     // The residual in m/s and K per day, m²/s² and m/s: its maximum and RMS.
     [[nodiscard]] double scaled_norm(std::span<const double> residual) const;
     [[nodiscard]] double scaled_rms(std::span<const double> residual) const;

@@ -27,6 +27,9 @@ struct AtmosphereDynamicsParameters {
     double ocean_drag_coefficient = 1.5e-3;
     double land_drag_coefficient = 4.0e-3;
     double orography_max_step_m = 800.0;   // ADR-0011 §13
+    // Start from the climate mode's balanced circulation when one is
+    // available (ADR-0011 §4.3), otherwise from rest.
+    bool start_from_balanced_circulation = true;
     SubstepRule rule;
 };
 
@@ -35,6 +38,10 @@ struct AtmosphereDynamicsDiagnostics {
     double kinetic_energy_J = 0.0;
     double max_wind_m_s = 0.0;
     double energy_change_J = 0.0;     // dynamics' change of total energy in the step
+    // How the winds last started: from the balanced circulation (true) or
+    // from rest.
+    bool started_from_balance = false;
+    std::size_t starts = 0;
 };
 
 class AtmosphereDynamics {
@@ -51,8 +58,13 @@ class AtmosphereDynamics {
     AtmosphereDynamics(AtmosphereDynamics&&) = delete;
     AtmosphereDynamics& operator=(AtmosphereDynamics&&) = delete;
 
-    // Advances the atmosphere by dt. Opens the fast state with the winds at
-    // rest if it is closed (until M6-04 supplies the balanced start).
+    // Advances the atmosphere by dt. If the fast state is closed, opens it:
+    // from the climate mode's balanced circulation when state.circulation()
+    // holds one, otherwise from rest (ADR-0011 §4.3). The balanced start
+    // takes the circulation's sea-level pressure up to the orography the
+    // winds see (the climate fields' p_s rests on the true terrain, which
+    // the core would shed within two days), with the atmosphere's mass held,
+    // and projects its cell winds on the edge normals.
     void step(PlanetState& state, double dt_s);
 
     [[nodiscard]] const AtmosphereDynamicsDiagnostics& last() const noexcept { return last_; }
@@ -71,6 +83,8 @@ class AtmosphereDynamics {
     std::size_t worker_count_;
     CGridGeometry grid_;
     std::size_t orography_passes_ = 0;
+    double lapse_rate_K_m_;              // Γ_c: the balanced start's p_s (ADR-0010)
+    Field2D<double> dynamics_height_m_;  // the orography the winds see (§13)
     PrimitiveEquationModel model_;
     AtmosphereDynamicsDiagnostics last_;
 };

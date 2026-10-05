@@ -249,11 +249,26 @@ Climate mode's circulation (ADR-0011 §14, task M6-04) is under way:
   - The departures from the zonal mean are in frictional-geostrophic
     balance on every edge and layer.
   - The surface pressure makes the column mass divergence vanish. It is
-    solved by BiCGSTAB with the transport's multigrid, in 12–44 ms a month
-    at L4–L5.
+    solved by BiCGSTAB, preconditioned by the transport's multigrid and an
+    incomplete LU of the full operator, in about 12 ms a month at L5 and
+    60 ms at L6.
   - The layer and vertical mass fluxes close every layer's mass exactly.
-- **Not yet active.** Climate mode still carries heat by diffusion until
-  the circulation is coupled to the transport.
+- **Every climate month.** The circulation now runs in each climate step
+  of the Earth-like planet (L3 and finer, where its 36 bands each hold a
+  cell) and writes derived fields on the cells:
+  - winds per layer, vertical mass flux, surface stress;
+  - the balanced surface pressure and the sea-level pressure;
+  - monthly climatologies of the surface wind and sea-level pressure, and
+    the sea-level pressure and surface wind in the presentation snapshot
+    (schema 4).
+  - Switching to reference mode starts the resolved winds from this
+    circulation instead of from rest.
+  - `planet_cli run --circulation-report YEARS` prints its zonal means and
+    the V7 and V9 checks.
+- **Not yet active.** Nothing reads the circulation back: the slow state
+  and every hash are as before. Climate mode still carries heat by
+  diffusion, and keeps its surface pressure, until M6-05 couples the
+  circulation to the transport.
 
 ## Persistent snapshots
 
@@ -577,7 +592,8 @@ snapshots, procedural plate-scale terrain with sea level, and static drainage
 topology; M3 surface temperatures from radiative columns, with recorded,
 replayable runs; M4 snow, sea ice and their albedo feedback; M5 a layered
 atmosphere with pressure, grey longwave and convection; M6 (in progress)
-winds in reference mode. Climate mode has no winds yet, so heat there still
+winds in reference mode and a balanced circulation in climate mode. The
+climate circulation is diagnosed but not yet coupled, so heat there still
 moves by a calibrated diffusion. There is no water vapour or cloud: sunlight
 reaches the surface unabsorbed, and precipitation is a prescribed forcing. Dynamic runoff, discharge and lake water balance,
 orbital precession and perturbations are not yet computed. Geology and

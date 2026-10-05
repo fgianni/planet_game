@@ -1,5 +1,7 @@
 #include "sim/planet/dynamics/zonal_circulation.hpp"
 
+#include "sim/core/scheduler/deterministic_executor.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -672,7 +674,8 @@ std::vector<double> ZonalCirculation::residual(const ZonalForcing& forcing,
 }
 
 BandedMatrix ZonalCirculation::jacobian(const ZonalForcing& forcing,
-                                        std::span<const double> state) const {
+                                        std::span<const double> state,
+                                        std::size_t worker_count) const {
     check(forcing);
     const std::size_t n = unknown_count();
     if (state.size() != n) {
@@ -685,25 +688,38 @@ BandedMatrix ZonalCirculation::jacobian(const ZonalForcing& forcing,
     constexpr std::size_t reach = 2U;
     BandedMatrix matrix(n, (reach + 1U) * block - 1U, (reach + 1U) * block - 1U);
     const std::size_t stride = (2U * reach + 1U) * block;
-    std::vector<Dual> x(n);
-    std::vector<Dual> r(n);
-    for (std::size_t group = 0; group < std::min(stride, n); ++group) {
-        for (std::size_t c = 0; c < n; ++c) {
-            x[c] = Dual(state[c], c % stride == group ? 1.0 : 0.0);
-        }
-        evaluate<Dual>(s, parameters_, x, r);
-        for (std::size_t c = group; c < n; c += stride) {
-            const std::size_t column_block = c / block;
-            const std::size_t first =
-                column_block > reach ? (column_block - reach) * block : 0U;
-            const std::size_t last = std::min(n, (column_block + reach + 1U) * block);
-            for (std::size_t row = first; row < last; ++row) {
-                if (matrix.in_band(row, c)) {
-                    matrix.at(row, c) = r[row].d;
+    // Each colour is one dual evaluation that fills its own columns, so the
+    // colours run in parallel without changing any entry.
+    std::vector<std::size_t> groups(std::min(stride, n));
+    for (std::size_t group = 0; group < groups.size(); ++group) {
+        groups[group] = group;
+    }
+    const std::size_t workers = std::max<std::size_t>(1U, std::min(worker_count, groups.size()));
+    std::vector<std::vector<Dual>> x(workers, std::vector<Dual>(n));
+    std::vector<std::vector<Dual>> r(workers, std::vector<Dual>(n));
+    for_each_deterministic_block(
+        std::span<const std::size_t>(groups), workers,
+        [&](std::size_t index, std::size_t group) {
+            // The executor gives worker w the indices w, w + W, ...: one buffer each.
+            const std::size_t worker = index % workers;
+            auto& xw = x[worker];
+            auto& rw = r[worker];
+            for (std::size_t c = 0; c < n; ++c) {
+                xw[c] = Dual(state[c], c % stride == group ? 1.0 : 0.0);
+            }
+            evaluate<Dual>(s, parameters_, xw, rw);
+            for (std::size_t c = group; c < n; c += stride) {
+                const std::size_t column_block = c / block;
+                const std::size_t first =
+                    column_block > reach ? (column_block - reach) * block : 0U;
+                const std::size_t last = std::min(n, (column_block + reach + 1U) * block);
+                for (std::size_t row = first; row < last; ++row) {
+                    if (matrix.in_band(row, c)) {
+                        matrix.at(row, c) = rw[row].d;
+                    }
                 }
             }
-        }
-    }
+        });
     return matrix;
 }
 
@@ -756,7 +772,8 @@ struct NewtonAttempt {
 
 }  // namespace
 
-ZonalCirculationSolution ZonalCirculation::solve(const ZonalForcing& forcing) const {
+ZonalCirculationSolution ZonalCirculation::solve(const ZonalForcing& forcing,
+                                                 std::size_t worker_count) const {
     check(forcing);
     const auto& p = parameters_;
     const std::size_t n = unknown_count();
@@ -784,7 +801,7 @@ ZonalCirculationSolution ZonalCirculation::solve(const ZonalForcing& forcing) co
                 delta[c] = -r[c];
             }
             try {
-                const BandedLU lu(jacobian(forcing, x));
+                const BandedLU lu(jacobian(forcing, x, worker_count));
                 lu.solve(delta);
             } catch (const std::runtime_error&) {
                 return attempt;
@@ -864,7 +881,7 @@ ZonalCirculationSolution ZonalCirculation::solve(const ZonalForcing& forcing) co
                                      " continuation iterations (scaled residual " +
                                      std::to_string(history.back()) + ")");
         }
-        BandedMatrix matrix = jacobian(forcing, x);
+        BandedMatrix matrix = jacobian(forcing, x, worker_count);
         ++statistics.jacobians;
         for (std::size_t row = 0; row < n; ++row) {
             const std::size_t first = row > matrix.lower() ? row - matrix.lower() : 0U;

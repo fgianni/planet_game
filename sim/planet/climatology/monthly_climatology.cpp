@@ -27,6 +27,10 @@ void reset_climatology(PlanetState& state) {
     zero(climatology.land_snow_mean_kg_m2);
     zero(climatology.sea_ice_mean_kg_m2);
     climatology.samples.fill(0U);
+    zero(climatology.surface_eastward_wind_mean_m_s);
+    zero(climatology.surface_northward_wind_mean_m_s);
+    zero(climatology.sea_level_pressure_mean_Pa);
+    climatology.circulation_samples.fill(0U);
 }
 
 void accumulate_climatology(PlanetState& state, std::int64_t substep_index,
@@ -60,6 +64,40 @@ void accumulate_climatology(PlanetState& state, std::int64_t substep_index,
                     (slow.land_snow_water_equivalent_kg_m2[cell] - snow_mean[cell]) / samples);
                 ice_mean[cell] = static_cast<float>(
                     ice_mean[cell] + (slow.sea_ice_mass_kg_m2[cell] - ice_mean[cell]) / samples);
+            }
+        });
+}
+
+void accumulate_circulation_climatology(PlanetState& state, std::int64_t substep_index,
+                                        std::size_t worker_count) {
+    if (substep_index < 0) {
+        throw std::invalid_argument("climatology needs a non-negative sub-step index");
+    }
+    const auto& circulation = state.circulation();
+    if (!circulation.available()) {
+        throw std::invalid_argument("the circulation climatology needs a solved circulation");
+    }
+    auto& climatology = state.climatology();
+    const auto month = static_cast<std::size_t>(substep_index % climate_substeps_per_year);
+    const auto samples = static_cast<double>(++climatology.circulation_samples[month]);
+    auto east_mean = climatology.surface_eastward_wind_mean_m_s.layer(month);
+    auto north_mean = climatology.surface_northward_wind_mean_m_s.layer(month);
+    auto pressure_mean = climatology.sea_level_pressure_mean_Pa.layer(month);
+    const auto east = circulation.eastward_wind_m_s.layer(0);
+    const auto north = circulation.northward_wind_m_s.layer(0);
+    const auto& pressure = circulation.sea_level_pressure_Pa;
+    for_each_deterministic_block(
+        state.mesh().blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+            for (std::size_t cell = block.begin; cell < block.end; ++cell) {
+                east_mean[cell] = static_cast<float>(
+                    east_mean[cell] +
+                    (static_cast<double>(east[cell]) - east_mean[cell]) / samples);
+                north_mean[cell] = static_cast<float>(
+                    north_mean[cell] +
+                    (static_cast<double>(north[cell]) - north_mean[cell]) / samples);
+                pressure_mean[cell] = static_cast<float>(
+                    pressure_mean[cell] +
+                    (static_cast<double>(pressure[cell]) - pressure_mean[cell]) / samples);
             }
         });
 }

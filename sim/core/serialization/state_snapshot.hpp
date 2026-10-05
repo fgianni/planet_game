@@ -10,7 +10,7 @@
 namespace planetsim {
 
 class PlanetState;
-inline constexpr std::uint32_t state_snapshot_schema_version = 3;
+inline constexpr std::uint32_t state_snapshot_schema_version = 4;
 
 struct StateSnapshot {
     std::uint32_t schema_version = state_snapshot_schema_version;
@@ -37,6 +37,11 @@ struct StateSnapshot {
     // layers. Both vectors are empty until climatology has samples.
     std::vector<float> climatology_surface_temperature_mean_K;
     std::vector<float> climatology_surface_temperature_variance_K2;
+    // Schema 4 (ADR-0011 §8): the climate circulation's sea-level pressure
+    // and bottom-layer wind. Empty until the circulation has solved a month.
+    std::vector<float> sea_level_pressure_Pa;
+    std::vector<float> surface_eastward_wind_m_s;
+    std::vector<float> surface_northward_wind_m_s;
 };
 
 [[nodiscard]] StateSnapshot make_state_snapshot(const PlanetState& state,

@@ -1,12 +1,15 @@
 #include "sim/planet/dynamics/atmosphere_dynamics.hpp"
 
+#include "sim/core/math/vec3d.hpp"
 #include "sim/core/scheduler/simulation_clock.hpp"
+#include "sim/planet/dynamics/climate_circulation.hpp"
 #include "sim/planet/dynamics/orography.hpp"
 
 #include <cmath>
 #include <numbers>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 namespace planetsim {
 namespace {
@@ -50,10 +53,11 @@ AtmosphereDynamics::AtmosphereDynamics(const PlanetMesh& mesh, const SlowState& 
                                        AtmosphereDynamicsParameters parameters,
                                        std::size_t worker_count)
     : mesh_(&mesh), parameters_(parameters), worker_count_(worker_count),
-      grid_(CGridGeometry::build(mesh)),
+      grid_(CGridGeometry::build(mesh)), lapse_rate_K_m_(atmosphere.critical_lapse_rate_K_m),
+      dynamics_height_m_(dynamics_height(mesh, slow, fractions, parameters_.orography_max_step_m,
+                                         worker_count, orography_passes_)),
       model_(mesh, grid_, model_parameters(mesh, planet, atmosphere, parameters_),
-             dynamics_height(mesh, slow, fractions, parameters_.orography_max_step_m,
-                             worker_count, orography_passes_)) {
+             dynamics_height_m_) {
     if (slow.atmosphere_layer_count() != atmosphere.layer_count) {
         throw std::invalid_argument("the state's atmosphere does not have the scenario's layers");
     }
@@ -81,8 +85,53 @@ PrimitiveEquationState AtmosphereDynamics::model_state(const PlanetState& state)
 void AtmosphereDynamics::step(PlanetState& state, double dt_s) {
     const std::size_t n = model_.layer_count();
     if (!state.has_fast_state()) {
-        state.open_fast_state().atmosphere_edge_normal_wind_m_s =
-            Field3D<double>(n, mesh_->edge_count(), 0.0);
+        auto& start = state.open_fast_state().atmosphere_edge_normal_wind_m_s;
+        start = Field3D<double>(n, mesh_->edge_count(), 0.0);
+        const auto& circulation = state.circulation();
+        last_.started_from_balance = parameters_.start_from_balanced_circulation &&
+                                     circulation.available() &&
+                                     circulation.eastward_wind_m_s.layer_count() == n &&
+                                     circulation.eastward_wind_m_s.cell_count() ==
+                                         mesh_->cell_count();
+        ++last_.starts;
+        if (last_.started_from_balance) {
+            const auto& cells = mesh_->cells();
+            const auto& p = model_.parameters();
+            auto& ps = state.slow().atmosphere_surface_pressure_Pa;
+            double mass = 0.0;
+            double start_mass = 0.0;
+            std::vector<double> start_ps(mesh_->cell_count());
+            for (std::size_t i = 0; i < start_ps.size(); ++i) {
+                const double air = surface_air_temperature(
+                    state.slow().atmosphere_temperature_K.layer(0)[i], n, lapse_rate_K_m_,
+                    p.gravity_m_s2, p.gas_constant_J_kg_K);
+                start_ps[i] = static_cast<double>(circulation.sea_level_pressure_Pa[i]) /
+                              reduced_to_sea_level(1.0, air, dynamics_height_m_[i],
+                                                   lapse_rate_K_m_, p.gravity_m_s2,
+                                                   p.gas_constant_J_kg_K);
+                mass += cells[i].area_m2 * ps[i];
+                start_mass += cells[i].area_m2 * start_ps[i];
+            }
+            for (std::size_t i = 0; i < start_ps.size(); ++i) {
+                ps[i] = start_ps[i] * (mass / start_mass);
+            }
+            for (std::size_t k = 0; k < n; ++k) {
+                const auto east = circulation.eastward_wind_m_s.layer(k);
+                const auto north = circulation.northward_wind_m_s.layer(k);
+                const auto u = start.layer(k);
+                for (std::size_t e = 0; e < mesh_->edge_count(); ++e) {
+                    const auto& edge = mesh_->edge(EdgeId{static_cast<EdgeId::value_type>(e)});
+                    const std::size_t a = edge.first_cell.to_index();
+                    const std::size_t b = edge.second_cell.to_index();
+                    const Vec3d wind = (cells[a].east_unit * static_cast<double>(east[a]) +
+                                        cells[a].north_unit * static_cast<double>(north[a]) +
+                                        cells[b].east_unit * static_cast<double>(east[b]) +
+                                        cells[b].north_unit * static_cast<double>(north[b])) *
+                                       0.5;
+                    u[e] = dot(wind, grid_.edges()[e].normal_unit);
+                }
+            }
+        }
     }
     auto& winds = state.fast_state()->atmosphere_edge_normal_wind_m_s;
     if (winds.layer_count() != n || winds.cell_count() != mesh_->edge_count()) {

@@ -42,6 +42,15 @@ StateSnapshot make_state_snapshot(const PlanetState& state, const SimulationCloc
                snapshot.land_snow_water_equivalent_kg_m2);
     copy_float(state.slow().sea_ice_mass_kg_m2, snapshot.sea_ice_mass_kg_m2);
 
+    if (const auto& circulation = state.circulation();
+        circulation.available() && circulation.eastward_wind_m_s.cell_count() == cells) {
+        copy_float(circulation.sea_level_pressure_Pa, snapshot.sea_level_pressure_Pa);
+        const auto east = circulation.eastward_wind_m_s.layer(0);
+        const auto north = circulation.northward_wind_m_s.layer(0);
+        snapshot.surface_eastward_wind_m_s.assign(east.begin(), east.end());
+        snapshot.surface_northward_wind_m_s.assign(north.begin(), north.end());
+    }
+
     const auto& climatology = state.climatology();
     std::uint64_t samples = 0U;
     for (const std::uint32_t count : climatology.samples) {

@@ -145,6 +145,9 @@ struct RunOptions {
     // (setup included) misses them.
     std::optional<double> min_years_per_minute;
     std::optional<double> max_seconds;
+    // ADR-0011 V7–V9: the climate circulation's zonal means over the last
+    // this many years of the run.
+    std::optional<int> circulation_report_years;
 };
 
 constexpr std::uint64_t snapshot_synthetic_seed = 0x9B97'F4A7'C150'0011ULL;
@@ -177,7 +180,7 @@ void print_usage(std::ostream& output) {
               " [--spin-up-years N] [--initial-mode climate|reference]"
               " [--command TICK,TYPE,PAYLOAD]... [--workers W] [--manifest FILE.prun]"
               " [--snapshot FILE.psnap] [--min-years-per-minute R] [--max-seconds S]\n"
-              " [--presentation-record FILE.pframe]\n"
+              " [--presentation-record FILE.pframe] [--circulation-report YEARS]\n"
            << "    commands: set_mode,climate|reference; set_solar_luminosity_factor,F\n"
            << "  planet_cli replay FILE.prun [--workers W]\n"
            << "  planet_cli channels dump\n"
@@ -190,7 +193,7 @@ void print_usage(std::ostream& output) {
            << "  planet_cli reference [--subdivision LEVEL] [--seed N] [--layers N]"
               " [--spin-up-years N] [--days D] [--average-days D] [--workers W]"
               " [--zonal-csv FILE.csv]\n"
-           << "  planet_cli zonal-circulation [--planet [--balanced] [--subdivision LEVEL]"
+           << "  planet_cli zonal-circulation [--planet [--balanced [--balance-tolerance TOL]] [--subdivision LEVEL]"
               " [--seed N] [--spin-up-years N] [--workers W]] [--layers N] [--rotation-factor S]"
               " [--viscosity NU] [--eddy-generation C_E] [--eddy-scale L] [--no-eddies]"
               " [--reference FILE.csv] [--csv FILE.csv]\n";
@@ -372,6 +375,9 @@ void print_usage(std::ostream& output) {
             options.min_years_per_minute = parse_double(value, "years per minute");
         } else if (argument == "--max-seconds") {
             options.max_seconds = parse_double(value, "maximum seconds");
+        } else if (argument == "--circulation-report") {
+            options.circulation_report_years =
+                static_cast<int>(parse_unsigned(value, "circulation report years"));
         } else {
             throw std::invalid_argument("unknown run option: " + std::string(argument));
         }
@@ -1582,6 +1588,7 @@ struct ZonalCirculationOptions {
     std::optional<double> viscosity_m2_s;
     std::optional<double> eddy_generation;
     std::optional<double> eddy_scale_m;
+    std::optional<double> balance_tolerance;   // BiCGSTAB's relative residual (§4.6)
     bool eddies = true;
     std::string reference_csv;
     std::string csv;
@@ -1626,6 +1633,8 @@ struct ZonalCirculationOptions {
             options.eddy_generation = parse_double(value, "eddy generation");
         } else if (argument == "--eddy-scale") {
             options.eddy_scale_m = parse_double(value, "eddy scale");
+        } else if (argument == "--balance-tolerance") {
+            options.balance_tolerance = parse_double(value, "balance tolerance");
         } else if (argument == "--reference") {
             options.reference_csv = value;
         } else if (argument == "--csv") {
@@ -1739,7 +1748,12 @@ int run_zonal_circulation(const ZonalCirculationOptions& options) {
             planetsim::limit_dynamics_orography_steps(mesh, height, 800.0, 256U, workers).height_m;
         std::unique_ptr<planetsim::BalancedCirculation> balance;
         if (options.balanced) {
-            balance = std::make_unique<planetsim::BalancedCirculation>(mesh, parameters);
+            planetsim::BalancedCirculationParameters balance_parameters;
+            if (options.balance_tolerance) {
+                balance_parameters.relative_tolerance = *options.balance_tolerance;
+            }
+            balance = std::make_unique<planetsim::BalancedCirculation>(mesh, parameters,
+                                                                       balance_parameters);
         }
         std::cout << "planet=earth_like subdivision=" << options.subdivision
                   << " spin_up_years=" << options.spin_up_years << '\n';
@@ -2641,6 +2655,163 @@ int run_thermal(const ThermalOptions& options) {
     return text.str();
 }
 
+// The climate circulation's zonal means accumulated month by month, and
+// ADR-0011 V7 (provisional) and V9 read from them.
+struct CirculationReport {
+    std::size_t months = 0;
+    std::size_t bands = 0;
+    std::size_t layers = 0;
+    std::vector<double> latitude_deg;
+    std::vector<double> boundary_latitude_deg;
+    std::vector<double> eastward_m_s;          // layer × band
+    std::vector<double> streamfunction_kg_s;   // (layers + 1) × boundary
+    double torque_N_m = 0.0;
+    double gross_torque_N_m = 0.0;
+
+    void add(const planetsim::ZonalCirculationSolution& zonal) {
+        if (months == 0U) {
+            bands = zonal.bands;
+            layers = zonal.layers;
+            latitude_deg = zonal.latitude_deg;
+            boundary_latitude_deg = zonal.boundary_latitude_deg;
+            eastward_m_s.assign(zonal.eastward_m_s.size(), 0.0);
+            streamfunction_kg_s.assign(zonal.streamfunction_kg_s.size(), 0.0);
+        }
+        for (std::size_t i = 0; i < eastward_m_s.size(); ++i) {
+            eastward_m_s[i] += zonal.eastward_m_s[i];
+        }
+        for (std::size_t i = 0; i < streamfunction_kg_s.size(); ++i) {
+            streamfunction_kg_s[i] += zonal.streamfunction_kg_s[i];
+        }
+        torque_N_m += zonal.total_torque_N_m;
+        gross_torque_N_m += zonal.gross_torque_N_m;
+        ++months;
+    }
+
+    // The mean ū of `layer` over the bands whose centres lie in [from, to]
+    // degrees (negative: south), weighted by cos φ.
+    [[nodiscard]] double mean_wind(std::size_t layer, double from, double to) const {
+        double sum = 0.0;
+        double weight = 0.0;
+        for (std::size_t j = 0; j < bands; ++j) {
+            if (latitude_deg[j] >= from && latitude_deg[j] <= to) {
+                const double w = std::cos(latitude_deg[j] * std::numbers::pi / 180.0);
+                sum += w * eastward_m_s[layer * bands + j];
+                weight += w;
+            }
+        }
+        return sum / weight / static_cast<double>(months);
+    }
+
+    // The Hadley cell's poleward edge in one hemisphere: going poleward from
+    // the equator at the level of the strongest tropical overturning, the
+    // first boundary where ψ changes sign (interpolated linearly).
+    [[nodiscard]] double hadley_edge_deg(bool north) const {
+        const std::size_t boundaries = bands - 1U;
+        std::size_t level = 1U;
+        double strongest = 0.0;
+        for (std::size_t m = 1U; m < layers; ++m) {
+            for (std::size_t b = 0; b < boundaries; ++b) {
+                const double latitude = boundary_latitude_deg[b];
+                if ((north ? latitude > 0.0 : latitude < 0.0) && std::abs(latitude) < 30.0) {
+                    const double psi = std::abs(streamfunction_kg_s[m * boundaries + b]);
+                    if (psi > strongest) {
+                        strongest = psi;
+                        level = m;
+                    }
+                }
+            }
+        }
+        const auto psi = [&](std::ptrdiff_t b) {
+            return streamfunction_kg_s[level * boundaries + static_cast<std::size_t>(b)];
+        };
+        const auto latitude = [&](std::ptrdiff_t b) {
+            return boundary_latitude_deg[static_cast<std::size_t>(b)];
+        };
+        const auto count = static_cast<std::ptrdiff_t>(boundaries);
+        const std::ptrdiff_t step = north ? 1 : -1;
+        // ψ sums the layers from the bottom, so the hemisphere's own Hadley
+        // cell (equatorward below) has ψ < 0 in the north and ψ > 0 in the
+        // south. Its extremum within 30° of the equator, then the first
+        // sign change poleward of it. (|ψ| alone would find the winter
+        // cell's cross-equatorial branch in the annual mean.)
+        const double own = north ? -1.0 : 1.0;
+        std::ptrdiff_t peak = -1;
+        for (std::ptrdiff_t b = 0; b < count; ++b) {
+            const double at = latitude(b);
+            if ((north ? at > 0.0 : at < 0.0) && std::abs(at) < 30.0 && own * psi(b) > 0.0 &&
+                (peak < 0 || own * psi(b) > own * psi(peak))) {
+                peak = b;
+            }
+        }
+        if (peak < 0) {
+            return 0.0;   // no cell of the hemisphere's own sign
+        }
+        for (std::ptrdiff_t b = peak; b + step >= 0 && b + step < count; b += step) {
+            if (own * psi(b + step) <= 0.0) {
+                const double fraction = psi(b) / (psi(b) - psi(b + step));
+                return latitude(b) + fraction * (latitude(b + step) - latitude(b));
+            }
+        }
+        return north ? 90.0 : -90.0;
+    }
+
+    // The top layer's strongest westerly in one hemisphere: speed and latitude.
+    [[nodiscard]] std::pair<double, double> jet(bool north) const {
+        const std::size_t top = layers - 1U;
+        double best = -1.0e9;
+        double at = 0.0;
+        for (std::size_t j = 0; j < bands; ++j) {
+            if (north ? latitude_deg[j] > 0.0 : latitude_deg[j] < 0.0) {
+                const double u = eastward_m_s[top * bands + j] / static_cast<double>(months);
+                if (u > best) {
+                    best = u;
+                    at = latitude_deg[j];
+                }
+            }
+        }
+        return {best, at};
+    }
+
+    void print() const {
+        std::cout << std::setprecision(4) << "circulation_report months=" << months << '\n';
+        if (months == 0U) {
+            return;
+        }
+        std::cout << "bottom_wind_m_s";
+        for (std::size_t j = 0; j < bands; ++j) {
+            std::cout << ' ' << eastward_m_s[j] / static_cast<double>(months);
+        }
+        std::cout << '\n' << "top_wind_m_s";
+        for (std::size_t j = 0; j < bands; ++j) {
+            std::cout << ' ' << eastward_m_s[(layers - 1U) * bands + j] / static_cast<double>(months);
+        }
+        bool pass = true;
+        std::cout << '\n';
+        for (const bool north : {true, false}) {
+            const double sign = north ? 1.0 : -1.0;
+            const double trades = mean_wind(0, std::min(5.0 * sign, 20.0 * sign),
+                                            std::max(5.0 * sign, 20.0 * sign));
+            const double westerlies = mean_wind(0, std::min(40.0 * sign, 55.0 * sign),
+                                                std::max(40.0 * sign, 55.0 * sign));
+            const double edge = hadley_edge_deg(north);
+            const auto [speed, latitude] = jet(north);
+            const bool ok = trades < 0.0 && westerlies > 0.0 && std::abs(edge) >= 20.0 &&
+                            std::abs(edge) <= 40.0 && std::abs(latitude) >= 25.0 &&
+                            std::abs(latitude) <= 50.0;
+            pass = pass && ok;
+            std::cout << "V7 " << (north ? "north" : "south") << " bottom_5_20_m_s=" << trades
+                      << " bottom_40_55_m_s=" << westerlies << " hadley_edge_deg=" << edge
+                      << " top_jet_m_s=" << speed << " at_deg=" << latitude
+                      << (ok ? " pass" : " FAIL") << '\n';
+        }
+        const double ratio = std::abs(torque_N_m) / gross_torque_N_m;
+        std::cout << "V7 provisional " << (pass ? "pass" : "FAIL") << '\n'
+                  << std::scientific << "V9 torque_ratio=" << ratio
+                  << (ratio <= 0.05 ? " pass" : " FAIL") << std::defaultfloat << '\n';
+    }
+};
+
 int run_scenario(const RunOptions& options) {
     const std::size_t worker_count =
         options.worker_count != 0U ? options.worker_count
@@ -2653,9 +2824,31 @@ int run_scenario(const RunOptions& options) {
     const auto run_start = std::chrono::steady_clock::now();
     const auto end_tick = planetsim::orbital_year_begin_tick(options.years, run.parameters());
     std::vector<planetsim::StateSnapshot> presentation_frames;
-    run.run_until(end_tick, options.presentation_record_path
-        ? [&presentation_frames](const planetsim::StateSnapshot& frame) { presentation_frames.push_back(frame); }
-        : std::function<void(const planetsim::StateSnapshot&)>{});
+    CirculationReport report;
+    const planetsim::SimulationTick report_start =
+        options.circulation_report_years
+            ? planetsim::orbital_year_begin_tick(
+                  std::max(0, options.years - *options.circulation_report_years), run.parameters())
+            : end_tick + 1;
+    std::size_t reported_failures = 0;
+    std::function<void(const planetsim::StateSnapshot&)> observer;
+    if (options.presentation_record_path || options.circulation_report_years) {
+        observer = [&](const planetsim::StateSnapshot& frame) {
+            if (options.presentation_record_path) {
+                presentation_frames.push_back(frame);
+            }
+            const auto* circulation = run.circulation();
+            if (circulation != nullptr && frame.simulation_tick > report_start &&
+                run.scheduler().mode() == planetsim::SimulationMode::climate) {
+                if (circulation->diagnostics().last_solved && circulation->zonal()) {
+                    report.add(*circulation->zonal());
+                } else {
+                    ++reported_failures;
+                }
+            }
+        };
+    }
+    run.run_until(end_tick, observer);
     const auto run_finish = std::chrono::steady_clock::now();
 
     const double setup_s = std::chrono::duration<double>(run_start - setup_start).count();
@@ -2681,6 +2874,24 @@ int run_scenario(const RunOptions& options) {
               << "timing workers=" << worker_count << " setup_s=" << setup_s
               << " run_s=" << run_s << " total_s=" << total_s
               << " years_per_minute=" << years_per_minute << '\n';
+    if (const auto* circulation = run.circulation()) {
+        const auto& d = circulation->diagnostics();
+        std::cout << "circulation months=" << d.months << " failed=" << d.failed_months
+                  << " heating_s=" << d.heating_s << " zonal_s=" << d.zonal_s
+                  << " balance_s=" << d.balance_s << '\n';
+        if (d.failed_months > 0U) {
+            std::cout << "circulation_last_failure: " << d.last_failure << '\n';
+        }
+    }
+
+    if (options.circulation_report_years) {
+        if (run.circulation() == nullptr) {
+            std::cout << "circulation_report none (no atmosphere, or the mesh is too coarse)\n";
+        } else {
+            std::cout << "circulation_report failed_months=" << reported_failures << '\n';
+            report.print();
+        }
+    }
 
     if (options.manifest_path) {
         planetsim::write_run_manifest(*options.manifest_path, manifest);

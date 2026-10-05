@@ -50,6 +50,28 @@ struct Climatology {
     field_container_t<FieldId::climatology_land_snow_mean_kg_m2> land_snow_mean_kg_m2;
     field_container_t<FieldId::climatology_sea_ice_mean_kg_m2> sea_ice_mean_kg_m2;
     std::array<std::uint32_t, 12> samples{};
+    // The circulation's months (ADR-0011 §4.4 step 5), counted apart: a
+    // month the circulation did not solve adds nothing to them.
+    field_container_t<FieldId::climatology_surface_eastward_wind_mean_m_s> surface_eastward_wind_mean_m_s;
+    field_container_t<FieldId::climatology_surface_northward_wind_mean_m_s>
+        surface_northward_wind_mean_m_s;
+    field_container_t<FieldId::climatology_sea_level_pressure_mean_Pa> sea_level_pressure_mean_Pa;
+    std::array<std::uint32_t, 12> circulation_samples{};
+};
+
+// The climate mode's circulation on the cells (ADR-0011 §4.1, §4.4 step 5):
+// derived, never persisted, and empty (no layers, no cells) until the
+// climate circulation has solved a month.
+struct CirculationState {
+    field_container_t<FieldId::atmosphere_eastward_wind_m_s> eastward_wind_m_s;
+    field_container_t<FieldId::atmosphere_northward_wind_m_s> northward_wind_m_s;
+    field_container_t<FieldId::atmosphere_vertical_mass_flux_kg_m2_s> vertical_mass_flux_kg_m2_s;
+    field_container_t<FieldId::sea_level_pressure_Pa> sea_level_pressure_Pa;
+    field_container_t<FieldId::surface_wind_stress_east_N_m2> surface_stress_east_N_m2;
+    field_container_t<FieldId::surface_wind_stress_north_N_m2> surface_stress_north_N_m2;
+    field_container_t<FieldId::atmosphere_balanced_surface_pressure_Pa> balanced_surface_pressure_Pa;
+
+    [[nodiscard]] bool available() const noexcept { return !balanced_surface_pressure_Pa.empty(); }
 };
 
 struct ForcingState {
@@ -90,6 +112,9 @@ class PlanetState {
     [[nodiscard]] Climatology& climatology() noexcept { return climatology_; }
     [[nodiscard]] const Climatology& climatology() const noexcept { return climatology_; }
 
+    [[nodiscard]] CirculationState& circulation() noexcept { return circulation_; }
+    [[nodiscard]] const CirculationState& circulation() const noexcept { return circulation_; }
+
     [[nodiscard]] ForcingState& forcing() noexcept { return forcing_; }
     [[nodiscard]] const ForcingState& forcing() const noexcept { return forcing_; }
 
@@ -98,6 +123,7 @@ class PlanetState {
     SlowState slow_;
     std::unique_ptr<FastState> fast_state_;
     Climatology climatology_;
+    CirculationState circulation_;
     ForcingState forcing_;
 };
 

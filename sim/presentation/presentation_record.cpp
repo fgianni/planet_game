@@ -44,10 +44,20 @@ void write_frame(std::ostream& stream, const StateSnapshot& frame) {
              &frame.land_snow_water_equivalent_kg_m2, &frame.sea_ice_mass_kg_m2,
              &frame.climatology_surface_temperature_mean_K,
              &frame.climatology_surface_temperature_variance_K2}) write_vector(stream, *values);
+    // Frames carry their schema: a schema 3 frame has no circulation fields.
+    if (frame.schema_version >= 4U) {
+        for (const auto* values : {&frame.sea_level_pressure_Pa, &frame.surface_eastward_wind_m_s,
+                 &frame.surface_northward_wind_m_s}) write_vector(stream, *values);
+    }
 }
 [[nodiscard]] StateSnapshot read_frame(std::istream& stream) {
     StateSnapshot frame;
-    read(stream, frame.schema_version); read(stream, frame.simulation_tick);
+    read(stream, frame.schema_version);
+    if (frame.schema_version < 3U || frame.schema_version > state_snapshot_schema_version) {
+        throw std::runtime_error("unsupported presentation frame schema " +
+                                 std::to_string(frame.schema_version));
+    }
+    read(stream, frame.simulation_tick);
     read(stream, frame.simulation_time_s); read(stream, frame.rotation_angle_rad);
     read(stream, frame.orbital_phase_rad); read(stream, frame.eccentric_anomaly_rad);
     read(stream, frame.true_anomaly_rad); read(stream, frame.solar_longitude_rad);
@@ -59,6 +69,10 @@ void write_frame(std::ostream& stream, const StateSnapshot& frame) {
              &frame.land_snow_water_equivalent_kg_m2, &frame.sea_ice_mass_kg_m2,
              &frame.climatology_surface_temperature_mean_K,
              &frame.climatology_surface_temperature_variance_K2}) read_vector(stream, *values);
+    if (frame.schema_version >= 4U) {
+        for (auto* values : {&frame.sea_level_pressure_Pa, &frame.surface_eastward_wind_m_s,
+                 &frame.surface_northward_wind_m_s}) read_vector(stream, *values);
+    }
     return frame;
 }
 }  // namespace
