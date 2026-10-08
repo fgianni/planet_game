@@ -8,6 +8,7 @@
 - **Amended:** 2026-10-04 — §14: the zonal-mean circulation, its eddy closure and its solution (replaces §4.5)
 - **Amended:** 2026-10-04 — §15: the eddy scale L = 2,000 km and c_E fitted in the model's form
 - **Amended:** 2026-10-04 — §16: the azonal balance's damping and zonal means
+- **Amended:** 2026-10-06 — §17: the coupled climate transport, the balanced p_s in the slow state and its energy, the fallback
 - **Milestone:** P0 / M6 (wind and Coriolis)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §6 (`AtmosphereState`), §8 (multi-rate), §9.2, §13 M6, §15.5 (zero-rotation experiment), §23, §24; Planetary Civilization Simulator — Design Record v0.9, §5.4, §15.2–15.5, §25 (M5 row: "planetary circulation direction and latitude dependence"), §28
 - **Related:** ADR-0001 (modes, partition, budget, §8 milestone mapping), ADR-0002 (mesh, operators, §4.2 advection, field layout), ADR-0003 (determinism, replay), ADR-0006 (sub-steps), ADR-0009 (implicit transport, coarse graph), ADR-0010 (layered atmosphere; its §7 M6 row)
@@ -503,7 +504,7 @@ prescribes. M7's humidity uses the same two paths.
 | V10 | Energy closure of every climate step with the circulation, N = 3 and 5 | ADR-0007 V2 gate |
 | V11 | Determinism: workers 1/2/8/16 bit-identical in both modes; replay of the L5 performance run | bit-identical |
 | V12 | Calibration: `τ₀` and `c_e` fitted; the §4.8 invariants; climate against reference zonal means (V6) | 288 ± 0.5 K, 42 ± 1 K; parity recorded, gated from M7 (ADR-0001 §8) |
-| V13 | Performance: ADR-0001 250-year climate runs, N = 3, 4 workers | L5 ≤ 240 s, L6 ≤ 600 s |
+| V13 | Performance: ADR-0001 250-year climate runs, N = 3, 4 workers | L5 ≤ 240 s, L6 ≤ 600 s (750 s since ADR-0001 §11) |
 
 V3–V5 are standard dynamical-core benchmarks. Their numeric gates are
 provisional until the task that implements them measures the scheme on this
@@ -738,6 +739,19 @@ amendment.
     the bottom-layer winds are under 1.2 m/s. V9: 7.6e-13.
   - Details, V7 and the timings are in
     `docs/tasks/M6-04-balanced-circulation.md`.
+
+- **M6-05 (2026-10-06 to 2026-10-08).** Covers §4.7–4.8, §17, V7, V10–V13.
+  - **The coupled transport:** ADR-0009's Newton on one source per group,
+    the overturning's layer dry static energy upwind and the eddies'
+    diffusion; BiCGSTAB with block ILU(0). Energy closes every step.
+  - **The balanced p_s in the slow state,** its moved air's energy booked on
+    the coarse groups; energy closes to 1e-15.
+  - **The azonal flow carries no heat** (§17.6), c_E stays reference mode's,
+    and τ₀ = 1.442 gives 288 K with a 52 K equator-to-pole difference
+    (§17.7).
+  - **V7:** seven of eight criteria; the southern jet at 52.5°. **V13:** L5
+    220 s; L6 678 s against the amended 750 s (ADR-0001 §11).
+  - Details are in `docs/tasks/M6-05-transport-refit-and-close.md`.
 
 ## 12. Amendment: V2 as measured for the TRiSK operators (accepted 2026-10-02)
 
@@ -1098,3 +1112,111 @@ state. Once the circulation carries heat (§4.7), the tropical departures
 should flatten, and step D measures whether the enhancement is still
 needed.
 
+
+## 17. Amendment: the coupled climate transport and the balanced p_s in the slow state (accepted 2026-10-06)
+
+**Finding (task M6-04, step D, and the M6-05 audit).**
+- §4.7 keeps ADR-0009's outer Newton "with its response callback and the
+  column's slopes", but that Newton has one unknown per coarse group (the
+  heat source entering the column), while §3.5 carries each layer's dry
+  static energy. The two are reconciled below.
+- §4.1 and §4.6 replace the slow state's p_s with the balanced p_s. The
+  balance's p_s rests on the groups' smoothed heights (§13); written to
+  the cells directly it moves up to 17% of a group's mass between
+  mountains and lowlands (L3). Step D's cell field goes through sea-level
+  pressure instead.
+- §4.6 books the energy of the moved air "as transport, summing to zero"
+  without saying how.
+- A coupled transport needs an answer when the circulation's solve fails
+  (1 month in 3,000 at L5 in step D).
+- Climate mode's p_s rests on the true terrain; the reference core sheds
+  it to its smoothed orography within days (33 hPa at L3).
+
+**Change (decided with the user, 2026-10-06).**
+1. **The transport's unknown stays one heat source per coarse group,**
+   entering the bottom layer (ADR-0010 §11).
+   - The advective flux across an edge is Σ_k F_k s_k, with the layer mass
+     flux F_k of §4.4 and the upwind group's layer dry static energy
+     s_k = c_p T_k + Φ_k. The overturning's energy flux keeps its exact
+     cancellation (§3.5).
+   - The eddies diffuse θ_c with an edge conductance c_p μ̄ D̄_e, where D̄_e
+     is the layers' mean of the zonal model's D_k at the edge's latitude.
+     This replaces ADR-0009/ADR-0010's calibrated D.
+   - The column's response returns its layer temperatures and their slopes
+     with respect to the source, so s_k(h) enters Newton's Jacobian. The
+     column physics, not the advection, sets the layers' vertical
+     structure.
+   - The Newton system is non-symmetric: BiCGSTAB, preconditioned by the
+     multigrid on its symmetric part and ILU(0) of the full operator, as
+     the balance (task M6-04 step D).
+2. **The circulation runs first in each climate step,** from the slow
+   state at the step's start, and its fluxes are fixed for the step.
+3. **The balanced p_s is written to the slow state** each climate step,
+   as the cells' field of step D (through sea-level pressure, with the
+   atmosphere's mass held).
+   - **Energy.** The change is produced by a divergent mass flux −∇χ on the
+     cells, from one symmetric Poisson solve (multigrid-preconditioned CG)
+     whose divergence is the change of column mass. Each layer moves its
+     share (1/N, the σ layers) and carries its dry static energy upwind
+     along it; each cell's layer temperatures are then set so that its
+     total energy, Σ_k c_p T_k m_k + Φ_s M, is the old one plus what it
+     received. Energy closes exactly and sums to zero globally.
+4. **A month whose circulation fails** falls back to ADR-0009's diffusion
+   with its calibrated D, and keeps its p_s. The fallback is a function of
+   the state alone, so continuing from a snapshot stays bit-identical. It
+   is counted and reported.
+5. **p_s keeps its meaning:** the pressure on the true terrain in climate
+   mode. The reference core's adjustment to its smoothed orography at a
+   mode switch is recorded as part of its spin-up, and revisited when
+   weather windows need it (M10–M12).
+
+**Calibration.** τ₀ and c_E are fitted jointly to ADR-0010 §4.6's targets
+as §4.8 says; D survives only in the fallback.
+
+**Not decided by this amendment.** Whether the transport also needs the
+zonal-mean zonal wind's advection of azonal temperature (§16), and
+whether §16's tropical damping is still needed once the circulation
+carries heat. Both are measured in M6-05.
+
+**Change of 2026-10-06, after the first coupled runs (decided with the user).**
+6. **The azonal flow carries no heat.** The transport's layer fluxes are the
+   zonal-mean overturning's alone; §4.7's azonal part is withdrawn.
+   - **Why.** The azonal balance (§4.6) is purely dynamical: it has no
+     thermodynamic equation, so its divergent flow is not bounded by any
+     heating. At L4, in the first climate month, it gives bottom-layer
+     azonal winds of 17 m/s rms and up to 116 m/s within 11° of the equator,
+     where the balanced p_s jumps 18–34 hPa between neighbouring groups.
+     Each ascending column then exports W Δs whatever its temperature (Δs
+     between the layers is fixed by convection), and no monthly solution
+     exists above the 100 K floor: with even 10% of the azonal flux, Newton
+     stalls at 7e4 W/m² and a column falls to 0 K.
+   - **What it costs.** Stationary eddies carry about 10–20% of Earth's
+     mid-latitude transport; P0 leaves it out. The eddy closure's c_E is
+     refitted with this in place.
+   - **What stays.** The azonal flow still sets the balanced p_s and the
+     cells' winds, stress and sea-level pressure.
+   - **With the overturning alone** the coupled solve converges in 4–6
+     Newton steps, energy closes, and 10 years at L4 reach 288.4 K before
+     any refit.
+   - **Revisit** with a thermodynamically constrained azonal model
+     (weak-temperature-gradient-like), or by carrying the azonal flow's
+     rotational part, when the stationary-eddy transport is needed.
+
+**Change of 2026-10-06, the refit (decided with the user).**
+7. **c_E stays reference mode's fit (1.39e12); only τ₀ is fitted, to 288 K.**
+   The 42 K equator-to-pole target (ADR-0010 §4.6) is deferred to M7/M11.
+   - **Why.** With overturning and eddies only (§17.6), 150-year coupled
+     spin-ups at L4 give a P2 difference of 52.9 K at c_E = 1.39e12, 50.2 K
+     at 2e12 and 48.0 K at 2.8e12 (5 failed months); at 4e12, 1,132 of
+     1,800 months fail and fall back to the diffusion. The old 42 K fit used
+     a free diffusivity standing in for latent and ocean transport, which
+     the dry atmosphere does not have yet.
+
+**Change of 2026-10-08, the cost (decided with the user).**
+8. **The p_s redistribution's Poisson solve runs on the coarse groups**
+   (§17.3 said "on the cells"). Each group's layer energy changes by the
+   upwind flux between groups, and its cells share it at one specific-energy
+   shift per layer; energy still closes to rounding, but air moved within a
+   group is not resolved. At L6 it costs 9 ms a month instead of 33.
+9. **The L6 250-year gate is 750 s** (ADR-0001 §11): the coupled climate
+   measures 678 s there.

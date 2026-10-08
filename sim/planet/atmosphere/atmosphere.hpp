@@ -41,9 +41,15 @@ inline constexpr double dry_air_heat_capacity_J_kg_K = 1004.64;
 inline constexpr double gravitational_constant_m3_kg_s2 = 6.67430e-11;
 
 // The Earth-like column's longwave optical depth τ₀: a calibration
-// constant, fitted jointly with the transport coefficient D (the record is
-// at earth_like_transport_coefficient_W_m2_K, surface_energy.hpp).
-inline constexpr double earth_like_longwave_optical_depth = 1.3581;
+// constant, fitted with the coupled climate circulation carrying the heat
+// (ADR-0011 §17.7, task M6-05 step E) to a 288 K mean at L4, seed 1, three
+// layers, after 150 coupled years (`planet_cli thermal --subdivision 4
+// --years 150 --layers 3 --coupled --optical-depth τ₀`): 1.440 → 287.97 K,
+// 1.448 → 288.09 K, 1.456 → 288.20 K; 1.442 is interpolated. c_E stays
+// reference mode's fit, and the P2 equator-to-pole difference is 52.2 K
+// (peak transport 2.83 PW): the 42 K target waits for latent and ocean
+// transport (M7, M11). M5's diffusive fit was 1.3581 with D (below).
+inline constexpr double earth_like_longwave_optical_depth = 1.442;
 
 // dead_rock and aqua_planet: no atmosphere (experiments A and B,
 // specification §13.1). earth_like: three layers (design record §15.1) of
@@ -71,6 +77,16 @@ void validate_atmosphere_parameters(const AtmosphereParameters& parameters);
 // the world ocean, ADR-0005).
 void compute_surface_height(const PlanetMesh& mesh, const SlowState& slow,
                             const SurfaceFractions& fractions, Field2D<double>& height_m);
+
+// The layers' dry static energy s_k = c_p T_k + Φ_k (J/kg) of a column of N
+// equal-mass σ layers, with Φ_k at each layer's mean-Exner level (task
+// M6-03's vertical structure, as the balance). It does not depend on p_s
+// (every π_k scales alike) and is linear in Φ_s and the temperatures, so the
+// same call with Φ_s = 0 and the temperatures' slopes gives the slopes of s.
+void layer_dry_static_energy(double surface_geopotential_m2_s2,
+                             std::span<const double> temperature_K, std::span<double> energy_J_kg,
+                             double gas_constant_J_kg_K = dry_air_gas_constant_J_kg_K,
+                             double heat_capacity_J_kg_K = dry_air_heat_capacity_J_kg_K);
 
 // The tile-mean surface temperature that starts the column: land surface and
 // ocean mixed layer weighted by their fractions.

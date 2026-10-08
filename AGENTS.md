@@ -24,9 +24,9 @@ documents keep the version citations they were written against.
 
 P0 --- Living Planet.
 
-Most recently completed milestone: **M5 --- Atmosphere and pressure**.
+Most recently completed milestone: **M6 --- Wind and Coriolis**.
 
-M0 through M5 are complete. M2 includes gate G2-M2 (finite-volume
+M0 through M6 are complete. M2 includes gate G2-M2 (finite-volume
 operators), the state-partition/persistent-snapshot foundation, foundation
 hardening, plate-scale terrain with sub-cell hypsometry and sea level, static
 cell-mesh drainage, and the simulation modes, scheduler skeleton and sub-step
@@ -53,22 +53,20 @@ chain), M5-02 (atmosphere state, hydrostatics, PSNAP schema 5), M5-03
 and M5-04 (refit of τ₀ and D, the Earth-like preset on three layers, the
 plateau experiment, performance gates). Most recently completed task:
 [`docs/tasks/M5-04-calibration-and-close.md`](docs/tasks/M5-04-calibration-and-close.md).
-M6 (wind and Coriolis) is in progress under ADR-0011 (accepted
-2026-10-02, amended §12–§16): tasks M6-01 (C-grid geometry and vector
-operators), M6-02 (shallow-water core), M6-03 (primitive equations,
-Held–Suarez, the winds in reference mode) and M6-04 (the climate-mode
-balanced circulation, derived outputs only) are complete. Most recently
-completed task:
-[`docs/tasks/M6-04-balanced-circulation.md`](docs/tasks/M6-04-balanced-circulation.md).
-The next task is M6-05 (transport by the circulation, the balanced p_s
-written to the slow state, refit and close), starting from M6-04's open
-points. Do not implement M7 or later milestones unless explicitly
-requested.
+M6 (wind and Coriolis) is complete under ADR-0011 (amended §12–§17) and
+ADR-0001 §11: tasks M6-01 (C-grid geometry and vector operators), M6-02
+(shallow-water core), M6-03 (primitive equations, Held–Suarez, the winds
+in reference mode), M6-04 (the climate-mode balanced circulation) and
+M6-05 (the circulation carries the heat, the balanced p_s in the slow
+state, τ₀ refitted, the gates). Most recently completed task:
+[`docs/tasks/M6-05-transport-refit-and-close.md`](docs/tasks/M6-05-transport-refit-and-close.md).
+Open follow-up: the L6 250-year run back under 600 s. Do not implement M7
+or later milestones unless explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is
 [`docs/tasks/R1-01-presentation-library-and-channels.md`](docs/tasks/R1-01-presentation-library-and-channels.md),
-under ADR-0018 (accepted 2026-10-04). It may proceed alongside M6-05, but
+under ADR-0018 (accepted 2026-10-04). It may proceed alongside the P0 milestones, but
 must never change a solver, a field's meaning or the PSNAP format.
 
 ## Hard rules

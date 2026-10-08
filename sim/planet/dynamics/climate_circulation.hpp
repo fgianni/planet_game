@@ -3,6 +3,7 @@
 #include "sim/core/fields/field.hpp"
 #include "sim/core/scheduler/scheduler.hpp"
 #include "sim/planet/dynamics/balanced_circulation.hpp"
+#include "sim/planet/dynamics/pressure_redistribution.hpp"
 #include "sim/planet/dynamics/zonal_circulation.hpp"
 #include "sim/planet/dynamics/zonal_coupling.hpp"
 #include "sim/planet/mesh/planet_mesh.hpp"
@@ -55,12 +56,16 @@ namespace planetsim {
 struct ClimateCirculationParameters {
     std::size_t bands = 36;   // the zonal model's bands (ADR-0011 §4.4 step 1)
     double orography_max_step_m = 800.0;   // ADR-0011 §13, as reference mode
-    // BiCGSTAB's relative residual is 1e-8 here, not the balance's 1e-10:
-    // the column divergence it leaves stays near 1e-8 of the layers', and
-    // the L6 250-year gate needs the 20% fewer iterations.
+    // c_E, when not the Earth-like fit (the calibration's candidates).
+    std::optional<double> eddy_generation_m4_s2_K2;
+    // BiCGSTAB's relative residual is 1e-6 here, not the balance's 1e-10:
+    // the transport carries only the overturning, whose column fluxes cancel
+    // exactly (ADR-0011 §17.6), so the balance's residual reaches only the
+    // pressure and the winds, as a column divergence near 1e-6 of the
+    // layers'; the 250-year gates need the fewer iterations.
     BalancedCirculationParameters balance = [] {
         BalancedCirculationParameters p;
-        p.relative_tolerance = 1.0e-8;
+        p.relative_tolerance = 1.0e-6;
         return p;
     }();
 };
@@ -83,6 +88,12 @@ struct ClimateCirculationDiagnostics {
     double zonal_s = 0.0;
     double balance_s = 0.0;
     double outputs_s = 0.0;   // the cells' fields
+    // The last balanced p_s written to the slow state (coupled runs only,
+    // ADR-0011 §17.3).
+    std::size_t pressure_writes = 0;
+    PressureRedistributionResult last_pressure;
+    double worst_pressure_energy_ratio = 0.0;   // max |ΔE| / E over the writes
+    double pressure_s = 0.0;   // wall-clock of the writes, performance records only
 };
 
 class ClimateCirculation {
@@ -119,6 +130,16 @@ class ClimateCirculation {
     [[nodiscard]] const ClimateCirculationDiagnostics& diagnostics() const noexcept {
         return diagnostics_;
     }
+    // Writes the last solved month's balanced p_s into the slow state, with
+    // the energy of the moved air (ADR-0011 §17.3). Coupled runs call it
+    // after step().
+    void write_balanced_pressure(PlanetState& state, std::size_t worker_count = 1U);
+
+    // The month's transport for the surface step (ADR-0011 §17.1): the
+    // zonal-mean overturning's layer mass fluxes and the eddies' conductance
+    // (the azonal flow carries no heat, §17.6); active only when this month's
+    // circulation was solved (§17.4).
+    [[nodiscard]] const CirculationTransport& transport() const noexcept { return transport_; }
 
   private:
     // The three coarse cells and weights of each cell's interpolation.
@@ -130,6 +151,16 @@ class ClimateCirculation {
     void write_outputs(const PlanetState& state, const ZonalCirculationSolution& zonal,
                        const BalancedCirculationResult& azonal, CirculationState& outputs,
                        std::size_t worker_count) const;
+    void write_transport(const ZonalCirculationSolution& zonal,
+                         const BalancedCirculationResult& azonal);
+
+    // Per CSR entry of the coarse graph: its coarse edge, the sign of the
+    // edge's normal out of the entry's node, and the edge's latitude.
+    struct Face {
+        std::size_t edge = 0;
+        double sign = 1.0;
+        double latitude_deg = 0.0;
+    };
 
     const PlanetMesh* mesh_;
     const SurfaceFractions* fractions_;
@@ -139,7 +170,10 @@ class ClimateCirculation {
     Field2D<double> dynamics_height_m_;
     ZonalCirculation zonal_model_;
     BalancedCirculation balance_;
+    PressureRedistribution pressure_;
     std::vector<Interpolation> interpolation_;   // per cell
+    std::vector<Face> faces_;                    // per coarse graph CSR entry
+    CirculationTransport transport_;
     AtmosphereHeating heating_;
     std::optional<ZonalCirculationSolution> zonal_;
     std::optional<BalancedCirculationResult> azonal_;
@@ -167,12 +201,17 @@ class ClimateCirculation {
 [[nodiscard]] bool climate_circulation_resolves(const PlanetMesh& mesh,
                                                 const ClimateCirculationParameters& parameters = {});
 
-// Climate mode runs `circulation` after the processes already registered,
-// on the month they have just stepped. `planet` and `surface` are read at
-// each step, so commands that change the star's luminosity take effect.
+// Climate mode runs `circulation` at the start of each climate step, from
+// the slow state the step starts from (ADR-0011 §17.2): register it before
+// the surface. It sets the sub-step's mean insolation first. `planet` and
+// `surface` are read at each step, so commands that change the star's
+// luminosity take effect.
+// With `first` false it runs after the processes already registered, on the
+// month they have just stepped, and only diagnoses (task M6-04).
 void register_climate_circulation(Scheduler& scheduler, PlanetState& state,
                                   const PlanetParameters& planet,
                                   const SurfaceEnergyParameters& surface,
-                                  ClimateCirculation& circulation, std::size_t worker_count = 1U);
+                                  ClimateCirculation& circulation, std::size_t worker_count,
+                                  bool first);
 
 }  // namespace planetsim

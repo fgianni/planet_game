@@ -265,10 +265,18 @@ Climate mode's circulation (ADR-0011 §14, task M6-04) is under way:
     circulation instead of from rest.
   - `planet_cli run --circulation-report YEARS` prints its zonal means and
     the V7 and V9 checks.
-- **Not yet active.** Nothing reads the circulation back: the slow state
-  and every hash are as before. Climate mode still carries heat by
-  diffusion, and keeps its surface pressure, until M6-05 couples the
-  circulation to the transport.
+- **It carries the heat** (ADR-0011 §17, task M6-05). The circulation runs
+  first in each climate step, and the implicit transport carries each
+  layer's dry static energy along the zonal-mean overturning, upwind, while
+  the eddies diffuse the columns' θ with the zonal model's diffusivity. The
+  azonal flow sets the pressure and the winds but carries no heat: it has no
+  thermodynamic equation, so its divergent flow is not bounded by heating.
+  - The balanced surface pressure is written into the slow state every
+    month; the air it moves carries its energy along a mass-flux potential,
+    so energy closes exactly.
+  - A month whose circulation fails falls back to the diffusion.
+  - `planet_cli run --circulation none|diagnostic|coupled` (default
+    coupled) and `planet_cli thermal --coupled` choose how it is used.
 
 ## Persistent snapshots
 
@@ -439,12 +447,14 @@ tiles are solved together, implicitly, every step, and the energy budget of
 surface and air closes to rounding. Nothing imposes a lapse rate on the
 surface, yet a dome 4 km high cools at about 6 K/km.
 
-The optical depth `τ₀ = 1.3581` and the transport coefficient
-`D = 0.6371 W/m²/K` are calibration constants fitted together, with sea ice
-active, to a 288 K global mean and Earth's 42 K equator-to-pole difference;
-the poleward transport they imply peaks at 3.8 PW, about 70 % of Earth's.
-Sunlight still passes through the air unabsorbed, and there is no water
-vapour, cloud or wind yet (M6–M8).
+The optical depth `τ₀ = 1.442` is a calibration constant, fitted with the
+climate circulation carrying the heat to a 288 K global mean (ADR-0011
+§17.7). The eddy closure keeps reference mode's own fit, so the
+equator-to-pole difference is 52 K and the poleward transport peaks at
+2.8 PW: Earth's 42 K needs the latent and ocean transport of M7 and M11.
+M5's diffusive fit, `τ₀ = 1.3581` with `D = 0.6371 W/m²/K` (42 K, 3.8 PW),
+survives only as the circulation's fallback. Sunlight still passes through
+the air unabsorbed, and there is no water vapour or cloud yet (M7–M8).
 
 ## Recorded runs and replay
 
@@ -592,9 +602,10 @@ snapshots, procedural plate-scale terrain with sea level, and static drainage
 topology; M3 surface temperatures from radiative columns, with recorded,
 replayable runs; M4 snow, sea ice and their albedo feedback; M5 a layered
 atmosphere with pressure, grey longwave and convection; M6 (in progress)
-winds in reference mode and a balanced circulation in climate mode. The
-climate circulation is diagnosed but not yet coupled, so heat there still
-moves by a calibrated diffusion. There is no water vapour or cloud: sunlight
+winds in reference mode and a balanced circulation in climate mode that
+carries the heat. Without water vapour or ocean currents its transport is
+weaker than Earth's (52 K equator to pole), and the azonal flow carries no
+heat. There is no water vapour or cloud: sunlight
 reaches the surface unabsorbed, and precipitation is a prescribed forcing. Dynamic runoff, discharge and lake water balance,
 orbital precession and perturbations are not yet computed. Geology and
 drainage are generated once and are not time-evolving, and `GeologyState` is

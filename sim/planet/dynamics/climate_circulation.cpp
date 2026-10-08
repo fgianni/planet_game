@@ -7,6 +7,7 @@
 #include "sim/planet/coordinates/local_tangent_basis.hpp"
 #include "sim/planet/dynamics/orography.hpp"
 #include "sim/planet/operators/c_grid.hpp"
+#include "sim/planet/orbit/substep_forcing.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -36,7 +37,14 @@ namespace {
     if (parameters.bands < 2U || !(parameters.orography_max_step_m > 0.0)) {
         throw std::invalid_argument("invalid climate circulation parameters");
     }
-    return zonal_circulation_parameters(planet, surface.atmosphere, parameters.bands);
+    auto zonal = zonal_circulation_parameters(planet, surface.atmosphere, parameters.bands);
+    if (parameters.eddy_generation_m4_s2_K2) {
+        if (!(*parameters.eddy_generation_m4_s2_K2 > 0.0)) {
+            throw std::invalid_argument("c_E must be positive (ADR-0011 §4.8)");
+        }
+        zonal.eddy_generation_m4_s2_K2 = *parameters.eddy_generation_m4_s2_K2;
+    }
+    return zonal;
 }
 
 // Linear interpolation in latitude of values at increasing latitudes, held
@@ -105,7 +113,11 @@ ClimateCirculation::ClimateCirculation(const PlanetMesh& mesh, const SlowState& 
           limit_dynamics_orography_steps(mesh, surface_height_m_, parameters.orography_max_step_m)
               .height_m)),
       zonal_model_(checked_zonal_parameters(planet, surface, parameters)),
-      balance_(mesh, zonal_model_.parameters(), parameters.balance) {
+      balance_(mesh, zonal_model_.parameters(), parameters.balance),
+      pressure_(mesh, balance_.graph(), balance_.group_of_cell(), surface_height_m_,
+                zonal_model_.parameters().gravity_m_s2,
+                zonal_model_.parameters().gas_constant_J_kg_K,
+                zonal_model_.parameters().heat_capacity_J_kg_K) {
     if (slow.atmosphere_layer_count() != surface.atmosphere.layer_count) {
         throw std::invalid_argument("the climate circulation needs an initialised atmosphere");
     }
@@ -157,6 +169,95 @@ ClimateCirculation::ClimateCirculation(const PlanetMesh& mesh, const SlowState& 
         }
         interpolation_[i] = best;
     }
+    // The coarse graph's faces: its CSR entries follow each coarse cell's
+    // edges in order (mesh_transport_graph).
+    const TransportGraph& graph = balance_.graph();
+    faces_.resize(graph.neighbour.size());
+    for (std::size_t a = 0; a < graph.size(); ++a) {
+        const auto cell_edges = coarse.cell_edges(CellId{static_cast<CellId::value_type>(a)});
+        if (cell_edges.size() != graph.offset[a + 1U] - graph.offset[a]) {
+            throw std::logic_error("the coarse graph does not follow the coarse mesh's edges");
+        }
+        for (std::size_t q = 0; q < cell_edges.size(); ++q) {
+            const std::size_t k = graph.offset[a] + q;
+            const std::size_t e = cell_edges[q].edge.to_index();
+            if (cell_edges[q].neighbor.to_index() != graph.neighbour[k]) {
+                throw std::logic_error("the coarse graph does not follow the coarse mesh's edges");
+            }
+            faces_[k].edge = e;
+            faces_[k].sign = coarse.edge(edge_id(e)).first_cell.to_index() == a ? 1.0 : -1.0;
+            faces_[k].latitude_deg = latitude_rad(grid.edges()[e].midpoint_unit) * 180.0 /
+                                     std::numbers::pi_v<double>;
+        }
+    }
+    const double g = zonal_model_.parameters().gravity_m_s2;
+    transport_.transport.layers = zonal_model_.parameters().layer_count;
+    transport_.surface_geopotential_m2_s2.resize(mesh.cell_count());
+    for (std::size_t i = 0; i < mesh.cell_count(); ++i) {
+        transport_.surface_geopotential_m2_s2[i] = g * dynamics_height_m_[i];
+    }
+}
+
+void ClimateCirculation::write_balanced_pressure(PlanetState& state, std::size_t worker_count) {
+    const auto& circulation = state.circulation();
+    if (!circulation.available()) {
+        throw std::logic_error("no balanced surface pressure to write");
+    }
+    const auto start = std::chrono::steady_clock::now();
+    const auto result = pressure_.apply(state.slow(), circulation.balanced_surface_pressure_Pa,
+                                        worker_count);
+    diagnostics_.pressure_s +=
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    ++diagnostics_.pressure_writes;
+    diagnostics_.last_pressure = result;
+    diagnostics_.worst_pressure_energy_ratio =
+        std::max(diagnostics_.worst_pressure_energy_ratio,
+                 std::abs(result.energy_change_J) / result.energy_J);
+}
+
+void ClimateCirculation::write_transport(const ZonalCirculationSolution& zonal,
+                                         const BalancedCirculationResult& azonal) {
+    const TransportGraph& graph = balance_.graph();
+    const PlanetMesh& coarse = balance_.coarse_mesh();
+    const auto& p = zonal_model_.parameters();
+    const std::size_t n = p.layer_count;
+    const std::size_t entries = graph.neighbour.size();
+    const std::size_t edges = coarse.edge_count();
+    // D̄: the layers' mean of the zonal model's D_k at each boundary.
+    std::vector<double> diffusivity(zonal.bands - 1U, 0.0);
+    for (std::size_t b = 0; b + 1U < zonal.bands; ++b) {
+        for (std::size_t k = 0; k < n; ++k) {
+            diffusivity[b] += zonal.at_boundary(zonal.heat_diffusivity_m2_s, k, b) /
+                              static_cast<double>(n);
+        }
+    }
+    auto& out = transport_.transport;
+    out.conductance_W_K.resize(entries);
+    out.outflow_kg_s.resize(n * entries);
+    for (std::size_t a = 0; a < graph.size(); ++a) {
+        for (std::size_t k = graph.offset[a]; k < graph.offset[a + 1U]; ++k) {
+            const Face& face = faces_[k];
+            const std::size_t b = graph.neighbour[k];
+            const double column_mass =
+                0.5 * (azonal.surface_pressure_Pa[a] + azonal.surface_pressure_Pa[b]) /
+                p.gravity_m_s2;
+            const double d = std::max(
+                0.0, interpolate_latitude(zonal.boundary_latitude_deg, diffusivity,
+                                          face.latitude_deg));
+            out.conductance_W_K[k] = p.heat_capacity_J_kg_K * column_mass * d * graph.weight[k];
+            // The overturning only (ADR-0011 §17.6): the azonal balance has no
+            // thermodynamic equation, so its divergent flow is not bounded by
+            // any heating and carries no heat.
+            const double length = coarse.edge(edge_id(face.edge)).length_m;
+            for (std::size_t l = 0; l < n; ++l) {
+                const std::size_t at = l * edges + face.edge;
+                out.outflow_kg_s[l * entries + k] =
+                    face.sign * (azonal.mass_flux_kg_m_s[at] - azonal.azonal_mass_flux_kg_m_s[at]) *
+                    length;
+            }
+        }
+    }
+    transport_.active = true;
 }
 
 void ClimateCirculation::step(const PlanetState& state, const PlanetParameters& planet,
@@ -182,6 +283,7 @@ void ClimateCirculation::step(const PlanetState& state, const PlanetParameters& 
                                      worker_count);
         const auto balanced = clock::now();
         write_outputs(state, zonal, azonal, outputs, worker_count);
+        write_transport(zonal, azonal);
         const auto written = clock::now();
         diagnostics_.heating_s += seconds(start, heated);
         diagnostics_.zonal_s += seconds(heated, solved);
@@ -197,6 +299,7 @@ void ClimateCirculation::step(const PlanetState& state, const PlanetParameters& 
         azonal_ = std::move(azonal);
         diagnostics_.last_solved = true;
     } catch (const std::runtime_error& error) {
+        transport_.active = false;
         ++diagnostics_.failed_months;
         diagnostics_.last_solved = false;
         diagnostics_.last_failure = error.what();
@@ -392,12 +495,22 @@ bool climate_circulation_resolves(const PlanetMesh& mesh,
 void register_climate_circulation(Scheduler& scheduler, PlanetState& state,
                                   const PlanetParameters& planet,
                                   const SurfaceEnergyParameters& surface,
-                                  ClimateCirculation& circulation, std::size_t worker_count) {
+                                  ClimateCirculation& circulation, std::size_t worker_count,
+                                  bool first) {
     scheduler.register_process(
         {"climate_circulation", SimulationMode::climate, 0},
-        [&state, &planet, &surface, &circulation, worker_count](const StepContext& context) {
+        [&state, &planet, &surface, &circulation, worker_count, first](const StepContext& context) {
+            if (first) {
+                // The surface sets it again: the same values.
+                update_substep_mean_insolation(state, planet, *context.substep, worker_count);
+            }
             circulation.step(state, planet, surface, state.forcing().substep_mean_insolation_W_m2,
                              state.circulation(), worker_count);
+            if (first && circulation.diagnostics().last_solved) {
+                // The balanced p_s in the slow state (ADR-0011 §17.3); a failed
+                // month keeps its p_s (§17.4).
+                circulation.write_balanced_pressure(state, worker_count);
+            }
             if (circulation.diagnostics().last_solved) {
                 accumulate_circulation_climatology(state, context.substep->index, worker_count);
             }

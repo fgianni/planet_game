@@ -120,4 +120,70 @@ void diffusion_source(const TransportGraph& graph, double conductance_W_K,
     const TransportResponse& response, const ImplicitTransportSettings& settings = {},
     std::size_t worker_count = 1U);
 
+// The coupled climate transport (ADR-0011 §3.5, §4.7, §17): on a transport
+// graph, the eddies' diffusion of the columns' θ_c with per-face
+// conductances, and the advection of each layer's dry static energy s_k by
+// fixed layer mass fluxes, upwind. Per CSR entry k of node a (graph.neighbour
+// order):
+//   conductance_W_K[k]        G: a gains G (θ_b − θ_a); symmetric;
+//   outflow_kg_s[l · E + k]   F: the mass of layer l leaving a across the
+//                             face (kg/s); antisymmetric.
+// The source at a, H_a = (1/A_a) [Σ_k G (θ_b − θ_a) − Σ_l Σ_k F s_l,up],
+// conserves energy exactly (Σ A H = 0) and vanishes for a uniform s when the
+// column's fluxes have no divergence.
+struct AdvectionDiffusion {
+    std::size_t layers = 0;
+    std::vector<double> conductance_W_K;
+    std::vector<double> outflow_kg_s;
+};
+
+// The columns' response to a source h (W/m²) per node: θ_c and dθ_c/dh, and
+// each layer's s_l (J/kg) and ds_l/dh (layer-major, layers × nodes).
+using AdvectionResponse = std::function<void(
+    const Field2D<double>& source_W_m2, Field2D<double>& mean_K, Field2D<double>& slope_K_m2_W,
+    std::vector<double>& energy_J_kg, std::vector<double>& energy_slope_J_kg_m2_W)>;
+
+struct AdvectionDiffusionResult {
+    Field2D<double> source_W_m2;   // H at the last iterate: the transport to apply
+    Field2D<double> mean_K;        // the θ_c it was computed from
+    std::vector<double> energy_J_kg;   // the s_l it was computed from
+    double consistency_residual_W_m2 = 0.0;   // max |H − h| at the last iterate
+    int newton_iterations = 0;
+    int linear_iterations = 0;     // BiCGSTAB's, summed over Newton iterations
+    double sum_W = 0.0;            // Σ A H: zero to rounding
+    double absolute_sum_W = 0.0;   // Σ A |H|
+    double eddy_absolute_sum_W = 0.0;        // Σ A |H_eddy|
+    double advective_absolute_sum_W = 0.0;   // Σ A |H_advective|
+};
+
+// The source of `transport` for given θ_c and s_l (no response): W/m², and
+// its eddy and advective parts.
+void advection_diffusion_source(const TransportGraph& graph, const AdvectionDiffusion& transport,
+                                const Field2D<double>& mean_K,
+                                const std::vector<double>& energy_J_kg,
+                                Field2D<double>& eddy_W_m2, Field2D<double>& advective_W_m2,
+                                std::size_t worker_count = 1U);
+
+// What the climate circulation hands the surface step each climate month
+// (ADR-0011 §17.1, §17.4), on the agglomerated graph of the step's mesh.
+// Inactive when the month's circulation failed: the step then uses ADR-0009's
+// diffusion with its calibrated D.
+struct CirculationTransport {
+    bool active = false;
+    AdvectionDiffusion transport;
+    // Per fine cell: Φ_s of the layers' dry static energy (the winds'
+    // orography, as the fluxes'; ADR-0011 §13).
+    std::vector<double> surface_geopotential_m2_s2;
+};
+
+// ADR-0011 §17.1: ADR-0009's Newton on h, h = H(θ_c(h), s(h)), with its
+// floors and line search. The Newton system J = I − ∂H/∂h is assembled on
+// the graph's pattern and solved by BiCGSTAB preconditioned with its ILU(0)
+// (settings' CG tolerance and iteration cap apply to it). Bit-identical for
+// any worker count.
+[[nodiscard]] AdvectionDiffusionResult solve_implicit_advection_diffusion(
+    const TransportGraph& graph, const AdvectionDiffusion& transport,
+    const Field2D<double>& source_floor_W_m2, const AdvectionResponse& response,
+    const ImplicitTransportSettings& settings = {}, std::size_t worker_count = 1U);
+
 }  // namespace planetsim

@@ -1,13 +1,16 @@
 #pragma once
 
 #include "sim/core/fields/field.hpp"
+#include "sim/core/scheduler/orbital_calendar.hpp"
 #include "sim/core/serialization/snapshot_file.hpp"
 #include "sim/planet/atmosphere/atmosphere.hpp"
 #include "sim/planet/geology/geology_parameters.hpp"
+#include "sim/planet/surface/heat_transport.hpp"
 #include "sim/planet/surface/surface_materials.hpp"
 
 #include <array>
 #include <cstddef>
+#include <functional>
 
 namespace planetsim {
 
@@ -59,7 +62,8 @@ inline constexpr double bulk_air_exchange_W_m2_K = 10.0;
 // transport 3.82 PW; sea ice 6.1–9.5 million km² in the north and 24.4–25.6
 // in the south. At L5: 288.52 K, 40.9 K, 3.71 PW, sea ice 4.6–9.9 million
 // km² in the north and 22.5–24.0 in the south, relative imbalance −7.5e-3
-// after 150 years (perennial ice still thickening).
+// after 150 years (perennial ice still thickening). Since M6-05 (ADR-0011
+// §17.4) D is only the climate circulation's fallback, with the coupled τ₀.
 //
 // Earlier fits of the grey layer (ADR-0007 §3.2 C), retired at M5:
 // (g, D) = (0.4965, 0.6400) with sea ice (2026-10-01, task M4-04), and
@@ -143,6 +147,12 @@ struct SurfaceEnergyDiagnostics {
     double transport_consistency_W_m2 = 0.0;  // max |H − h| of the implicit solve
     int transport_newton_iterations = 0;
     int transport_cg_iterations = 0;
+    // The coupled transport (ADR-0011 §17.1): whether the circulation carried
+    // the heat this step, and its eddy and advective parts (Σ A |H|).
+    bool transport_coupled = false;
+    double transport_eddy_absolute_W = 0.0;
+    double transport_advective_absolute_W = 0.0;
+    double transport_solve_s = 0.0;   // wall-clock of the transport solve, records only
     // The atmosphere (ADR-0010 §4.4), zero without one. emitted_W is then the
     // outgoing longwave at the top, storage_change_J and stored_energy_J
     // include the layers, and transport_W is the heat the columns received.
@@ -198,7 +208,8 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                                              const SurfaceEnergyParameters& surface,
                                              const SurfaceFractions& fractions,
                                              const Field2D<float>& insolation_W_m2, double dt_s,
-                                             std::size_t worker_count = 1U);
+                                             std::size_t worker_count = 1U,
+                                             const CirculationTransport* circulation = nullptr);
 
 // Registers the surface as a climate-mode process (sub-step mean forcing,
 // ADR-0006 §4.3) and a reference-mode process (instantaneous forcing at the
@@ -211,7 +222,8 @@ void register_surface_energy(Scheduler& scheduler, PlanetState& state,
                              const SurfaceEnergyParameters& surface,
                              const SurfaceFractions& fractions, std::size_t worker_count = 1U,
                              SurfaceEnergyDiagnostics* last = nullptr,
-                             bool reference_diffusion = true);
+                             bool reference_diffusion = true,
+                             const CirculationTransport* circulation = nullptr);
 
 // Annual summary of a run of climate sub-steps, length-weighted.
 struct AnnualSurfaceSummary {
@@ -284,14 +296,21 @@ struct AnnualSurfaceSummary {
     }
 };
 
+// Called before each spin-up sub-step, after its insolation is set: returns
+// the circulation's transport for the step, or null (ADR-0011 §17).
+using SpinUpCirculation =
+    std::function<const CirculationTransport*(PlanetState&, const ClimateSubstep&)>;
+
 // Spin-up (ADR-0007 §4.5, ADR-0006 §4.2): runs `years` orbital years of
 // climate sub-steps outside any scenario run, without touching a clock, and
-// returns the summary of the last year.
+// returns the summary of the last year. With `circulation`, each step first
+// runs it (a coupled spin-up, task M6-05).
 AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
                                             const PlanetParameters& parameters,
                                             const SurfaceEnergyParameters& surface,
                                             const SurfaceFractions& fractions, int years,
-                                            std::size_t worker_count = 1U);
+                                            std::size_t worker_count = 1U,
+                                            const SpinUpCirculation& circulation = {});
 
 
 // The atmosphere's diabatic heating at the slow state, for the climate

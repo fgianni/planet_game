@@ -4,7 +4,7 @@ Version: 0.8 (reconciled with design v1.3 and accepted ADRs 0001--0011 in
 `docs/decisions/`)\
 Purpose: implementation contract for Codex / Claude Code\
 Primary target: PC/Linux, C++20 + Godot 4\
-Current phase: P0 --- Living Planet (M0 through M5 complete, M6 in progress)
+Current phase: P0 --- Living Planet (M0 through M6 complete)
 
 Design document: `docs/planetary_civilization_simulator_design_v1_4.docx`. Design v1.4 adds
 section 46 (systems architecture) and changes nothing earlier; this
@@ -2141,11 +2141,12 @@ question is cheap there and expensive in C++:
 
 ## 26. Current implementation status and outstanding migration tasks
 
-Status as of this revision (2026-10-04): M0 through M5 complete; M6 in
-progress, with tasks M6-01 (C-grid geometry and operators), M6-02
-(shallow-water core) and M6-03 (primitive equations, winds in reference
-mode) complete; climate mode has no winds yet. Task-level status is kept in
-`docs/tasks/README.md`, which takes precedence over the history below.
+Status (2026-10-08): M0 through M6 complete. Climate mode's balanced
+circulation carries the heat (ADR-0011 §17); the azonal flow carries none,
+τ₀ = 1.442 gives 288 K with a 52 K equator-to-pole difference until M7 and
+M11 add latent and ocean transport, and the L6 250-year gate is 750 s
+(ADR-0001 §11). Task-level status is kept in `docs/tasks/README.md`, which
+takes precedence over the history below.
 
 Status at v0.4 (2026-09-29): M0 through M3 complete; the ADR
 migration (integer tick clock, dual mesh, field registry, keyed RNG, aligned SoA fields,

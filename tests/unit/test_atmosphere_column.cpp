@@ -194,6 +194,52 @@ void check_source_response(planetsim::test::Context& test) {
         PLANETSIM_EXPECT(test, std::abs(result.theta_slope_K_m2_W - finite) <=
                                    1e-6 * std::abs(finite));
         PLANETSIM_EXPECT(test, result.theta_slope_K_m2_W > 0.0);
+        // Each layer's slope too (ADR-0011 §17.1), and the dry static
+        // energy's through layer_dry_static_energy.
+        std::vector<double> slope(result.temperature_slope_K_m2_W.begin(),
+                                  result.temperature_slope_K_m2_W.begin() + layers);
+        std::vector<double> energy_up(layers);
+        std::vector<double> energy_down(layers);
+        std::vector<double> energy_slope(layers);
+        planetsim::layer_dry_static_energy(9'000.0, plus, energy_up);
+        planetsim::layer_dry_static_energy(9'000.0, minus, energy_down);
+        planetsim::layer_dry_static_energy(0.0, slope, energy_slope);
+        for (std::size_t k = 0; k < layers; ++k) {
+            const double layer_finite = (plus[k] - minus[k]) / 2e-3;
+            PLANETSIM_EXPECT(test, std::abs(slope[k] - layer_finite) <=
+                                       1e-6 * std::abs(layer_finite) + 1e-12);
+            const double energy_finite = (energy_up[k] - energy_down[k]) / 2e-3;
+            PLANETSIM_EXPECT(test, std::abs(energy_slope[k] - energy_finite) <=
+                                       1e-6 * std::abs(energy_finite) + 1e-9);
+        }
+    }
+}
+
+// The dry static energy of the layers, s = c_p T + Φ: the vertical
+// discretisation's energy identity, mean_k Φ_k = Φ_s + R mean_k T_k (so
+// Σ (c_v T + Φ) m = Σ c_p T m + Φ_s M), holds to rounding for any column,
+// and Φ grows upward.
+void check_dry_static_energy(planetsim::test::Context& test) {
+    const double cp = planetsim::dry_air_heat_capacity_J_kg_K;
+    const double gas = planetsim::dry_air_gas_constant_J_kg_K;
+    for (const std::size_t layers : {1U, 3U, 5U}) {
+        std::vector<double> temperature(layers);
+        for (std::size_t k = 0; k < layers; ++k) {
+            temperature[k] = 290.0 - 17.0 * static_cast<double>(k) + 3.0 * std::sin(1.0 + static_cast<double>(k));
+        }
+        std::vector<double> energy(layers);
+        planetsim::layer_dry_static_energy(1'000.0, temperature, energy);
+        double mean_phi = 0.0;
+        double mean_t = 0.0;
+        double previous = 1'000.0;
+        for (std::size_t k = 0; k < layers; ++k) {
+            const double phi = energy[k] - cp * temperature[k];
+            PLANETSIM_EXPECT(test, phi > previous);
+            previous = phi;
+            mean_phi += phi / static_cast<double>(layers);
+            mean_t += temperature[k] / static_cast<double>(layers);
+        }
+        PLANETSIM_EXPECT_NEAR(test, mean_phi, 1'000.0 + gas * mean_t, 1e-9 * mean_phi);
     }
 }
 
@@ -205,5 +251,6 @@ int main() {
     check_black_ladder(test);
     check_convective_adjustment(test);
     check_source_response(test);
+    check_dry_static_energy(test);
     return test.result();
 }

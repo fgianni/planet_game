@@ -25,6 +25,8 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [M6-01](M6-01-c-grid-geometry-and-operators.md) | C-grid geometry and vector operators (ADR-0011 §4.2, V1, V2) | Complete |
 | [M6-02](M6-02-shallow-water-core.md) | Shallow-water core, Williamson tests 2 and 5 (ADR-0011 §4.3, V3; decides §12) | Complete |
 | [M6-03](M6-03-primitive-equations.md) | Primitive equations, Held–Suarez, the winds in reference mode (ADR-0011 §4.3, §13, V4–V6) | Complete |
+| [M6-04](M6-04-balanced-circulation.md) | Climate-mode balanced circulation: zonal model, azonal balance, derived outputs (ADR-0011 §4.4–4.6, §14–§16, V8, V9) | Complete |
+| [M6-05](M6-05-transport-refit-and-close.md) | Transport by the circulation, the balanced p_s in the slow state, refit and close (ADR-0011 §4.7–4.8, §17, V7, V10, V12, V13) | Complete |
 | [R1-01](R1-01-presentation-library-and-channels.md) | Presentation library and semantic channels (ADR-0018; rendering track, parallel to M6) | Complete |
 
 Completed tasks are records: they keep the specification and design versions

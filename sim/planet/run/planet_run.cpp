@@ -158,7 +158,7 @@ SimulationTick orbital_year_begin_tick(std::int64_t year, const PlanetParameters
 }
 
 PlanetRun::PlanetRun(const Scenario& scenario, std::size_t worker_count,
-                     bool climate_circulation)
+                     ClimateCirculationUse circulation)
     : scenario_(validated(scenario)),
       worker_count_(std::max<std::size_t>(1U, worker_count)),
       base_parameters_(scenario_parameters(scenario_)),
@@ -172,31 +172,55 @@ PlanetRun::PlanetRun(const Scenario& scenario, std::size_t worker_count,
     fractions_ = compute_surface_fractions(*mesh_, state_.slow().hypsometry_m,
                                            state_.slow().sea_level_m, worker_count_);
     initialise_climate(*mesh_, state_.slow(), parameters_, surface_, worker_count_);
+    const bool winds = surface_.atmosphere.layer_count > 0U;
+    if (winds && circulation != ClimateCirculationUse::none &&
+        climate_circulation_resolves(*mesh_)) {
+        circulation_ = std::make_unique<ClimateCirculation>(*mesh_, state_.slow(), parameters_,
+                                                            surface_, fractions_);
+    }
+    const bool coupled = circulation_ && circulation == ClimateCirculationUse::coupled;
     if (scenario_.spin_up_years > 0) {
+        // A coupled run spins up coupled (ADR-0011 §17): the circulation
+        // carries the heat in every spin-up month as in the run.
+        SpinUpCirculation spin_up_circulation;
+        if (coupled) {
+            spin_up_circulation = [this](PlanetState& at, const ClimateSubstep&) {
+                circulation_->step(at, parameters_, surface_,
+                                   at.forcing().substep_mean_insolation_W_m2, at.circulation(),
+                                   worker_count_);
+                if (circulation_->diagnostics().last_solved) {
+                    circulation_->write_balanced_pressure(at, worker_count_);
+                }
+                return &circulation_->transport();
+            };
+        }
         static_cast<void>(spin_up_surface_energy(state_, parameters_, surface_, fractions_,
-                                                 scenario_.spin_up_years, worker_count_));
+                                                 scenario_.spin_up_years, worker_count_,
+                                                 spin_up_circulation));
     }
 
     scheduler_ = std::make_unique<Scheduler>(clock_, make_orbital_calendar(parameters_),
                                              scenario_.initial_mode);
     // With an atmosphere, reference mode resolves the winds, which replace
     // ADR-0009's diffusion there (ADR-0011 §4.3); climate mode keeps it.
-    const bool winds = surface_.atmosphere.layer_count > 0U;
+    if (coupled) {
+        // First in the climate step, from the state the step starts from
+        // (ADR-0011 §17.2).
+        register_climate_circulation(*scheduler_, state_, parameters_, surface_, *circulation_,
+                                     worker_count_, true);
+    }
     register_surface_energy(*scheduler_, state_, parameters_, surface_, fractions_, worker_count_,
-                            &last_, !winds);
+                            &last_, !winds, coupled ? &circulation_->transport() : nullptr);
     if (winds) {
         dynamics_ = std::make_unique<AtmosphereDynamics>(*mesh_, state_.slow(), parameters_,
                                                          surface_.atmosphere, fractions_,
                                                          AtmosphereDynamicsParameters{},
                                                          worker_count_);
         register_atmosphere_dynamics(*scheduler_, state_, *dynamics_);
-        if (climate_circulation && climate_circulation_resolves(*mesh_)) {
-            circulation_ = std::make_unique<ClimateCirculation>(*mesh_, state_.slow(),
-                                                                parameters_, surface_,
-                                                                fractions_);
-            register_climate_circulation(*scheduler_, state_, parameters_, surface_,
-                                         *circulation_, worker_count_);
-        }
+    }
+    if (circulation_ && !coupled) {
+        register_climate_circulation(*scheduler_, state_, parameters_, surface_, *circulation_,
+                                     worker_count_, false);
     }
 
     manifest_.engine_version = std::string(snapshot_engine_version());
@@ -258,6 +282,7 @@ void PlanetRun::run_until(SimulationTick target_tick,
             break;
         }
         static_cast<void>(scheduler_->step());
+        transport_solve_s_ += last_.transport_solve_s;
         checkpoint_if_due();
         if (snapshot_observer) snapshot_observer(make_state_snapshot(state_, clock_));
     }

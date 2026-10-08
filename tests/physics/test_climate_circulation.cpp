@@ -15,13 +15,13 @@ int main() {
     planetsim::Scenario scenario;
     scenario.subdivision = 3;
     const planetsim::SimulationTick year_end = [&] {
-        const planetsim::PlanetRun probe(scenario, 1U, false);
+        const planetsim::PlanetRun probe(scenario, 1U, planetsim::ClimateCirculationUse::none);
         return planetsim::orbital_year_begin_tick(1, probe.parameters());
     }();
 
-    planetsim::PlanetRun run(scenario, 4U);
-    planetsim::PlanetRun serial(scenario, 1U);
-    planetsim::PlanetRun without(scenario, 4U, false);
+    planetsim::PlanetRun run(scenario, 4U, planetsim::ClimateCirculationUse::diagnostic);
+    planetsim::PlanetRun serial(scenario, 1U, planetsim::ClimateCirculationUse::diagnostic);
+    planetsim::PlanetRun without(scenario, 4U, planetsim::ClimateCirculationUse::none);
     planetsim::StateSnapshot last_frame;
     run.run_until(year_end, [&last_frame](const planetsim::StateSnapshot& frame) { last_frame = frame; });
     serial.run_until(year_end);
@@ -83,8 +83,8 @@ int main() {
     // closed by the balance, westerlies aloft somewhere in mid-latitudes.
     PLANETSIM_EXPECT(test, std::abs(diagnostics.total_torque_N_m) <=
                                0.05 * diagnostics.gross_torque_N_m);
-    // BiCGSTAB stops at 1e-8 here (ClimateCirculationParameters).
-    PLANETSIM_EXPECT(test, diagnostics.relative_column_divergence < 1.0e-6);
+    // BiCGSTAB stops at 1e-6 here (ClimateCirculationParameters).
+    PLANETSIM_EXPECT(test, diagnostics.relative_column_divergence < 1.0e-4);
     double max_top_wind = 0.0;
     const std::size_t top = zonal.layers - 1U;
     for (std::size_t j = 0; j < zonal.bands; ++j) {

@@ -24,6 +24,7 @@ pkg_check_modules(ZSTD REQUIRED IMPORTED_TARGET libzstd)
 
 add_library(PlanetSim STATIC
     sim/core/math/banded_lu.cpp
+    sim/core/math/incomplete_lu.cpp
     sim/core/random/noise.cpp
     sim/core/serialization/crc32c.cpp
     sim/core/serialization/history_store.cpp
@@ -42,6 +43,7 @@ add_library(PlanetSim STATIC
     sim/planet/dynamics/atmosphere_dynamics.cpp
     sim/planet/dynamics/balanced_circulation.cpp
     sim/planet/dynamics/climate_circulation.cpp
+    sim/planet/dynamics/pressure_redistribution.cpp
     sim/planet/dynamics/orography.cpp
     sim/planet/dynamics/primitive_equations.cpp
     sim/planet/dynamics/shallow_water.cpp

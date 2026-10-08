@@ -8,7 +8,7 @@ status, date, consequences, validation plan, and supersession relationships.
 
 | ID | Decision | Status | Accepted |
 |---|---|---|---|
-| 0001 | [Time acceleration, simulation modes, and performance budget](0001-time-acceleration.md) | Accepted (amended 2026-09-28, 2026-09-29) | 2026-09-24 |
+| 0001 | [Time acceleration, simulation modes, and performance budget](0001-time-acceleration.md) | Accepted (amended 2026-09-28, 2026-09-29, 2026-10-08 §11) | 2026-09-24 |
 | 0002 | [Mesh topology, resolution policy, and field layout](0002-mesh-and-field-layout.md) | Accepted (amended 2026-09-28) | 2026-09-25 |
 | 0003 | [Determinism, snapshots, history, and migration](0003-determinism-snapshots-migration.md) | Accepted | 2026-09-25 |
 | 0004 | [Keplerian orbit and coordinate frames](0004-keplerian-orbit-and-coordinate-frames.md) | Accepted | 2026-09-24 |
@@ -18,7 +18,7 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0008 | [Snow, sea ice and the ice–albedo feedback](0008-snow-and-sea-ice.md) | Accepted (amended 2026-10-01, V7 and §10 floes and leads; implementation record §9–9.2) | 2026-09-30 |
 | 0009 | [Diffusive horizontal heat transport before the atmosphere](0009-diffusive-heat-transport.md) | Accepted (amended 2026-09-30, §10–12) | 2026-09-30 |
 | 0010 | [A layered atmosphere: hydrostatic columns, grey longwave and convection](0010-layered-atmosphere.md) | Accepted (amended 2026-10-02, §11) | 2026-10-01 |
-| 0011 | [Winds: a C-grid dynamical core in reference mode and a balanced circulation in climate mode](0011-winds-and-circulation.md) | Accepted (amended 2026-10-02, §12, §13; 2026-10-04, §14, §15, §16) | 2026-10-02 |
+| 0011 | [Winds: a C-grid dynamical core in reference mode and a balanced circulation in climate mode](0011-winds-and-circulation.md) | Accepted (amended 2026-10-02, §12, §13; 2026-10-04, §14, §15, §16; 2026-10-06, §17) | 2026-10-02 |
 | 0018 | [Presentation boundary, semantic channels and style packs](0018-presentation-channels-and-style-packs.md) | Accepted | 2026-10-04 |
 | 0020 | [The planet's read contract: published snapshots, field descriptors, accumulators, regions and the observation interface](0020-planet-read-contract.md) | Proposed | — |
 

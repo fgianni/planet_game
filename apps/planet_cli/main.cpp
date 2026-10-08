@@ -130,6 +130,10 @@ struct ThermalOptions {
     // (replaces the grey layer; --calibrate then fits τ₀).
     std::optional<std::uint32_t> atmosphere_layers;
     std::optional<double> optical_depth;
+    // ADR-0011 §17: spin up with the climate circulation carrying the heat;
+    // --calibrate-gradient then fits c_E instead of D.
+    bool coupled = false;
+    std::optional<double> eddy_generation;   // c_E
     std::size_t worker_count = 0;        // 0: hardware concurrency
 };
 
@@ -148,6 +152,7 @@ struct RunOptions {
     // ADR-0011 V7–V9: the climate circulation's zonal means over the last
     // this many years of the run.
     std::optional<int> circulation_report_years;
+    planetsim::ClimateCirculationUse circulation = planetsim::ClimateCirculationUse::coupled;
 };
 
 constexpr std::uint64_t snapshot_synthetic_seed = 0x9B97'F4A7'C150'0011ULL;
@@ -172,7 +177,7 @@ void print_usage(std::ostream& output) {
               " [--decades N] [--base-interval N] [--workers W] [--out DIRECTORY]\n"
            << "  planet_cli thermal [--subdivision LEVEL] [--seed N] [--preset NAME]"
               " [--years N] [--grey G | --layers N [--optical-depth TAU]]"
-              " [--calibrate KELVIN]"
+              " [--calibrate KELVIN] [--coupled [--eddy-generation C_E]]"
               " [--transport D | --calibrate-gradient KELVIN | --calibrate-transport PW]"
               " [--precipitation KG_M2_S]"
               " [--workers W]\n"
@@ -180,7 +185,8 @@ void print_usage(std::ostream& output) {
               " [--spin-up-years N] [--initial-mode climate|reference]"
               " [--command TICK,TYPE,PAYLOAD]... [--workers W] [--manifest FILE.prun]"
               " [--snapshot FILE.psnap] [--min-years-per-minute R] [--max-seconds S]\n"
-              " [--presentation-record FILE.pframe] [--circulation-report YEARS]\n"
+              " [--presentation-record FILE.pframe] [--circulation-report YEARS]"
+              " [--circulation none|diagnostic|coupled]\n"
            << "    commands: set_mode,climate|reference; set_solar_luminosity_factor,F\n"
            << "  planet_cli replay FILE.prun [--workers W]\n"
            << "  planet_cli channels dump\n"
@@ -375,6 +381,16 @@ void print_usage(std::ostream& output) {
             options.min_years_per_minute = parse_double(value, "years per minute");
         } else if (argument == "--max-seconds") {
             options.max_seconds = parse_double(value, "maximum seconds");
+        } else if (argument == "--circulation") {
+            if (value == "none") {
+                options.circulation = planetsim::ClimateCirculationUse::none;
+            } else if (value == "diagnostic") {
+                options.circulation = planetsim::ClimateCirculationUse::diagnostic;
+            } else if (value == "coupled") {
+                options.circulation = planetsim::ClimateCirculationUse::coupled;
+            } else {
+                throw std::invalid_argument("--circulation must be none, diagnostic or coupled");
+            }
         } else if (argument == "--circulation-report") {
             options.circulation_report_years =
                 static_cast<int>(parse_unsigned(value, "circulation report years"));
@@ -389,6 +405,10 @@ void print_usage(std::ostream& output) {
     ThermalOptions options;
     for (int index = 2; index < argument_count; ++index) {
         const std::string_view argument{arguments[index]};
+        if (argument == "--coupled") {
+            options.coupled = true;
+            continue;
+        }
         if (++index >= argument_count) {
             throw std::invalid_argument(std::string(argument) + " requires a value");
         }
@@ -416,6 +436,8 @@ void print_usage(std::ostream& output) {
                 static_cast<std::uint32_t>(parse_unsigned(value, "atmosphere layer count"));
         } else if (argument == "--optical-depth") {
             options.optical_depth = parse_double(value, "optical depth");
+        } else if (argument == "--eddy-generation") {
+            options.eddy_generation = parse_double(value, "eddy generation");
         } else if (argument == "--calibrate") {
             options.calibrate_K = parse_double(value, "calibration target");
         } else if (argument == "--transport") {
@@ -2502,10 +2524,36 @@ int run_thermal(const ThermalOptions& options) {
     for (std::size_t cell = 0; cell < precipitation.size(); ++cell) {
         precipitation[cell] = static_cast<float>(options.precipitation_kg_m2_s);
     }
+    if (options.coupled && !layered) {
+        throw std::invalid_argument("--coupled needs an atmosphere");
+    }
+    // c_E of the coupled spin-up (ADR-0011 §4.8): fitted by --calibrate-gradient.
+    double eddy_generation =
+        options.eddy_generation.value_or(planetsim::earth_like_eddy_generation_m4_s2_K2);
+    std::size_t failed_months = 0;
     const auto spin_up = [&](const planetsim::SurfaceEnergyParameters& candidate) {
         planetsim::initialise_climate(*mesh, state.slow(), parameters, candidate, worker_count);
-        return planetsim::spin_up_surface_energy(state, parameters, candidate, fractions,
-                                                 options.years, worker_count);
+        if (!options.coupled) {
+            return planetsim::spin_up_surface_energy(state, parameters, candidate, fractions,
+                                                     options.years, worker_count);
+        }
+        planetsim::ClimateCirculationParameters circulation_parameters;
+        circulation_parameters.eddy_generation_m4_s2_K2 = eddy_generation;
+        planetsim::ClimateCirculation circulation(*mesh, state.slow(), parameters, candidate,
+                                                  fractions, circulation_parameters);
+        const auto year = planetsim::spin_up_surface_energy(
+            state, parameters, candidate, fractions, options.years, worker_count,
+            [&](planetsim::PlanetState& at, const planetsim::ClimateSubstep&) {
+                circulation.step(at, parameters, candidate,
+                                 at.forcing().substep_mean_insolation_W_m2, at.circulation(),
+                                 worker_count);
+                if (circulation.diagnostics().last_solved) {
+                    circulation.write_balanced_pressure(at, worker_count);
+                }
+                return &circulation.transport();
+            });
+        failed_months = circulation.diagnostics().failed_months;
+        return year;
     };
 
     std::cout << std::setprecision(9) << "preset=" << planetsim::planet_preset_name(options.preset)
@@ -2559,7 +2607,21 @@ int run_thermal(const ThermalOptions& options) {
         if (options.calibrate_transport_PW) {
             bisect(0.3, 2.5, *options.calibrate_transport_PW, 0.02, transport, peak_PW, "D");
         }
-        if (options.calibrate_gradient_K) {
+        if (options.calibrate_gradient_K && options.coupled) {
+            // c_E, in log10: the P2 difference falls as the eddies strengthen.
+            double low = 11.0;
+            double high = 13.0;
+            for (int iteration = 0; iteration < 40; ++iteration) {
+                eddy_generation = std::pow(10.0, 0.5 * (low + high));
+                const double value = negative_gradient(spin_up(surface));
+                std::cout << "calibrate c_E=" << eddy_generation << " value=" << value << '\n';
+                (value < -*options.calibrate_gradient_K ? low : high) = std::log10(eddy_generation);
+                if (std::abs(value + *options.calibrate_gradient_K) <= 0.05) {
+                    break;
+                }
+            }
+            eddy_generation = std::pow(10.0, 0.5 * (low + high));
+        } else if (options.calibrate_gradient_K) {
             bisect(0.02, 1.5, -*options.calibrate_gradient_K, 0.05, transport,
                    negative_gradient, "D");
         }
@@ -2581,7 +2643,8 @@ int run_thermal(const ThermalOptions& options) {
         std::cout << "calibrated round=" << round << std::setprecision(6)
                   << " g=" << surface.grey_emissivity
                   << " tau=" << surface.atmosphere.longwave_optical_depth
-                  << " D=" << surface.transport_coefficient_W_m2_K << std::setprecision(9)
+                  << " D=" << surface.transport_coefficient_W_m2_K
+                  << " c_E=" << eddy_generation << std::setprecision(9)
                   << " mean_K=" << mean_K(year) << " peak_PW=" << peak_PW(year)
                   << " p2_equator_to_pole_K=" << year.p2_equator_to_pole_K() << '\n';
         if (transport_fits && mean_fits) {
@@ -2603,7 +2666,9 @@ int run_thermal(const ThermalOptions& options) {
               << " land_mean_K=" << year.land_mean_surface_temperature_K
               << " ocean_mean_K=" << year.ocean_mean_surface_temperature_K
               << " absorbed_W=" << year.absorbed_W << " emitted_W=" << year.emitted_W
-              << " relative_imbalance=" << year.relative_imbalance() << '\n'
+              << " relative_imbalance=" << year.relative_imbalance()
+              << " coupled=" << (options.coupled ? 1 : 0) << " c_E=" << eddy_generation
+              << " failed_months=" << failed_months << '\n'
               << "transport peak_poleward_PW=" << peak_PW(year)
               << " equator_to_pole_K=" << year.equator_to_pole_difference_K()
               << " p2_equator_to_pole_K=" << year.p2_equator_to_pole_K() << " northward_PW";
@@ -2817,7 +2882,7 @@ int run_scenario(const RunOptions& options) {
         options.worker_count != 0U ? options.worker_count
                                    : std::max<std::size_t>(1U, std::thread::hardware_concurrency());
     const auto setup_start = std::chrono::steady_clock::now();
-    planetsim::PlanetRun run(options.scenario, worker_count);
+    planetsim::PlanetRun run(options.scenario, worker_count, options.circulation);
     for (const auto& command : options.commands) {
         run.submit(command);
     }
@@ -2871,14 +2936,24 @@ int run_scenario(const RunOptions& options) {
               << "last_step mean_K=" << last.mean_surface_temperature_K
               << " closure_residual_J=" << last.closure_residual_J()
               << " max_newton_residual_W_m2=" << last.max_newton_residual_W_m2 << '\n'
+              << "last_transport coupled=" << (last.transport_coupled ? 1 : 0)
+              << " absolute_W=" << last.transport_absolute_W
+              << " eddy_W=" << last.transport_eddy_absolute_W
+              << " advective_W=" << last.transport_advective_absolute_W
+              << " consistency_W_m2=" << last.transport_consistency_W_m2
+              << " newton=" << last.transport_newton_iterations
+              << " linear=" << last.transport_cg_iterations
+              << " closure_ratio=" << last.closure_residual_J() / last.closure_gate_J() << '\n'
               << "timing workers=" << worker_count << " setup_s=" << setup_s
               << " run_s=" << run_s << " total_s=" << total_s
               << " years_per_minute=" << years_per_minute << '\n';
+    std::cout << "transport solve_s=" << run.transport_solve_s() << '\n';
     if (const auto* circulation = run.circulation()) {
         const auto& d = circulation->diagnostics();
         std::cout << "circulation months=" << d.months << " failed=" << d.failed_months
                   << " heating_s=" << d.heating_s << " zonal_s=" << d.zonal_s
-                  << " balance_s=" << d.balance_s << '\n';
+                  << " balance_s=" << d.balance_s << " pressure_s=" << d.pressure_s
+                  << " pressure_writes=" << d.pressure_writes << '\n';
         if (d.failed_months > 0U) {
             std::cout << "circulation_last_failure: " << d.last_failure << '\n';
         }

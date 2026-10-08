@@ -1,5 +1,6 @@
 #include "sim/planet/dynamics/balanced_circulation.hpp"
 
+#include "sim/core/math/incomplete_lu.hpp"
 #include "sim/core/scheduler/deterministic_executor.hpp"
 #include "sim/planet/coordinates/local_tangent_basis.hpp"
 
@@ -61,93 +62,6 @@ constexpr double pi = std::numbers::pi_v<double>;
     return values[lower] + fraction * (values[upper] - values[lower]);
 }
 
-// ILU(0) of a matrix on a transport graph's pattern (the diagonal and the
-// CSR off-diagonals), in the graph's node order. The balance's operator is
-// non-symmetric (its Coriolis part outweighs the friction away from the
-// equator), which the multigrid on its symmetric part does not see; this
-// factor of the full operator, applied after the V-cycle, does.
-// Sequential, so deterministic.
-class IncompleteLU {
-  public:
-    IncompleteLU(const TransportGraph& graph, const std::vector<double>& diagonal,
-                 const std::vector<double>& off, double diagonal_scale) {
-        const std::size_t nodes = graph.size();
-        start_.assign(nodes + 1U, 0U);
-        for (std::size_t i = 0; i < nodes; ++i) {
-            start_[i + 1U] = start_[i] + 1U + (graph.offset[i + 1U] - graph.offset[i]);
-        }
-        column_.resize(start_[nodes]);
-        value_.resize(start_[nodes]);
-        diagonal_.resize(nodes);
-        std::vector<std::pair<std::size_t, double>> row;
-        for (std::size_t i = 0; i < nodes; ++i) {
-            row.clear();
-            row.emplace_back(i, diagonal[i] * diagonal_scale);
-            for (std::size_t k = graph.offset[i]; k < graph.offset[i + 1U]; ++k) {
-                row.emplace_back(graph.neighbour[k], off[k]);
-            }
-            std::sort(row.begin(), row.end(),
-                      [](const auto& a, const auto& b) { return a.first < b.first; });
-            for (std::size_t q = 0; q < row.size(); ++q) {
-                column_[start_[i] + q] = row[q].first;
-                value_[start_[i] + q] = row[q].second;
-                if (row[q].first == i) {
-                    diagonal_[i] = start_[i] + q;
-                }
-            }
-        }
-        // IKJ elimination restricted to the pattern.
-        std::vector<std::size_t> position(nodes, nodes == 0U ? 0U : start_[nodes]);
-        const std::size_t absent = start_[nodes];
-        for (std::size_t i = 0; i < nodes; ++i) {
-            for (std::size_t q = start_[i]; q < start_[i + 1U]; ++q) {
-                position[column_[q]] = q;
-            }
-            for (std::size_t q = start_[i]; q < diagonal_[i]; ++q) {
-                const std::size_t j = column_[q];
-                const double pivot = value_[diagonal_[j]];
-                if (pivot == 0.0) {
-                    throw std::runtime_error("balanced surface pressure: zero ILU pivot");
-                }
-                value_[q] /= pivot;
-                for (std::size_t t = diagonal_[j] + 1U; t < start_[j + 1U]; ++t) {
-                    const std::size_t at = position[column_[t]];
-                    if (at != absent) {
-                        value_[at] -= value_[q] * value_[t];
-                    }
-                }
-            }
-            for (std::size_t q = start_[i]; q < start_[i + 1U]; ++q) {
-                position[column_[q]] = absent;
-            }
-        }
-    }
-
-    // x ← (LU)⁻¹ x.
-    void solve(std::vector<double>& x) const {
-        const std::size_t nodes = diagonal_.size();
-        for (std::size_t i = 0; i < nodes; ++i) {
-            double sum = x[i];
-            for (std::size_t q = start_[i]; q < diagonal_[i]; ++q) {
-                sum -= value_[q] * x[column_[q]];
-            }
-            x[i] = sum;
-        }
-        for (std::size_t i = nodes; i-- > 0U;) {
-            double sum = x[i];
-            for (std::size_t q = diagonal_[i] + 1U; q < start_[i + 1U]; ++q) {
-                sum -= value_[q] * x[column_[q]];
-            }
-            x[i] = sum / value_[diagonal_[i]];
-        }
-    }
-
-  private:
-    std::vector<std::size_t> start_;
-    std::vector<std::size_t> column_;
-    std::vector<double> value_;
-    std::vector<std::size_t> diagonal_;
-};
 
 }  // namespace
 
@@ -438,7 +352,7 @@ BalancedCirculationResult BalancedCirculation::solve(const SlowState& slow,
     }
     GraphMultigrid multigrid(graph);
     multigrid.set_matrix(sym_diagonal, sym_off);
-    const IncompleteLU incomplete(graph, diagonal, off, 1.0 + 1.0e-8);
+    const IncompleteLU incomplete(graph.offset, graph.neighbour, diagonal, off, 1.0 + 1.0e-8);
     std::vector<double> correction(groups, 0.0);
     // The preconditioner: the V-cycle, then ILU(0) of the full operator on
     // what the V-cycle leaves.

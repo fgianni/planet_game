@@ -152,6 +152,9 @@ struct ColumnSolveResult {
     bool adjusted = false;          // convective adjustment changed the column
     double theta_K = 0.0;           // mean θ_c = (1/N) Σ T_k / π_k after the step
     double theta_slope_K_m2_W = 0.0;   // dθ_c/dh of the implicit step
+    // dT_k/dh of the implicit step, through the convective pools: the
+    // layers' response that the coupled transport needs (ADR-0011 §17.1).
+    LayerArray temperature_slope_K_m2_W{};
 };
 
 // Convective adjustment (ADR-0010 §3.3 B): adjacent layers whose θ_c
@@ -527,6 +530,7 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
         slope += response[k] / column.exner[k];
     }
     result.theta_slope_K_m2_W = slope / static_cast<double>(n);
+    result.temperature_slope_K_m2_W = response;
     double theta = 0.0;
     for (std::size_t k = 0; k < n; ++k) {
         theta += temperature_K[k] / column.exner[k];

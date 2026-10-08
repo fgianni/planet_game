@@ -5,6 +5,7 @@
 - **Accepted:** 2026-09-24
 - **Amended:** 2026-09-28 — §8 milestone mapping aligned with `docs/DEVELOPMENT_SPEC_v0_2.md` §13
 - **Amended:** 2026-09-29 — §4.2 climate-mode step fixed by [ADR-0006](0006-seasonal-climate-steps.md): twelve orbital sub-steps per year, no adaptive coarsening
+- **Amended:** 2026-10-08 — §11: the L6 250-year gate raised to 750 s for the coupled climate circulation (task M6-05)
 - **Context document:** Planetary Civilization Simulator — Design Record v0.4, §28
 - **Supersedes / superseded by:** —
 - **Related:** ADR-0002 (mesh topology, resolution policy, field layout), ADR-0003 (determinism scope, snapshot schema, migration)
@@ -209,3 +210,25 @@ therefore the budget itself, with a margin of two orders of magnitude.
 V4's regression comparison (> 20 %) needs a stable runner baseline and is
 deferred to the first milestone whose cost approaches the budget; the
 measured rates above are its first data points.
+
+## 11. Amendment: the L6 gate with the coupled circulation (accepted 2026-10-08)
+
+**Finding (task M6-05).** With the climate circulation carrying the heat
+(ADR-0011 §17), the 250-year runs on 4 workers (clang Release, an idle
+machine) measure:
+
+| | Total | Transport solve | Balance | Zonal solve | p_s redistribution | Heating |
+|---|---|---|---|---|---|---|
+| L5 | 220 s (gate 240 s) | 83 s | 25 s | 68 s | 7 s | 7 s |
+| L6 | 678 s (gate 600 s) | 301 s | 125 s | 82 s | 27 s | 24 s |
+
+The cuts that change no result were made first (task M6-05 step F): the
+parallel zonal Jacobian, ILU-augmented preconditioners (block ILU, in
+parallel, for the transport), looser solver tolerances where energy closes
+regardless, and the pressure redistribution on the coarse groups. L6's
+largest cost is the coupled Newton's passes over every fine column.
+
+**Change (decided with the user).** The L6 gate becomes **≤ 750 s**; its
+5 years-per-minute minimum stays (L6 runs at 22). The L5 gate is unchanged.
+A follow-up task brings L6 back under 600 s; candidates are a cheaper
+coupled Newton (fewer column passes) and the balance's iterations at L6.

@@ -19,6 +19,7 @@
 #include "sim/planet/terrain/surface_fractions.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -484,7 +485,8 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                                              const SurfaceEnergyParameters& surface,
                                              const SurfaceFractions& fractions,
                                              const Field2D<float>& insolation_W_m2, double dt_s,
-                                             std::size_t worker_count) {
+                                             std::size_t worker_count,
+                                             const CirculationTransport* circulation) {
     const PlanetMesh& mesh = state.mesh();
     const std::size_t cells = mesh.cell_count();
     const Field2D<float>& precipitation = state.forcing().prescribed_precipitation_kg_m2_s;
@@ -611,7 +613,12 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     // tile-weighted sum is Σ A H exactly (task M4-02 §1.2).
     Field2D<double> transport(cells, 0.0);
     ImplicitTransportResult solve;
-    if (coefficient > 0.0) {
+    AdvectionDiffusionResult coupled_solve;
+    // The circulation carries the heat when it solved this month (ADR-0011
+    // §17.1); otherwise ADR-0009's diffusion with D (§17.4).
+    const bool coupled = circulation != nullptr && circulation->active && layers > 0U;
+    double transport_seconds = 0.0;
+    if (coefficient > 0.0 || coupled) {
         const double conductance = coefficient * mesh.radius_m() * mesh.radius_m();
         const std::vector<std::size_t>* group_map = nullptr;
         const TransportGraph& graph = agglomerated_transport_graph(mesh, group_map);
@@ -721,9 +728,104 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             auto& group_floor = floor[group_of_cell[cell]];
             group_floor = std::max(group_floor, cell_floor);
         }
-        solve = solve_implicit_transport(graph, conductance, floor, response, {}, worker_count);
-        for (std::size_t cell = 0; cell < cells; ++cell) {
-            transport[cell] = solve.source_W_m2[group_of_cell[cell]];
+        if (coupled) {
+            // The coupled response: θ_c as above, and each group's layer dry
+            // static energy, mass-weighted over its cells, with its slope.
+            const auto& phi_s = circulation->surface_geopotential_m2_s2;
+            if (phi_s.size() != cells ||
+                circulation->transport.conductance_W_K.size() != graph.neighbour.size() ||
+                circulation->transport.layers != layers) {
+                throw std::invalid_argument("the circulation's transport does not match the step");
+            }
+            std::vector<double> cell_energy(layers * cells, 0.0);
+            std::vector<double> cell_energy_slope(layers * cells, 0.0);
+            const AdvectionResponse coupled_response =
+                [&](const Field2D<double>& source, Field2D<double>& mean, Field2D<double>& slope,
+                    std::vector<double>& energy, std::vector<double>& energy_slope) {
+                    mean = Field2D<double>(groups, 0.0);
+                    slope = Field2D<double>(groups, 0.0);
+                    energy.assign(layers * groups, 0.0);
+                    energy_slope.assign(layers * groups, 0.0);
+                    for_each_deterministic_block(
+                        mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+                            LayerArray s{};
+                            LayerArray ds{};
+                            for (std::size_t cell = block.begin; cell < block.end; ++cell) {
+                                CellSurface cell_surface;
+                                const auto column =
+                                    solve_column(cell, source[group_of_cell[cell]], cell_surface);
+                                cell_air[cell] = column.theta_K;
+                                cell_slope[cell] = column.theta_slope_K_m2_W;
+                                layer_dry_static_energy(
+                                    phi_s[cell],
+                                    std::span<const double>(layers_guess.data() + cell * layers,
+                                                            layers),
+                                    std::span<double>(s.data(), layers));
+                                layer_dry_static_energy(
+                                    0.0,
+                                    std::span<const double>(
+                                        column.temperature_slope_K_m2_W.data(), layers),
+                                    std::span<double>(ds.data(), layers));
+                                for (std::size_t l = 0; l < layers; ++l) {
+                                    cell_energy[l * cells + cell] = s[l];
+                                    cell_energy_slope[l * cells + cell] = ds[l];
+                                }
+                            }
+                        });
+                    for_each_deterministic_block(
+                        std::span<const CellBlock>(graph.blocks), worker_count,
+                        [&](std::size_t, const CellBlock& block) {
+                            for (std::size_t group = block.begin; group < block.end; ++group) {
+                                double air = 0.0;
+                                double air_slope = 0.0;
+                                double column_mass = 0.0;
+                                for (std::size_t k = member_offset[group];
+                                     k < member_offset[group + 1U]; ++k) {
+                                    const std::size_t cell = members[k];
+                                    const double area = mesh.cells()[cell].area_m2;
+                                    air += area * cell_air[cell];
+                                    air_slope += area * cell_slope[cell];
+                                    column_mass += area * slow.atmosphere_surface_pressure_Pa[cell];
+                                }
+                                mean[group] = air / graph.area_m2[group];
+                                slope[group] = air_slope / graph.area_m2[group];
+                                for (std::size_t l = 0; l < layers; ++l) {
+                                    double sum = 0.0;
+                                    double sum_slope = 0.0;
+                                    for (std::size_t k = member_offset[group];
+                                         k < member_offset[group + 1U]; ++k) {
+                                        const std::size_t cell = members[k];
+                                        const double weight =
+                                            mesh.cells()[cell].area_m2 *
+                                            slow.atmosphere_surface_pressure_Pa[cell];
+                                        sum += weight * cell_energy[l * cells + cell];
+                                        sum_slope += weight * cell_energy_slope[l * cells + cell];
+                                    }
+                                    energy[l * groups + group] = sum / column_mass;
+                                    energy_slope[l * groups + group] = sum_slope / column_mass;
+                                }
+                            }
+                        });
+                };
+            const auto solve_start = std::chrono::steady_clock::now();
+            coupled_solve = solve_implicit_advection_diffusion(
+                graph, circulation->transport, floor, coupled_response, {}, worker_count);
+            transport_seconds = std::chrono::duration<double>(
+                                    std::chrono::steady_clock::now() - solve_start)
+                                    .count();
+            for (std::size_t cell = 0; cell < cells; ++cell) {
+                transport[cell] = coupled_solve.source_W_m2[group_of_cell[cell]];
+            }
+        } else {
+            const auto solve_start = std::chrono::steady_clock::now();
+            solve = solve_implicit_transport(graph, conductance, floor, response, {},
+                                             worker_count);
+            transport_seconds = std::chrono::duration<double>(
+                                    std::chrono::steady_clock::now() - solve_start)
+                                    .count();
+            for (std::size_t cell = 0; cell < cells; ++cell) {
+                transport[cell] = solve.source_W_m2[group_of_cell[cell]];
+            }
         }
     }
 
@@ -878,12 +980,24 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 ? total.band_temperature_K_m2[band] / total.band_area_m2[band]
                 : 0.0;
     }
-    diagnostics.transport_cell_sum_W = solve.sum_W;
-    diagnostics.transport_absolute_W = solve.absolute_sum_W;
-    diagnostics.transport_dissipation_W_K = solve.dissipation_W_K;
-    diagnostics.transport_consistency_W_m2 = solve.consistency_residual_W_m2;
-    diagnostics.transport_newton_iterations = solve.newton_iterations;
-    diagnostics.transport_cg_iterations = solve.cg_iterations;
+    diagnostics.transport_solve_s = transport_seconds;
+    if (coupled) {
+        diagnostics.transport_coupled = true;
+        diagnostics.transport_cell_sum_W = coupled_solve.sum_W;
+        diagnostics.transport_absolute_W = coupled_solve.absolute_sum_W;
+        diagnostics.transport_consistency_W_m2 = coupled_solve.consistency_residual_W_m2;
+        diagnostics.transport_newton_iterations = coupled_solve.newton_iterations;
+        diagnostics.transport_cg_iterations = coupled_solve.linear_iterations;
+        diagnostics.transport_eddy_absolute_W = coupled_solve.eddy_absolute_sum_W;
+        diagnostics.transport_advective_absolute_W = coupled_solve.advective_absolute_sum_W;
+    } else {
+        diagnostics.transport_cell_sum_W = solve.sum_W;
+        diagnostics.transport_absolute_W = solve.absolute_sum_W;
+        diagnostics.transport_dissipation_W_K = solve.dissipation_W_K;
+        diagnostics.transport_consistency_W_m2 = solve.consistency_residual_W_m2;
+        diagnostics.transport_newton_iterations = solve.newton_iterations;
+        diagnostics.transport_cg_iterations = solve.cg_iterations;
+    }
     if (coefficient > 0.0) {
         // Heat delivered to each 10° band, then summed north of each
         // boundary: the northward transport across it.
@@ -952,19 +1066,21 @@ void register_surface_energy(Scheduler& scheduler, PlanetState& state,
                              const PlanetParameters& parameters,
                              const SurfaceEnergyParameters& surface,
                              const SurfaceFractions& fractions, std::size_t worker_count,
-                             SurfaceEnergyDiagnostics* last, bool reference_diffusion) {
+                             SurfaceEnergyDiagnostics* last, bool reference_diffusion,
+                             const CirculationTransport* circulation) {
     SurfaceEnergyParameters reference_surface = surface;
     if (!reference_diffusion) {
         reference_surface.transport_coefficient_W_m2_K = 0.0;
     }
     scheduler.register_process(
         {"surface_energy_climate", SimulationMode::climate, 0},
-        [&state, &parameters, surface, &fractions, worker_count, last](const StepContext& context) {
+        [&state, &parameters, surface, &fractions, worker_count, last,
+         circulation](const StepContext& context) {
             update_substep_mean_insolation(state, parameters, *context.substep, worker_count);
             const auto diagnostics = step_surface_energy(
                 state, parameters, surface, fractions,
                 state.forcing().substep_mean_insolation_W_m2,
-                simulation_time_s(context.length_ticks()), worker_count);
+                simulation_time_s(context.length_ticks()), worker_count, circulation);
             accumulate_climatology(state, context.substep->index, worker_count);
             if (last != nullptr) {
                 *last = diagnostics;
@@ -990,7 +1106,8 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
                                             const PlanetParameters& parameters,
                                             const SurfaceEnergyParameters& surface,
                                             const SurfaceFractions& fractions, int years,
-                                            std::size_t worker_count) {
+                                            std::size_t worker_count,
+                                            const SpinUpCirculation& circulation) {
     if (years <= 0) {
         throw std::invalid_argument("spin-up needs at least one year");
     }
@@ -1002,10 +1119,12 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
             const ClimateSubstep substep =
                 climate_substep(year * climate_substeps_per_year + month, parameters);
             update_substep_mean_insolation(state, parameters, substep, worker_count);
+            const CirculationTransport* transport =
+                circulation ? circulation(state, substep) : nullptr;
             const double dt_s = simulation_time_s(substep.length_ticks());
             const auto step = step_surface_energy(state, parameters, surface, fractions,
                                                   state.forcing().substep_mean_insolation_W_m2,
-                                                  dt_s, worker_count);
+                                                  dt_s, worker_count, transport);
             summary.absorbed_W += dt_s * step.absorbed_W;
             summary.emitted_W += dt_s * step.emitted_W;
             summary.mean_surface_temperature_K += dt_s * step.mean_surface_temperature_K;

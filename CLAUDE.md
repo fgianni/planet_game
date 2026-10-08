@@ -21,15 +21,15 @@ The specification defines the architecture, physical design, P0 roadmap,
 validation strategy, and current implementation task for the Planetary
 Civilization Simulator.
 
-Most recently completed milestone: **P0 / M5 --- Atmosphere and pressure**
-(ADR-0010, amended §11; ADR-0008 §10): M5-01 (the ordered snapshot
-migration chain), M5-02 (atmosphere state, hydrostatics, PSNAP schema 5),
-M5-03 (column radiation and convection, sea-ice floes and leads) and M5-04
-(`docs/tasks/M5-04-calibration-and-close.md`: refit, the Earth-like preset
-on three layers, plateau experiment, performance gates).
-M0--M4 (mesh, orbit, terrain, drainage, scheduler and calendar, surface
+Most recently completed milestone: **P0 / M6 --- Wind and Coriolis**
+(ADR-0011, amended §12--§17; ADR-0001 §11): M6-01 (C-grid operators),
+M6-02 (shallow-water core), M6-03 (primitive equations, the winds in
+reference mode), M6-04 (the climate-mode balanced circulation) and M6-05
+(`docs/tasks/M6-05-transport-refit-and-close.md`: the circulation carries
+the heat, the balanced p_s in the slow state, τ₀ refitted, the gates).
+M0--M5 (mesh, orbit, terrain, drainage, scheduler and calendar, surface
 energy columns, replay, snow and sea ice, diffusive transport, snapshot
-history) are complete.
+history, the layered atmosphere) are complete.
 
 Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI
@@ -37,18 +37,16 @@ units; - deterministic and testable implementation; - physical
 state/fluxes rather than scripted climate modifiers; - production code
 and tests together; - do not proceed to M7 unless explicitly requested.
 
-Current milestone: **P0 / M6 --- Wind and Coriolis** (ADR-0011, accepted
-2026-10-02; amended §12--§16). M6-01 (C-grid operators), M6-02
-(shallow-water core), M6-03 (primitive equations and the winds in
-reference mode) and M6-04 (climate-mode balanced circulation, derived
-outputs only, `docs/tasks/M6-04-balanced-circulation.md`) are complete;
-next is M6-05 (transport by the circulation, the balanced p_s written to
-the slow state, refit and close), starting from M6-04's open points.
+Next milestone: **P0 / M7 --- Humidity and evaporation**, only when
+explicitly requested. Open follow-up from M6: bring the L6 250-year run
+back under 600 s (its gate is 750 s since ADR-0001 §11); the 42 K
+equator-to-pole target waits for M7's latent and M11's ocean transport
+(ADR-0011 §17.7).
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is
 [`docs/tasks/R1-01-presentation-library-and-channels.md`](docs/tasks/R1-01-presentation-library-and-channels.md),
-under ADR-0018 (accepted 2026-10-04). It may proceed alongside M6-05, but
+under ADR-0018 (accepted 2026-10-04). It may proceed alongside the P0 milestones, but
 must never change a solver, a field's meaning or the PSNAP format.
 
 When starting work, first audit the repository and propose the concrete

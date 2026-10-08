@@ -55,6 +55,14 @@ inline constexpr std::string_view run_command_set_solar_luminosity_factor =
 [[nodiscard]] SimulationTick orbital_year_begin_tick(std::int64_t year,
                                                      const PlanetParameters& parameters);
 
+// How a run uses the climate mode's circulation (ADR-0011 §4.4, §17).
+//   none:       left out;
+//   diagnostic: solved after each climate step's surface, writing derived
+//               fields only (task M6-04): the slow state is as without it;
+//   coupled:    solved first in each climate step, carrying the heat
+//               (ADR-0011 §17.1; task M6-05).
+enum class ClimateCirculationUse { none, diagnostic, coupled };
+
 // A scenario run on the scheduler (ADR-0003 §3.3). Commands take effect at
 // the start of the first step that begins at or after their tick; the state
 // is hashed at tick 0 and at the first step boundary at or after the start
@@ -63,11 +71,8 @@ inline constexpr std::string_view run_command_set_solar_luminosity_factor =
 // count or on how run_until calls are chunked.
 class PlanetRun {
   public:
-    // `climate_circulation` false leaves out the climate mode's circulation
-    // (ADR-0011 §4.4), whose outputs are derived until M6-05: the slow state
-    // and every hash are the same either way.
     explicit PlanetRun(const Scenario& scenario, std::size_t worker_count = 1U,
-                       bool climate_circulation = true);
+                       ClimateCirculationUse circulation = ClimateCirculationUse::coupled);
     PlanetRun(const PlanetRun&) = delete;
     PlanetRun& operator=(const PlanetRun&) = delete;
     PlanetRun(PlanetRun&&) = delete;
@@ -92,6 +97,8 @@ class PlanetRun {
     }
     [[nodiscard]] const Scheduler& scheduler() const noexcept { return *scheduler_; }
     [[nodiscard]] const SurfaceEnergyDiagnostics& last_step() const noexcept { return last_; }
+    // Wall-clock seconds in the steps' transport solves (performance records).
+    [[nodiscard]] double transport_solve_s() const noexcept { return transport_solve_s_; }
     // The winds of reference mode (ADR-0011 §4.3); null without an atmosphere.
     [[nodiscard]] const AtmosphereDynamics* dynamics() const noexcept { return dynamics_.get(); }
     // The climate mode's circulation (ADR-0011 §4.4); null without an
@@ -123,6 +130,7 @@ class PlanetRun {
     std::unique_ptr<ClimateCirculation> circulation_;
     std::unique_ptr<Scheduler> scheduler_;
     SurfaceEnergyDiagnostics last_;
+    double transport_solve_s_ = 0.0;
     std::deque<RunCommand> pending_;
     RunManifest manifest_;
     std::int64_t next_checkpoint_year_ = 0;

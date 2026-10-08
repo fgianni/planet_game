@@ -291,4 +291,30 @@ AtmosphereDiagnostics diagnose_atmosphere(const PlanetMesh& mesh, const SlowStat
     return diagnostics;
 }
 
+void layer_dry_static_energy(double surface_geopotential_m2_s2,
+                             std::span<const double> temperature_K, std::span<double> energy_J_kg,
+                             double gas_constant_J_kg_K, double heat_capacity_J_kg_K) {
+    const std::size_t n = temperature_K.size();
+    if (energy_J_kg.size() != n || n == 0U) {
+        throw std::invalid_argument("layer dry static energy: invalid column");
+    }
+    const double kappa = gas_constant_J_kg_K / heat_capacity_J_kg_K;
+    const double cp = heat_capacity_J_kg_K;
+    const double n_d = static_cast<double>(n);
+    // The Exner function's reference pressure cancels in θ Δπ.
+    double phi = surface_geopotential_m2_s2;
+    double pi_bottom = 1.0;
+    for (std::size_t k = 0; k < n; ++k) {
+        const double sigma_bottom = 1.0 - static_cast<double>(k) / n_d;
+        const double sigma_top = 1.0 - static_cast<double>(k + 1U) / n_d;
+        const double pi_top = k + 1U == n ? 0.0 : std::pow(sigma_top, kappa);
+        const double pi_mean = (sigma_bottom * pi_bottom - sigma_top * pi_top) /
+                               ((1.0 + kappa) * (sigma_bottom - sigma_top));
+        const double theta = temperature_K[k] / pi_mean;
+        energy_J_kg[k] = cp * temperature_K[k] + phi + cp * theta * (pi_bottom - pi_mean);
+        phi += cp * theta * (pi_bottom - pi_top);
+        pi_bottom = pi_top;
+    }
+}
+
 }  // namespace planetsim

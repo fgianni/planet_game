@@ -1,5 +1,6 @@
 #include "sim/planet/surface/heat_transport.hpp"
 
+#include "sim/core/math/incomplete_lu.hpp"
 #include "sim/core/math/vec3d.hpp"
 #include "sim/core/scheduler/deterministic_executor.hpp"
 #include "sim/planet/mesh/icosphere.hpp"
@@ -747,6 +748,318 @@ ImplicitTransportResult solve_implicit_transport(const TransportGraph& graph,
     result.sum_W = sums.sum;
     result.absolute_sum_W = sums.absolute;
     result.dissipation_W_K = sums.dissipation;
+    return result;
+}
+
+void advection_diffusion_source(const TransportGraph& graph, const AdvectionDiffusion& transport,
+                                const Field2D<double>& mean_K,
+                                const std::vector<double>& energy_J_kg,
+                                Field2D<double>& eddy_W_m2, Field2D<double>& advective_W_m2,
+                                std::size_t worker_count) {
+    const std::size_t nodes = graph.size();
+    const std::size_t entries = graph.neighbour.size();
+    const std::size_t layers = transport.layers;
+    if (transport.conductance_W_K.size() != entries ||
+        transport.outflow_kg_s.size() != layers * entries || mean_K.size() != nodes ||
+        energy_J_kg.size() != layers * nodes) {
+        throw std::invalid_argument("advection-diffusion inputs do not match the graph");
+    }
+    if (eddy_W_m2.size() != nodes) {
+        eddy_W_m2 = Field2D<double>(nodes, 0.0);
+    }
+    if (advective_W_m2.size() != nodes) {
+        advective_W_m2 = Field2D<double>(nodes, 0.0);
+    }
+    for_each_deterministic_block(
+        blocks_of(graph), worker_count, [&](std::size_t, const CellBlock& block) {
+            for (std::size_t a = block.begin; a < block.end; ++a) {
+                double eddy = 0.0;
+                double advective = 0.0;
+                for (std::size_t k = graph.offset[a]; k < graph.offset[a + 1U]; ++k) {
+                    const std::size_t b = graph.neighbour[k];
+                    eddy += transport.conductance_W_K[k] * (mean_K[b] - mean_K[a]);
+                    for (std::size_t l = 0; l < layers; ++l) {
+                        const double out = transport.outflow_kg_s[l * entries + k];
+                        const std::size_t upwind = out > 0.0 ? a : b;
+                        advective -= out * energy_J_kg[l * nodes + upwind];
+                    }
+                }
+                eddy_W_m2[a] = eddy / graph.area_m2[a];
+                advective_W_m2[a] = advective / graph.area_m2[a];
+            }
+        });
+}
+
+namespace {
+
+// Right-preconditioned BiCGSTAB on a transport graph's nodes: x ← solution
+// of A x = b from x = 0. Returns the iterations; stops at the tolerance, the
+// cap, or a breakdown (an inexact Newton step is still a descent candidate).
+template <typename Apply, typename Precondition>
+int bicgstab(const TransportGraph& graph, const Apply& apply, const Precondition& precondition,
+             const std::vector<double>& b, std::vector<double>& x, double relative_tolerance,
+             int max_iterations, std::size_t worker_count) {
+    const std::size_t n = graph.size();
+    const auto dot = [&](const std::vector<double>& u, const std::vector<double>& v) {
+        return reduce_deterministic_blocks<double>(
+            blocks_of(graph), worker_count, 0.0,
+            [&](std::size_t, const CellBlock& block) {
+                double sum = 0.0;
+                for (std::size_t i = block.begin; i < block.end; ++i) {
+                    sum += u[i] * v[i];
+                }
+                return sum;
+            },
+            [](double p, double q) { return p + q; });
+    };
+    x.assign(n, 0.0);
+    std::vector<double> r = b;
+    const std::vector<double> shadow = r;
+    std::vector<double> p(n, 0.0);
+    std::vector<double> v(n, 0.0);
+    std::vector<double> p_hat(n, 0.0);
+    std::vector<double> s(n, 0.0);
+    std::vector<double> s_hat(n, 0.0);
+    std::vector<double> t(n, 0.0);
+    const double b_norm = std::sqrt(dot(b, b));
+    if (!(b_norm > 0.0)) {
+        return 0;
+    }
+    double rho = 1.0;
+    double alpha = 1.0;
+    double omega = 1.0;
+    int iteration = 0;
+    while (iteration < max_iterations) {
+        const double rho_next = dot(shadow, r);
+        if (rho_next == 0.0 || omega == 0.0) {
+            break;
+        }
+        const double beta = rho_next / rho * (alpha / omega);
+        rho = rho_next;
+        for (std::size_t i = 0; i < n; ++i) {
+            p[i] = r[i] + beta * (p[i] - omega * v[i]);
+        }
+        precondition(p, p_hat);
+        apply(p_hat, v);
+        const double shadow_v = dot(shadow, v);
+        if (shadow_v == 0.0) {
+            break;
+        }
+        alpha = rho / shadow_v;
+        for (std::size_t i = 0; i < n; ++i) {
+            s[i] = r[i] - alpha * v[i];
+        }
+        ++iteration;
+        if (std::sqrt(dot(s, s)) <= relative_tolerance * b_norm) {
+            for (std::size_t i = 0; i < n; ++i) {
+                x[i] += alpha * p_hat[i];
+            }
+            break;
+        }
+        precondition(s, s_hat);
+        apply(s_hat, t);
+        const double t_t = dot(t, t);
+        omega = t_t > 0.0 ? dot(t, s) / t_t : 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            x[i] += alpha * p_hat[i] + omega * s_hat[i];
+            r[i] = s[i] - omega * t[i];
+        }
+        if (std::sqrt(dot(r, r)) <= relative_tolerance * b_norm) {
+            break;
+        }
+    }
+    return iteration;
+}
+
+}  // namespace
+
+AdvectionDiffusionResult solve_implicit_advection_diffusion(
+    const TransportGraph& graph, const AdvectionDiffusion& transport,
+    const Field2D<double>& source_floor_W_m2, const AdvectionResponse& response,
+    const ImplicitTransportSettings& settings, std::size_t worker_count) {
+    const std::size_t nodes = graph.size();
+    const std::size_t entries = graph.neighbour.size();
+    const std::size_t layers = transport.layers;
+    if (source_floor_W_m2.size() != nodes || transport.conductance_W_K.size() != entries ||
+        transport.outflow_kg_s.size() != layers * entries) {
+        throw std::invalid_argument("advection-diffusion inputs do not match the graph");
+    }
+    for (const double g : transport.conductance_W_K) {
+        if (!(g >= 0.0) || !std::isfinite(g)) {
+            throw std::invalid_argument("eddy conductances must be finite and non-negative");
+        }
+    }
+
+    struct Iterate {
+        Field2D<double> source;
+        Field2D<double> mean;
+        Field2D<double> slope;
+        std::vector<double> energy;
+        std::vector<double> energy_slope;
+        Field2D<double> residual;
+        double merit = 0.0;
+    };
+    Field2D<double> eddy(nodes, 0.0);
+    Field2D<double> advective(nodes, 0.0);
+    // F(h) = h − H(θ(h), s(h)), and the merit Σ A F².
+    const auto evaluate = [&](Iterate& at) {
+        response(at.source, at.mean, at.slope, at.energy, at.energy_slope);
+        if (at.mean.size() != nodes || at.slope.size() != nodes ||
+            at.energy.size() != layers * nodes || at.energy_slope.size() != layers * nodes) {
+            throw std::logic_error("advection-diffusion response has the wrong size");
+        }
+        advection_diffusion_source(graph, transport, at.mean, at.energy, eddy, advective,
+                                   worker_count);
+        if (at.residual.size() != nodes) {
+            at.residual = Field2D<double>(nodes, 0.0);
+        }
+        at.merit = reduce_deterministic_blocks<double>(
+            blocks_of(graph), worker_count, 0.0,
+            [&](std::size_t, const CellBlock& block) {
+                double merit = 0.0;
+                for (std::size_t a = block.begin; a < block.end; ++a) {
+                    at.residual[a] = at.source[a] - (eddy[a] + advective[a]);
+                    merit += graph.area_m2[a] * at.residual[a] * at.residual[a];
+                }
+                return merit;
+            },
+            [](double a, double b) { return a + b; });
+    };
+
+    AdvectionDiffusionResult result;
+    Iterate current;
+    current.source = Field2D<double>(nodes, 0.0);
+    for (std::size_t a = 0; a < nodes; ++a) {
+        current.source[a] = std::max(0.0, source_floor_W_m2[a]);
+    }
+    evaluate(current);
+    Iterate trial;
+    std::vector<std::size_t> block_start{0U};
+    for (const CellBlock& block : graph.blocks) {
+        block_start.push_back(block.end);
+    }
+    std::vector<double> diagonal(nodes, 0.0);
+    std::vector<double> off(entries, 0.0);
+    std::vector<double> rhs(nodes, 0.0);
+    std::vector<double> delta(nodes, 0.0);
+    int non_monotone_steps = 0;
+    for (int iteration = 0; iteration < settings.max_newton_iterations; ++iteration) {
+        if (max_abs(graph, current.residual, worker_count) <= settings.newton_tolerance_W_m2) {
+            break;
+        }
+        // J = I − ∂H/∂h on the graph's pattern: H_a depends on h_a and on its
+        // neighbours' h through θ and the upwind s.
+        for_each_deterministic_block(
+            blocks_of(graph), worker_count, [&](std::size_t, const CellBlock& block) {
+                for (std::size_t a = block.begin; a < block.end; ++a) {
+                    const double inverse_area = 1.0 / graph.area_m2[a];
+                    double own = 0.0;
+                    for (std::size_t k = graph.offset[a]; k < graph.offset[a + 1U]; ++k) {
+                        const std::size_t b = graph.neighbour[k];
+                        const double g = transport.conductance_W_K[k];
+                        own -= g * current.slope[a];
+                        double neighbour = g * current.slope[b];
+                        for (std::size_t l = 0; l < layers; ++l) {
+                            const double out = transport.outflow_kg_s[l * entries + k];
+                            if (out > 0.0) {
+                                own -= out * current.energy_slope[l * nodes + a];
+                            } else {
+                                neighbour -= out * current.energy_slope[l * nodes + b];
+                            }
+                        }
+                        off[k] = -neighbour * inverse_area;
+                    }
+                    diagonal[a] = 1.0 - own * inverse_area;
+                    rhs[a] = -current.residual[a];
+                }
+            });
+        // Block ILU(0) on the graph's fixed blocks: the blocks factor and
+        // solve in parallel, the same for any worker count.
+        const IncompleteLU factor(graph.offset, graph.neighbour, diagonal, off, block_start, 1.0,
+                                  worker_count);
+        const auto apply = [&](const std::vector<double>& x, std::vector<double>& y) {
+            for_each_deterministic_block(
+                blocks_of(graph), worker_count, [&](std::size_t, const CellBlock& block) {
+                    for (std::size_t a = block.begin; a < block.end; ++a) {
+                        double sum = diagonal[a] * x[a];
+                        for (std::size_t k = graph.offset[a]; k < graph.offset[a + 1U]; ++k) {
+                            sum += off[k] * x[graph.neighbour[k]];
+                        }
+                        y[a] = sum;
+                    }
+                });
+        };
+        const auto precondition = [&](const std::vector<double>& x, std::vector<double>& y) {
+            y = x;
+            factor.solve(y);
+        };
+        result.linear_iterations +=
+            bicgstab(graph, apply, precondition, rhs, delta, settings.cg_relative_tolerance,
+                     settings.max_cg_iterations, worker_count);
+
+        // Backtracking on the merit, as ADR-0009 §9.
+        double step = 1.0;
+        bool accepted = false;
+        for (int halving = 0;; ++halving) {
+            trial.source = Field2D<double>(nodes, 0.0);
+            for (std::size_t a = 0; a < nodes; ++a) {
+                trial.source[a] =
+                    std::max(current.source[a] + step * delta[a], source_floor_W_m2[a]);
+            }
+            evaluate(trial);
+            if (trial.merit < current.merit) {
+                accepted = true;
+                break;
+            }
+            if (halving == settings.max_line_search_halvings) {
+                if (max_abs(graph, current.residual, worker_count) >
+                        settings.rounding_floor_W_m2 &&
+                    non_monotone_steps < settings.max_non_monotone_steps) {
+                    // A kink in the columns' response: take the full step a
+                    // bounded number of times (ADR-0009 §9).
+                    ++non_monotone_steps;
+                    for (std::size_t a = 0; a < nodes; ++a) {
+                        trial.source[a] =
+                            std::max(current.source[a] + delta[a], source_floor_W_m2[a]);
+                    }
+                    evaluate(trial);
+                    accepted = true;
+                }
+                break;
+            }
+            step *= 0.5;
+        }
+        if (!accepted) {
+            break;
+        }
+        std::swap(current, trial);
+        ++result.newton_iterations;
+    }
+
+    // The transport applied is the conservative source of the last iterate's
+    // θ and s; |F| there is the consistency residual.
+    advection_diffusion_source(graph, transport, current.mean, current.energy, eddy, advective,
+                               worker_count);
+    result.source_W_m2 = Field2D<double>(nodes, 0.0);
+    double sum = 0.0;
+    double absolute = 0.0;
+    double eddy_absolute = 0.0;
+    double advective_absolute = 0.0;
+    for (std::size_t a = 0; a < nodes; ++a) {
+        result.source_W_m2[a] = eddy[a] + advective[a];
+        const double area = graph.area_m2[a];
+        sum += area * result.source_W_m2[a];
+        absolute += area * std::abs(result.source_W_m2[a]);
+        eddy_absolute += area * std::abs(eddy[a]);
+        advective_absolute += area * std::abs(advective[a]);
+    }
+    result.mean_K = current.mean;
+    result.energy_J_kg = current.energy;
+    result.consistency_residual_W_m2 = max_abs(graph, current.residual, worker_count);
+    result.sum_W = sum;
+    result.absolute_sum_W = absolute;
+    result.eddy_absolute_sum_W = eddy_absolute;
+    result.advective_absolute_sum_W = advective_absolute;
     return result;
 }
 
