@@ -79,7 +79,7 @@ jobs:
           ./build/planet_cli run --subdivision 5 --years 250 \
             --min-years-per-minute 20 --max-seconds 240 --manifest run_L5_250y.prun
           ./build/planet_cli run --subdivision 6 --years 250 \
-            --min-years-per-minute 5 --max-seconds 750
+            --min-years-per-minute 5 --max-seconds 600
 
       - name: Replay the 250-year run (ADR-0003 V2)
         if: matrix.build_type == 'Release'

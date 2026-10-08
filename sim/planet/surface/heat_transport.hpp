@@ -95,6 +95,10 @@ struct ImplicitTransportSettings {
     int max_cg_iterations = 2'000;
 };
 
+// The coupled climate transport's Newton tolerance (ADR-0009 §13, task
+// M6-05): its consistency residual max |H − h|, W/m².
+inline constexpr double coupled_newton_tolerance_W_m2 = 1e-4;
+
 struct ImplicitTransportResult {
     Field2D<double> source_W_m2;   // H = K ∇² T̄: the transport to apply
     Field2D<double> mean_K;        // the T̄ it was computed from

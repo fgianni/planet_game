@@ -504,7 +504,7 @@ prescribes. M7's humidity uses the same two paths.
 | V10 | Energy closure of every climate step with the circulation, N = 3 and 5 | ADR-0007 V2 gate |
 | V11 | Determinism: workers 1/2/8/16 bit-identical in both modes; replay of the L5 performance run | bit-identical |
 | V12 | Calibration: `τ₀` and `c_e` fitted; the §4.8 invariants; climate against reference zonal means (V6) | 288 ± 0.5 K, 42 ± 1 K; parity recorded, gated from M7 (ADR-0001 §8) |
-| V13 | Performance: ADR-0001 250-year climate runs, N = 3, 4 workers | L5 ≤ 240 s, L6 ≤ 600 s (750 s since ADR-0001 §11) |
+| V13 | Performance: ADR-0001 250-year climate runs, N = 3, 4 workers | L5 ≤ 240 s, L6 ≤ 600 s |
 
 V3–V5 are standard dynamical-core benchmarks. Their numeric gates are
 provisional until the task that implements them measures the scheme on this
@@ -750,7 +750,7 @@ amendment.
     and τ₀ = 1.442 gives 288 K with a 52 K equator-to-pole difference
     (§17.7).
   - **V7:** seven of eight criteria; the southern jet at 52.5°. **V13:** L5
-    220 s; L6 678 s against the amended 750 s (ADR-0001 §11).
+    219 s, L6 588 s (with ADR-0009 §13's coupled Newton tolerance).
   - Details are in `docs/tasks/M6-05-transport-refit-and-close.md`.
 
 ## 12. Amendment: V2 as measured for the TRiSK operators (accepted 2026-10-02)
@@ -1218,5 +1218,6 @@ carries heat. Both are measured in M6-05.
    upwind flux between groups, and its cells share it at one specific-energy
    shift per layer; energy still closes to rounding, but air moved within a
    group is not resolved. At L6 it costs 9 ms a month instead of 33.
-9. **The L6 250-year gate is 750 s** (ADR-0001 §11): the coupled climate
-   measures 678 s there.
+9. **The L6 250-year gate** was raised to 750 s (ADR-0001 §11) when the
+   coupled climate measured 678 s, then restored to 600 s once the coupled
+   Newton stopped at 1e-4 W/m² (ADR-0009 §13): L6 588 s, L5 219 s.

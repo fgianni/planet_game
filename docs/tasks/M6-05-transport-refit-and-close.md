@@ -1,7 +1,7 @@
 # Task M6-05 — Transport by the circulation, refit and close
 
 - **Milestone:** P0 / M6 (fifth and last task; M6-01 to M6-04 are complete)
-- **Status:** complete (2026-10-08) — steps A–F; M6 closes. Follow-up: bring the L6 250-year run back under 600 s (ADR-0001 §11)
+- **Status:** complete (2026-10-08) — steps A–F and the L6 follow-up; M6 closes with both 250-year gates met
 - **Governing decisions:** ADR-0011 §3.5, §4.6–4.8, §17 (accepted
   2026-10-06), V7, V10, V12, V13; ADR-0009 §4.3, §12; ADR-0010 §4.6, §11;
   ADR-0001 §5
@@ -211,6 +211,23 @@
   (8 passes, about 70 ms a month), with BiCGSTAB about 30 ms.
 - Timing is now reported per part: `planet_cli run` prints the transport
   solve's and the redistribution's seconds beside the circulation's.
+
+## Follow-up — L6 back under 600 s (2026-10-08)
+
+| Change | L6, 250 years |
+|---|---|
+| At the close above | 678 s |
+| Coupled transport preconditioned by multigrid on A Θ⁻¹ + K, then block ILU (BiCGSTAB 161 → 52 iterations a month); the balance's ILU in parallel blocks | 665 s |
+| The coupled Newton stops at 1e-4 W/m² (ADR-0009 §13, decided with the user): 7 → 5 passes over the columns | 619 s |
+| Inexact linear solves (BiCGSTAB to 1e-3 of each Newton residual); the balanced p_s mapping in parallel | **588 s, passed** |
+
+- L5 runs in 219 s. Every coupled step still closes its budget (3.7e-7 of
+  the gate at L6), because the transport applied is the conservative H.
+- The coupled Newton converges linearly (about twentyfold a step), as the
+  diffusive solve does at L6; making it quadratic at the surface's kinks
+  would buy back margin without a looser tolerance. The L6 margin is about
+  2%.
+- ADR-0001 §11's 750 s is withdrawn: the L6 gate is 600 s again.
 
 ## Risks
 

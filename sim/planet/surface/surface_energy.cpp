@@ -808,8 +808,18 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                         });
                 };
             const auto solve_start = std::chrono::steady_clock::now();
+            // The coupled Newton stops at 1e-4 W/m² (ADR-0009 §13): the
+            // transport applied is the conservative H of its last iterate,
+            // so energy closes whatever the residual, and the last two
+            // passes over every column (1e-4 → 1e-6) cost a tenth of an L6
+            // climate step.
+            ImplicitTransportSettings coupled_settings;
+            coupled_settings.newton_tolerance_W_m2 = coupled_newton_tolerance_W_m2;
+            // An inexact Newton: each linear solve to 1e-3 of its residual.
+            coupled_settings.cg_relative_tolerance = 1e-3;
             coupled_solve = solve_implicit_advection_diffusion(
-                graph, circulation->transport, floor, coupled_response, {}, worker_count);
+                graph, circulation->transport, floor, coupled_response, coupled_settings,
+                worker_count);
             transport_seconds = std::chrono::duration<double>(
                                     std::chrono::steady_clock::now() - solve_start)
                                     .count();
@@ -1076,7 +1086,11 @@ void register_surface_energy(Scheduler& scheduler, PlanetState& state,
         {"surface_energy_climate", SimulationMode::climate, 0},
         [&state, &parameters, surface, &fractions, worker_count, last,
          circulation](const StepContext& context) {
-            update_substep_mean_insolation(state, parameters, *context.substep, worker_count);
+            // A coupled circulation, registered first, has already set it.
+            if (circulation == nullptr) {
+                update_substep_mean_insolation(state, parameters, *context.substep,
+                                               worker_count);
+            }
             const auto diagnostics = step_surface_energy(
                 state, parameters, surface, fractions,
                 state.forcing().substep_mean_insolation_W_m2,

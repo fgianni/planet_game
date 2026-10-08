@@ -22,7 +22,7 @@ validation strategy, and current implementation task for the Planetary
 Civilization Simulator.
 
 Most recently completed milestone: **P0 / M6 --- Wind and Coriolis**
-(ADR-0011, amended §12--§17; ADR-0001 §11): M6-01 (C-grid operators),
+(ADR-0011, amended §12--§17; ADR-0009 §13): M6-01 (C-grid operators),
 M6-02 (shallow-water core), M6-03 (primitive equations, the winds in
 reference mode), M6-04 (the climate-mode balanced circulation) and M6-05
 (`docs/tasks/M6-05-transport-refit-and-close.md`: the circulation carries
@@ -38,10 +38,8 @@ state/fluxes rather than scripted climate modifiers; - production code
 and tests together; - do not proceed to M7 unless explicitly requested.
 
 Next milestone: **P0 / M7 --- Humidity and evaporation**, only when
-explicitly requested. Open follow-up from M6: bring the L6 250-year run
-back under 600 s (its gate is 750 s since ADR-0001 §11); the 42 K
-equator-to-pole target waits for M7's latent and M11's ocean transport
-(ADR-0011 §17.7).
+explicitly requested. The 42 K equator-to-pole target waits for M7's latent and
+M11's ocean transport (ADR-0011 §17.7).
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is

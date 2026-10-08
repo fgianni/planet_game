@@ -2144,8 +2144,8 @@ question is cheap there and expensive in C++:
 Status (2026-10-08): M0 through M6 complete. Climate mode's balanced
 circulation carries the heat (ADR-0011 §17); the azonal flow carries none,
 τ₀ = 1.442 gives 288 K with a 52 K equator-to-pole difference until M7 and
-M11 add latent and ocean transport, and the L6 250-year gate is 750 s
-(ADR-0001 §11). Task-level status is kept in `docs/tasks/README.md`, which
+M11 add latent and ocean transport; both 250-year gates are met (L5 219 s,
+L6 588 s). Task-level status is kept in `docs/tasks/README.md`, which
 takes precedence over the history below.
 
 Status at v0.4 (2026-09-29): M0 through M3 complete; the ADR

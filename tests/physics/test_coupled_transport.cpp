@@ -68,7 +68,7 @@ int main() {
         PLANETSIM_EXPECT(test, year.every_month_coupled);
         PLANETSIM_EXPECT(test, year.worst_closure <= 1.0);
         PLANETSIM_EXPECT(test, year.worst_imbalance <= 1.0e-10);
-        PLANETSIM_EXPECT(test, year.worst_consistency_W_m2 <= 1.0e-6);
+        PLANETSIM_EXPECT(test, year.worst_consistency_W_m2 <= planetsim::coupled_newton_tolerance_W_m2);
         PLANETSIM_EXPECT(test, coupled.state_hash() == serial.state_hash());
         PLANETSIM_EXPECT(test, coupled.state_hash() != diagnosed.state_hash());
         PLANETSIM_EXPECT(test, coupled.circulation()->diagnostics().failed_months == 0U);

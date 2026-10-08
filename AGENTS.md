@@ -54,14 +54,13 @@ and M5-04 (refit of τ₀ and D, the Earth-like preset on three layers, the
 plateau experiment, performance gates). Most recently completed task:
 [`docs/tasks/M5-04-calibration-and-close.md`](docs/tasks/M5-04-calibration-and-close.md).
 M6 (wind and Coriolis) is complete under ADR-0011 (amended §12–§17) and
-ADR-0001 §11: tasks M6-01 (C-grid geometry and vector operators), M6-02
+ADR-0009 §13: tasks M6-01 (C-grid geometry and vector operators), M6-02
 (shallow-water core), M6-03 (primitive equations, Held–Suarez, the winds
 in reference mode), M6-04 (the climate-mode balanced circulation) and
 M6-05 (the circulation carries the heat, the balanced p_s in the slow
 state, τ₀ refitted, the gates). Most recently completed task:
 [`docs/tasks/M6-05-transport-refit-and-close.md`](docs/tasks/M6-05-transport-refit-and-close.md).
-Open follow-up: the L6 250-year run back under 600 s. Do not implement M7
-or later milestones unless explicitly requested.
+Do not implement M7 or later milestones unless explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is

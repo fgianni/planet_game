@@ -4,6 +4,7 @@
 - **Date:** 2026-09-30
 - **Accepted:** 2026-09-30
 - **Amended:** 2026-09-30 — §4.1 tiles exchange heat with their cell's air, and tiles without area take no transport; §4.4 the calibration target is the equator-to-pole temperature difference, not the peak transport (both in §10); §4.1 the diffused temperature is the cells' air (§11); §4.3 the transport is solved on the mesh one level coarser (§12)
+- **Amended:** 2026-10-08 — §13: the coupled transport stops its Newton at 1e-4 W/m² (task M6-05)
 - **Milestone:** P0 / M4 (needed for ADR-0008's seasonal experiment)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §13 M3 ("optional explicitly documented reduced horizontal transport"), §13 M4, §23 (calibration lessons), §24; Planetary Civilization Simulator — Design Record v0.9, §24.2
 - **Related:** ADR-0001 (modes, budget), ADR-0002 (finite-volume operators, determinism), ADR-0006 (sub-steps), ADR-0007 (surface columns), ADR-0008 (snow and sea ice, §9 finding)
@@ -358,3 +359,25 @@ workers: 250 years at L5 in 176 s (gate 240 s) and at L6 in 572 s (gate
 600 s); the L5 run replays bit for bit. The L6 margin is about 5 % on the
 development machine, so slower CI runners may exceed it: the next
 performance work belongs there.
+
+## 13. Amendment: the coupled transport's Newton tolerance (accepted 2026-10-08)
+
+**Finding (task M6-05).** With the climate circulation carrying the heat
+(ADR-0011 §17), the implicit transport keeps this record's Newton on one
+source per group. At L6 each Newton iterate is a pass over all 40,962
+columns, and the iterates converge linearly, about twentyfold per step (as
+this record's diffusive solve does there, most likely at the surface's
+kinks: sea ice forming or melting, snow held at 0 °C). The last two passes,
+from about 1e-4 to V7's 1e-6 W/m², cost a tenth of an L6 climate step and
+kept the 250-year L6 run over ADR-0001's 600 s.
+
+**Change (decided with the user).** The coupled solve stops at a
+consistency residual of **1e-4 W/m²** (`coupled_newton_tolerance_W_m2`).
+The transport applied is still the conservative H of the last iterate, so
+energy closes exactly whatever the residual; the residual only measures
+how far the step is from fully implicit (1e-4 W/m² is about 1e-6 of the
+transport's local magnitude). The diffusive solve, now the coupled one's
+fallback, keeps V7's 1e-6.
+
+**Not decided.** Making Newton quadratic at the kinks, which would save
+the passes without the looser tolerance.

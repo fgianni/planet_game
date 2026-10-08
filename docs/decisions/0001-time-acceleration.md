@@ -5,7 +5,7 @@
 - **Accepted:** 2026-09-24
 - **Amended:** 2026-09-28 — §8 milestone mapping aligned with `docs/DEVELOPMENT_SPEC_v0_2.md` §13
 - **Amended:** 2026-09-29 — §4.2 climate-mode step fixed by [ADR-0006](0006-seasonal-climate-steps.md): twelve orbital sub-steps per year, no adaptive coarsening
-- **Amended:** 2026-10-08 — §11: the L6 250-year gate raised to 750 s for the coupled climate circulation (task M6-05)
+- **Amended:** 2026-10-08 — §11: the L6 250-year gate raised to 750 s for the coupled climate circulation, then restored to 600 s (task M6-05)
 - **Context document:** Planetary Civilization Simulator — Design Record v0.4, §28
 - **Supersedes / superseded by:** —
 - **Related:** ADR-0002 (mesh topology, resolution policy, field layout), ADR-0003 (determinism scope, snapshot schema, migration)
@@ -232,3 +232,10 @@ largest cost is the coupled Newton's passes over every fine column.
 5 years-per-minute minimum stays (L6 runs at 22). The L5 gate is unchanged.
 A follow-up task brings L6 back under 600 s; candidates are a cheaper
 coupled Newton (fewer column passes) and the balance's iterations at L6.
+
+**Restored the same day (task M6-05 follow-up, decided with the user).**
+The coupled transport's Newton now stops at 1e-4 W/m² (ADR-0009 §13) with
+inexact linear solves, its preconditioner adds a multigrid stage, and the
+balance uses the parallel block ILU. The 250-year runs then measure
+**L5 219 s and L6 588 s**, so the L6 gate is **600 s again**. The margin at
+L6 is about 2%.

@@ -352,7 +352,14 @@ BalancedCirculationResult BalancedCirculation::solve(const SlowState& slow,
     }
     GraphMultigrid multigrid(graph);
     multigrid.set_matrix(sym_diagonal, sym_off);
-    const IncompleteLU incomplete(graph.offset, graph.neighbour, diagonal, off, 1.0 + 1.0e-8);
+    // Block ILU(0) on the graph's fixed blocks, factored and solved in
+    // parallel: the same for any worker count.
+    std::vector<std::size_t> block_start{0U};
+    for (const CellBlock& block : graph.blocks) {
+        block_start.push_back(block.end);
+    }
+    const IncompleteLU incomplete(graph.offset, graph.neighbour, diagonal, off, block_start,
+                                  1.0 + 1.0e-8, worker_count);
     std::vector<double> correction(groups, 0.0);
     // The preconditioner: the V-cycle, then ILU(0) of the full operator on
     // what the V-cycle leaves.

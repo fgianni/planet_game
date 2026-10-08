@@ -2952,7 +2952,8 @@ int run_scenario(const RunOptions& options) {
         const auto& d = circulation->diagnostics();
         std::cout << "circulation months=" << d.months << " failed=" << d.failed_months
                   << " heating_s=" << d.heating_s << " zonal_s=" << d.zonal_s
-                  << " balance_s=" << d.balance_s << " pressure_s=" << d.pressure_s
+                  << " balance_s=" << d.balance_s << " outputs_s=" << d.outputs_s
+                  << " pressure_s=" << d.pressure_s
                   << " pressure_writes=" << d.pressure_writes << '\n';
         if (d.failed_months > 0U) {
             std::cout << "circulation_last_failure: " << d.last_failure << '\n';

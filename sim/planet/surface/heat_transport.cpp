@@ -940,6 +940,13 @@ AdvectionDiffusionResult solve_implicit_advection_diffusion(
     }
     std::vector<double> diagonal(nodes, 0.0);
     std::vector<double> off(entries, 0.0);
+    GraphMultigrid multigrid(graph);
+    std::vector<double> symmetric_diagonal(nodes, 0.0);
+    std::vector<double> symmetric_off(entries, 0.0);
+    std::vector<double> scaled(nodes, 0.0);
+    std::vector<double> leftover(nodes, 0.0);
+    // θ' is positive for a column with a response; this guards one without.
+    constexpr double minimum_slope = 1.0e-12;
     std::vector<double> rhs(nodes, 0.0);
     std::vector<double> delta(nodes, 0.0);
     int non_monotone_steps = 0;
@@ -989,9 +996,39 @@ AdvectionDiffusionResult solve_implicit_advection_diffusion(
                     }
                 });
         };
+        // The eddies' part of J factors as A⁻¹ (A Θ⁻¹ + K) Θ, Θ = diag(θ'),
+        // K the conductances' Laplacian; A Θ⁻¹ + K is symmetric positive
+        // definite, ADR-0009's Newton matrix. Its V-cycle, then the block ILU
+        // of the full J on what is left (the advection).
+        for_each_deterministic_block(
+            blocks_of(graph), worker_count, [&](std::size_t, const CellBlock& block) {
+                for (std::size_t a = block.begin; a < block.end; ++a) {
+                    double sum = 0.0;
+                    for (std::size_t k = graph.offset[a]; k < graph.offset[a + 1U]; ++k) {
+                        sum += transport.conductance_W_K[k];
+                        symmetric_off[k] = -transport.conductance_W_K[k];
+                    }
+                    const double slope = std::max(current.slope[a], minimum_slope);
+                    symmetric_diagonal[a] = graph.area_m2[a] / slope + sum;
+                }
+            });
+        multigrid.set_matrix(symmetric_diagonal, symmetric_off);
         const auto precondition = [&](const std::vector<double>& x, std::vector<double>& y) {
-            y = x;
-            factor.solve(y);
+            for (std::size_t a = 0; a < nodes; ++a) {
+                scaled[a] = graph.area_m2[a] * x[a];
+            }
+            multigrid.precondition(scaled, y, worker_count);
+            for (std::size_t a = 0; a < nodes; ++a) {
+                y[a] /= std::max(current.slope[a], minimum_slope);
+            }
+            apply(y, leftover);
+            for (std::size_t a = 0; a < nodes; ++a) {
+                leftover[a] = x[a] - leftover[a];
+            }
+            factor.solve(leftover);
+            for (std::size_t a = 0; a < nodes; ++a) {
+                y[a] += leftover[a];
+            }
         };
         result.linear_iterations +=
             bicgstab(graph, apply, precondition, rhs, delta, settings.cg_relative_tolerance,

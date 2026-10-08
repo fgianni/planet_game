@@ -380,19 +380,25 @@ void ClimateCirculation::write_outputs(const PlanetState& state,
             group_height[c] / graph.area_m2[c], lapse_rate_K_m_, g, gas);
     }
     Field2D<double> balanced(cells, 0.0);
-    double balanced_mass = 0.0;
-    for (std::size_t i = 0; i < cells; ++i) {
-        const auto& at = interpolation_[i];
-        double sea_level = 0.0;
-        for (std::size_t m = 0; m < 3U; ++m) {
-            sea_level += at.weight[m] * group_sea_level[at.group[m]];
-        }
-        const double factor =
-            reduced_to_sea_level(1.0, surface_air(slow.atmosphere_temperature_K.layer(0)[i]),
-                                 surface_height_m_[i], lapse_rate_K_m_, g, gas);
-        balanced[i] = sea_level / factor;
-        balanced_mass += mesh.cells()[i].area_m2 * balanced[i];
-    }
+    const double balanced_mass = reduce_deterministic_blocks<double>(
+        mesh.blocks(), worker_count, 0.0,
+        [&](std::size_t, const CellBlock& block) {
+            double sum = 0.0;
+            for (std::size_t i = block.begin; i < block.end; ++i) {
+                const auto& at = interpolation_[i];
+                double sea_level = 0.0;
+                for (std::size_t m = 0; m < 3U; ++m) {
+                    sea_level += at.weight[m] * group_sea_level[at.group[m]];
+                }
+                const double factor = reduced_to_sea_level(
+                    1.0, surface_air(slow.atmosphere_temperature_K.layer(0)[i]),
+                    surface_height_m_[i], lapse_rate_K_m_, g, gas);
+                balanced[i] = sea_level / factor;
+                sum += mesh.cells()[i].area_m2 * balanced[i];
+            }
+            return sum;
+        },
+        [](double x, double y) { return x + y; });
     const double scale = slow_mass / balanced_mass;
     for (std::size_t i = 0; i < cells; ++i) {
         balanced[i] *= scale;
@@ -501,7 +507,7 @@ void register_climate_circulation(Scheduler& scheduler, PlanetState& state,
         {"climate_circulation", SimulationMode::climate, 0},
         [&state, &planet, &surface, &circulation, worker_count, first](const StepContext& context) {
             if (first) {
-                // The surface sets it again: the same values.
+                // For the surface step too, which then does not set it.
                 update_substep_mean_insolation(state, planet, *context.substep, worker_count);
             }
             circulation.step(state, planet, surface, state.forcing().substep_mean_insolation_W_m2,
