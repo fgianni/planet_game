@@ -3,6 +3,7 @@
 #include "sim/planet/surface/cover_fractions.hpp"
 
 #include "sim/planet/surface/cryosphere_constants.hpp"
+#include "sim/planet/atmosphere/saturation.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -43,6 +44,7 @@ OceanTileResult open_water(const OceanTileSystem& tile, double source_W_m2,
     }
     result.latent_J_m2 = latent_heat_of_fusion_J_kg * (result.melted_kg_m2 - result.frozen_kg_m2);
     result.albedo = tile.column.albedo;
+    result.evaporation_kg_m2 = system.evaporation_kg_m2_s(surface_K).water * tile.dt_s;
     return result;
 }
 
@@ -67,6 +69,13 @@ struct IceSurface {
     ice.system.radiative = tile.open.radiative;
     ice.system.a = exchange_W_m2_K + conductance;
     ice.system.b = tile.floe_absorbed_W_m2 + source_W_m2 + conductance * seawater_freezing_point_K;
+    if (tile.evaporation.transfer_kg_m2_s > 0.0) {
+        ice.system.ice_transfer = tile.evaporation.transfer_kg_m2_s;
+        ice.system.air_humidity = tile.evaporation.air_humidity;
+        ice.system.pressure_Pa = tile.evaporation.pressure_Pa;
+        ice.system.vapour_kg_m2 = tile.evaporation.vapour_kg_m2;
+        ice.system.step_s = tile.dt_s;
+    }
     ice.surface_K = solve_column_surface(ice.system);
     if (ice.surface_K > melting_point_K) {
         ice.top_melt_W_m2 = ice.system.surplus_W_m2(melting_point_K);
@@ -86,7 +95,8 @@ double sea_ice_covered_albedo(double ocean_albedo, double ice_kg_m2) noexcept {
 
 OceanTileSystem prepare_ocean_tile(const ColumnProperties& ocean, ColumnState state,
                                    double ice_kg_m2, double insolation_W_m2,
-                                   double grey_emissivity, double dt_s) {
+                                   double grey_emissivity, double dt_s,
+                                   const EvaporationForcing& evaporation) {
     if (!std::isfinite(ice_kg_m2) || ice_kg_m2 < 0.0) {
         throw std::invalid_argument("sea ice must be finite and non-negative");
     }
@@ -97,6 +107,14 @@ OceanTileSystem prepare_ocean_tile(const ColumnProperties& ocean, ColumnState st
         tile.column.albedo = sea_ice_covered_albedo(ocean.albedo, ice_kg_m2);
     }
     tile.open = column_system(tile.column, state, insolation_W_m2, grey_emissivity, dt_s);
+    if (evaporation.transfer_kg_m2_s > 0.0) {
+        tile.open.water_transfer = evaporation.transfer_kg_m2_s;
+        tile.open.air_humidity = evaporation.air_humidity;
+        tile.open.pressure_Pa = evaporation.pressure_Pa;
+        tile.open.vapour_kg_m2 = evaporation.vapour_kg_m2;
+        tile.open.step_s = dt_s;
+    }
+    tile.evaporation = evaporation;
     tile.before = state;
     tile.ice_kg_m2 = ice_kg_m2;
     tile.dt_s = dt_s;
@@ -125,9 +143,13 @@ OceanTileResult solve_ocean_tile(const OceanTileSystem& tile, double source_W_m2
     const double floe_m = sea_ice_albedo_ramp_m;
     const double radiative = tile.open.radiative;
     const double freezing_emission_W_m2 = radiative * std::pow(freezing_K, 4);
-    // Net heat into the leads at T_f, per unit lead area.
+    // Net heat into the leads at T_f, per unit lead area, after their
+    // evaporation (ADR-0021 §4.3).
+    const double lead_evaporation_kg_m2_s = tile.open.evaporation_kg_m2_s(freezing_K).water;
+    const double lead_latent_W_m2 = latent_heat_vaporisation_J_kg * lead_evaporation_kg_m2_s;
     const double lead_W_m2 = tile.lead_absorbed_W_m2 + source_W_m2 -
-                             exchange_W_m2_K * freezing_K - freezing_emission_W_m2;
+                             exchange_W_m2_K * freezing_K - freezing_emission_W_m2 -
+                             lead_latent_W_m2;
 
     // R(m') = L (m' − m)/Δt − c₀ F_top(h_f') + (1 − c₀) Q_L + F_o with
     // h_f' = max(h_r, m'/ρ): increasing in m' (ADR-0008 §10).
@@ -209,6 +231,18 @@ OceanTileResult solve_ocean_tile(const OceanTileSystem& tile, double source_W_m2
     }
     result.latent_J_m2 = latent_heat_of_fusion_J_kg * (result.melted_kg_m2 - result.frozen_kg_m2);
     result.albedo = tile.column.albedo;
+    // Evaporation: the leads' from the water, the floes' sublimated from the
+    // ice (ADR-0021 §4.3).
+    result.evaporation_kg_m2 = (1.0 - cover) * lead_evaporation_kg_m2_s * tile.dt_s;
+    const double floe_kg_m2 = cover * ice.system.evaporation_kg_m2_s(ice.surface_K).ice * tile.dt_s;
+    if (!melts_away) {
+        result.sublimation_kg_m2 = std::min(result.ice_kg_m2, floe_kg_m2);
+        result.ice_kg_m2 -= result.sublimation_kg_m2;
+    } else {
+        // The floes' latent heat is in the balance that melted them; with no
+        // ice left, their vapour comes from the water.
+        result.evaporation_kg_m2 += floe_kg_m2;
+    }
 
     ColumnStepResult& column = result.column;
     const double mixed_K = freezing_K + leftover_J_m2 / tile.column.surface_heat_capacity_J_m2_K;
@@ -221,6 +255,10 @@ OceanTileResult solve_ocean_tile(const OceanTileSystem& tile, double source_W_m2
         tile.column.lower_heat_capacity_J_m2_K * (deep_K - tile.before.lower_K);
     column.source_W_m2 = source_W_m2 - exchange_W_m2_K * surface_K;
     column.newton_residual_W_m2 = melts_away ? 0.0 : value;
+    column.evaporation_W_m2 =
+        (1.0 - cover) * lead_latent_W_m2 +
+        latent_heat_sublimation_J_kg *
+            (melts_away ? floe_kg_m2 : result.sublimation_kg_m2) / tile.dt_s;
     // dT_i/ds of the floes, with the thickness responding where it is free
     // to (implicit function theorem on the surface balance and the growth
     // equation): A dT + B dh' = ds, (ρL/Δt + B) dh' + (k/h') dT = 0 gives
@@ -231,7 +269,8 @@ OceanTileResult solve_ocean_tile(const OceanTileSystem& tile, double source_W_m2
     if (!ice.held) {
         const double thickness = thickness_of(root);
         const double conductance = sea_ice_conductivity_W_m_K / thickness;
-        const double a = ice.system.a + 4.0 * radiative * std::pow(ice.surface_K, 3);
+        const double a = ice.system.a + 4.0 * radiative * std::pow(ice.surface_K, 3) +
+                         ice.system.latent_slope_W_m2_K(ice.surface_K);
         floe_slope = 1.0 / a;
         if (!melts_away && root > sea_ice_density_kg_m3 * floe_m) {
             const double b = conductance * (freezing_K - ice.surface_K) / thickness;

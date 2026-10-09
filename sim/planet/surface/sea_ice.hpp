@@ -32,6 +32,9 @@ struct OceanTileSystem {
     double cover = 0.0;                  // c₀ = min(1, m / (ρ_i h_r))
     double floe_absorbed_W_m2 = 0.0;     // (1 − α_ice) Q per floe area
     double lead_absorbed_W_m2 = 0.0;     // (1 − α_ocean) Q per lead area
+    // Evaporation (ADR-0021 §4.3): open water and leads evaporate, floes
+    // sublimate; transfer 0 for none.
+    EvaporationForcing evaporation;
     // The last thickness this tile solved for: the next solve of the same
     // step starts there (the transport solve re-solves every tile with
     // nearby sources). Only a starting point: the root does not depend on
@@ -55,6 +58,11 @@ struct OceanTileResult {
     double latent_J_m2 = 0.0;       // L_f · (melted − frozen)
     double ocean_heat_flux_W_m2 = 0.0;   // F_o into the ice base (0 over open water)
     double albedo = 0.0;
+    // Evaporation over the step, kg/m² of tile (ADR-0021 §4.3): from the
+    // water (open water and leads), and sublimated from the floes (already
+    // out of ice_kg_m2). Their latent heat is column.evaporation_W_m2.
+    double evaporation_kg_m2 = 0.0;
+    double sublimation_kg_m2 = 0.0;
 };
 
 // α_ocean + (α_ice − α_ocean) · min(1, h / h_r), h = m / ρ_i.
@@ -64,7 +72,8 @@ struct OceanTileResult {
 // step_column does.
 [[nodiscard]] OceanTileSystem prepare_ocean_tile(const ColumnProperties& ocean, ColumnState state,
                                                  double ice_kg_m2, double insolation_W_m2,
-                                                 double grey_emissivity, double dt_s);
+                                                 double grey_emissivity, double dt_s,
+                                                 const EvaporationForcing& evaporation = {});
 
 // Solves a prepared tile with an external source s − γ·T in the equation of
 // its radiating surface (see solve_column_step).

@@ -18,6 +18,11 @@ struct LandSnowStepResult {
     double melt_kg_m2 = 0.0;
     double latent_J_m2 = 0.0;      // L_f · melt: energy taken by melting
     double albedo = 0.0;
+    // Evaporation (ADR-0021 §4.3), kg/m² over the step; its latent heat is
+    // column.evaporation_W_m2. Sublimation is already out of snow_kg_m2;
+    // the bucket's water is the caller's.
+    double sublimation_kg_m2 = 0.0;
+    double bucket_evaporation_kg_m2 = 0.0;
 
     [[nodiscard]] double runoff_kg_m2() const noexcept { return rain_kg_m2 + melt_kg_m2; }
 };
@@ -42,10 +47,14 @@ struct LandSnowSystem {
 
 // Throws std::invalid_argument for negative or non-finite snow or
 // precipitation, and as step_column does.
+// With `evaporation`, the snow-covered share sublimates from the snow and
+// the rest evaporates from the bucket (with this step's rain in it), both
+// at their backward-Euler limits (ColumnSystem).
 [[nodiscard]] LandSnowSystem prepare_land_tile(const ColumnProperties& ground, ColumnState state,
                                                double snow_kg_m2, double insolation_W_m2,
                                                double precipitation_kg_m2_s,
-                                               double grey_emissivity, double dt_s);
+                                               double grey_emissivity, double dt_s,
+                                               const EvaporationForcing& evaporation = {});
 
 // Solves a prepared tile with an external source s − γ·T_s' in its surface
 // equation (see solve_column_step). The result's surface slope is 0 while

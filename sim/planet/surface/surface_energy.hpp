@@ -38,7 +38,19 @@ struct SurfaceEnergyParameters {
     double air_exchange_W_m2_K = 0.0;
     // ADR-0010: the layered atmosphere; N = 0 keeps the grey layer.
     AtmosphereParameters atmosphere;
+    // ADR-0021: evaporation from the tiles into the bottom layer, the land's
+    // bucket and its runoff (needs an atmosphere). Off: the step is exactly
+    // M6's.
+    bool water_cycle = false;
+    // The gustiness added to the monthly mean wind in the bulk transfer
+    // (ADR-0021 §4.3).
+    double gustiness_m_s = 5.0;
 };
+
+// The bulk transfer coefficients of evaporation (ADR-0021 §4.3): the tiles'
+// drag coefficients of ADR-0011 §4.3.
+inline constexpr double ocean_transfer_coefficient = 1.5e-3;
+inline constexpr double land_transfer_coefficient = 4.0e-3;
 
 // ADR-0009 §10: the bulk sensible-heat exchange ρ c_p C_H U with
 // ρ = 1.2 kg/m³, c_p = 1005 J/kg/K, C_H = 1.2e-3 and U = 7 m/s.
@@ -153,6 +165,20 @@ struct SurfaceEnergyDiagnostics {
     double transport_eddy_absolute_W = 0.0;
     double transport_advective_absolute_W = 0.0;
     double transport_solve_s = 0.0;   // wall-clock of the transport solve, records only
+    // Water (ADR-0021), kg over the step, zero with the water cycle off:
+    // evaporation from the ocean's water and the land's bucket, sublimation
+    // from snow and floes (negative: dew and frost), the bucket's runoff,
+    // and the changes of the bottom layer's vapour and of the bucket.
+    double water_evaporation_kg = 0.0;
+    double bucket_evaporation_kg = 0.0;
+    double snow_sublimation_kg = 0.0;
+    double ice_sublimation_kg = 0.0;
+    double bucket_runoff_kg = 0.0;   // the bucket's overflow to the ocean
+    double vapour_change_kg = 0.0;
+    double bucket_change_kg = 0.0;
+    double bucket_kg = 0.0;           // after the step
+    double vapour_kg = 0.0;           // the atmosphere's, after the step
+    double evaporation_latent_J = 0.0;   // Σ A Δt (latent heat of evaporation)
     // The atmosphere (ADR-0010 §4.4), zero without one. emitted_W is then the
     // outgoing longwave at the top, storage_change_J and stored_energy_J
     // include the layers, and transport_W is the heat the columns received.
@@ -191,8 +217,13 @@ struct SurfaceEnergyDiagnostics {
     // The V2 gate (ADR-0007 §9): 1e-9 of the flux scale plus the rounding
     // floor 4ε of the stored energy.
     [[nodiscard]] double closure_gate_J() const noexcept;
-    // |Δ snow + Δ ice − (snowfall − snow melt + ice frozen − ice melted)|
+    // |Δ snow + Δ ice − (snowfall − snow melt − sublimation + ice frozen −
+    // ice melted − sublimation)|
     [[nodiscard]] double water_residual_kg() const noexcept;
+    // ADR-0021 V2: |Δ(vapour + bucket + snow + ice) − (water evaporation +
+    // rain + snowfall − runoff + ice frozen − ice melted)|, and its gate.
+    [[nodiscard]] double water_cycle_residual_kg() const noexcept;
+    [[nodiscard]] double water_cycle_gate_kg() const noexcept;
     // ADR-0008 V2: 1e-12 of the moved and stored water plus the rounding
     // floor 4ε of the stored water.
     [[nodiscard]] double water_gate_kg() const noexcept;

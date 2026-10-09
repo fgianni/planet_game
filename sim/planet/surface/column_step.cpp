@@ -1,5 +1,7 @@
 #include "sim/planet/surface/column_step.hpp"
 
+#include "sim/planet/atmosphere/saturation.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -46,13 +48,141 @@ ColumnSystem column_system(const ColumnProperties& column, ColumnState state,
     return system;
 }
 
+namespace {
+
+// A flux and its derivative in κ.
+struct Limited {
+    double value = 0.0;
+    double slope = 0.0;
+};
+
+// Dew, κ < 0: κ V / (V − κ Δt), never more than the vapour V in a step.
+[[nodiscard]] Limited dew_limited(double kappa, double vapour, double dt) noexcept {
+    const double d = vapour - kappa * dt;
+    if (!(d > 0.0)) {
+        return {0.0, 0.0};
+    }
+    return {kappa * vapour / d, vapour * vapour / (d * d)};
+}
+
+// Free water or ice: κ for evaporation, the dew limit below.
+[[nodiscard]] Limited free_limited(double kappa, double vapour, double dt) noexcept {
+    return kappa < 0.0 ? dew_limited(kappa, vapour, dt) : Limited{kappa, 1.0};
+}
+
+// κ S / (S + κ Δt) and its derivative in κ for κ ≥ 0; dew below.
+[[nodiscard]] Limited snow_limited(double kappa, double store, double vapour,
+                                   double dt) noexcept {
+    if (kappa < 0.0) {
+        return dew_limited(kappa, vapour, dt);
+    }
+    const double d = store + kappa * dt;
+    if (!(d > 0.0)) {
+        return {0.0, 0.0};
+    }
+    return {kappa * store / d, store * store / (d * d)};
+}
+
+// κ min(1, W / (W_c + κ Δt)) and its derivative for κ ≥ 0; dew below.
+[[nodiscard]] Limited bucket_limited(double kappa, double store, double threshold,
+                                     double vapour, double dt) noexcept {
+    if (kappa < 0.0) {
+        return dew_limited(kappa, vapour, dt);
+    }
+    const double d = threshold + kappa * dt;
+    if (store >= d) {
+        return {kappa, 1.0};
+    }
+    return {kappa * store / d, store * threshold / (d * d)};
+}
+
+}  // namespace
+
+ColumnSystem::Evaporation ColumnSystem::evaporation_kg_m2_s(double surface_K) const noexcept {
+    Evaporation e;
+    if (!evaporates()) {
+        return e;
+    }
+    const double dq = saturation_specific_humidity(surface_K, pressure_Pa) - air_humidity;
+    e.water = free_limited(water_transfer * dq, vapour_kg_m2, step_s).value;
+    e.ice = free_limited(ice_transfer * dq, vapour_kg_m2, step_s).value;
+    e.snow = snow_limited(snow_transfer * dq, snow_kg_m2, vapour_kg_m2, step_s).value;
+    e.bucket = bucket_limited(bucket_transfer * dq, bucket_kg_m2, bucket_threshold_kg_m2,
+                              vapour_kg_m2, step_s)
+                   .value;
+    return e;
+}
+
+double ColumnSystem::latent_flux_W_m2(double surface_K) const noexcept {
+    if (!evaporates()) {
+        return 0.0;
+    }
+    const Evaporation e = evaporation_kg_m2_s(surface_K);
+    return latent_heat_vaporisation_J_kg * (e.water + e.bucket) +
+           latent_heat_sublimation_J_kg * (e.ice + e.snow);
+}
+
+double ColumnSystem::latent_slope_W_m2_K(double surface_K) const noexcept {
+    if (!evaporates()) {
+        return 0.0;
+    }
+    const double dq = saturation_specific_humidity(surface_K, pressure_Pa) - air_humidity;
+    const double dq_dx = saturation_specific_humidity_slope(surface_K, pressure_Pa);
+    const double water = free_limited(water_transfer * dq, vapour_kg_m2, step_s).slope *
+                         water_transfer;
+    const double ice = free_limited(ice_transfer * dq, vapour_kg_m2, step_s).slope * ice_transfer;
+    const double snow = snow_limited(snow_transfer * dq, snow_kg_m2, vapour_kg_m2, step_s).slope *
+                        snow_transfer;
+    const double bucket = bucket_limited(bucket_transfer * dq, bucket_kg_m2,
+                                         bucket_threshold_kg_m2, vapour_kg_m2, step_s)
+                              .slope *
+                          bucket_transfer;
+    return dq_dx * (latent_heat_vaporisation_J_kg * (water + bucket) +
+                    latent_heat_sublimation_J_kg * (ice + snow));
+}
+
 double ColumnSystem::surplus_W_m2(double surface_K) const noexcept {
     const double x3 = surface_K * surface_K * surface_K;
-    return b - a * surface_K - radiative * x3 * surface_K;
+    return b - a * surface_K - radiative * x3 * surface_K - latent_flux_W_m2(surface_K);
 }
 
 double solve_column_surface(const ColumnSystem& system, double sink_W_m2) {
     const double b = system.b - sink_W_m2;
+    if (system.evaporates()) {
+        // With evaporation: safeguarded Newton from the root without it. The
+        // function is increasing, so a bracket [low, high] around the root
+        // shrinks every iteration; a step leaving it bisects.
+        ColumnSystem dry = system;
+        dry.water_transfer = dry.ice_transfer = dry.snow_transfer = dry.bucket_transfer = 0.0;
+        double x = solve_column_surface(dry, sink_W_m2);
+        double low = 0.0;
+        double high = std::numeric_limits<double>::infinity();
+        constexpr int max_iterations = 60;
+        for (int iteration = 0; iteration < max_iterations; ++iteration) {
+            const double x3 = x * x * x;
+            const double emitted = system.radiative * x3 * x;
+            const double latent = system.latent_flux_W_m2(x);
+            const double value = system.a * x + emitted + latent - b;
+            // At the root to rounding: the residual is at the level of its
+            // own terms' last bits.
+            const double terms = system.a * x + emitted + std::abs(latent) + std::abs(b);
+            if (std::abs(value) <= 64.0 * std::numeric_limits<double>::epsilon() * terms) {
+                return x;
+            }
+            (value > 0.0 ? high : low) = x;
+            const double slope =
+                system.a + 4.0 * system.radiative * x3 + system.latent_slope_W_m2_K(x);
+            double next = x - value / slope;
+            if (!(next > low && next < high)) {
+                next = std::isfinite(high) ? 0.5 * (low + high) : 2.0 * x;
+            }
+            if (std::abs(next - x) <= 4.0 * std::numeric_limits<double>::epsilon() * x) {
+                return next;
+            }
+            x = next;
+        }
+        return x;
+    }
     // Both terms of f(x) = a x + r x⁴ − b are increasing, so each alone
     // overestimates the root: the smaller of the two is a start at or above it.
     double x = std::min(b / system.a, std::sqrt(std::sqrt(b / system.radiative)));
@@ -73,7 +203,8 @@ double solve_column_surface(const ColumnSystem& system, double sink_W_m2) {
 }
 
 double ColumnSystem::slope_K_m2_W(double surface_K) const noexcept {
-    return 1.0 / (a + 4.0 * radiative * surface_K * surface_K * surface_K);
+    return 1.0 / (a + 4.0 * radiative * surface_K * surface_K * surface_K +
+                  latent_slope_W_m2_K(surface_K));
 }
 
 ColumnStepResult complete_column_step(const ColumnProperties& column, const ColumnSystem& system,
@@ -87,8 +218,9 @@ ColumnStepResult complete_column_step(const ColumnProperties& column, const Colu
     result.storage_change_J_m2 =
         column.surface_heat_capacity_J_m2_K * (result.state.surface_K - before.surface_K) +
         column.lower_heat_capacity_J_m2_K * (result.state.lower_K - before.lower_K);
-    result.newton_residual_W_m2 =
-        system.a * surface_K + result.emitted_W_m2 - (system.b - sink_W_m2);
+    result.evaporation_W_m2 = system.latent_flux_W_m2(surface_K);
+    result.newton_residual_W_m2 = system.a * surface_K + result.emitted_W_m2 +
+                                  result.evaporation_W_m2 - (system.b - sink_W_m2);
     result.source_W_m2 = source_W_m2;
     return result;
 }

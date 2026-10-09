@@ -39,8 +39,9 @@ and tests together; - do not proceed to M8 unless explicitly requested.
 
 Current milestone: **P0 / M7 --- Humidity and evaporation** (ADR-0021,
 accepted 2026-10-09: saturation rainout, the Manabe bucket). M7-01 (water
-state, saturation, PSNAP schema 6) is complete; next is M7-02 (evaporation
-and the bucket). The 42 K equator-to-pole target waits for M7's latent and
+state, saturation, PSNAP schema 6) and M7-02 (evaporation and the bucket,
+behind `SurfaceEnergyParameters::water_cycle`, off by default) are
+complete; next is M7-03 (saturation rainout). The 42 K equator-to-pole target waits for M7's latent and
 M11's ocean transport (ADR-0011 §17.7).
 
 The rendering track (specification §31.10) runs in parallel with the P0

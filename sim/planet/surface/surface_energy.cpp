@@ -1,5 +1,7 @@
 #include "sim/planet/surface/surface_energy.hpp"
 
+#include "sim/planet/atmosphere/water.hpp"
+
 #include "sim/core/scheduler/deterministic_executor.hpp"
 #include "sim/core/scheduler/scheduler.hpp"
 #include "sim/planet/atmosphere/atmosphere_column.hpp"
@@ -149,6 +151,16 @@ struct BudgetPartial {
     double ice_melted_kg = 0.0;
     double ice_change_kg = 0.0;
     double ice_kg = 0.0;
+    double water_evaporation_kg = 0.0;
+    double bucket_evaporation_kg = 0.0;
+    double snow_sublimation_kg = 0.0;
+    double ice_sublimation_kg = 0.0;
+    double bucket_runoff_kg = 0.0;   // the bucket's overflow to the ocean
+    double vapour_change_kg = 0.0;
+    double bucket_change_kg = 0.0;
+    double bucket_kg = 0.0;
+    double vapour_kg = 0.0;
+    double evaporation_latent_J = 0.0;
     double ice_area_north_m2 = 0.0;
     double ice_area_south_m2 = 0.0;
     double ice_mass_north_kg = 0.0;
@@ -201,6 +213,16 @@ struct BudgetPartial {
     a.ice_melted_kg += b.ice_melted_kg;
     a.ice_change_kg += b.ice_change_kg;
     a.ice_kg += b.ice_kg;
+    a.water_evaporation_kg += b.water_evaporation_kg;
+    a.bucket_evaporation_kg += b.bucket_evaporation_kg;
+    a.snow_sublimation_kg += b.snow_sublimation_kg;
+    a.ice_sublimation_kg += b.ice_sublimation_kg;
+    a.bucket_runoff_kg += b.bucket_runoff_kg;
+    a.vapour_change_kg += b.vapour_change_kg;
+    a.bucket_change_kg += b.bucket_change_kg;
+    a.bucket_kg += b.bucket_kg;
+    a.vapour_kg += b.vapour_kg;
+    a.evaporation_latent_J += b.evaporation_latent_J;
     a.ice_area_north_m2 += b.ice_area_north_m2;
     a.ice_area_south_m2 += b.ice_area_south_m2;
     a.ice_mass_north_kg += b.ice_mass_north_kg;
@@ -437,7 +459,8 @@ struct CellSurface {
 }  // namespace
 
 double SurfaceEnergyDiagnostics::closure_residual_J() const noexcept {
-    return std::abs(storage_change_J + latent_heat_J -
+    // Evaporation's latent heat leaves the sensible energy for the vapour.
+    return std::abs(storage_change_J + latent_heat_J + evaporation_latent_J -
                     duration_s * (absorbed_W - emitted_W + transport_W));
 }
 
@@ -446,13 +469,29 @@ double SurfaceEnergyDiagnostics::closure_gate_J() const noexcept {
     const double scale = duration_s * (absorbed_W + emitted_W + transport_absolute_W +
                                        surface_upward_longwave_W + downward_longwave_W +
                                        std::abs(sensible_heat_W)) +
-                         std::abs(storage_change_J) + std::abs(latent_heat_J);
+                         std::abs(storage_change_J) + std::abs(latent_heat_J) +
+                         std::abs(evaporation_latent_J);
     return 1e-9 * scale + 4.0 * std::numeric_limits<double>::epsilon() * stored_energy_J;
 }
 
 double SurfaceEnergyDiagnostics::water_residual_kg() const noexcept {
     return std::abs(snow_change_kg + ice_change_kg -
-                    (snowfall_kg - melt_kg + ice_frozen_kg - ice_melted_kg));
+                    (snowfall_kg - melt_kg - snow_sublimation_kg + ice_frozen_kg - ice_melted_kg -
+                     ice_sublimation_kg));
+}
+
+double SurfaceEnergyDiagnostics::water_cycle_residual_kg() const noexcept {
+    return std::abs(vapour_change_kg + bucket_change_kg + snow_change_kg + ice_change_kg -
+                    (water_evaporation_kg + rain_kg + snowfall_kg - bucket_runoff_kg + ice_frozen_kg -
+                     ice_melted_kg));
+}
+
+double SurfaceEnergyDiagnostics::water_cycle_gate_kg() const noexcept {
+    const double stock = vapour_kg + bucket_kg + snow_kg + ice_kg;
+    return 1e-12 * (std::abs(water_evaporation_kg) + std::abs(bucket_evaporation_kg) +
+                    std::abs(snow_sublimation_kg) + std::abs(ice_sublimation_kg) + rain_kg +
+                    snowfall_kg + bucket_runoff_kg + ice_frozen_kg + ice_melted_kg + melt_kg + stock) +
+           4.0 * std::numeric_limits<double>::epsilon() * stock;
 }
 
 double SurfaceEnergyDiagnostics::water_gate_kg() const noexcept {
@@ -511,20 +550,74 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     std::vector<double> tile_share(cells, 0.0);   // f_land + f_ocean
     std::vector<std::uint8_t> band_of_cell(cells, 0U);   // 10° band from 90° S
     std::vector<double> p2_of_cell(cells, 0.0);           // P2(sin φ)
+    // Evaporation (ADR-0021 §4.3): the bulk transfer from the circulation's
+    // bottom-layer wind with gustiness, the bottom layer's humidity, vapour
+    // and density.
+    const bool water = surface.water_cycle && surface.atmosphere.layer_count > 0U;
+    if (water && (slow.atmosphere_specific_humidity_kg_kg.layer_count() !=
+                      surface.atmosphere.layer_count ||
+                  slow.land_surface_water_kg_m2.size() != cells)) {
+        throw std::invalid_argument("the water cycle needs the state's water (initialise_water)");
+    }
+    const auto& circulation_fields = state.circulation();
+    const bool has_wind = circulation_fields.available() &&
+                          circulation_fields.eastward_wind_m_s.cell_count() == cells;
+    const double water_gravity = surface_gravity_m_s2(parameters);
+    const double water_layers = static_cast<double>(surface.atmosphere.layer_count);
+    const double water_lapse = critical_lapse_exponent(surface.atmosphere, water_gravity);
+    std::vector<double> bottom_mass(water ? cells : 0U, 0.0);   // m₀, kg/m²
     for_each_deterministic_block(
         mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                 const double insolation = insolation_W_m2[cell];
+                EvaporationForcing land_forcing;
+                EvaporationForcing ocean_forcing;
+                if (water) {
+                    const double ps = slow.atmosphere_surface_pressure_Pa[cell];
+                    const double air_K = surface_air_temperature_K(
+                        slow.atmosphere_temperature_K.layer(0)[cell],
+                        surface.atmosphere.layer_count, water_lapse);
+                    const double density = ps / (dry_air_gas_constant_J_kg_K * air_K);
+                    const double wind =
+                        (has_wind ? std::hypot(static_cast<double>(
+                                                   circulation_fields.eastward_wind_m_s.layer(0)[cell]),
+                                               static_cast<double>(
+                                                   circulation_fields.northward_wind_m_s.layer(0)[cell]))
+                                  : 0.0) +
+                        surface.gustiness_m_s;
+                    bottom_mass[cell] = ps / (water_gravity * water_layers);
+                    const double q0 = slow.atmosphere_specific_humidity_kg_kg.layer(0)[cell];
+                    // The bottom layer's humidity responds within the step
+                    // (backward Euler in q₀): q₀' = q₀ + Δt Σ f τ (q_sat − q₀')/m₀
+                    // divides every tile's transfer by 1 + Δt Σ f τ / m₀. A
+                    // month's τ Δt / m₀ is about 15; with q₀ held, the layer
+                    // overshoots saturation and dews it back the next month.
+                    const double cell_transfer =
+                        density * wind *
+                        (fractions.land_fraction[cell] * land_transfer_coefficient +
+                         fractions.ocean_fraction[cell] * ocean_transfer_coefficient);
+                    const double response = 1.0 / (1.0 + dt_s * cell_transfer / bottom_mass[cell]);
+                    ocean_forcing.transfer_kg_m2_s =
+                        density * ocean_transfer_coefficient * wind * response;
+                    ocean_forcing.air_humidity = q0;
+                    ocean_forcing.pressure_Pa = ps;
+                    ocean_forcing.vapour_kg_m2 = q0 * bottom_mass[cell];
+                    land_forcing = ocean_forcing;
+                    land_forcing.transfer_kg_m2_s =
+                        density * land_transfer_coefficient * wind * response;
+                    land_forcing.bucket_kg_m2 = slow.land_surface_water_kg_m2[cell];
+                }
                 land_tiles[cell] = prepare_land_tile(
                     land,
                     {slow.land_surface_temperature_K[cell], slow.land_ground_temperature_K[cell]},
                     slow.land_snow_water_equivalent_kg_m2[cell], insolation, precipitation[cell],
-                    surface.grey_emissivity, dt_s);
+                    surface.grey_emissivity, dt_s, land_forcing);
                 ocean_tiles[cell] = prepare_ocean_tile(
                     ocean,
                     {slow.ocean_mixed_layer_temperature_K[cell],
                      slow.ocean_deep_temperature_K[cell]},
-                    slow.sea_ice_mass_kg_m2[cell], insolation, surface.grey_emissivity, dt_s);
+                    slow.sea_ice_mass_kg_m2[cell], insolation, surface.grey_emissivity, dt_s,
+                    ocean_forcing);
                 tile_share[cell] = static_cast<double>(fractions.land_fraction[cell]) +
                                    static_cast<double>(fractions.ocean_fraction[cell]);
                 const double latitude = latitude_rad(mesh.cells()[cell].center_unit);
@@ -959,6 +1052,45 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 partial.p2_temperature_K_m2 +=
                     p2 * (land_weight * land_step.state.surface_K + ocean_weight * ocean_K);
                 partial.p2_squared_m2 += p2 * p2 * (land_weight + ocean_weight);
+                if (water) {
+                    // The water's update (ADR-0021 §4.3): the bucket takes rain
+                    // and meltwater, loses its evaporation and overflows to
+                    // the ocean; the bottom layer takes the cell's
+                    // evaporation.
+                    const double bucket = slow.land_surface_water_kg_m2[cell];
+                    double after = bucket + land_tile.rain_kg_m2 + land_tile.melt_kg_m2 -
+                                   land_tile.bucket_evaporation_kg_m2;
+                    const double overflow = std::max(0.0, after - bucket_capacity_kg_m2);
+                    after = std::max(0.0, after - overflow);
+                    slow.land_surface_water_kg_m2[cell] = after;
+                    const double land_share = fractions.land_fraction[cell];
+                    const double ocean_share = fractions.ocean_fraction[cell];
+                    const double vapour_in =
+                        land_share * (land_tile.bucket_evaporation_kg_m2 +
+                                      land_tile.sublimation_kg_m2) +
+                        ocean_share * (ocean_tile.evaporation_kg_m2 + ocean_tile.sublimation_kg_m2);
+                    auto& q0 = slow.atmosphere_specific_humidity_kg_kg.layer(0)[cell];
+                    q0 = std::max(0.0, q0 + vapour_in / bottom_mass[cell]);
+                    state.forcing().evaporation_kg_m2_s[cell] = static_cast<float>(vapour_in / dt_s);
+                    state.forcing().runoff_kg_m2_s[cell] =
+                        static_cast<float>(land_share * overflow / dt_s);
+                    partial.water_evaporation_kg += ocean_weight * ocean_tile.evaporation_kg_m2;
+                    partial.bucket_evaporation_kg +=
+                        land_weight * land_tile.bucket_evaporation_kg_m2;
+                    partial.snow_sublimation_kg += land_weight * land_tile.sublimation_kg_m2;
+                    partial.ice_sublimation_kg += ocean_weight * ocean_tile.sublimation_kg_m2;
+                    partial.bucket_runoff_kg += land_weight * overflow;
+                    partial.vapour_change_kg += area_m2 * vapour_in;
+                    partial.bucket_change_kg += land_weight * (after - bucket);
+                    partial.bucket_kg += land_weight * after;
+                    partial.evaporation_latent_J +=
+                        dt_s * (land_weight * land_step.evaporation_W_m2 +
+                                ocean_weight * ocean_step.evaporation_W_m2);
+                    for (std::size_t layer = 0; layer < layers; ++layer) {
+                        partial.vapour_kg += area_m2 * bottom_mass[cell] *
+                                             slow.atmosphere_specific_humidity_kg_kg.layer(layer)[cell];
+                    }
+                }
                 slow.land_surface_temperature_K[cell] =
                     static_cast<float>(land_step.state.surface_K);
                 slow.land_ground_temperature_K[cell] = static_cast<float>(land_step.state.lower_K);
@@ -1031,6 +1163,16 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.snow_kg = total.snow_kg;
     diagnostics.ice_frozen_kg = total.ice_frozen_kg;
     diagnostics.ice_melted_kg = total.ice_melted_kg;
+    diagnostics.water_evaporation_kg = total.water_evaporation_kg;
+    diagnostics.bucket_evaporation_kg = total.bucket_evaporation_kg;
+    diagnostics.snow_sublimation_kg = total.snow_sublimation_kg;
+    diagnostics.ice_sublimation_kg = total.ice_sublimation_kg;
+    diagnostics.bucket_runoff_kg = total.bucket_runoff_kg;
+    diagnostics.vapour_change_kg = total.vapour_change_kg;
+    diagnostics.bucket_change_kg = total.bucket_change_kg;
+    diagnostics.bucket_kg = total.bucket_kg;
+    diagnostics.vapour_kg = total.vapour_kg;
+    diagnostics.evaporation_latent_J = total.evaporation_latent_J;
     diagnostics.ice_change_kg = total.ice_change_kg;
     diagnostics.ice_kg = total.ice_kg;
     diagnostics.ice_area_north_m2 = total.ice_area_north_m2;

@@ -91,6 +91,10 @@ struct ForcingState {
     field_container_t<FieldId::prescribed_precipitation_kg_m2_s> prescribed_precipitation_kg_m2_s;
     // The cells' radiating surface temperature after the last surface step.
     field_container_t<FieldId::surface_temperature_K> surface_temperature_K;
+    // The step's mean water fluxes (ADR-0021 §4.1), kg/m²/s of cell.
+    field_container_t<FieldId::evaporation_kg_m2_s> evaporation_kg_m2_s;
+    field_container_t<FieldId::runoff_kg_m2_s> runoff_kg_m2_s;
+    field_container_t<FieldId::precipitation_kg_m2_s> precipitation_kg_m2_s;
 };
 
 class PlanetState {
