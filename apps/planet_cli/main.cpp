@@ -798,6 +798,17 @@ void populate_snapshot_synthetic_state(planetsim::PlanetState& state) {
                 temperature(cell, 30U + static_cast<std::uint32_t>(layer)) - 50.0;
         }
     }
+    // Schema 6 water (ADR-0021 §4.1): humidity 0-0.01 kg/kg in each layer,
+    // the bucket 0-150 kg/m².
+    slow.atmosphere_specific_humidity_kg_kg =
+        planetsim::Field3D<double>(3U, state.mesh().cell_count(), 0.0);
+    for (std::size_t cell = 0; cell < state.mesh().cell_count(); ++cell) {
+        for (std::size_t layer = 0; layer < 3U; ++layer) {
+            slow.atmosphere_specific_humidity_kg_kg.layer(layer)[cell] =
+                1.0e-4 * (temperature(cell, 34U + static_cast<std::uint32_t>(layer)) - 220.0);
+        }
+        slow.land_surface_water_kg_m2[cell] = 1.5 * (temperature(cell, 37U) - 220.0);
+    }
 }
 
 struct LayoutBenchmarkResult {

@@ -38,6 +38,8 @@ add_library(PlanetSim STATIC
     sim/core/scheduler/simulation_clock.cpp
     sim/core/scheduler/worker_pool.cpp
     sim/planet/atmosphere/atmosphere.cpp
+    sim/planet/atmosphere/saturation.cpp
+    sim/planet/atmosphere/water.cpp
     sim/planet/climatology/monthly_climatology.cpp
     sim/planet/coordinates/local_tangent_basis.cpp
     sim/planet/dynamics/atmosphere_dynamics.cpp

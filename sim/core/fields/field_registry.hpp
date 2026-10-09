@@ -38,6 +38,11 @@ enum class FieldId : std::uint32_t {
     climatology_surface_eastward_wind_mean_m_s = 0x0006'0009U,
     climatology_surface_northward_wind_mean_m_s = 0x0006'000AU,
     climatology_sea_level_pressure_mean_Pa = 0x0006'000BU,
+    atmosphere_specific_humidity_kg_kg = 0x0007'0001U,
+    land_surface_water_kg_m2 = 0x0007'0002U,
+    precipitation_kg_m2_s = 0x0007'0003U,
+    evaporation_kg_m2_s = 0x0007'0004U,
+    runoff_kg_m2_s = 0x0007'0005U,
 };
 
 enum class FieldDataType : std::uint8_t {
@@ -129,7 +134,7 @@ struct FieldDescriptor {
     return {};
 }
 
-inline constexpr std::array<FieldDescriptor, 29> field_registry{{
+inline constexpr std::array<FieldDescriptor, 34> field_registry{{
     {FieldId::top_of_atmosphere_insolation_W_m2, "top_of_atmosphere_insolation_W_m2",
      FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
     {FieldId::substep_mean_insolation_W_m2, "substep_mean_insolation_W_m2",
@@ -222,6 +227,20 @@ inline constexpr std::array<FieldDescriptor, 29> field_registry{{
      FieldLayout::cell_layers, FieldDataType::float32, 12U, "m/s"},
     {FieldId::climatology_sea_level_pressure_mean_Pa, "climatology_sea_level_pressure_mean_Pa",
      FieldPartition::climatology, FieldLayout::cell_layers, FieldDataType::float32, 12U, "Pa"},
+    // Water (ADR-0021 §4.1): the layers' specific humidity (N layers, as the
+    // atmosphere) and the land's bucket, float64 reservoirs as snow and ice;
+    // the step's mean precipitation, evaporation and runoff, derived.
+    {FieldId::atmosphere_specific_humidity_kg_kg, "atmosphere_specific_humidity_kg_kg",
+     FieldPartition::slow, FieldLayout::cell_layers, FieldDataType::float64,
+     scenario_layer_count, "kg/kg"},
+    {FieldId::land_surface_water_kg_m2, "land_surface_water_kg_m2", FieldPartition::slow,
+     FieldLayout::cell, FieldDataType::float64, 1U, "kg/m2"},
+    {FieldId::precipitation_kg_m2_s, "precipitation_kg_m2_s", FieldPartition::derived,
+     FieldLayout::cell, FieldDataType::float32, 1U, "kg/m2/s"},
+    {FieldId::evaporation_kg_m2_s, "evaporation_kg_m2_s", FieldPartition::derived,
+     FieldLayout::cell, FieldDataType::float32, 1U, "kg/m2/s"},
+    {FieldId::runoff_kg_m2_s, "runoff_kg_m2_s", FieldPartition::derived, FieldLayout::cell,
+     FieldDataType::float32, 1U, "kg/m2/s"},
 }};
 
 // Retired IDs are never registered again. Snapshots of the schemas that

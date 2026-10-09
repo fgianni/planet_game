@@ -16,8 +16,9 @@ struct SlowState;
 // the four surface-energy temperatures. Schema 3 (ADR-0007 §10) stores the
 // ocean mixed layer as float64 under a new field ID. Schema 4 (ADR-0008
 // §4.6) adds the snow and sea-ice reservoirs. Schema 5 (ADR-0010 §4.1, §4.7)
-// adds the atmosphere, whose layer count each file states.
-inline constexpr std::uint32_t persistent_snapshot_schema_version = 5U;
+// adds the atmosphere, whose layer count each file states. Schema 6
+// (ADR-0021 §4.1) adds the layers' humidity and the land's bucket.
+inline constexpr std::uint32_t persistent_snapshot_schema_version = 6U;
 inline constexpr std::uint32_t oldest_readable_snapshot_schema_version = 1U;
 
 // How a step of the chain is carried out.
@@ -40,11 +41,12 @@ struct SnapshotMigrationStep {
     std::string_view decision;
 };
 
-inline constexpr std::array<SnapshotMigrationStep, 4> snapshot_migration_chain{{
+inline constexpr std::array<SnapshotMigrationStep, 5> snapshot_migration_chain{{
     {1U, MigrationStepKind::initialiser, "surface-energy temperatures", "ADR-0007 §4.6"},
     {2U, MigrationStepKind::core, "ocean mixed layer widened to float64", "ADR-0007 §10"},
     {3U, MigrationStepKind::initialiser, "snow and sea-ice reservoirs", "ADR-0008 §4.6"},
     {4U, MigrationStepKind::initialiser, "atmosphere at hydrostatic rest", "ADR-0010 §4.3"},
+    {5U, MigrationStepKind::initialiser, "water vapour and the land bucket", "ADR-0021 §4.1"},
 }};
 
 consteval bool snapshot_migration_chain_is_contiguous() {

@@ -27,4 +27,9 @@
 393225	climatology_surface_eastward_wind_mean_m_s	climatology	cell_layers	float32	12	m/s
 393226	climatology_surface_northward_wind_mean_m_s	climatology	cell_layers	float32	12	m/s
 393227	climatology_sea_level_pressure_mean_Pa	climatology	cell_layers	float32	12	Pa
+458753	atmosphere_specific_humidity_kg_kg	slow	cell_layers	float64	scenario	kg/kg
+458754	land_surface_water_kg_m2	slow	cell	float64	1	kg/m2
+458755	precipitation_kg_m2_s	derived	cell	float32	1	kg/m2/s
+458756	evaporation_kg_m2_s	derived	cell	float32	1	kg/m2/s
+458757	runoff_kg_m2_s	derived	cell	float32	1	kg/m2/s
 # retired_field_id	196611

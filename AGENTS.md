@@ -60,7 +60,10 @@ in reference mode), M6-04 (the climate-mode balanced circulation) and
 M6-05 (the circulation carries the heat, the balanced p_s in the slow
 state, τ₀ refitted, the gates). Most recently completed task:
 [`docs/tasks/M6-05-transport-refit-and-close.md`](docs/tasks/M6-05-transport-refit-and-close.md).
-Do not implement M7 or later milestones unless explicitly requested.
+M7 (humidity and evaporation) is in progress under ADR-0021 (accepted
+2026-10-09): M7-01 (water state, saturation, PSNAP schema 6) is complete;
+next is M7-02 (evaporation and the bucket). Do not implement M8 or later
+milestones unless explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is

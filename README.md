@@ -286,9 +286,10 @@ Climate mode's circulation (ADR-0011 §14, task M6-04) is under way:
 ./build/planet_cli history --subdivision 6 --decades 10
 ```
 
-The `PSNAP` format (schema v5: M3 added the surface temperatures and the
+The `PSNAP` format (schema v6: M3 added the surface temperatures and the
 `double` ocean mixed layer, M4 the snow and sea-ice reservoirs, M5 the
-atmosphere, whose layer count each file states) stores only
+atmosphere, whose layer count each file states, M7 the layers' humidity and
+the land's water bucket) stores only
 authoritative slow state, in stable
 field-ID order and layer-major/cell-major order within each field. Its fixed
 little-endian representation, canonical manifest, per-field CRC-32C checksums,

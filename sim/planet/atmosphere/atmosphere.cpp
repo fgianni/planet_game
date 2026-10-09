@@ -1,5 +1,7 @@
 #include "sim/planet/atmosphere/atmosphere.hpp"
 
+#include "sim/planet/atmosphere/water.hpp"
+
 #include "sim/core/scheduler/deterministic_executor.hpp"
 #include "sim/planet/mesh/planet_mesh.hpp"
 #include "sim/planet/planet_parameters.hpp"
@@ -118,6 +120,7 @@ void initialise_atmosphere(const PlanetMesh& mesh, SlowState& slow,
     slow.atmosphere_surface_pressure_Pa = Field2D<double>(cells, 0.0);
     slow.atmosphere_temperature_K = Field3D<double>(layers, cells, 0.0);
     if (layers == 0U) {
+        initialise_water(mesh, slow);
         return;
     }
     const double gravity = surface_gravity_m_s2(planet);
@@ -141,6 +144,8 @@ void initialise_atmosphere(const PlanetMesh& mesh, SlowState& slow,
                 std::max(profile_K, surface_K * skin_ratio);
         }
     }
+    // Its water at the declared start (ADR-0021 §4.1).
+    initialise_water(mesh, slow);
 }
 
 double surface_air_temperature_K(double bottom_layer_K, std::size_t layer_count,

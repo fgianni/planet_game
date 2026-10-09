@@ -22,6 +22,9 @@ PlanetState::PlanetState(std::shared_ptr<const PlanetMesh> mesh) : mesh_(std::mo
     slow_.atmosphere_surface_pressure_Pa =
         make_field<FieldId::atmosphere_surface_pressure_Pa>(*mesh_);
     slow_.atmosphere_temperature_K = make_field<FieldId::atmosphere_temperature_K>(*mesh_);
+    slow_.atmosphere_specific_humidity_kg_kg =
+        make_field<FieldId::atmosphere_specific_humidity_kg_kg>(*mesh_);
+    slow_.land_surface_water_kg_m2 = make_field<FieldId::land_surface_water_kg_m2>(*mesh_);
     forcing_.top_of_atmosphere_insolation_W_m2 =
         make_field<FieldId::top_of_atmosphere_insolation_W_m2>(*mesh_);
     forcing_.substep_mean_insolation_W_m2 =

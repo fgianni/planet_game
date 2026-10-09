@@ -4,7 +4,7 @@ Version: 0.8 (reconciled with design v1.3 and accepted ADRs 0001--0011 in
 `docs/decisions/`)\
 Purpose: implementation contract for Codex / Claude Code\
 Primary target: PC/Linux, C++20 + Godot 4\
-Current phase: P0 --- Living Planet (M0 through M6 complete)
+Current phase: P0 --- Living Planet (M0 through M6 complete, M7 in progress)
 
 Design document: `docs/planetary_civilization_simulator_design_v1_4.docx`. Design v1.4 adds
 section 46 (systems architecture) and changes nothing earlier; this
