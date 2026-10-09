@@ -47,11 +47,12 @@ OceanTileResult open_water(const OceanTileSystem& tile, double source_W_m2,
     result.evaporation_kg_m2 = system.evaporation_kg_m2_s(surface_K).water * tile.dt_s;
     if (system.evaporates()) {
         const auto v = system.vapour_slopes(surface_K);
-        const double slope = result.column.surface_slope_K_m2_W;
         result.vapour_kg_m2_s = result.evaporation_kg_m2 / tile.dt_s;
-        result.vapour_source_slope = v.surface * slope;
-        result.vapour_air_slope = v.air - v.surface * slope * v.latent_air;
-        result.vapour_cap_slope = v.cap - v.surface * slope * v.latent_cap;
+        result.vapour_source_slope = v.surface * result.column.surface_slope_K_m2_W;
+        result.vapour_air_slope = v.air;
+        result.vapour_cap_slope = v.cap;
+        result.latent_air_slope = v.latent_air;
+        result.latent_cap_slope = v.latent_cap;
     }
     return result;
 }
@@ -327,6 +328,8 @@ OceanTileResult solve_ocean_tile_capped(const OceanTileSystem& tile, double sour
         result.vapour_source_slope = floes.surface * column.surface_slope_K_m2_W;
         result.vapour_air_slope = (1.0 - cover) * leads.air + cover * floes.air;
         result.vapour_cap_slope = (1.0 - cover) * leads.cap + cover * floes.cap;
+        result.latent_air_slope = floes.latent_air;
+        result.latent_cap_slope = floes.latent_cap;
     }
     return result;
 }

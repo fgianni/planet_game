@@ -454,49 +454,58 @@ struct CellSurface {
                              (air_factor * layer_saturated));
             cap_slope = air_saturated_slope;
         }
-        // A tile's water flux into the bottom layer and its linearisation:
-        // the source is ε_t D + γ A, and q_a and q_cap follow A.
-        const auto add_vapour = [&](double fraction, double emissivity, double vapour,
-                                    double source_slope, double air_vapour_slope,
-                                    double cap_vapour_slope) {
-            x.vapour_kg_m2_s += fraction * vapour;
-            x.d_vapour_d_downward += fraction * source_slope * emissivity;
-            x.d_vapour_d_air += fraction * (source_slope * exchange +
-                                            air_vapour_slope * air_slope +
-                                            cap_vapour_slope * cap_slope);
-        };
+        // A tile's source is ε_t D + γ A; with the water cycle A also moves
+        // q_a and q_cap, which act on the tile's surface as a source
+        // −∂(L E)/∂q δq (LandSnowStepResult). `source_air` is ds/dA.
         // `emitted_slope` is d(emitted)/d(source): one surface's 4 r T³ dT/ds,
         // or the floes' share of it under ice (ADR-0008 §10).
         const auto add = [&](double fraction, double emissivity, const ColumnStepResult& step,
-                             double surface_K, double emitted_slope) {
+                             double surface_K, double emitted_slope, double source_air) {
             const double slope = step.surface_slope_K_m2_W;
             x.upward_W_m2 += fraction * (step.emitted_W_m2 + (1.0 - emissivity) * downward_W_m2);
             x.d_upward_d_downward += fraction * (emitted_slope * emissivity + 1.0 - emissivity);
-            x.d_upward_d_air += fraction * emitted_slope * exchange;
+            x.d_upward_d_air += fraction * emitted_slope * source_air;
             x.sensible_W_m2 += fraction * exchange * (surface_K - air_K);
             x.d_sensible_d_downward += fraction * exchange * slope * emissivity;
-            x.d_sensible_d_air += fraction * exchange * (slope * exchange - 1.0);
+            x.d_sensible_d_air += fraction * exchange * (slope * source_air - 1.0);
+        };
+        const auto source_air_of = [&](double latent_air, double latent_cap) {
+            return exchange - latent_air * air_slope - latent_cap * cap_slope;
+        };
+        const auto add_vapour = [&](double fraction, double emissivity, double vapour,
+                                    double source_slope, double air_vapour_slope,
+                                    double cap_vapour_slope, double source_air) {
+            x.vapour_kg_m2_s += fraction * vapour;
+            x.d_vapour_d_downward += fraction * source_slope * emissivity;
+            x.d_vapour_d_air += fraction * (source_slope * source_air +
+                                            air_vapour_slope * air_slope +
+                                            cap_vapour_slope * cap_slope);
         };
         if (land_fraction > 0.0) {
             const double emissivity = land->column.emissivity;
             land_result = solve_land_tile(*land, emissivity * downward_W_m2 + exchange * air_K,
                                           exchange, air);
             const ColumnStepResult& step = land_result.column;
+            const double source_air =
+                source_air_of(land_result.latent_air_slope, land_result.latent_cap_slope);
             add(land_fraction, emissivity, step, step.state.surface_K,
-                4.0 * step.emitted_W_m2 / step.state.surface_K * step.surface_slope_K_m2_W);
+                4.0 * step.emitted_W_m2 / step.state.surface_K * step.surface_slope_K_m2_W,
+                source_air);
             add_vapour(land_fraction, emissivity, land_result.vapour_kg_m2_s,
                        land_result.vapour_source_slope, land_result.vapour_air_slope,
-                       land_result.vapour_cap_slope);
+                       land_result.vapour_cap_slope, source_air);
         }
         if (ocean_fraction > 0.0) {
             const double emissivity = ocean->column.emissivity;
             ocean_result = solve_ocean_tile(*ocean, emissivity * downward_W_m2 + exchange * air_K,
                                             exchange, air);
+            const double source_air =
+                source_air_of(ocean_result.latent_air_slope, ocean_result.latent_cap_slope);
             add(ocean_fraction, emissivity, ocean_result.column, ocean_result.radiating_K,
-                ocean_result.emitted_slope);
+                ocean_result.emitted_slope, source_air);
             add_vapour(ocean_fraction, emissivity, ocean_result.vapour_kg_m2_s,
                        ocean_result.vapour_source_slope, ocean_result.vapour_air_slope,
-                       ocean_result.vapour_cap_slope);
+                       ocean_result.vapour_cap_slope, source_air);
         }
         // Not clamped: where the float fractions sum to slightly more than
         // one, the tiles receive D over Σ f and the column gives D over its
@@ -507,6 +516,68 @@ struct CellSurface {
         return x;
     }
 };
+
+// ADR-0021 §4.5: the humidity on the coarse graph's groups, mass-weighted
+// (A p_s), carried by solve_implicit_tracer; each cell's humidity then
+// scales with its group's, which conserves the water and keeps it
+// non-negative.
+[[nodiscard]] HumidityTransportDiagnostics transport_humidity(
+    const PlanetMesh& mesh, SlowState& slow, const AdvectionDiffusion& transport,
+    double gravity_m_s2, double dt_s, std::size_t worker_count) {
+    const std::vector<std::size_t>* group_map = nullptr;
+    const TransportGraph& graph = agglomerated_transport_graph(mesh, group_map);
+    const std::vector<std::size_t>& group_of_cell = *group_map;
+    const std::size_t cells = mesh.cell_count();
+    const std::size_t groups = graph.size();
+    const std::size_t layers = slow.atmosphere_layer_count();
+    if (transport.layers != layers) {
+        throw std::invalid_argument("the circulation's layers do not match the humidity's");
+    }
+    auto& humidity = slow.atmosphere_specific_humidity_kg_kg;
+    std::vector<double> column_mass(groups, 0.0);    // Σ A p_s / g
+    std::vector<double> vapour(layers * groups, 0.0);   // Σ A p_s q / g
+    HumidityTransportDiagnostics d;
+    for (std::size_t cell = 0; cell < cells; ++cell) {
+        const std::size_t group = group_of_cell[cell];
+        const double mass =
+            mesh.cells()[cell].area_m2 * slow.atmosphere_surface_pressure_Pa[cell] / gravity_m_s2;
+        column_mass[group] += mass;
+        for (std::size_t layer = 0; layer < layers; ++layer) {
+            vapour[layer * groups + group] += mass * humidity.layer(layer)[cell];
+        }
+    }
+    const double n = static_cast<double>(layers);
+    std::vector<double> layer_mass(groups, 0.0);
+    std::vector<double> mean(layers * groups, 0.0);
+    for (std::size_t group = 0; group < groups; ++group) {
+        layer_mass[group] = column_mass[group] / n;
+        for (std::size_t layer = 0; layer < layers; ++layer) {
+            mean[layer * groups + group] = vapour[layer * groups + group] / column_mass[group];
+            d.vapour_kg += vapour[layer * groups + group] / n;
+        }
+    }
+    const TracerTransportResult moved =
+        solve_implicit_tracer(graph, transport, layer_mass, mean, dt_s, 1e-12, 2'000, worker_count);
+    double after = 0.0;
+    for (std::size_t cell = 0; cell < cells; ++cell) {
+        const std::size_t group = group_of_cell[cell];
+        const double mass = mesh.cells()[cell].area_m2 *
+                            slow.atmosphere_surface_pressure_Pa[cell] / (gravity_m_s2 * n);
+        for (std::size_t layer = 0; layer < layers; ++layer) {
+            const std::size_t at = layer * groups + group;
+            double& q = humidity.layer(layer)[cell];
+            q = mean[at] > 0.0 ? q * (moved.tracer[at] / mean[at]) : moved.tracer[at];
+            after += mass * q;
+        }
+    }
+    d.transported = true;
+    d.iterations = moved.iterations;
+    d.relative_residual = moved.relative_residual;
+    d.vapour_change_kg = after - d.vapour_kg;
+    d.clipped_kg = moved.clipped_kg;
+    d.column_divergence_kg_s = moved.column_divergence_kg_s;
+    return d;
+}
 
 }  // namespace
 
@@ -615,6 +686,16 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                       surface.atmosphere.layer_count ||
                   slow.land_surface_water_kg_m2.size() != cells)) {
         throw std::invalid_argument("the water cycle needs the state's water (initialise_water)");
+    }
+    // ADR-0021 §4.5: the month's transport moves the humidity first, with the
+    // circulation's fixed fluxes on the coarse graph (split B: the columns
+    // then evaporate and rain out). A month whose circulation failed moves
+    // none (ADR-0011 §17.4's fallback has no mass fluxes).
+    HumidityTransportDiagnostics humidity_transport;
+    if (water && circulation != nullptr && circulation->active) {
+        humidity_transport = transport_humidity(mesh, slow, circulation->transport,
+                                                surface_gravity_m_s2(parameters), dt_s,
+                                                worker_count);
     }
     const auto& circulation_fields = state.circulation();
     const bool has_wind = circulation_fields.available() &&
@@ -1298,6 +1379,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.vapour_kg = total.vapour_kg;
     diagnostics.evaporation_latent_J = total.evaporation_latent_J;
     diagnostics.precipitation_kg = total.precipitation_kg;
+    diagnostics.humidity_transport = humidity_transport;
     diagnostics.ocean_precipitation_kg = total.ocean_precipitation_kg;
     diagnostics.condensation_latent_J = total.condensation_latent_J;
     diagnostics.ice_change_kg = total.ice_change_kg;

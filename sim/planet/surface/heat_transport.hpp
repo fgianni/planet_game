@@ -139,6 +139,9 @@ struct AdvectionDiffusion {
     std::size_t layers = 0;
     std::vector<double> conductance_W_K;
     std::vector<double> outflow_kg_s;
+    // c_p of the conductances, G = c_p μ̄ D̄_e w: the eddies' column mass
+    // exchange is G / c_p (kg/s), for tracers.
+    double heat_capacity_J_kg_K = 1004.64;
 };
 
 // The columns' response to a source h (W/m²) per node: θ_c and dθ_c/dh, and
@@ -179,6 +182,36 @@ struct CirculationTransport {
     // orography, as the fluxes'; ADR-0011 §13).
     std::vector<double> surface_geopotential_m2_s2;
 };
+
+// A tracer's implicit step under the same fluxes (ADR-0021 §4.5): the
+// layers' mixing ratios c (layer-major, layers × nodes) with each node's
+// layer mass M_a (kg, equal for its layers) are carried by the advective
+// fluxes F upwind, exchanged by the eddies with G / (c_p N) per layer, and
+// moved between layers by the vertical mass fluxes that close each layer's
+// horizontal divergence (upward across the top of layer l:
+// W_{l+½} = W_{l−½} − Σ_k F_lk, W_{−½} = 0, no flux through the top):
+//
+//   M (c' − c) / Δt = Σ inflows c'_up − Σ outflows c'_a.
+//
+// Backward Euler: the matrix is an M-matrix whose columns sum to M/Δt, so c'
+// stays non-negative; BiCGSTAB with a block ILU(0) whose blocks keep whole
+// columns. The applied change is the flux form of the solution, so the
+// tracer's mass is conserved to rounding whatever the solver's residual,
+// and a uniform c stays uniform where the columns' fluxes have no
+// divergence. Bit-identical for any worker count.
+struct TracerTransportResult {
+    std::vector<double> tracer;   // c after the step, layer-major
+    int iterations = 0;
+    double relative_residual = 0.0;   // of the linear solve
+    double clipped_kg = 0.0;          // mass added where rounding left c' < 0
+    double column_divergence_kg_s = 0.0;   // max |Σ_l Σ_k F_lk| over nodes
+};
+
+[[nodiscard]] TracerTransportResult solve_implicit_tracer(
+    const TransportGraph& graph, const AdvectionDiffusion& transport,
+    std::span<const double> layer_mass_kg, const std::vector<double>& tracer, double dt_s,
+    double relative_tolerance = 1e-12, int max_iterations = 2'000,
+    std::size_t worker_count = 1U);
 
 // ADR-0011 §17.1: ADR-0009's Newton on h, h = H(θ_c(h), s(h)), with its
 // floors and line search. The Newton system J = I − ∂H/∂h is assembled on

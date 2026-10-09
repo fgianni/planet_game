@@ -1,6 +1,7 @@
 #include "sim/planet/surface/column_step.hpp"
 
 #include "sim/planet/atmosphere/saturation.hpp"
+#include "sim/planet/surface/cryosphere_constants.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -98,6 +99,10 @@ struct Limited {
 
 }  // namespace
 
+static_assert(latent_heat_sublimation_J_kg ==
+                  latent_heat_vaporisation_J_kg + latent_heat_of_fusion_J_kg,
+              "L_s must be L_v + L_f");
+
 namespace {
 
 // The demand δq per unit of τ_u and its derivatives in x, q_a and q_cap: the
@@ -145,7 +150,7 @@ double ColumnSystem::latent_flux_W_m2(double surface_K) const noexcept {
     }
     const Evaporation e = evaporation_kg_m2_s(surface_K);
     return latent_heat_vaporisation_J_kg * (e.water + e.bucket) +
-           latent_heat_sublimation_J_kg * (e.ice + e.snow);
+           latent_heat_sublimation_J_kg * e.ice + snow_latent_J_kg * e.snow;
 }
 
 double ColumnSystem::latent_slope_W_m2_K(double surface_K) const noexcept {
@@ -165,7 +170,7 @@ double ColumnSystem::latent_slope_W_m2_K(double surface_K) const noexcept {
                               .slope *
                           bucket_transfer;
     return dq_dx * (latent_heat_vaporisation_J_kg * (water + bucket) +
-                    latent_heat_sublimation_J_kg * (ice + snow));
+                    latent_heat_sublimation_J_kg * ice + snow_latent_J_kg * snow);
 }
 
 ColumnSystem::VapourSlopes ColumnSystem::vapour_slopes(double surface_K) const noexcept {
@@ -187,7 +192,7 @@ ColumnSystem::VapourSlopes ColumnSystem::vapour_slopes(double surface_K) const n
                           bucket_transfer;
     const double total = water + ice + snow + bucket;
     const double latent = latent_heat_vaporisation_J_kg * (water + bucket) +
-                          latent_heat_sublimation_J_kg * (ice + snow);
+                          latent_heat_sublimation_J_kg * ice + snow_latent_J_kg * snow;
     v.surface = d.surface * total;
     v.air = d.air * total;
     v.cap = d.cap * total;
@@ -212,7 +217,11 @@ double solve_column_surface(const ColumnSystem& system, double sink_W_m2) {
         double x = solve_column_surface(dry, sink_W_m2);
         double low = 0.0;
         double high = std::numeric_limits<double>::infinity();
-        constexpr int max_iterations = 60;
+        constexpr int max_iterations = 100;
+        // The slope jumps at the kinks of the demand (the raining branch's
+        // R, dew): from the steep side Newton creeps. A step that does not
+        // halve the residual inside a finite bracket bisects instead.
+        double previous = std::numeric_limits<double>::infinity();
         for (int iteration = 0; iteration < max_iterations; ++iteration) {
             const double x3 = x * x * x;
             const double emitted = system.radiative * x3 * x;
@@ -228,9 +237,12 @@ double solve_column_surface(const ColumnSystem& system, double sink_W_m2) {
             const double slope =
                 system.a + 4.0 * system.radiative * x3 + system.latent_slope_W_m2_K(x);
             double next = x - value / slope;
-            if (!(next > low && next < high)) {
+            const bool creeping = std::abs(value) > 0.5 * previous && low > 0.0 &&
+                                  std::isfinite(high);
+            if (!(next > low && next < high) || creeping) {
                 next = std::isfinite(high) ? 0.5 * (low + high) : 2.0 * x;
             }
+            previous = std::abs(value);
             if (std::abs(next - x) <= 4.0 * std::numeric_limits<double>::epsilon() * x) {
                 return next;
             }

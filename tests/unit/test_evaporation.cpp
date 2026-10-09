@@ -262,35 +262,75 @@ int main() {
                 const auto land_qa =
                     planetsim::solve_land_tile(land_tile, source, 10.0, {qa, cap});
                 const auto sea_qa = planetsim::solve_ocean_tile(ocean_tile, source, 10.0, {qa, cap});
+                const auto total = [](const auto& r, double partial, double latent) {
+                    return partial - r.vapour_source_slope * latent;
+                };
                 if (land.vapour_air_slope != 0.0) {
                     worst = std::max(worst,
-                                     relative(land.vapour_air_slope,
+                                     relative(total(land, land.vapour_air_slope, land.latent_air_slope),
                                               (land_qa.vapour_kg_m2_s - land.vapour_kg_m2_s) / dq));
                 }
                 if (sea.vapour_air_slope != 0.0) {
                     worst = std::max(worst,
-                                     relative(sea.vapour_air_slope,
+                                     relative(total(sea, sea.vapour_air_slope, sea.latent_air_slope),
                                               (sea_qa.vapour_kg_m2_s - sea.vapour_kg_m2_s) / dq));
                 }
             }
             if (cap > 0.0) {
+                const auto total = [](const auto& r, double partial, double latent) {
+                    return partial - r.vapour_source_slope * latent;
+                };
                 const double dq = 1e-7;
                 const auto land_dq = planetsim::solve_land_tile(land_tile, source, 10.0, {-1.0, cap + dq});
                 const auto sea_dq = planetsim::solve_ocean_tile(ocean_tile, source, 10.0, {-1.0, cap + dq});
                 if (land.vapour_cap_slope != 0.0) {
                     worst = std::max(worst,
-                                     relative(land.vapour_cap_slope,
+                                     relative(total(land, land.vapour_cap_slope, land.latent_cap_slope),
                                               (land_dq.vapour_kg_m2_s - land.vapour_kg_m2_s) / dq));
                 }
                 if (sea.vapour_cap_slope != 0.0) {
                     worst = std::max(worst,
-                                     relative(sea.vapour_cap_slope,
+                                     relative(total(sea, sea.vapour_cap_slope, sea.latent_cap_slope),
                                               (sea_dq.vapour_kg_m2_s - sea.vapour_kg_m2_s) / dq));
                 }
             }
         }
         std::cout << "vapour slopes: worst relative error " << worst << '\n';
         PLANETSIM_EXPECT(test, worst <= 1e-3);
+    }
+    // 8. Melt-out is continuous (ADR-0021 §4.3): across the source where a
+    // sublimating snowpack stops being held at T_m, the water flux, the melt
+    // and the surface temperature move without a jump.
+    {
+        planetsim::EvaporationForcing forcing;
+        forcing.transfer_kg_m2_s = transfer;
+        forcing.pressure_Pa = pressure;
+        forcing.air_humidity = 0.002;
+        forcing.vapour_kg_m2 = 10.0;
+        forcing.bucket_kg_m2 = 20.0;
+        const auto tile = planetsim::prepare_land_tile(soil, {272.0, 271.0}, 5.0, 200.0, 0.0,
+                                                       0.0, month_s, forcing);
+        // Sources for surface air of about 270–310 K: the snow is first held
+        // at T_m, then melts out.
+        double worst_jump = 0.0;
+        bool held = false;
+        bool out = false;
+        auto previous = planetsim::solve_land_tile(tile, 2'750.0, 10.0);
+        for (int i = 1; i <= 7'000; ++i) {
+            const double source = 2'750.0 + 0.05 * i;
+            const auto next = planetsim::solve_land_tile(tile, source, 10.0);
+            held = held || (next.snow_kg_m2 > 0.0 && next.melt_kg_m2 > 0.0);
+            out = out || next.snow_kg_m2 == 0.0;
+            // Against the flux's scale, 1e-5 kg/m²/s: a step of 0.05 W/m²
+            // moves it by about 1e-5 of that.
+            worst_jump = std::max(worst_jump,
+                                  std::abs(next.vapour_kg_m2_s - previous.vapour_kg_m2_s) / 1e-5);
+            previous = next;
+        }
+        const bool both = held && out;
+        std::cout << "melt-out: largest step of E " << worst_jump << " of 1e-5 kg/m2/s\n";
+        PLANETSIM_EXPECT(test, both);
+        PLANETSIM_EXPECT(test, worst_jump < 1e-3);
     }
     return test.result();
 }

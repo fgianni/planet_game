@@ -78,6 +78,7 @@ LandSnowStepResult solve_land_tile(const LandSnowSystem& tile, double source_W_m
     double surface_K = solve_column_surface(system);
     double sink_W_m2 = 0.0;
     bool clamped = false;
+    bool melted_out = false;
     if (snow_before_melt > 0.0 && surface_K > melting_point_K) {
         const double surplus_W_m2 = system.surplus_W_m2(melting_point_K);
         const double melt_kg_m2 = surplus_W_m2 * tile.dt_s / latent_heat_of_fusion_J_kg;
@@ -90,32 +91,43 @@ LandSnowStepResult solve_land_tile(const LandSnowSystem& tile, double source_W_m
             sink_W_m2 = surplus_W_m2;
             clamped = true;
         } else {
-            // All the snow melts; what remains warms the column. Melted snow
-            // sublimates no more this step.
-            result.melt_kg_m2 = snow_before_melt;
+            // All the snow goes; what remains warms the column. The snow
+            // sublimates U(T_s') at the new surface temperature and the
+            // rest melts, S − U: the surface pays L_f S + L_v U, which is
+            // the clamped balance at the boundary, so the response is
+            // continuous (ADR-0021 §4.3).
             sink_W_m2 = latent_heat_of_fusion_J_kg * snow_before_melt / tile.dt_s;
-            system.snow_transfer = 0.0;
+            system.snow_latent_J_kg = latent_heat_vaporisation_J_kg;
             surface_K = solve_column_surface(system, sink_W_m2);
+            result.melt_kg_m2 = std::max(
+                0.0, snow_before_melt - system.evaporation_kg_m2_s(surface_K).snow * tile.dt_s);
+            melted_out = true;
         }
     }
     const auto evaporation = system.evaporation_kg_m2_s(surface_K);
     result.sublimation_kg_m2 = evaporation.snow * tile.dt_s;
     result.bucket_evaporation_kg_m2 = evaporation.bucket * tile.dt_s;
     result.snow_kg_m2 =
-        std::max(0.0, snow_before_melt - result.melt_kg_m2 - result.sublimation_kg_m2);
+        melted_out ? 0.0
+                   : std::max(0.0, snow_before_melt - result.melt_kg_m2 - result.sublimation_kg_m2);
     result.latent_J_m2 = latent_heat_of_fusion_J_kg * result.melt_kg_m2;
     result.column = complete_column_step(tile.column, system, tile.before, surface_K, sink_W_m2,
                                          source_W_m2 - exchange_W_m2_K * surface_K);
+    if (melted_out) {
+        // Booked as the sublimation's L_s and the melt's L_f: the same
+        // total, L_f S + L_v U.
+        result.column.evaporation_W_m2 +=
+            (latent_heat_sublimation_J_kg - latent_heat_vaporisation_J_kg) * evaporation.snow;
+    }
     result.column.surface_slope_K_m2_W = clamped ? 0.0 : system.slope_K_m2_W(surface_K);
     if (system.evaporates()) {
-        // E(x, q) with x(s, q) from the surface equation, q = q_a or q_cap:
-        // dx/ds is the slope, dx/dq = −slope ∂(latent)/∂q.
         const auto v = system.vapour_slopes(surface_K);
-        const double slope = result.column.surface_slope_K_m2_W;
         result.vapour_kg_m2_s = evaporation.snow + evaporation.bucket;
-        result.vapour_source_slope = v.surface * slope;
-        result.vapour_air_slope = v.air - v.surface * slope * v.latent_air;
-        result.vapour_cap_slope = v.cap - v.surface * slope * v.latent_cap;
+        result.vapour_source_slope = v.surface * result.column.surface_slope_K_m2_W;
+        result.vapour_air_slope = v.air;
+        result.vapour_cap_slope = v.cap;
+        result.latent_air_slope = v.latent_air;
+        result.latent_cap_slope = v.latent_cap;
     }
     return result;
 }

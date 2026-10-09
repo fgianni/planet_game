@@ -9,7 +9,10 @@ inline constexpr double water_vapour_gas_constant_J_kg_K = 461.5;
 inline constexpr double vapour_molar_ratio = 287.04 / water_vapour_gas_constant_J_kg_K;   // ε
 inline constexpr double freezing_point_K = 273.15;
 inline constexpr double latent_heat_vaporisation_J_kg = 2.501e6;   // L_v at 0 °C
-inline constexpr double latent_heat_sublimation_J_kg = 2.834e6;    // L_s = L_v + L_f
+// L_s = L_v + L_f exactly, with ADR-0008's L_f = 3.34e5 J/kg
+// (cryosphere_constants.hpp; checked in column_step.cpp), so that a
+// sublimation and its condensate's freezing conserve energy.
+inline constexpr double latent_heat_sublimation_J_kg = latent_heat_vaporisation_J_kg + 3.34e5;
 
 // e_s (Pa) over liquid water at and above 0 °C (Bolton, 1980) and over ice
 // below it (Murphy and Koop, 2005); both are continuous at 0 °C to 0.01%.

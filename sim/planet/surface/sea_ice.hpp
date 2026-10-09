@@ -63,13 +63,15 @@ struct OceanTileResult {
     // out of ice_kg_m2). Their latent heat is column.evaporation_W_m2.
     double evaporation_kg_m2 = 0.0;
     double sublimation_kg_m2 = 0.0;
-    // The tile's water flux E (kg/m²/s) and its response to the source and
-    // to q_cap, as LandSnowStepResult's (under ice the floes' temperature
-    // response to q_cap is left out: the column solve's linearisation only).
+    // The tile's water flux E (kg/m²/s) and its slopes, as
+    // LandSnowStepResult's; under ice the latent slopes are the floes', in
+    // their surface's equation, which the source enters.
     double vapour_kg_m2_s = 0.0;
     double vapour_source_slope = 0.0;
     double vapour_air_slope = 0.0;
     double vapour_cap_slope = 0.0;
+    double latent_air_slope = 0.0;
+    double latent_cap_slope = 0.0;
 };
 
 // α_ocean + (α_ice − α_ocean) · min(1, h / h_r), h = m / ρ_i.

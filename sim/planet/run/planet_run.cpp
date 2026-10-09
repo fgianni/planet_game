@@ -65,6 +65,7 @@ template <typename Integer>
 [[nodiscard]] SurfaceEnergyParameters scenario_surface_parameters(const Scenario& scenario) {
     SurfaceEnergyParameters surface = surface_energy_parameters_for(scenario.preset);
     surface.atmosphere.layer_count = scenario.resolved_atmosphere_layers();
+    surface.water_cycle = scenario.water_cycle;
     return surface;
 }
 
@@ -97,7 +98,23 @@ std::uint32_t Scenario::resolved_atmosphere_layers() const noexcept {
     return atmosphere_layers ? *atmosphere_layers : atmosphere_parameters_for(preset).layer_count;
 }
 
+namespace {
+
+// Scenario::entries with the water cycle's entry where it is on.
+[[nodiscard]] ScenarioEntries with_water_cycle(ScenarioEntries entries, bool water_cycle) {
+    if (water_cycle) {
+        entries.push_back({"water_cycle", "1"});
+    }
+    return entries;
+}
+
+}  // namespace
+
 ScenarioEntries Scenario::entries() const {
+    return with_water_cycle(base_entries(), water_cycle);
+}
+
+ScenarioEntries Scenario::base_entries() const {
     return {
         {"preset", std::string(planet_preset_name(preset))},
         {"seed", std::to_string(seed)},
@@ -108,12 +125,24 @@ ScenarioEntries Scenario::entries() const {
     };
 }
 
+
+
 Scenario Scenario::from_entries(const ScenarioEntries& entries) {
     Scenario scenario;
     auto defaults = scenario.entries();
-    // atmosphere_layers is optional (manifests before M5).
+    // atmosphere_layers is optional (manifests before M5), water_cycle is
+    // written only when on.
     if (!scenario_value(entries, "atmosphere_layers")) {
         defaults.pop_back();
+    }
+    const auto water = scenario_value(entries, "water_cycle");
+    if (water) {
+        if (*water != "1") {
+            throw std::runtime_error("scenario water_cycle must be 1 when present: '" +
+                                     std::string(*water) + "'");
+        }
+        scenario.water_cycle = true;
+        defaults = with_water_cycle(std::move(defaults), true);
     }
     if (entries.size() != defaults.size()) {
         throw std::runtime_error("scenario has " + std::to_string(entries.size()) +

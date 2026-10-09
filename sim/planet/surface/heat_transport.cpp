@@ -873,6 +873,188 @@ int bicgstab(const TransportGraph& graph, const Apply& apply, const Precondition
 
 }  // namespace
 
+TracerTransportResult solve_implicit_tracer(const TransportGraph& graph,
+                                            const AdvectionDiffusion& transport,
+                                            std::span<const double> layer_mass_kg,
+                                            const std::vector<double>& tracer, double dt_s,
+                                            double relative_tolerance, int max_iterations,
+                                            std::size_t worker_count) {
+    const std::size_t nodes = graph.size();
+    const std::size_t entries = graph.neighbour.size();
+    const std::size_t layers = transport.layers;
+    if (layers == 0U || layer_mass_kg.size() != nodes || tracer.size() != layers * nodes ||
+        transport.conductance_W_K.size() != entries ||
+        transport.outflow_kg_s.size() != layers * entries || !(dt_s > 0.0)) {
+        throw std::invalid_argument("tracer transport inputs do not match the graph");
+    }
+    const double exchange_scale =
+        1.0 / (transport.heat_capacity_J_kg_K * static_cast<double>(layers));
+    // Each node's vertical fluxes W_{l+½}, l < N − 1 (kg/s, upward).
+    std::vector<double> vertical(nodes * layers, 0.0);
+    TracerTransportResult result;
+    for (std::size_t a = 0; a < nodes; ++a) {
+        double w = 0.0;
+        for (std::size_t l = 0; l < layers; ++l) {
+            for (std::size_t k = graph.offset[a]; k < graph.offset[a + 1U]; ++k) {
+                w -= transport.outflow_kg_s[l * entries + k];
+            }
+            vertical[a * layers + l] = l + 1U < layers ? w : 0.0;
+        }
+        result.column_divergence_kg_s = std::max(result.column_divergence_kg_s, std::abs(w));
+    }
+
+    // The stacked system, node-major: row a N + l. Its CSR has each
+    // horizontal entry of the node's graph row for the layer, then the
+    // layers below and above.
+    TransportGraph stacked;
+    stacked.area_m2.assign(nodes * layers, 0.0);
+    stacked.offset.assign(nodes * layers + 1U, 0U);
+    for (const CellBlock& block : graph.blocks) {
+        stacked.blocks.push_back(CellBlock{static_cast<std::uint32_t>(block.begin * layers),
+                                           static_cast<std::uint32_t>(block.end * layers)});
+    }
+    for (std::size_t a = 0; a < nodes; ++a) {
+        for (std::size_t l = 0; l < layers; ++l) {
+            const std::size_t row = a * layers + l;
+            for (std::size_t k = graph.offset[a]; k < graph.offset[a + 1U]; ++k) {
+                stacked.neighbour.push_back(graph.neighbour[k] * layers + l);
+            }
+            if (l > 0U) {
+                stacked.neighbour.push_back(row - 1U);
+            }
+            if (l + 1U < layers) {
+                stacked.neighbour.push_back(row + 1U);
+            }
+            stacked.offset[row + 1U] = stacked.neighbour.size();
+        }
+    }
+    std::vector<double> diagonal(nodes * layers, 0.0);
+    std::vector<double> off(stacked.neighbour.size(), 0.0);
+    std::vector<double> rhs(nodes * layers, 0.0);
+    for_each_deterministic_block(
+        blocks_of(graph), worker_count, [&](std::size_t, const CellBlock& block) {
+            for (std::size_t a = block.begin; a < block.end; ++a) {
+                const double rate = layer_mass_kg[a] / dt_s;
+                for (std::size_t l = 0; l < layers; ++l) {
+                    const std::size_t row = a * layers + l;
+                    double own = rate;
+                    std::size_t at = stacked.offset[row];
+                    for (std::size_t k = graph.offset[a]; k < graph.offset[a + 1U]; ++k, ++at) {
+                        const double flow = transport.outflow_kg_s[l * entries + k];
+                        const double eddy = transport.conductance_W_K[k] * exchange_scale;
+                        own += std::max(flow, 0.0) + eddy;
+                        off[at] = -std::max(-flow, 0.0) - eddy;
+                    }
+                    const double below = l > 0U ? vertical[a * layers + l - 1U] : 0.0;   // W_{l−½}
+                    const double above = vertical[row];                                // W_{l+½}
+                    if (l > 0U) {
+                        // Upward from below carries the lower layer's c.
+                        own += std::max(-below, 0.0);
+                        off[at++] = -std::max(below, 0.0);
+                    }
+                    if (l + 1U < layers) {
+                        own += std::max(above, 0.0);
+                        off[at++] = -std::max(-above, 0.0);
+                    }
+                    diagonal[row] = own;
+                    rhs[row] = rate * tracer[l * nodes + a];
+                }
+            }
+        });
+    std::vector<std::size_t> block_start{0U};
+    for (const CellBlock& block : stacked.blocks) {
+        block_start.push_back(block.end);
+    }
+    const IncompleteLU factor(stacked.offset, stacked.neighbour, diagonal, off, block_start, 1.0,
+                              worker_count);
+    const auto apply = [&](const std::vector<double>& x, std::vector<double>& y) {
+        for_each_deterministic_block(
+            blocks_of(stacked), worker_count, [&](std::size_t, const CellBlock& block) {
+                for (std::size_t row = block.begin; row < block.end; ++row) {
+                    double sum = diagonal[row] * x[row];
+                    for (std::size_t k = stacked.offset[row]; k < stacked.offset[row + 1U]; ++k) {
+                        sum += off[k] * x[stacked.neighbour[k]];
+                    }
+                    y[row] = sum;
+                }
+            });
+    };
+    const auto precondition = [&](const std::vector<double>& x, std::vector<double>& y) {
+        y = x;
+        factor.solve(y);
+    };
+    // Solve for the change from the start, A δ = b − A c⁰, which is small.
+    std::vector<double> start(nodes * layers, 0.0);
+    for (std::size_t a = 0; a < nodes; ++a) {
+        for (std::size_t l = 0; l < layers; ++l) {
+            start[a * layers + l] = tracer[l * nodes + a];
+        }
+    }
+    std::vector<double> applied(nodes * layers, 0.0);
+    apply(start, applied);
+    std::vector<double> residual(nodes * layers, 0.0);
+    for (std::size_t row = 0; row < residual.size(); ++row) {
+        residual[row] = rhs[row] - applied[row];
+    }
+    std::vector<double> delta;
+    result.iterations = bicgstab(stacked, apply, precondition, residual, delta,
+                                 relative_tolerance, max_iterations, worker_count);
+    std::vector<double> solved(nodes * layers, 0.0);
+    for (std::size_t row = 0; row < solved.size(); ++row) {
+        solved[row] = std::max(0.0, start[row] + (delta.empty() ? 0.0 : delta[row]));
+    }
+    apply(solved, applied);
+    double residual_norm = 0.0;
+    double rhs_norm = 0.0;
+    for (std::size_t row = 0; row < solved.size(); ++row) {
+        residual_norm += (rhs[row] - applied[row]) * (rhs[row] - applied[row]);
+        rhs_norm += rhs[row] * rhs[row];
+    }
+    result.relative_residual = rhs_norm > 0.0 ? std::sqrt(residual_norm / rhs_norm) : 0.0;
+
+    // The flux form of the solution: each flux leaves its donor and enters
+    // its receiver with the same value, so Σ M c is conserved exactly.
+    result.tracer.assign(layers * nodes, 0.0);
+    std::vector<double> change(nodes * layers, 0.0);   // kg/s of tracer, per row
+    for (std::size_t a = 0; a < nodes; ++a) {
+        for (std::size_t l = 0; l < layers; ++l) {
+            const std::size_t row = a * layers + l;
+            for (std::size_t k = graph.offset[a]; k < graph.offset[a + 1U]; ++k) {
+                const std::size_t b = graph.neighbour[k];
+                if (b < a) {
+                    continue;   // each face once, from its lower node
+                }
+                const std::size_t other = b * layers + l;
+                const double flow = transport.outflow_kg_s[l * entries + k];
+                const double eddy = transport.conductance_W_K[k] * exchange_scale;
+                const double flux =
+                    (flow > 0.0 ? flow * solved[row] : flow * solved[other]) +
+                    eddy * (solved[row] - solved[other]);   // a → b
+                change[row] -= flux;
+                change[other] += flux;
+            }
+            if (l + 1U < layers) {
+                const double w = vertical[row];
+                const double flux = w > 0.0 ? w * solved[row] : w * solved[row + 1U];   // up
+                change[row] -= flux;
+                change[row + 1U] += flux;
+            }
+        }
+    }
+    for (std::size_t a = 0; a < nodes; ++a) {
+        for (std::size_t l = 0; l < layers; ++l) {
+            const std::size_t row = a * layers + l;
+            double value = tracer[l * nodes + a] + dt_s * change[row] / layer_mass_kg[a];
+            if (value < 0.0) {
+                result.clipped_kg -= value * layer_mass_kg[a];
+                value = 0.0;
+            }
+            result.tracer[l * nodes + a] = value;
+        }
+    }
+    return result;
+}
+
 AdvectionDiffusionResult solve_implicit_advection_diffusion(
     const TransportGraph& graph, const AdvectionDiffusion& transport,
     const Field2D<double>& source_floor_W_m2, const AdvectionResponse& response,

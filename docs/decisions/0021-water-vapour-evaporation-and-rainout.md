@@ -4,6 +4,7 @@
 - **Date:** 2026-10-09
 - **Accepted:** 2026-10-09
 - **Amended:** 2026-10-09 — §4.3: the bulk formula's humidity is the surface air's (§10, decided with the user in task M7-03); §4.4: the condensate's freezing and the saturation adjustment after convection (§10)
+- **Amended:** 2026-10-09 — §4.5: the climate-mode solve couples the layers through their vertical fluxes; §4.2: L_s = L_v + L_f exactly; §4.3: the snow's melt-out keeps sublimating (§11, task M7-04)
 - **Milestone:** P0 / M7 (humidity and evaporation)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §9.3, §9.6, §13 M7–M9, §23, §24; Planetary Civilization Simulator — Design Record v1.4, §5, §15
 - **Related:** ADR-0001 (V1 water budget, V2 parity, §8 "first V2 parity tests" at M7), ADR-0003 (PSNAP migration), ADR-0006 (sub-steps), ADR-0007 (surface tiles), ADR-0008 (snow, sea ice, the prescribed-precipitation seam), ADR-0009 (implicit transport), ADR-0010 (layered atmosphere; τ's quartic vapour proxy; Γ_c), ADR-0011 (winds; "humidity advected by the same two paths"; §17's coupled transport)
@@ -287,4 +288,31 @@ layer after a year. Each layer then condenses its excess isobarically,
 c_p (T' − T) = L (q − q_sat(T')), alternating with the convective
 adjustment until nothing more condenses. Energy and water are exact. Moist
 convection (M8) replaces the pair.
+
+## 11. Amendment: the transport's layers, L_s, melt-out (accepted 2026-10-09, task M7-04)
+
+**11.1 One coupled solve (amends §4.5).** The month's overturning
+fluxes are divergent layer by layer, and only the column is
+divergence-free. A separate solve per layer would not keep a uniform q
+uniform (V6). The humidity is therefore one implicit upwind solve over all
+layers:
+- each layer's horizontal divergence is closed by vertical mass fluxes
+  between layers, upwind, with none through the top;
+- the eddies exchange G / (c_p N) per layer, from the heat transport's
+  conductances G;
+- BiCGSTAB with a block ILU(0) whose blocks keep whole columns;
+- the applied change is the solution's flux form, so the water is
+  conserved to rounding.
+
+A month whose circulation failed (ADR-0011 §17.4) moves no humidity.
+
+**11.2 L_s (amends §4.2).** L_s is L_v + L_f exactly: 2.835e6 J/kg,
+with ADR-0008's L_f = 3.34e5. Before, it was 2.834e6, which lost
+1 000 J/kg in every sublimation–condensation–freezing cycle.
+
+**11.3 Melt-out (amends §4.3).** Where a snowpack held at T_m melts out
+within the step, it keeps sublimating U(T_s') at the new surface
+temperature, and S − U melts. The surface pays L_f S + L_v U, the
+clamped balance at the boundary. Stopping the sublimation there made the
+tile's response jump, and the column solves could not converge across it.
 

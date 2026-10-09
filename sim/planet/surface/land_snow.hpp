@@ -23,13 +23,17 @@ struct LandSnowStepResult {
     // the bucket's water is the caller's.
     double sublimation_kg_m2 = 0.0;
     double bucket_evaporation_kg_m2 = 0.0;
-    // The tile's water flux E (kg/m²/s) and its response to the source and
-    // to the raining layer's q_cap (ADR-0021 §4.4), through the surface
-    // temperature: the column solve's linearisation.
+    // The tile's water flux E (kg/m²/s) for the column solve's
+    // linearisation (ADR-0021 §4.4): dE/ds through the surface temperature,
+    // and at a fixed surface temperature ∂E/∂q and the latent heat's
+    // ∂(L E)/∂q in the surface's equation, for q = q_a and q_cap. A change
+    // δq acts on the surface as a source −∂(L E)/∂q δq.
     double vapour_kg_m2_s = 0.0;
     double vapour_source_slope = 0.0;   // dE/ds, kg/m²/s per W/m²
-    double vapour_air_slope = 0.0;      // dE/dq_a, kg/m²/s per kg/kg
-    double vapour_cap_slope = 0.0;      // dE/dq_cap, kg/m²/s per kg/kg
+    double vapour_air_slope = 0.0;      // ∂E/∂q_a, kg/m²/s per kg/kg
+    double vapour_cap_slope = 0.0;      // ∂E/∂q_cap
+    double latent_air_slope = 0.0;      // ∂(L E)/∂q_a, W/m² per kg/kg
+    double latent_cap_slope = 0.0;      // ∂(L E)/∂q_cap
 
     [[nodiscard]] double runoff_kg_m2() const noexcept { return rain_kg_m2 + melt_kg_m2; }
 };

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "sim/planet/atmosphere/saturation.hpp"
 #include "sim/planet/surface/surface_materials.hpp"
 
 namespace planetsim {
@@ -103,6 +104,9 @@ struct ColumnSystem {
     // cap.
     double cap_humidity = -1.0;
     double cap_ratio = 1.0;
+    // The snow's latent heat in the surface equation: L_s, or L_v where the
+    // snow melts out and what does not sublimate melts (solve_land_tile).
+    double snow_latent_J_kg = latent_heat_sublimation_J_kg;
     double pressure_Pa = 0.0;          // p, for q_sat
 
     [[nodiscard]] bool evaporates() const noexcept {

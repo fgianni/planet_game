@@ -30,6 +30,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [M7-01](M7-01-water-state-and-saturation.md) | Water state and saturation: humidity and the bucket, PSNAP schema 6 (ADR-0021 §4.1–4.2, V1, V10) | Complete |
 | [M7-02](M7-02-evaporation-and-the-bucket.md) | Evaporation and the bucket: the implicit latent flux in the tile solves, the bucket, the water and energy budgets (ADR-0021 §4.3, V2, V3, V5) | Complete |
 | [M7-03](M7-03-saturation-rainout.md) | Saturation rainout: implicit condensation in the column solve, model precipitation, the surface air's humidity (ADR-0021 §4.4, §10, V4) | Complete |
+| [M7-04](M7-04-humidity-transport.md) | Humidity transport in climate mode: the coupled implicit tracer solve, convergence with water (ADR-0021 §4.5, §11, V6, V7 recorded) | Complete |
 | [R1-01](R1-01-presentation-library-and-channels.md) | Presentation library and semantic channels (ADR-0018; rendering track, parallel to M6) | Complete |
 | [R1-02](R1-02-style-packs-and-switching.md) | Godot style packs, recorded playback and instant switching (ADR-0018) | Complete |
 | [R1-03](R1-03-readability-harness.md) | Offscreen style readability gate and colour-vision checks (ADR-0018) | Complete |

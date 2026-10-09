@@ -25,6 +25,17 @@ struct SurfaceFractions;
 // two-layer column, radiating εσT⁴ to space through an optional single-layer
 // grey atmosphere of longwave emissivity g, or, with ADR-0010's layered
 // atmosphere (N > 0, g = 0), into the cell's atmospheric column.
+// The month's humidity transport (ADR-0021 §4.5; task M7-04).
+struct HumidityTransportDiagnostics {
+    bool transported = false;
+    int iterations = 0;
+    double relative_residual = 0.0;
+    double vapour_kg = 0.0;              // Σ before, which it conserves
+    double vapour_change_kg = 0.0;       // Σ after − Σ before: rounding
+    double clipped_kg = 0.0;
+    double column_divergence_kg_s = 0.0;   // max over groups of the fluxes'
+};
+
 struct SurfaceEnergyParameters {
     SurfaceMaterial land_material = SurfaceMaterial::dry_soil;
     double grey_emissivity = 0.0;   // g in [0, 1)
@@ -186,6 +197,7 @@ struct SurfaceEnergyDiagnostics {
     double precipitation_kg = 0.0;
     double ocean_precipitation_kg = 0.0;
     double condensation_latent_J = 0.0;
+    HumidityTransportDiagnostics humidity_transport;
     // The atmosphere (ADR-0010 §4.4), zero without one. emitted_W is then the
     // outgoing longwave at the top, storage_change_J and stored_energy_J
     // include the layers, and transport_W is the heat the columns received.

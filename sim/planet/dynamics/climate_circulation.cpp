@@ -234,6 +234,7 @@ void ClimateCirculation::write_transport(const ZonalCirculationSolution& zonal,
     auto& out = transport_.transport;
     out.conductance_W_K.resize(entries);
     out.outflow_kg_s.resize(n * entries);
+    out.heat_capacity_J_kg_K = p.heat_capacity_J_kg_K;
     for (std::size_t a = 0; a < graph.size(); ++a) {
         for (std::size_t k = graph.offset[a]; k < graph.offset[a + 1U]; ++k) {
             const Face& face = faces_[k];
