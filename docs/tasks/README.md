@@ -35,6 +35,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [R1-02](R1-02-style-packs-and-switching.md) | Godot style packs, recorded playback and instant switching (ADR-0018) | Complete |
 | [R1-03](R1-03-readability-harness.md) | Offscreen style readability gate and colour-vision checks (ADR-0018) | Complete |
 | [R2-01](R2-01-temperature-overlay-and-readout.md) | Shared temperature-anomaly overlay and semantic cell readout (ADR-0018) | Complete |
+| [R2-02](R2-02-live-climate-bridge.md) | Asynchronous live climate stepping through the snapshot boundary (ADR-0018) | Complete |
 
 Completed tasks are records: they keep the specification and design versions
 they were written against, even after those files have left the tree. Read

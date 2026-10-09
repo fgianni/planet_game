@@ -511,6 +511,18 @@ godot4 --path godot -- --subdivision=4 --seed=20260928 \
   --presentation-record=/tmp/planet.pframe --style=stylised
 ```
 
+To run the authoritative climate directly behind the Godot presentation:
+
+```bash
+godot4 --path godot -- --subdivision=4 --seed=20260928 --live=true
+```
+
+Live mode advances monthly scheduler steps on a dedicated worker and publishes
+only `StateSnapshot` frames back to Godot. The render thread polls the newest
+frame and never waits for a climate step; the request queue is bounded so a
+slow simulation cannot accumulate presentation debt. Press `L` to start or
+stop live mode. Live mode and recorded playback are mutually exclusive.
+
 The one-time headless editor command imports the project and registers the
 GDExtension. The extension registers `PlanetMeshNode`, which generates a
 planet with PlanetSim (default L6, about 112 km cells; `PgUp` reaches L7 at
@@ -533,7 +545,7 @@ not simulated rivers. The simulated day/night is laid over the natural and
 terrain views (`N` toggles it); data overlays are self-lit. Drag to rotate,
 right-click a cell for its anomaly, snow-cover and sea-ice readings, wheel to zoom,
 `[`/`]` relief exaggeration, `R` new seed, `P` next preset,
-`PgUp`/`PgDn` resolution, `Space` pause, `+`/`-` simulation speed. Recorded
+`PgUp`/`PgDn` resolution, `Space` pause, `L` live climate, `+`/`-` simulation speed. Recorded
 frames play at two frames per second by default. The same
 settings can be passed on the command line with zero-based view indices, for
 example `godot4 --path godot -- --seed=42 --subdivision=6 --view=5` opens the

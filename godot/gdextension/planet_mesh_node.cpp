@@ -4,6 +4,7 @@
 #include "sim/planet/geology/geology_parameters.hpp"
 #include "sim/planet/mesh/icosphere.hpp"
 #include "sim/planet/orbit/solar_forcing.hpp"
+#include "sim/planet/run/planet_run.hpp"
 #include "sim/planet/planet_state.hpp"
 #include "sim/planet/terrain/terrain_generator.hpp"
 #include "sim/presentation/presentation_record.hpp"
@@ -24,7 +25,9 @@
 #include <cstddef>
 #include <exception>
 #include <filesystem>
+#include <iomanip>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -145,7 +148,7 @@ constexpr std::int32_t channel_texture_width = 2048;
 }  // namespace
 
 PlanetMeshNode::PlanetMeshNode() = default;
-PlanetMeshNode::~PlanetMeshNode() = default;
+PlanetMeshNode::~PlanetMeshNode() { stop_live_run(); }
 
 void PlanetMeshNode::_bind_methods() {
     godot::ClassDB::bind_method(
@@ -199,6 +202,20 @@ void PlanetMeshNode::_bind_methods() {
         &PlanetMeshNode::advance_presentation);
     godot::ClassDB::bind_method(godot::D_METHOD("get_geometry_revision"),
                                 &PlanetMeshNode::get_geometry_revision);
+    godot::ClassDB::bind_method(godot::D_METHOD("start_live_run", "workers"),
+                                &PlanetMeshNode::start_live_run, DEFVAL(0));
+    godot::ClassDB::bind_method(godot::D_METHOD("stop_live_run"),
+                                &PlanetMeshNode::stop_live_run);
+    godot::ClassDB::bind_method(godot::D_METHOD("has_live_run"),
+                                &PlanetMeshNode::has_live_run);
+    godot::ClassDB::bind_method(godot::D_METHOD("request_live_steps", "steps"),
+                                &PlanetMeshNode::request_live_steps, DEFVAL(1));
+    godot::ClassDB::bind_method(godot::D_METHOD("poll_live_frame"),
+                                &PlanetMeshNode::poll_live_frame);
+    godot::ClassDB::bind_method(godot::D_METHOD("is_live_run_busy"),
+                                &PlanetMeshNode::is_live_run_busy);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_live_state_hash"),
+                                &PlanetMeshNode::get_live_state_hash);
     godot::ClassDB::bind_method(godot::D_METHOD("find_cell", "direction"),
                                 &PlanetMeshNode::find_cell);
     godot::ClassDB::bind_method(godot::D_METHOD("has_channel", "channel_name"),
@@ -224,6 +241,7 @@ void PlanetMeshNode::_bind_methods() {
 
 void PlanetMeshNode::rebuild(std::int64_t subdivision, double radius_m, std::int64_t seed,
                              const godot::String& preset) {
+    stop_live_run();
     try {
         constexpr std::int64_t maximum_preview_subdivision = 7;
         if (subdivision < 0 || subdivision > maximum_preview_subdivision) {
@@ -241,6 +259,9 @@ void PlanetMeshNode::rebuild(std::int64_t subdivision, double radius_m, std::int
         auto next_parameters = PlanetParameters::earth_development();
         next_parameters.mesh_subdivision = static_cast<std::uint32_t>(subdivision);
         next_parameters.radius_m = radius_m;
+        if (*planet_preset == PlanetPreset::dead_rock) {
+            next_parameters.axial_tilt_rad = 0.0;
+        }
         next_parameters.validate();
         auto next_mesh = std::make_shared<const PlanetMesh>(
             make_icosphere(next_parameters.mesh_subdivision, next_parameters.radius_m));
@@ -431,6 +452,7 @@ void PlanetMeshNode::load_presentation_record(const godot::String& path) {
     try {
         if (!mesh_)
             throw std::logic_error("generate the planet before loading a presentation record");
+        stop_live_run();
         const std::filesystem::path record_path{std::string(path.utf8().get_data())};
         auto frames = presentation::read_presentation_record(record_path);
         if (frames.empty())
@@ -519,6 +541,159 @@ void PlanetMeshNode::advance_presentation(double wall_seconds,
 }
 
 std::int64_t PlanetMeshNode::get_geometry_revision() const noexcept { return geometry_revision_; }
+
+void PlanetMeshNode::start_live_run(std::int64_t workers) {
+    try {
+        if (!mesh_) {
+            throw std::logic_error("generate the planet before starting a live run");
+        }
+        stop_live_run();
+        const auto parsed_preset = parse_planet_preset(std::string(preset_.utf8().get_data()));
+        if (!parsed_preset) {
+            throw std::logic_error("the generated planet has an unknown preset");
+        }
+        if (parameters_.radius_m != PlanetParameters::earth_development().radius_m) {
+            throw std::logic_error(
+                "live runs require the scenario radius; custom preview radii are presentation-only");
+        }
+        Scenario scenario;
+        scenario.preset = *parsed_preset;
+        scenario.seed = seed_;
+        scenario.subdivision = parameters_.mesh_subdivision;
+        build_preview_reference();
+        const std::size_t worker_count = workers > 0
+            ? static_cast<std::size_t>(workers)
+            : std::max<std::size_t>(1U, std::thread::hardware_concurrency());
+        auto run = std::make_unique<PlanetRun>(scenario, worker_count);
+        live_state_hash_.store(run->state_hash(), std::memory_order_release);
+        presentation_frames_.clear();
+        presentation_frame_ = 0U;
+        SimulationClock initial_clock;
+        StateSnapshot initial = make_state_snapshot(run->state(), initial_clock);
+        live_run_ = std::move(run);
+        apply_live_snapshot(std::move(initial), true);
+        live_thread_ = std::jthread(
+            [this](std::stop_token stop_token) { live_run_loop(stop_token); });
+    } catch (const std::exception& exception) {
+        stop_live_run();
+        godot::UtilityFunctions::push_error("PlanetMeshNode live run: ", exception.what());
+    }
+}
+
+void PlanetMeshNode::stop_live_run() {
+    if (live_thread_.joinable()) {
+        live_thread_.request_stop();
+        live_condition_.notify_all();
+        live_thread_.join();
+    }
+    {
+        std::lock_guard lock(live_mutex_);
+        live_pending_steps_ = 0;
+        live_snapshot_.reset();
+        live_error_.clear();
+    }
+    live_run_.reset();
+    live_state_hash_.store(0U, std::memory_order_release);
+    live_busy_.store(false, std::memory_order_release);
+}
+
+bool PlanetMeshNode::has_live_run() const noexcept { return live_run_ != nullptr; }
+
+void PlanetMeshNode::request_live_steps(std::int64_t steps) {
+    if (!live_run_ || steps <= 0)
+        return;
+    {
+        std::lock_guard lock(live_mutex_);
+        constexpr std::int64_t maximum_backlog = 2;
+        live_pending_steps_ =
+            std::min(maximum_backlog,
+                     live_pending_steps_ + std::min(steps, maximum_backlog));
+    }
+    live_condition_.notify_one();
+}
+
+bool PlanetMeshNode::poll_live_frame() {
+    std::optional<StateSnapshot> snapshot;
+    std::string error;
+    {
+        std::lock_guard lock(live_mutex_);
+        snapshot = std::move(live_snapshot_);
+        live_snapshot_.reset();
+        error = std::move(live_error_);
+        live_error_.clear();
+    }
+    if (!error.empty()) {
+        godot::UtilityFunctions::push_error("PlanetMeshNode live run: ", error.c_str());
+    }
+    if (!snapshot)
+        return false;
+    apply_live_snapshot(std::move(*snapshot));
+    return true;
+}
+
+bool PlanetMeshNode::is_live_run_busy() const noexcept {
+    if (live_busy_.load(std::memory_order_acquire))
+        return true;
+    std::lock_guard lock(live_mutex_);
+    return live_pending_steps_ > 0;
+}
+
+godot::String PlanetMeshNode::get_live_state_hash() const {
+    if (!live_run_)
+        return {};
+    std::ostringstream output;
+    output << std::hex << std::setfill('0') << std::setw(16)
+           << live_state_hash_.load(std::memory_order_acquire);
+    return godot::String(output.str().c_str());
+}
+
+void PlanetMeshNode::live_run_loop(std::stop_token stop_token) {
+    for (;;) {
+        {
+            std::unique_lock lock(live_mutex_);
+            live_condition_.wait(lock, [&] {
+                return stop_token.stop_requested() || live_pending_steps_ > 0;
+            });
+            if (stop_token.stop_requested())
+                return;
+            --live_pending_steps_;
+            live_busy_.store(true, std::memory_order_release);
+        }
+        try {
+            StateSnapshot snapshot;
+            const SimulationTick boundary = live_run_->scheduler().next_step().end_tick;
+            live_run_->run_until(boundary,
+                                 [&snapshot](const StateSnapshot& frame) { snapshot = frame; });
+            const std::uint64_t hash = live_run_->state_hash();
+            {
+                std::lock_guard lock(live_mutex_);
+                live_snapshot_ = std::move(snapshot);
+            }
+            live_state_hash_.store(hash, std::memory_order_release);
+        } catch (const std::exception& exception) {
+            std::lock_guard lock(live_mutex_);
+            live_error_ = exception.what();
+            live_pending_steps_ = 0;
+        }
+        live_busy_.store(false, std::memory_order_release);
+    }
+}
+
+void PlanetMeshNode::apply_live_snapshot(StateSnapshot snapshot, bool reset_smoothing) {
+    const bool complete_reference_year =
+        snapshot.simulation_tick >= orbital_year_begin_tick(1, parameters_);
+    if (complete_reference_year &&
+        presentation_reference_.climatology_surface_temperature_mean_K.empty() &&
+        !snapshot.climatology_surface_temperature_mean_K.empty()) {
+        presentation_reference_.climatology_surface_temperature_mean_K =
+            snapshot.climatology_surface_temperature_mean_K;
+        presentation_reference_.climatology_surface_temperature_variance_K2 =
+            snapshot.climatology_surface_temperature_variance_K2;
+    }
+    clock_.set_tick(snapshot.simulation_tick);
+    set_visual_frame(presentation::make_visual_frame(snapshot, terrain_, presentation_reference_),
+                     reset_smoothing);
+}
 
 std::int64_t PlanetMeshNode::find_cell(const godot::Vector3& direction) const {
     if (!mesh_ || direction.length_squared() <= 0.0F)

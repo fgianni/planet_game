@@ -19,13 +19,20 @@
 #include <godot_cpp/variant/vector3.hpp>
 
 #include <array>
+#include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <thread>
 #include <vector>
 
 namespace planetsim {
 
 class PlanetMesh;
+class PlanetRun;
 class PlanetState;
 struct StateSnapshot;
 
@@ -89,6 +96,13 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     void advance_presentation_frame();
     void advance_presentation(double wall_seconds, double simulated_years_per_wall_second);
     [[nodiscard]] std::int64_t get_geometry_revision() const noexcept;
+    void start_live_run(std::int64_t workers = 0);
+    void stop_live_run();
+    [[nodiscard]] bool has_live_run() const noexcept;
+    void request_live_steps(std::int64_t steps = 1);
+    [[nodiscard]] bool poll_live_frame();
+    [[nodiscard]] bool is_live_run_busy() const noexcept;
+    [[nodiscard]] godot::String get_live_state_hash() const;
     [[nodiscard]] std::int64_t find_cell(const godot::Vector3& direction) const;
     [[nodiscard]] bool has_channel(const godot::String& channel_name) const;
     [[nodiscard]] double get_channel_value(std::int64_t cell,
@@ -119,6 +133,8 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     void upload_surface_class();
     void bind_channel_textures();
     void update_shader_flags();
+    void live_run_loop(std::stop_token stop_token);
+    void apply_live_snapshot(StateSnapshot snapshot, bool reset_smoothing = false);
 
     PlanetParameters parameters_ = PlanetParameters::earth_development();
     SimulationClock clock_;
@@ -152,6 +168,15 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     presentation::VisualFrame target_frame_;
     std::vector<StateSnapshot> presentation_frames_;
     std::size_t presentation_frame_ = 0U;
+    std::unique_ptr<PlanetRun> live_run_;
+    std::jthread live_thread_;
+    mutable std::mutex live_mutex_;
+    std::condition_variable live_condition_;
+    std::int64_t live_pending_steps_ = 0;
+    std::optional<StateSnapshot> live_snapshot_;
+    std::string live_error_;
+    std::atomic<std::uint64_t> live_state_hash_{0U};
+    std::atomic<bool> live_busy_{false};
     std::array<godot::Ref<godot::ImageTexture>, presentation::channel_count> channel_textures_;
     godot::Ref<godot::ImageTexture> surface_class_ice_texture_;
     std::array<std::vector<float>, presentation::channel_count> uploaded_channels_;
