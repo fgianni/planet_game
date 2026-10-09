@@ -140,3 +140,74 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure --parallel 4
+
+  godot-readability:
+    name: Godot style readability
+    runs-on: ubuntu-24.04
+    env:
+      GODOT_CPP_COMMIT: 4bc6e67d51df4c12e150fe4769911e239c627a47
+      GODOT_VERSION: 4.2.2
+      LIBGL_ALWAYS_SOFTWARE: 1
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build and software-rendering dependencies
+        run: >
+          sudo apt-get update && sudo apt-get install -y
+          ninja-build libzstd-dev pkg-config unzip xvfb mesa-utils
+
+      - name: Fetch pinned Godot C++ bindings
+        run: |
+          git init godot-cpp
+          git -C godot-cpp remote add origin https://github.com/godotengine/godot-cpp.git
+          git -C godot-cpp fetch --depth 1 origin "$GODOT_CPP_COMMIT"
+          git -C godot-cpp checkout --detach FETCH_HEAD
+
+      - name: Fetch pinned Godot editor
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" \
+            --output godot.zip
+          unzip -q godot.zip -d godot-engine
+          mv "godot-engine/Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot4
+          chmod +x godot4
+
+      - name: Build Godot extension
+        run: |
+          cmake -S . -B build-godot -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPLANETSIM_BUILD_TESTS=OFF \
+            -DPLANETSIM_BUILD_GODOT_EXTENSION=ON \
+            -DGODOT_CPP_PATH="$PWD/godot-cpp"
+          cmake --build build-godot --parallel 4
+
+      - name: Import Godot project
+        run: >
+          xvfb-run -a ./godot4 --editor --quit --display-driver x11
+          --rendering-driver opengl3 --audio-driver Dummy --path godot
+
+      - name: Bridge style validation and switching (V7/V9)
+        run: |
+          ./build-godot/planet_cli run --subdivision 2 --years 1 --workers 1 \
+            --presentation-record /tmp/planetsim-r1-ci.pframe
+          xvfb-run -a ./godot4 --display-driver x11 --rendering-driver opengl3 \
+            --audio-driver Dummy --path godot \
+            --script res://tests/test_style_switch.gd -- \
+            /tmp/planetsim-r1-ci.pframe
+
+      - name: Render and measure style readability (V8)
+        run: |
+          xvfb-run -a ./godot4 --display-driver x11 --rendering-driver opengl3 \
+            --audio-driver Dummy --path godot \
+            --script res://tests/render_readability.gd -- \
+            --output="$PWD/readability-results"
+          python3 tools/ci/check_readability.py \
+            readability-results/manifest.json \
+            --output readability-results/readability.json
+
+      - name: Upload readability analytics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: readability-results
+          path: readability-results

@@ -545,6 +545,22 @@ Geometry is built once per planet. Each update uploads only changed semantic
 channels to cell-indexed textures read by the active style shader; switching
 styles reuses both the mesh and those textures.
 
+Style readability is an automated gate. From a Godot-enabled build, the
+offscreen harness can be run under an X server (CI uses Xvfb and llvmpipe):
+
+```bash
+godot4 --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
+  --path godot --script res://tests/render_readability.gd -- \
+  --output=/tmp/planet-readability
+python3 tools/ci/check_readability.py \
+  /tmp/planet-readability/manifest.json
+```
+
+It renders cold-versus-warm and land-versus-ocean pairs through both shipped
+styles and requires mean CIEDE2000 ΔE of at least 10 under normal vision,
+simulated deuteranopia, protanopia and tritanopia, and luminance alone. The
+PNG images and versioned `readability.json` make a failure inspectable.
+
 The versioned terrain snapshot also carries derived downstream, basin,
 depression and catchment values for the drainage view. It remains an
 in-process presentation object: these values are not registered fields and do

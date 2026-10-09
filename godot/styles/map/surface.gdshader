@@ -35,14 +35,14 @@ void fragment() {
 	float age = clamp(texelFetch(knowledge_age_map, p, 0).r, 0.0, 1.0);
 
 	float contour = 0.5 + 0.5 * cos(relief * 0.0062831853);
-	vec3 water = vec3(0.53, 0.72, 0.78);
+	vec3 water = vec3(0.14, 0.29, 0.40);
 	vec3 rock = vec3(0.48, 0.45, 0.42);
 	vec3 sand = vec3(0.88, 0.78, 0.53);
-	vec3 soil = vec3(0.69, 0.74, 0.50);
+	vec3 soil = vec3(0.55, 0.62, 0.25);
 	vec3 ice = vec3(0.95, 0.97, 0.96);
 	vec3 base = classes.r * water + classes.g * rock + classes.b * sand + classes.a * soil + ice_weight * ice;
 	base *= mix(0.93, 1.05, smoothstep(0.42, 0.58, contour));
-	base = mix(base, ice, 0.16 * snow + 0.12 * sea_ice);
+	base = mix(base, ice, 0.28 * snow + 0.20 * sea_ice);
 	base = mix(base, vec3(0.74, 0.70, 0.61), 0.55 * guessed);
 	base = mix(base, vec3(dot(base, vec3(0.299, 0.587, 0.114))), 0.55 * age);
 	base *= mix(0.52, 1.0, known);

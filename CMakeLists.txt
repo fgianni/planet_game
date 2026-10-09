@@ -117,6 +117,15 @@ planetsim_enable_sanitizers(planet_cli)
 if(PLANETSIM_BUILD_TESTS)
     include(CTest)
     enable_testing()
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME presentation_readability_math
+            COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tools/ci/check_readability.py"
+                    --self-test
+        )
+    endif()
     add_subdirectory(tests)
     add_test(
         NAME planet_cli_mesh_smoke
