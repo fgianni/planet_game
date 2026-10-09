@@ -161,6 +161,9 @@ struct BudgetPartial {
     double bucket_kg = 0.0;
     double vapour_kg = 0.0;
     double evaporation_latent_J = 0.0;
+    double precipitation_kg = 0.0;
+    double ocean_precipitation_kg = 0.0;
+    double condensation_latent_J = 0.0;
     double ice_area_north_m2 = 0.0;
     double ice_area_south_m2 = 0.0;
     double ice_mass_north_kg = 0.0;
@@ -223,6 +226,9 @@ struct BudgetPartial {
     a.bucket_kg += b.bucket_kg;
     a.vapour_kg += b.vapour_kg;
     a.evaporation_latent_J += b.evaporation_latent_J;
+    a.precipitation_kg += b.precipitation_kg;
+    a.ocean_precipitation_kg += b.ocean_precipitation_kg;
+    a.condensation_latent_J += b.condensation_latent_J;
     a.ice_area_north_m2 += b.ice_area_north_m2;
     a.ice_area_south_m2 += b.ice_area_south_m2;
     a.ice_mass_north_kg += b.ice_mass_north_kg;
@@ -414,11 +420,51 @@ struct CellSurface {
     double land_fraction = 0.0;
     double ocean_fraction = 0.0;
     double exchange = 0.0;
+    // The water cycle (ADR-0021 §4.3 as amended in task M7-03, §4.4): the
+    // surface air carries the bottom layer's relative humidity to the
+    // surface air temperature A, q_a = q₀ q_sat(A, p_s) / q_sat(T₀, p₀) with
+    // T₀ = A / air_factor, and holds q_cap = q_sat(A, p_s) where the layer
+    // rains.
+    bool water = false;
+    double bottom_humidity = 0.0;   // q₀ at the start of the step
+    double bottom_pressure_Pa = 0.0;
+    double surface_pressure_Pa = 0.0;
+    double air_factor = 1.0;
     LandSnowStepResult land_result;
     OceanTileResult ocean_result;
 
     SurfaceExchange operator()(double downward_W_m2, double air_K) {
         SurfaceExchange x;
+        SurfaceAir air;
+        double air_slope = 0.0;   // dq_a/dA
+        double cap_slope = 0.0;   // dq_cap/dA
+        if (water) {
+            const double bottom_K = air_K / air_factor;
+            const double layer_saturated =
+                saturation_specific_humidity(bottom_K, bottom_pressure_Pa);
+            const double air_saturated = saturation_specific_humidity(air_K, surface_pressure_Pa);
+            const double air_saturated_slope =
+                saturation_specific_humidity_slope(air_K, surface_pressure_Pa);
+            const double factor = air_saturated / layer_saturated;
+            air.humidity = factor * bottom_humidity;
+            air.cap_humidity = air_saturated;
+            air_slope = air.humidity *
+                        (air_saturated_slope / air_saturated -
+                         saturation_specific_humidity_slope(bottom_K, bottom_pressure_Pa) /
+                             (air_factor * layer_saturated));
+            cap_slope = air_saturated_slope;
+        }
+        // A tile's water flux into the bottom layer and its linearisation:
+        // the source is ε_t D + γ A, and q_a and q_cap follow A.
+        const auto add_vapour = [&](double fraction, double emissivity, double vapour,
+                                    double source_slope, double air_vapour_slope,
+                                    double cap_vapour_slope) {
+            x.vapour_kg_m2_s += fraction * vapour;
+            x.d_vapour_d_downward += fraction * source_slope * emissivity;
+            x.d_vapour_d_air += fraction * (source_slope * exchange +
+                                            air_vapour_slope * air_slope +
+                                            cap_vapour_slope * cap_slope);
+        };
         // `emitted_slope` is d(emitted)/d(source): one surface's 4 r T³ dT/ds,
         // or the floes' share of it under ice (ADR-0008 §10).
         const auto add = [&](double fraction, double emissivity, const ColumnStepResult& step,
@@ -433,18 +479,24 @@ struct CellSurface {
         };
         if (land_fraction > 0.0) {
             const double emissivity = land->column.emissivity;
-            land_result =
-                solve_land_tile(*land, emissivity * downward_W_m2 + exchange * air_K, exchange);
+            land_result = solve_land_tile(*land, emissivity * downward_W_m2 + exchange * air_K,
+                                          exchange, air);
             const ColumnStepResult& step = land_result.column;
             add(land_fraction, emissivity, step, step.state.surface_K,
                 4.0 * step.emitted_W_m2 / step.state.surface_K * step.surface_slope_K_m2_W);
+            add_vapour(land_fraction, emissivity, land_result.vapour_kg_m2_s,
+                       land_result.vapour_source_slope, land_result.vapour_air_slope,
+                       land_result.vapour_cap_slope);
         }
         if (ocean_fraction > 0.0) {
             const double emissivity = ocean->column.emissivity;
-            ocean_result =
-                solve_ocean_tile(*ocean, emissivity * downward_W_m2 + exchange * air_K, exchange);
+            ocean_result = solve_ocean_tile(*ocean, emissivity * downward_W_m2 + exchange * air_K,
+                                            exchange, air);
             add(ocean_fraction, emissivity, ocean_result.column, ocean_result.radiating_K,
                 ocean_result.emitted_slope);
+            add_vapour(ocean_fraction, emissivity, ocean_result.vapour_kg_m2_s,
+                       ocean_result.vapour_source_slope, ocean_result.vapour_air_slope,
+                       ocean_result.vapour_cap_slope);
         }
         // Not clamped: where the float fractions sum to slightly more than
         // one, the tiles receive D over Σ f and the column gives D over its
@@ -459,8 +511,10 @@ struct CellSurface {
 }  // namespace
 
 double SurfaceEnergyDiagnostics::closure_residual_J() const noexcept {
-    // Evaporation's latent heat leaves the sensible energy for the vapour.
+    // Evaporation's latent heat leaves the sensible energy for the vapour;
+    // condensation's returns to it.
     return std::abs(storage_change_J + latent_heat_J + evaporation_latent_J -
+                    condensation_latent_J -
                     duration_s * (absorbed_W - emitted_W + transport_W));
 }
 
@@ -470,7 +524,7 @@ double SurfaceEnergyDiagnostics::closure_gate_J() const noexcept {
                                        surface_upward_longwave_W + downward_longwave_W +
                                        std::abs(sensible_heat_W)) +
                          std::abs(storage_change_J) + std::abs(latent_heat_J) +
-                         std::abs(evaporation_latent_J);
+                         std::abs(evaporation_latent_J) + condensation_latent_J;
     return 1e-9 * scale + 4.0 * std::numeric_limits<double>::epsilon() * stored_energy_J;
 }
 
@@ -481,15 +535,18 @@ double SurfaceEnergyDiagnostics::water_residual_kg() const noexcept {
 }
 
 double SurfaceEnergyDiagnostics::water_cycle_residual_kg() const noexcept {
+    // The ocean is the reservoir: it gives its evaporation and takes the rain
+    // on it, the bucket's overflow and the ice's melt.
     return std::abs(vapour_change_kg + bucket_change_kg + snow_change_kg + ice_change_kg -
-                    (water_evaporation_kg + rain_kg + snowfall_kg - bucket_runoff_kg + ice_frozen_kg -
-                     ice_melted_kg));
+                    (water_evaporation_kg - ocean_precipitation_kg - bucket_runoff_kg +
+                     ice_frozen_kg - ice_melted_kg));
 }
 
 double SurfaceEnergyDiagnostics::water_cycle_gate_kg() const noexcept {
     const double stock = vapour_kg + bucket_kg + snow_kg + ice_kg;
     return 1e-12 * (std::abs(water_evaporation_kg) + std::abs(bucket_evaporation_kg) +
-                    std::abs(snow_sublimation_kg) + std::abs(ice_sublimation_kg) + rain_kg +
+                    std::abs(snow_sublimation_kg) + std::abs(ice_sublimation_kg) +
+                    precipitation_kg + rain_kg +
                     snowfall_kg + bucket_runoff_kg + ice_frozen_kg + ice_melted_kg + melt_kg + stock) +
            4.0 * std::numeric_limits<double>::epsilon() * stock;
 }
@@ -566,6 +623,9 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     const double water_layers = static_cast<double>(surface.atmosphere.layer_count);
     const double water_lapse = critical_lapse_exponent(surface.atmosphere, water_gravity);
     std::vector<double> bottom_mass(water ? cells : 0U, 0.0);   // m₀, kg/m²
+    // The share of the cell's condensate that falls as snow: its land tile's
+    // where that starts the step frozen (ADR-0008 §4.3).
+    std::vector<double> snow_share(water ? cells : 0U, 0.0);
     for_each_deterministic_block(
         mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
@@ -586,22 +646,38 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                                   : 0.0) +
                         surface.gustiness_m_s;
                     bottom_mass[cell] = ps / (water_gravity * water_layers);
+                    snow_share[cell] =
+                        slow.land_surface_temperature_K[cell] <= melting_point_K
+                            ? static_cast<double>(fractions.land_fraction[cell])
+                            : 0.0;
                     const double q0 = slow.atmosphere_specific_humidity_kg_kg.layer(0)[cell];
+                    // The surface air at the bottom layer's relative humidity
+                    // (ADR-0021 §4.3 as amended): q_a = f q₀ with
+                    // f = q_sat(A, p_s) / q_sat(T₀, p₀); each solve updates f
+                    // with the column's A (CellSurface).
+                    const double factor =
+                        saturation_specific_humidity(air_K, ps) /
+                        saturation_specific_humidity(
+                            slow.atmosphere_temperature_K.layer(0)[cell],
+                            layer_sigma(0U, surface.atmosphere.layer_count) * ps);
                     // The bottom layer's humidity responds within the step
-                    // (backward Euler in q₀): q₀' = q₀ + Δt Σ f τ (q_sat − q₀')/m₀
-                    // divides every tile's transfer by 1 + Δt Σ f τ / m₀. A
-                    // month's τ Δt / m₀ is about 15; with q₀ held, the layer
-                    // overshoots saturation and dews it back the next month.
+                    // (backward Euler in q₀): q₀' = q₀ + Δt Σ f_t τ (q_sat − f q₀')/m₀
+                    // divides every tile's transfer by 1 + f Δt Σ f_t τ / m₀.
+                    // A month's τ Δt / m₀ is about 15; with q₀ held, the
+                    // layer overshoots and dews it back the next month.
                     const double cell_transfer =
                         density * wind *
                         (fractions.land_fraction[cell] * land_transfer_coefficient +
                          fractions.ocean_fraction[cell] * ocean_transfer_coefficient);
-                    const double response = 1.0 / (1.0 + dt_s * cell_transfer / bottom_mass[cell]);
+                    const double response =
+                        1.0 / (1.0 + factor * dt_s * cell_transfer / bottom_mass[cell]);
                     ocean_forcing.transfer_kg_m2_s =
                         density * ocean_transfer_coefficient * wind * response;
-                    ocean_forcing.air_humidity = q0;
+                    ocean_forcing.air_humidity = factor * q0;
                     ocean_forcing.pressure_Pa = ps;
                     ocean_forcing.vapour_kg_m2 = q0 * bottom_mass[cell];
+                    // The raining branch's τ / τ_u.
+                    ocean_forcing.cap_ratio = 1.0 / response;
                     land_forcing = ocean_forcing;
                     land_forcing.transfer_kg_m2_s =
                         density * land_transfer_coefficient * wind * response;
@@ -610,7 +686,8 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 land_tiles[cell] = prepare_land_tile(
                     land,
                     {slow.land_surface_temperature_K[cell], slow.land_ground_temperature_K[cell]},
-                    slow.land_snow_water_equivalent_kg_m2[cell], insolation, precipitation[cell],
+                    slow.land_snow_water_equivalent_kg_m2[cell], insolation,
+                    water ? 0.0 : static_cast<double>(precipitation[cell]),
                     surface.grey_emissivity, dt_s, land_forcing);
                 ocean_tiles[cell] = prepare_ocean_tile(
                     ocean,
@@ -681,11 +758,32 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
         cell_surface.land_fraction = fractions.land_fraction[cell];
         cell_surface.ocean_fraction = fractions.ocean_fraction[cell];
         cell_surface.exchange = exchange;
+        ColumnMoisture moisture;
+        if (water) {
+            // ADR-0021 §4.4: each layer's humidity (the month's transport is
+            // M7-04's), the condensate's latent heat L_v, and L_f more for
+            // the share falling as snow on a land tile that starts frozen
+            // (ADR-0008 §4.3), so that its freezing is not lost.
+            const double ps = slow.atmosphere_surface_pressure_Pa[cell];
+            for (std::size_t layer = 0; layer < layers; ++layer) {
+                moisture.humidity_kg_kg[layer] =
+                    slow.atmosphere_specific_humidity_kg_kg.layer(layer)[cell];
+                moisture.pressure_Pa[layer] = layer_sigma(layer, layers) * ps;
+            }
+            moisture.layer_mass_kg_m2 = bottom_mass[cell];
+            moisture.latent_J_kg = latent_heat_vaporisation_J_kg +
+                                   snow_share[cell] * latent_heat_of_fusion_J_kg;
+            cell_surface.water = true;
+            cell_surface.bottom_humidity = moisture.humidity_kg_kg[0];
+            cell_surface.bottom_pressure_Pa = moisture.pressure_Pa[0];
+            cell_surface.surface_pressure_Pa = ps;
+            cell_surface.air_factor = columns[cell].air_factor;
+        }
         return solve_atmosphere_column(
             columns[cell], std::span<const double>(layers_before.data() + cell * layers, layers),
             dt_s, h, atmosphere.convection, cell_surface,
             std::span<double>(layers_guess.data() + cell * layers, layers), ColumnSolveSettings{},
-            &warm_starts[cell]);
+            &warm_starts[cell], water ? &moisture : nullptr);
     };
     // The start-of-step cell temperature: the first guess of each cell solve.
     std::vector<double> first_guess(cells, 0.0);
@@ -941,6 +1039,10 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 const double snow = slow.land_snow_water_equivalent_kg_m2[cell];
                 const bool to_space = layers == 0U;
                 CellTiles tiles;
+                double precipitation_kg_m2 = 0.0;
+                double condensation_W_m2 = 0.0;
+                double cell_evaporation_kg_m2_s = 0.0;
+                LayerArray humidity_after{};
                 if (layers > 0U) {
                     CellSurface cell_surface;
                     const auto column = solve_column(cell, transport[cell], cell_surface);
@@ -960,6 +1062,22 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                             ocean_tiles[cell],
                             ocean_tiles[cell].column.emissivity * down + exchange * air_K,
                             exchange);
+                    }
+                    if (water) {
+                        // The column's rain reaches the surface at the end of
+                        // the step: snow on land that started frozen, else
+                        // rain into the bucket; on the ocean it is the
+                        // ocean's.
+                        precipitation_kg_m2 = column.precipitation_kg_m2_s * dt_s;
+                        condensation_W_m2 = column.condensation_W_m2;
+                        cell_evaporation_kg_m2_s = column.evaporation_kg_m2_s;
+                        humidity_after = column.humidity_kg_kg;
+                        if (snow_share[cell] > 0.0) {
+                            tiles.land.snowfall_kg_m2 += precipitation_kg_m2;
+                            tiles.land.snow_kg_m2 += precipitation_kg_m2;
+                        } else {
+                            tiles.land.rain_kg_m2 += precipitation_kg_m2;
+                        }
                     }
                     const ColumnRadiation& radiation = columns[cell];
                     double change = 0.0;
@@ -1064,23 +1182,29 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     after = std::max(0.0, after - overflow);
                     slow.land_surface_water_kg_m2[cell] = after;
                     const double land_share = fractions.land_fraction[cell];
-                    const double ocean_share = fractions.ocean_fraction[cell];
-                    const double vapour_in =
-                        land_share * (land_tile.bucket_evaporation_kg_m2 +
-                                      land_tile.sublimation_kg_m2) +
-                        ocean_share * (ocean_tile.evaporation_kg_m2 + ocean_tile.sublimation_kg_m2);
-                    auto& q0 = slow.atmosphere_specific_humidity_kg_kg.layer(0)[cell];
-                    q0 = std::max(0.0, q0 + vapour_in / bottom_mass[cell]);
-                    state.forcing().evaporation_kg_m2_s[cell] = static_cast<float>(vapour_in / dt_s);
+                    // The layers' humidity after evaporation and rainout.
+                    double vapour_change = 0.0;
+                    for (std::size_t layer = 0; layer < layers; ++layer) {
+                        auto& q = slow.atmosphere_specific_humidity_kg_kg.layer(layer)[cell];
+                        vapour_change += humidity_after[layer] - q;
+                        q = humidity_after[layer];
+                    }
+                    state.forcing().evaporation_kg_m2_s[cell] =
+                        static_cast<float>(cell_evaporation_kg_m2_s);
+                    state.forcing().precipitation_kg_m2_s[cell] =
+                        static_cast<float>(precipitation_kg_m2 / dt_s);
                     state.forcing().runoff_kg_m2_s[cell] =
                         static_cast<float>(land_share * overflow / dt_s);
+                    partial.precipitation_kg += area_m2 * precipitation_kg_m2;
+                    partial.ocean_precipitation_kg += (area_m2 - land_weight) * precipitation_kg_m2;
+                    partial.condensation_latent_J += area_m2 * dt_s * condensation_W_m2;
                     partial.water_evaporation_kg += ocean_weight * ocean_tile.evaporation_kg_m2;
                     partial.bucket_evaporation_kg +=
                         land_weight * land_tile.bucket_evaporation_kg_m2;
                     partial.snow_sublimation_kg += land_weight * land_tile.sublimation_kg_m2;
                     partial.ice_sublimation_kg += ocean_weight * ocean_tile.sublimation_kg_m2;
                     partial.bucket_runoff_kg += land_weight * overflow;
-                    partial.vapour_change_kg += area_m2 * vapour_in;
+                    partial.vapour_change_kg += area_m2 * bottom_mass[cell] * vapour_change;
                     partial.bucket_change_kg += land_weight * (after - bucket);
                     partial.bucket_kg += land_weight * after;
                     partial.evaporation_latent_J +=
@@ -1173,6 +1297,9 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.bucket_kg = total.bucket_kg;
     diagnostics.vapour_kg = total.vapour_kg;
     diagnostics.evaporation_latent_J = total.evaporation_latent_J;
+    diagnostics.precipitation_kg = total.precipitation_kg;
+    diagnostics.ocean_precipitation_kg = total.ocean_precipitation_kg;
+    diagnostics.condensation_latent_J = total.condensation_latent_J;
     diagnostics.ice_change_kg = total.ice_change_kg;
     diagnostics.ice_kg = total.ice_kg;
     diagnostics.ice_area_north_m2 = total.ice_area_north_m2;

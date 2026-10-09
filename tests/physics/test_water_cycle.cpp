@@ -16,8 +16,9 @@
 #include <iostream>
 #include <memory>
 
-// Evaporation and the bucket in the surface step (ADR-0021 §4.3, V2, V3, V5;
-// task M7-02), with prescribed precipitation and no rainout yet.
+// The water cycle in the surface step (ADR-0021 §4.3–4.4, V2, V3, V4; tasks
+// M7-02 and M7-03): evaporation, the bucket and saturation rainout, no
+// humidity transport yet (M7-04).
 namespace {
 
 struct Planet {
@@ -38,9 +39,10 @@ struct Planet {
         fractions = planetsim::compute_surface_fractions(*mesh, state.slow().hypsometry_m,
                                                          state.slow().sea_level_m, 4U);
         planetsim::initialise_climate(*mesh, state.slow(), parameters, surface, 4U);
+        // Ignored with the water cycle on, which makes its own.
         auto& precipitation = state.forcing().prescribed_precipitation_kg_m2_s;
         for (std::size_t cell = 0; cell < precipitation.size(); ++cell) {
-            precipitation[cell] = 2.5e-5F;   // about 0.8 m/yr
+            precipitation[cell] = 2.5e-5F;
         }
     }
 
@@ -65,6 +67,7 @@ int main() {
     double worst_cycle = 0.0;
     double first_latent_W_m2 = 0.0;
     double latent_W = 0.0;
+    double precipitation_kg = 0.0;
     double evaporation_kg = 0.0;
     double duration = 0.0;
     double area = 0.0;
@@ -85,41 +88,55 @@ int main() {
             first_latent_W_m2 = last_wet.evaporation_latent_J / last_wet.duration_s / area;
         }
         latent_W += last_wet.evaporation_latent_J;
-        evaporation_kg += last_wet.water_evaporation_kg + last_wet.bucket_evaporation_kg +
-                          last_wet.snow_sublimation_kg + last_wet.ice_sublimation_kg;
+        if (month > 0) {
+            precipitation_kg += last_wet.precipitation_kg;
+        }
+        if (month > 0) {
+            evaporation_kg += last_wet.water_evaporation_kg + last_wet.bucket_evaporation_kg +
+                              last_wet.snow_sublimation_kg + last_wet.ice_sublimation_kg;
+        }
         duration += last_wet.duration_s;
     }
     const double latent_W_m2 = latent_W / duration / area;
     const double evaporation_m_yr = evaporation_kg / area / 1000.0 / duration * 365.25 * 86'400.0;
-    // The bottom layer's area-weighted humidity relative to saturation at the
-    // surface below it, after the year.
+    // Every layer's relative humidity at its own temperature after the year:
+    // rainout leaves none supersaturated (to the convective adjustment's
+    // rearrangement after the condensation).
     const auto& slow = wet.state.slow();
+    const std::size_t layers = slow.atmosphere_layer_count();
     double humidity_m2 = 0.0;
+    double highest = 0.0;
     for (std::size_t cell = 0; cell < wet.mesh->cell_count(); ++cell) {
-        humidity_m2 += wet.mesh->cells()[cell].area_m2 *
-                       slow.atmosphere_specific_humidity_kg_kg.layer(0)[cell] /
-                       planetsim::saturation_specific_humidity(
-                           wet.state.forcing().surface_temperature_K[cell],
-                           slow.atmosphere_surface_pressure_Pa[cell]);
+        for (std::size_t layer = 0; layer < layers; ++layer) {
+            const double pressure =
+                planetsim::layer_sigma(layer, layers) * slow.atmosphere_surface_pressure_Pa[cell];
+            const double relative = slow.atmosphere_specific_humidity_kg_kg.layer(layer)[cell] /
+                                    planetsim::saturation_specific_humidity(
+                                        slow.atmosphere_temperature_K.layer(layer)[cell], pressure);
+            highest = std::max(highest, relative);
+            if (layer == 0U) {
+                humidity_m2 += wet.mesh->cells()[cell].area_m2 * relative;
+            }
+        }
     }
     const double relative_humidity = humidity_m2 / area;
     std::cout << "water cycle: energy " << worst_energy << " water " << worst_water << " cycle "
               << worst_cycle << " | latent first month " << first_latent_W_m2 << " W/m2, year "
-              << latent_W_m2 << " W/m2, evaporation " << evaporation_m_yr
-              << " m/yr | bottom layer q / q_sat(T_s) " << relative_humidity << " | mean T wet "
-              << last_wet.mean_surface_temperature_K << " K, dry "
+              << latent_W_m2 << " W/m2 | months 2-12: evaporation " << evaporation_m_yr
+              << " m/yr, precipitation / evaporation " << precipitation_kg / evaporation_kg
+              << " | bottom layer RH " << relative_humidity << ", highest RH " << highest
+              << " | mean T wet " << last_wet.mean_surface_temperature_K << " K, dry "
               << last_dry.mean_surface_temperature_K << " K\n";
     // V3: energy, with the latent heat; V2: water, including the vapour.
     PLANETSIM_EXPECT(test, worst_energy <= 1.0);
     PLANETSIM_EXPECT(test, worst_water <= 1.0);
     PLANETSIM_EXPECT(test, worst_cycle <= 1.0);
-    // From the initial 60 % the first month evaporates tens of W/m². With no
-    // rainout yet (M7-03) and no humidity transport (M7-04), the bottom layer
-    // then fills to about the surface's saturation and the exchange stops
-    // (it is supersaturated at its own, colder, temperature until rainout).
-    PLANETSIM_EXPECT(test, first_latent_W_m2 > 20.0 && first_latent_W_m2 < 200.0);
-    PLANETSIM_EXPECT(test, std::abs(latent_W_m2) < first_latent_W_m2);
-    PLANETSIM_EXPECT(test, relative_humidity > 0.8 && relative_humidity < 1.3);
+    // Before the refit (M7-07) the latent flux is Earth's order (about 85
+    // W/m²); with no humidity transport the vapour it gives rains out where
+    // it rose, so after the first month precipitation balances evaporation.
+    PLANETSIM_EXPECT(test, latent_W_m2 > 50.0 && latent_W_m2 < 200.0);
+    PLANETSIM_EXPECT(test, std::abs(precipitation_kg / evaporation_kg - 1.0) < 0.05);
+    PLANETSIM_EXPECT(test, relative_humidity > 0.5 && highest < 1.05);
     // The stores stay within their bounds.
     bool bounded = true;
     for (std::size_t cell = 0; cell < wet.mesh->cell_count(); ++cell) {

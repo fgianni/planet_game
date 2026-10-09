@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sim/planet/atmosphere/atmosphere.hpp"
+#include "sim/planet/atmosphere/saturation.hpp"
 
 #include <algorithm>
 #include <array>
@@ -122,6 +123,23 @@ struct SurfaceExchange {
     double d_upward_d_air = 0.0;
     double d_sensible_d_downward = 0.0;
     double d_sensible_d_air = 0.0;
+    // The evaporation into the bottom layer (kg/m²/s, ADR-0021 §4.4), zero
+    // for a dry surface.
+    double vapour_kg_m2_s = 0.0;
+    double d_vapour_d_downward = 0.0;
+    double d_vapour_d_air = 0.0;
+};
+
+// The column's water for one step (ADR-0021 §4.4): each layer's humidity q*_k
+// after the step's transport, the bottom layer before the step's
+// evaporation (the surface's, added inside the solve), the layers'
+// pressures σ_k p_s, their mass and the latent heat each kilogram of
+// condensate releases (L_v, plus L_f for the share that falls as snow).
+struct ColumnMoisture {
+    LayerArray humidity_kg_kg{};
+    LayerArray pressure_Pa{};
+    double layer_mass_kg_m2 = 0.0;
+    double latent_J_kg = 0.0;
 };
 
 struct ColumnSolveSettings {
@@ -155,6 +173,15 @@ struct ColumnSolveResult {
     // dT_k/dh of the implicit step, through the convective pools: the
     // layers' response that the coupled transport needs (ADR-0011 §17.1).
     LayerArray temperature_slope_K_m2_W{};
+    // With moisture (ADR-0021 §4.4), at the last evaluation: each layer's
+    // humidity after evaporation and condensation, the condensate C_k
+    // (kg/kg), the precipitation Σ C_k m / Δt and its latent heat
+    // L Σ C_k m / Δt, and the surface's evaporation.
+    LayerArray humidity_kg_kg{};
+    LayerArray condensate_kg_kg{};
+    double precipitation_kg_m2_s = 0.0;
+    double condensation_W_m2 = 0.0;
+    double evaporation_kg_m2_s = 0.0;
 };
 
 // Convective adjustment (ADR-0010 §3.3 B): adjacent layers whose θ_c
@@ -304,13 +331,24 @@ struct ColumnWarmStart {
 // fluxes the step applies. A surface whose response jumps
 // (a phase boundary) may leave no exact root: the layers are then finished
 // from the last evaluation's fluxes, which keeps the budget exact.
+//
+// With `moisture` (ADR-0021 §4.4) each layer also condenses its excess over
+// saturation at its new temperature, C_k = max(0, q*_k − q_sat(T_k, p_k)),
+// the bottom layer's q* including the surface's evaporation E Δt / m, and
+// gains its latent heat:
+//
+//   F_k −= L m C_k / Δt,
+//
+// the switch at saturation being a kink of F as the surface's phase
+// changes are. Without it the solve is the dry one bit for bit.
 template <typename Surface>
 ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
                                           std::span<const double> before_K, double dt_s,
                                           double source_W_m2, bool convection,
                                           Surface&& surface, std::span<double> temperature_K,
                                           const ColumnSolveSettings& settings = {},
-                                          ColumnWarmStart* warm = nullptr) {
+                                          ColumnWarmStart* warm = nullptr,
+                                          const ColumnMoisture* moisture = nullptr) {
     const std::size_t n = column.layers;
     ColumnSolveResult result;
     if (n == 0U) {
@@ -328,7 +366,12 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
         double air_K = 0.0;
         double norm = 0.0;        // Σ F²
         double max_abs = 0.0;
+        LayerArray humidity{};    // q*_k, the bottom layer with the evaporation
+        LayerArray condensate{};  // C_k
     };
+    // L m / Δt: the heating of a unit of condensate.
+    const double condensation_rate =
+        moisture != nullptr ? moisture->latent_J_kg * moisture->layer_mass_kg_m2 / dt_s : 0.0;
     const auto evaluate = [&](const LayerArray& t) {
         Evaluation e;
         e.temperature = t;
@@ -340,12 +383,26 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
         e.air_K = column.air_factor * t[0];
         e.exchange = surface(down, e.air_K);
         e.fluxes = longwave_fluxes(column, e.emission, e.exchange.upward_W_m2);
+        if (moisture != nullptr) {
+            for (std::size_t k = 0; k < n; ++k) {
+                e.humidity[k] = moisture->humidity_kg_kg[k];
+            }
+            e.humidity[0] += e.exchange.vapour_kg_m2_s * dt_s / moisture->layer_mass_kg_m2;
+            for (std::size_t k = 0; k < n; ++k) {
+                e.condensate[k] = std::max(
+                    0.0, e.humidity[k] -
+                             saturation_specific_humidity(t[k], moisture->pressure_Pa[k]));
+            }
+        }
         for (std::size_t k = 0; k < n; ++k) {
             double f = rate * (t[k] - before_K[k]) -
                        (e.fluxes.absorbed_in[k] - 2.0 * e.emission[k]) -
                        (k == 0U ? source_W_m2 : 0.0);
             if (k == 0U) {
                 f -= e.exchange.sensible_W_m2;
+            }
+            if (moisture != nullptr) {
+                f -= condensation_rate * e.condensate[k];
             }
             e.residual[k] = f;
             e.norm += f * f;
@@ -373,6 +430,21 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
                 }
                 if (r == 0U) {
                     value -= d_sensible;
+                }
+                if (moisture != nullptr && e.condensate[r] > 0.0) {
+                    // dC_r/dT_c: the bottom layer's evaporation, and the
+                    // layer's own saturation.
+                    double d_condensate = 0.0;
+                    if (r == 0U) {
+                        d_condensate += (e.exchange.d_vapour_d_downward * d_down +
+                                         e.exchange.d_vapour_d_air * d_air) *
+                                        dt_s / moisture->layer_mass_kg_m2;
+                    }
+                    if (r == c) {
+                        d_condensate -= saturation_specific_humidity_slope(
+                            e.temperature[r], moisture->pressure_Pa[r]);
+                    }
+                    value -= condensation_rate * d_condensate;
                 }
                 j[r][c] = value;
             }
@@ -509,6 +581,17 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
     result.sensible_W_m2 = current.exchange.sensible_W_m2;
     result.residual_W_m2 = residual_sum;
     result.max_residual_W_m2 = current.max_abs;
+    if (moisture != nullptr) {
+        double condensate = 0.0;
+        for (std::size_t k = 0; k < n; ++k) {
+            result.humidity_kg_kg[k] = current.humidity[k] - current.condensate[k];
+            result.condensate_kg_kg[k] = current.condensate[k];
+            condensate += current.condensate[k];
+        }
+        result.precipitation_kg_m2_s = condensate * moisture->layer_mass_kg_m2 / dt_s;
+        result.condensation_W_m2 = condensation_rate * condensate;
+        result.evaporation_kg_m2_s = current.exchange.vapour_kg_m2_s;
+    }
     if (convection) {
         // The adjustment is linear for its pools: the θ_c response sees it.
         ConvectivePools pools;
@@ -524,6 +607,54 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
                 response[k] = sum / weight * column.exner[k];
             }
         }
+    }
+    if (moisture != nullptr && convection) {
+        // The convective adjustment moves the condensation's heat upward
+        // and leaves the layers below supersaturated at their new
+        // temperatures: each condenses its excess isobarically,
+        // c_p (T' − T) = L (q − q_sat(T')), and the two adjustments
+        // alternate until nothing more condenses (ADR-0021 V4: no layer
+        // above saturation after the step).
+        const double specific_heat = column.layer_heat_capacity_J_m2_K / moisture->layer_mass_kg_m2;
+        const double heating = moisture->latent_J_kg / specific_heat;   // K per kg/kg
+        double extra = 0.0;
+        for (int round = 0; round < 64; ++round) {
+            double condensed = 0.0;
+            for (std::size_t k = 0; k < n; ++k) {
+                const double pressure = moisture->pressure_Pa[k];
+                const double q = result.humidity_kg_kg[k];
+                if (!(q > saturation_specific_humidity(temperature_K[k], pressure))) {
+                    continue;
+                }
+                // Newton on g(T') = T' − T − h (q − q_sat(T')), increasing.
+                double t = temperature_K[k];
+                for (int iteration = 0; iteration < 30; ++iteration) {
+                    const double g = t - temperature_K[k] -
+                                     heating * (q - saturation_specific_humidity(t, pressure));
+                    const double next =
+                        t - g / (1.0 + heating * saturation_specific_humidity_slope(t, pressure));
+                    if (std::abs(next - t) <= 4.0 * std::numeric_limits<double>::epsilon() * t) {
+                        t = next;
+                        break;
+                    }
+                    t = next;
+                }
+                // The condensate from the temperature change, so that the
+                // layer's energy is exact.
+                const double condensate = (t - temperature_K[k]) / heating;
+                temperature_K[k] = t;
+                result.humidity_kg_kg[k] = q - condensate;
+                result.condensate_kg_kg[k] += condensate;
+                condensed += condensate;
+            }
+            extra += condensed;
+            if (!(condensed > 0.0) || !convective_adjustment(column, temperature_K)) {
+                break;
+            }
+            result.adjusted = true;
+        }
+        result.precipitation_kg_m2_s += extra * moisture->layer_mass_kg_m2 / dt_s;
+        result.condensation_W_m2 += condensation_rate * extra;
     }
     double slope = 0.0;
     for (std::size_t k = 0; k < n; ++k) {

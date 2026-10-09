@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-09
 - **Accepted:** 2026-10-09
+- **Amended:** 2026-10-09 — §4.3: the bulk formula's humidity is the surface air's (§10, decided with the user in task M7-03); §4.4: the condensate's freezing and the saturation adjustment after convection (§10)
 - **Milestone:** P0 / M7 (humidity and evaporation)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §9.3, §9.6, §13 M7–M9, §23, §24; Planetary Civilization Simulator — Design Record v1.4, §5, §15
 - **Related:** ADR-0001 (V1 water budget, V2 parity, §8 "first V2 parity tests" at M7), ADR-0003 (PSNAP migration), ADR-0006 (sub-steps), ADR-0007 (surface tiles), ADR-0008 (snow, sea ice, the prescribed-precipitation seam), ADR-0009 (implicit transport), ADR-0010 (layered atmosphere; τ's quartic vapour proxy; Γ_c), ADR-0011 (winds; "humidity advected by the same two paths"; §17's coupled transport)
@@ -247,3 +248,43 @@ threshold are documented constants, not fits.
    every reference step.
 7. **M7-07 — Refit and close.** §4.8 (V8), parity (V9), performance (V12),
    records.
+
+## 10. Amendment: the surface air's humidity, snow's freezing, saturation after convection (accepted 2026-10-09, task M7-03)
+
+**10.1 The bulk formula's humidity (amends §4.3; decided with the user).**
+With saturation rainout the bottom layer holds q_sat(T₀, p₀) where it rains.
+On three layers, T₀ is the temperature at σ₀ = 5/6, about 1.5 km up and
+10 K below the surface. Its saturation is about 60% of the surface's, so
+the formula as written evaporated 185 W/m² over the year: 2.4 m/yr against
+Earth's 1.0. That was measured on L3 with the M6 climate, which sits 4–5 K
+above 288 K before the refit. More layers only narrow the gap: 153 W/m² on
+five layers, 122 on eight.
+
+E = ρ C_E V_e β (q_sat(T_s) − q_a) now uses the surface air's humidity:
+the bottom layer's relative humidity carried to the surface air
+temperature A, along the same Γ_c that gives A:
+
+  q_a = q₀ q_sat(A, p_s) / q_sat(T₀, p₀),
+
+which is q_sat(A, p_s) where the layer rains. This gave 127 W/m² on the
+same run. Alternatives that were measured and rejected:
+- a critical relative humidity below 1: 158 W/m² at 0.8, because the drier
+  air evaporates more;
+- C_E = 1.5e-3 on land: 124 W/m².
+
+The 5 m/s gustiness (104 W/m² at 3 m/s) is left to the refit (§4.8).
+
+**10.2 Snow's freezing (amends §4.4).** Condensate that falls as snow
+(on a land tile that starts the step frozen, ADR-0008 §4.3) releases
+L_v + L_f in the column, not L_v. Otherwise the L_f its melt later takes
+would be energy from nowhere: about 0.3 W/m² globally.
+
+**10.3 Saturation after convection (amends §4.4, V4).** The convective
+adjustment that follows the column solve (ADR-0010 §3.3 B) carries the
+condensation's heat upward. It leaves the layers below supersaturated at
+their new temperatures: a mean relative humidity of 1.36 in the bottom
+layer after a year. Each layer then condenses its excess isobarically,
+c_p (T' − T) = L (q − q_sat(T')), alternating with the convective
+adjustment until nothing more condenses. Energy and water are exact. Moist
+convection (M8) replaces the pair.
+

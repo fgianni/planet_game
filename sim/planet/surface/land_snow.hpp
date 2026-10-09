@@ -23,6 +23,13 @@ struct LandSnowStepResult {
     // the bucket's water is the caller's.
     double sublimation_kg_m2 = 0.0;
     double bucket_evaporation_kg_m2 = 0.0;
+    // The tile's water flux E (kg/m²/s) and its response to the source and
+    // to the raining layer's q_cap (ADR-0021 §4.4), through the surface
+    // temperature: the column solve's linearisation.
+    double vapour_kg_m2_s = 0.0;
+    double vapour_source_slope = 0.0;   // dE/ds, kg/m²/s per W/m²
+    double vapour_air_slope = 0.0;      // dE/dq_a, kg/m²/s per kg/kg
+    double vapour_cap_slope = 0.0;      // dE/dq_cap, kg/m²/s per kg/kg
 
     [[nodiscard]] double runoff_kg_m2() const noexcept { return rain_kg_m2 + melt_kg_m2; }
 };
@@ -58,10 +65,12 @@ struct LandSnowSystem {
 
 // Solves a prepared tile with an external source s − γ·T_s' in its surface
 // equation (see solve_column_step). The result's surface slope is 0 while
-// snow holds the surface at the melting point.
+// snow holds the surface at the melting point. `air` is this solve's surface
+// air humidity (SurfaceAir).
 [[nodiscard]] LandSnowStepResult solve_land_tile(const LandSnowSystem& tile,
                                                  double source_W_m2 = 0.0,
-                                                 double exchange_W_m2_K = 0.0);
+                                                 double exchange_W_m2_K = 0.0,
+                                                 const SurfaceAir& air = {});
 
 [[nodiscard]] LandSnowStepResult step_land_tile(const ColumnProperties& ground, ColumnState state,
                                                 double snow_kg_m2, double insolation_W_m2,

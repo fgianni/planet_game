@@ -98,12 +98,38 @@ struct Limited {
 
 }  // namespace
 
+namespace {
+
+// The demand δq per unit of τ_u and its derivatives in x, q_a and q_cap: the
+// unsaturated q_sat(x) − q_a, or the raining layer's R (q_sat(x) − q_cap).
+struct Deficit {
+    double value = 0.0;
+    double surface = 0.0;
+    double air = 0.0;
+    double cap = 0.0;
+};
+
+[[nodiscard]] Deficit deficit(const ColumnSystem& system, double surface_K) noexcept {
+    const double saturated = saturation_specific_humidity(surface_K, system.pressure_Pa);
+    const double slope = saturation_specific_humidity_slope(surface_K, system.pressure_Pa);
+    Deficit d{saturated - system.air_humidity, slope, -1.0, 0.0};
+    if (system.cap_humidity >= 0.0) {
+        const double raining = system.cap_ratio * (saturated - system.cap_humidity);
+        if (raining > d.value) {
+            d = {raining, system.cap_ratio * slope, 0.0, -system.cap_ratio};
+        }
+    }
+    return d;
+}
+
+}  // namespace
+
 ColumnSystem::Evaporation ColumnSystem::evaporation_kg_m2_s(double surface_K) const noexcept {
     Evaporation e;
     if (!evaporates()) {
         return e;
     }
-    const double dq = saturation_specific_humidity(surface_K, pressure_Pa) - air_humidity;
+    const double dq = deficit(*this, surface_K).value;
     e.water = free_limited(water_transfer * dq, vapour_kg_m2, step_s).value;
     e.ice = free_limited(ice_transfer * dq, vapour_kg_m2, step_s).value;
     e.snow = snow_limited(snow_transfer * dq, snow_kg_m2, vapour_kg_m2, step_s).value;
@@ -126,8 +152,9 @@ double ColumnSystem::latent_slope_W_m2_K(double surface_K) const noexcept {
     if (!evaporates()) {
         return 0.0;
     }
-    const double dq = saturation_specific_humidity(surface_K, pressure_Pa) - air_humidity;
-    const double dq_dx = saturation_specific_humidity_slope(surface_K, pressure_Pa);
+    const Deficit d = deficit(*this, surface_K);
+    const double dq = d.value;
+    const double dq_dx = d.surface;
     const double water = free_limited(water_transfer * dq, vapour_kg_m2, step_s).slope *
                          water_transfer;
     const double ice = free_limited(ice_transfer * dq, vapour_kg_m2, step_s).slope * ice_transfer;
@@ -139,6 +166,34 @@ double ColumnSystem::latent_slope_W_m2_K(double surface_K) const noexcept {
                           bucket_transfer;
     return dq_dx * (latent_heat_vaporisation_J_kg * (water + bucket) +
                     latent_heat_sublimation_J_kg * (ice + snow));
+}
+
+ColumnSystem::VapourSlopes ColumnSystem::vapour_slopes(double surface_K) const noexcept {
+    VapourSlopes v;
+    if (!evaporates()) {
+        return v;
+    }
+    const Deficit d = deficit(*this, surface_K);
+    const double dq = d.value;
+    // dE_k/dδq of each source.
+    const double water = free_limited(water_transfer * dq, vapour_kg_m2, step_s).slope *
+                         water_transfer;
+    const double ice = free_limited(ice_transfer * dq, vapour_kg_m2, step_s).slope * ice_transfer;
+    const double snow = snow_limited(snow_transfer * dq, snow_kg_m2, vapour_kg_m2, step_s).slope *
+                        snow_transfer;
+    const double bucket = bucket_limited(bucket_transfer * dq, bucket_kg_m2,
+                                         bucket_threshold_kg_m2, vapour_kg_m2, step_s)
+                              .slope *
+                          bucket_transfer;
+    const double total = water + ice + snow + bucket;
+    const double latent = latent_heat_vaporisation_J_kg * (water + bucket) +
+                          latent_heat_sublimation_J_kg * (ice + snow);
+    v.surface = d.surface * total;
+    v.air = d.air * total;
+    v.cap = d.cap * total;
+    v.latent_air = d.air * latent;
+    v.latent_cap = d.cap * latent;
+    return v;
 }
 
 double ColumnSystem::surplus_W_m2(double surface_K) const noexcept {

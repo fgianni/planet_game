@@ -48,6 +48,19 @@ struct EvaporationForcing {
     double pressure_Pa = 0.0;
     double bucket_kg_m2 = 0.0;
     double vapour_kg_m2 = 0.0;   // the bottom layer's vapour, which limits dew
+    // Saturation rainout (ADR-0021 §4.4; ColumnSystem): R = τ / τ_u, and
+    // q_cap, which the column solve sets for each solve (negative: none).
+    double cap_ratio = 1.0;
+    double cap_humidity = -1.0;
+};
+
+// The surface air's humidity for one solve of a tile (ADR-0021 §4.3 as
+// amended in task M7-03): the column solve sets both from its surface air
+// temperature A. `humidity` replaces the prepared q_a (negative: keep it);
+// `cap_humidity` is the raining layer's q_cap (negative: no rain branch).
+struct SurfaceAir {
+    double humidity = -1.0;
+    double cap_humidity = -1.0;
 };
 
 // The step with the lower layer eliminated: a·x + r·x⁴ = b for the new
@@ -80,7 +93,16 @@ struct ColumnSystem {
     double bucket_threshold_kg_m2 = 0.0;   // W_c
     double step_s = 0.0;               // Δt of the limits
     double vapour_kg_m2 = 0.0;         // V: the air's vapour above the tile
-    double air_humidity = 0.0;         // q₀, kg/kg
+    double air_humidity = 0.0;         // q_a, the surface air's, kg/kg
+    // Saturation rainout (ADR-0021 §4.4): the transfers above are τ_u, the
+    // bulk τ damped by the bottom layer's response within the step, and
+    // δq = q_sat(x) − q_a. Where the layer would saturate it rains, and the
+    // surface air holds q_cap = q_sat(A, p_s) instead: the demand is
+    // R (q_sat(x) − q_cap) with R = τ / τ_u. The larger of the two is the
+    // layer's branch (exact for tiles sharing q_sat). cap_humidity < 0: no
+    // cap.
+    double cap_humidity = -1.0;
+    double cap_ratio = 1.0;
     double pressure_Pa = 0.0;          // p, for q_sat
 
     [[nodiscard]] bool evaporates() const noexcept {
@@ -98,6 +120,16 @@ struct ColumnSystem {
     // Their latent heat at x, W/m², and its derivative in x.
     [[nodiscard]] double latent_flux_W_m2(double surface_K) const noexcept;
     [[nodiscard]] double latent_slope_W_m2_K(double surface_K) const noexcept;
+    // The water flux's derivatives (kg/m²/s): in x, and in q_a and q_cap at
+    // fixed x; and the latent heat's in q_a and q_cap (W/m² per kg/kg).
+    struct VapourSlopes {
+        double surface = 0.0;
+        double air = 0.0;
+        double cap = 0.0;
+        double latent_air = 0.0;
+        double latent_cap = 0.0;
+    };
+    [[nodiscard]] VapourSlopes vapour_slopes(double surface_K) const noexcept;
 
     // The lower layer after the step, given the new surface temperature.
     [[nodiscard]] double lower_K(double lower_K_before, double surface_K) const noexcept {

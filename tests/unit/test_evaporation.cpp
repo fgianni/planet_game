@@ -220,5 +220,77 @@ int main() {
         }
         PLANETSIM_EXPECT(test, monotone);
     }
+    // 7. The raining branch (ADR-0021 §4.4): with q_cap the demand is the
+    // larger of τ_u (q_sat − q₀) and R τ_u (q_sat − q_cap); the tiles' vapour
+    // slopes agree with finite differences where the surface is free.
+    {
+        planetsim::EvaporationForcing forcing;
+        forcing.transfer_kg_m2_s = transfer / 15.0;
+        forcing.cap_ratio = 15.0;
+        forcing.pressure_Pa = pressure;
+        forcing.air_humidity = 0.006;
+        forcing.vapour_kg_m2 = 20.0;
+        forcing.bucket_kg_m2 = 150.0;
+        const planetsim::ColumnState warm{290.0, 288.0};
+        const auto land_tile =
+            planetsim::prepare_land_tile(soil, warm, 0.0, 250.0, 0.0, 0.0, month_s, forcing);
+        const auto ocean_tile =
+            planetsim::prepare_ocean_tile(ocean, warm, 0.0, 250.0, 0.0, month_s, forcing);
+        const double source = 10.0 * 283.0;
+        double worst = 0.0;
+        for (const double cap : {-1.0, 0.004, 0.008, 0.012}) {
+            const auto land0 = planetsim::solve_land_tile(land_tile, source, 10.0);
+            const auto land = planetsim::solve_land_tile(land_tile, source, 10.0, {-1.0, cap});
+            const auto sea = planetsim::solve_ocean_tile(ocean_tile, source, 10.0, {-1.0, cap});
+            // Raining never evaporates less than the unsaturated branch at
+            // the same surface: the tile cools, but its demand is larger.
+            PLANETSIM_EXPECT(test, land.vapour_kg_m2_s >= land0.vapour_kg_m2_s - 1e-18);
+            const double ds = 1e-3;
+            const auto land_ds = planetsim::solve_land_tile(land_tile, source + ds, 10.0, {-1.0, cap});
+            const auto sea_ds = planetsim::solve_ocean_tile(ocean_tile, source + ds, 10.0, {-1.0, cap});
+            const auto relative = [](double analytic, double finite) {
+                return std::abs(analytic - finite) / std::max(std::abs(finite), 1e-14);
+            };
+            worst = std::max(worst, relative(land.vapour_source_slope,
+                                             (land_ds.vapour_kg_m2_s - land.vapour_kg_m2_s) / ds));
+            worst = std::max(worst, relative(sea.vapour_source_slope,
+                                             (sea_ds.vapour_kg_m2_s - sea.vapour_kg_m2_s) / ds));
+            {
+                // dE/dq_a, through a per-solve surface air humidity.
+                const double dq = 1e-7;
+                const double qa = forcing.air_humidity + dq;
+                const auto land_qa =
+                    planetsim::solve_land_tile(land_tile, source, 10.0, {qa, cap});
+                const auto sea_qa = planetsim::solve_ocean_tile(ocean_tile, source, 10.0, {qa, cap});
+                if (land.vapour_air_slope != 0.0) {
+                    worst = std::max(worst,
+                                     relative(land.vapour_air_slope,
+                                              (land_qa.vapour_kg_m2_s - land.vapour_kg_m2_s) / dq));
+                }
+                if (sea.vapour_air_slope != 0.0) {
+                    worst = std::max(worst,
+                                     relative(sea.vapour_air_slope,
+                                              (sea_qa.vapour_kg_m2_s - sea.vapour_kg_m2_s) / dq));
+                }
+            }
+            if (cap > 0.0) {
+                const double dq = 1e-7;
+                const auto land_dq = planetsim::solve_land_tile(land_tile, source, 10.0, {-1.0, cap + dq});
+                const auto sea_dq = planetsim::solve_ocean_tile(ocean_tile, source, 10.0, {-1.0, cap + dq});
+                if (land.vapour_cap_slope != 0.0) {
+                    worst = std::max(worst,
+                                     relative(land.vapour_cap_slope,
+                                              (land_dq.vapour_kg_m2_s - land.vapour_kg_m2_s) / dq));
+                }
+                if (sea.vapour_cap_slope != 0.0) {
+                    worst = std::max(worst,
+                                     relative(sea.vapour_cap_slope,
+                                              (sea_dq.vapour_kg_m2_s - sea.vapour_kg_m2_s) / dq));
+                }
+            }
+        }
+        std::cout << "vapour slopes: worst relative error " << worst << '\n';
+        PLANETSIM_EXPECT(test, worst <= 1e-3);
+    }
     return test.result();
 }

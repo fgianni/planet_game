@@ -52,6 +52,7 @@ LandSnowSystem prepare_land_tile(const ColumnProperties& ground, ColumnState sta
         system.air_humidity = evaporation.air_humidity;
         system.pressure_Pa = evaporation.pressure_Pa;
         system.vapour_kg_m2 = evaporation.vapour_kg_m2;
+        system.cap_ratio = evaporation.cap_ratio;
     }
     tile.before = state;
     tile.snow_kg_m2 = snow_kg_m2;
@@ -60,8 +61,12 @@ LandSnowSystem prepare_land_tile(const ColumnProperties& ground, ColumnState sta
 }
 
 LandSnowStepResult solve_land_tile(const LandSnowSystem& tile, double source_W_m2,
-                                   double exchange_W_m2_K) {
+                                   double exchange_W_m2_K, const SurfaceAir& air) {
     ColumnSystem system = tile.system;
+    if (air.humidity >= 0.0) {
+        system.air_humidity = air.humidity;
+    }
+    system.cap_humidity = air.cap_humidity;
     system.a += exchange_W_m2_K;
     system.b += source_W_m2;
     const double snow_before_melt = tile.snow_kg_m2 + tile.snowfall_kg_m2;
@@ -102,6 +107,16 @@ LandSnowStepResult solve_land_tile(const LandSnowSystem& tile, double source_W_m
     result.column = complete_column_step(tile.column, system, tile.before, surface_K, sink_W_m2,
                                          source_W_m2 - exchange_W_m2_K * surface_K);
     result.column.surface_slope_K_m2_W = clamped ? 0.0 : system.slope_K_m2_W(surface_K);
+    if (system.evaporates()) {
+        // E(x, q) with x(s, q) from the surface equation, q = q_a or q_cap:
+        // dx/ds is the slope, dx/dq = −slope ∂(latent)/∂q.
+        const auto v = system.vapour_slopes(surface_K);
+        const double slope = result.column.surface_slope_K_m2_W;
+        result.vapour_kg_m2_s = evaporation.snow + evaporation.bucket;
+        result.vapour_source_slope = v.surface * slope;
+        result.vapour_air_slope = v.air - v.surface * slope * v.latent_air;
+        result.vapour_cap_slope = v.cap - v.surface * slope * v.latent_cap;
+    }
     return result;
 }
 

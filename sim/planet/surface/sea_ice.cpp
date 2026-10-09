@@ -45,6 +45,14 @@ OceanTileResult open_water(const OceanTileSystem& tile, double source_W_m2,
     result.latent_J_m2 = latent_heat_of_fusion_J_kg * (result.melted_kg_m2 - result.frozen_kg_m2);
     result.albedo = tile.column.albedo;
     result.evaporation_kg_m2 = system.evaporation_kg_m2_s(surface_K).water * tile.dt_s;
+    if (system.evaporates()) {
+        const auto v = system.vapour_slopes(surface_K);
+        const double slope = result.column.surface_slope_K_m2_W;
+        result.vapour_kg_m2_s = result.evaporation_kg_m2 / tile.dt_s;
+        result.vapour_source_slope = v.surface * slope;
+        result.vapour_air_slope = v.air - v.surface * slope * v.latent_air;
+        result.vapour_cap_slope = v.cap - v.surface * slope * v.latent_cap;
+    }
     return result;
 }
 
@@ -75,6 +83,8 @@ struct IceSurface {
         ice.system.pressure_Pa = tile.evaporation.pressure_Pa;
         ice.system.vapour_kg_m2 = tile.evaporation.vapour_kg_m2;
         ice.system.step_s = tile.dt_s;
+        ice.system.cap_ratio = tile.evaporation.cap_ratio;
+        ice.system.cap_humidity = tile.evaporation.cap_humidity;
     }
     ice.surface_K = solve_column_surface(ice.system);
     if (ice.surface_K > melting_point_K) {
@@ -112,6 +122,7 @@ OceanTileSystem prepare_ocean_tile(const ColumnProperties& ocean, ColumnState st
         tile.open.air_humidity = evaporation.air_humidity;
         tile.open.pressure_Pa = evaporation.pressure_Pa;
         tile.open.vapour_kg_m2 = evaporation.vapour_kg_m2;
+        tile.open.cap_ratio = evaporation.cap_ratio;
         tile.open.step_s = dt_s;
     }
     tile.evaporation = evaporation;
@@ -126,8 +137,35 @@ OceanTileSystem prepare_ocean_tile(const ColumnProperties& ocean, ColumnState st
     return tile;
 }
 
+namespace {
+
+OceanTileResult solve_ocean_tile_capped(const OceanTileSystem& tile, double source_W_m2,
+                                        double exchange_W_m2_K);
+
+}  // namespace
+
 OceanTileResult solve_ocean_tile(const OceanTileSystem& tile, double source_W_m2,
-                                 double exchange_W_m2_K) {
+                                 double exchange_W_m2_K, const SurfaceAir& air) {
+    if ((air.humidity < 0.0 && air.cap_humidity < 0.0) ||
+        !(tile.evaporation.transfer_kg_m2_s > 0.0)) {
+        return solve_ocean_tile_capped(tile, source_W_m2, exchange_W_m2_K);
+    }
+    OceanTileSystem capped = tile;
+    if (air.humidity >= 0.0) {
+        capped.open.air_humidity = air.humidity;
+        capped.evaporation.air_humidity = air.humidity;
+    }
+    capped.open.cap_humidity = air.cap_humidity;
+    capped.evaporation.cap_humidity = air.cap_humidity;
+    OceanTileResult result = solve_ocean_tile_capped(capped, source_W_m2, exchange_W_m2_K);
+    tile.thickness_guess_m = capped.thickness_guess_m;
+    return result;
+}
+
+namespace {
+
+OceanTileResult solve_ocean_tile_capped(const OceanTileSystem& tile, double source_W_m2,
+                                        double exchange_W_m2_K) {
     if (!(tile.ice_kg_m2 > 0.0)) {
         return open_water(tile, source_W_m2, exchange_W_m2_K, 0.0);
     }
@@ -235,14 +273,14 @@ OceanTileResult solve_ocean_tile(const OceanTileSystem& tile, double source_W_m2
     // ice (ADR-0021 §4.3).
     result.evaporation_kg_m2 = (1.0 - cover) * lead_evaporation_kg_m2_s * tile.dt_s;
     const double floe_kg_m2 = cover * ice.system.evaporation_kg_m2_s(ice.surface_K).ice * tile.dt_s;
+    // The floes' latent heat is in their balance whatever the ice left: what
+    // the ice cannot give (all of it where the ice melts away) comes from
+    // the water.
     if (!melts_away) {
         result.sublimation_kg_m2 = std::min(result.ice_kg_m2, floe_kg_m2);
         result.ice_kg_m2 -= result.sublimation_kg_m2;
-    } else {
-        // The floes' latent heat is in the balance that melted them; with no
-        // ice left, their vapour comes from the water.
-        result.evaporation_kg_m2 += floe_kg_m2;
     }
+    result.evaporation_kg_m2 += floe_kg_m2 - result.sublimation_kg_m2;
 
     ColumnStepResult& column = result.column;
     const double mixed_K = freezing_K + leftover_J_m2 / tile.column.surface_heat_capacity_J_m2_K;
@@ -256,9 +294,7 @@ OceanTileResult solve_ocean_tile(const OceanTileSystem& tile, double source_W_m2
     column.source_W_m2 = source_W_m2 - exchange_W_m2_K * surface_K;
     column.newton_residual_W_m2 = melts_away ? 0.0 : value;
     column.evaporation_W_m2 =
-        (1.0 - cover) * lead_latent_W_m2 +
-        latent_heat_sublimation_J_kg *
-            (melts_away ? floe_kg_m2 : result.sublimation_kg_m2) / tile.dt_s;
+        (1.0 - cover) * lead_latent_W_m2 + latent_heat_sublimation_J_kg * floe_kg_m2 / tile.dt_s;
     // dT_i/ds of the floes, with the thickness responding where it is free
     // to (implicit function theorem on the surface balance and the growth
     // equation): A dT + B dh' = ds, (ρL/Δt + B) dh' + (k/h') dT = 0 gives
@@ -281,8 +317,21 @@ OceanTileResult solve_ocean_tile(const OceanTileSystem& tile, double source_W_m2
     column.surface_slope_K_m2_W = cover * floe_slope;
     result.emitted_slope =
         cover * 4.0 * radiative * std::pow(ice.surface_K, 3) * floe_slope;
+    if (tile.evaporation.transfer_kg_m2_s > 0.0) {
+        // The leads stay at T_f; the floes respond through the radiating
+        // surface's slope c dT_i/ds.
+        const auto leads = tile.open.vapour_slopes(freezing_K);
+        const auto floes = ice.system.vapour_slopes(ice.surface_K);
+        result.vapour_kg_m2_s =
+            (result.evaporation_kg_m2 + result.sublimation_kg_m2) / tile.dt_s;
+        result.vapour_source_slope = floes.surface * column.surface_slope_K_m2_W;
+        result.vapour_air_slope = (1.0 - cover) * leads.air + cover * floes.air;
+        result.vapour_cap_slope = (1.0 - cover) * leads.cap + cover * floes.cap;
+    }
     return result;
 }
+
+}  // namespace
 
 double ocean_tile_source_floor_W_m2(const OceanTileSystem& tile, double lowest_K) {
     if (!(tile.ice_kg_m2 > 0.0)) {

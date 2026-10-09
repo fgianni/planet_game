@@ -63,6 +63,13 @@ struct OceanTileResult {
     // out of ice_kg_m2). Their latent heat is column.evaporation_W_m2.
     double evaporation_kg_m2 = 0.0;
     double sublimation_kg_m2 = 0.0;
+    // The tile's water flux E (kg/m²/s) and its response to the source and
+    // to q_cap, as LandSnowStepResult's (under ice the floes' temperature
+    // response to q_cap is left out: the column solve's linearisation only).
+    double vapour_kg_m2_s = 0.0;
+    double vapour_source_slope = 0.0;
+    double vapour_air_slope = 0.0;
+    double vapour_cap_slope = 0.0;
 };
 
 // α_ocean + (α_ice − α_ocean) · min(1, h / h_r), h = m / ρ_i.
@@ -76,10 +83,11 @@ struct OceanTileResult {
                                                  const EvaporationForcing& evaporation = {});
 
 // Solves a prepared tile with an external source s − γ·T in the equation of
-// its radiating surface (see solve_column_step).
+// its radiating surface (see solve_column_step); `air` as solve_land_tile's.
 [[nodiscard]] OceanTileResult solve_ocean_tile(const OceanTileSystem& tile,
                                                double source_W_m2 = 0.0,
-                                               double exchange_W_m2_K = 0.0);
+                                               double exchange_W_m2_K = 0.0,
+                                               const SurfaceAir& air = {});
 
 // The source below which the tile's radiating surface would fall under
 // `lowest_K` without the external source's exchange (a floor for the
