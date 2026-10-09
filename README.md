@@ -582,7 +582,8 @@ python3 tools/ci/check_readability.py \
 ```
 
 It renders cold-versus-warm and land-versus-ocean pairs through both shipped
-styles and requires mean CIEDE2000 ΔE of at least 10 under normal vision,
+styles, plus temperature and precipitation pairs through the shared overlay,
+and requires mean CIEDE2000 ΔE of at least 10 under normal vision,
 simulated deuteranopia, protanopia and tritanopia, and luminance alone. The
 PNG images and versioned `readability.json` make a failure inspectable.
 

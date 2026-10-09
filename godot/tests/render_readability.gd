@@ -44,6 +44,8 @@ func _run() -> void:
 	_material.set_shader_parameter("day_night", false)
 	_material.set_shader_parameter("insolation_view", false)
 	_material.set_shader_parameter("temperature_anomaly_view", true)
+	_material.set_shader_parameter("wind_view", false)
+	_material.set_shader_parameter("precipitation_view", false)
 	_material.set_shader_parameter("data_view", true)
 	_material.set_shader_parameter("daylight_map", _constant_texture(Color(1.0, 0.0, 0.0, 1.0)))
 	_material.set_shader_parameter("temperature_anomaly_map", _constant_texture(Color(-1.0, 0.0, 0.0, 1.0)))
@@ -55,6 +57,19 @@ func _run() -> void:
 		"signal": "cold_vs_warm_temperature",
 		"baseline": "shared_overlay_temperature_baseline.ppm",
 		"changed": "shared_overlay_temperature_signal.ppm",
+	})
+
+	_material.set_shader_parameter("temperature_anomaly_view", false)
+	_material.set_shader_parameter("precipitation_view", true)
+	_material.set_shader_parameter("precipitation_map", _constant_texture(Color(0.0, 0.0, 0.0, 1.0)))
+	await _capture(output_dir, "shared_overlay_precipitation_baseline")
+	_material.set_shader_parameter("precipitation_map", _constant_texture(Color(1.0, 0.0, 0.0, 1.0)))
+	await _capture(output_dir, "shared_overlay_precipitation_signal")
+	images.append({
+		"style": "shared-overlay",
+		"signal": "dry_vs_heavy_precipitation",
+		"baseline": "shared_overlay_precipitation_baseline.ppm",
+		"changed": "shared_overlay_precipitation_signal.ppm",
 	})
 
 	var manifest := {
