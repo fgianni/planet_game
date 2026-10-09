@@ -12,8 +12,12 @@
 namespace planetsim::presentation {
 
 inline constexpr std::size_t surface_class_weight_count = 5U;
+inline constexpr std::size_t wind_vector_component_count = 2U;
 inline constexpr float surface_class_sand_max_relief_m = 200.0F;
 inline constexpr float surface_class_rock_min_relief_m = 1'500.0F;
+// Surface pressure is proportional to atmospheric column mass at fixed
+// gravity, which is the density relevant to the R3 scattering channel.
+inline constexpr float atmosphere_density_reference_pressure_Pa = 101'325.0F;
 
 struct ChannelData {
     std::vector<float> values;

@@ -37,8 +37,11 @@ void check_channels(planetsim::test::Context& test) {
     terrain.sea_level_m = 0.0;
     terrain.mean_elevation_m = {0.0F, 1'600.0F, 500.0F};
     terrain.land_fraction = {1.0F, 0.0F, 0.5F};
-    const std::array frames{snapshot(100.0F, 266.0F, 20.0F, 600.0F),
-                            snapshot(20.0F, 274.0F, 0.0F, 0.0F)};
+    std::array frames{snapshot(100.0F, 266.0F, 20.0F, 600.0F),
+                      snapshot(20.0F, 274.0F, 0.0F, 0.0F)};
+    frames[0].sea_level_pressure_Pa = {101'325.0F, 50'662.5F, 0.0F};
+    frames[0].surface_eastward_wind_m_s = {12.0F, -3.0F, 0.0F};
+    frames[0].surface_northward_wind_m_s = {-5.0F, 4.0F, 0.0F};
     const auto reference = planetsim::presentation::make_presentation_reference(frames);
     const auto cold = planetsim::presentation::make_visual_frame(frames[0], terrain, reference);
     const auto warm = planetsim::presentation::make_visual_frame(frames[1], terrain, reference);
@@ -51,6 +54,16 @@ void check_channels(planetsim::test::Context& test) {
                                warm.channels[channel(ChannelId::sea_ice)].values[1] + 0.1F);
     PLANETSIM_EXPECT(test, cold.channels[channel(ChannelId::temperature_anomaly)].values[0] < 0.0F);
     PLANETSIM_EXPECT(test, warm.channels[channel(ChannelId::temperature_anomaly)].values[0] > 0.0F);
+    const auto& density = cold.channels[channel(ChannelId::atmosphere_density)].values;
+    PLANETSIM_EXPECT(test, density.size() == 3U && density[0] == 1.0F && density[1] == 0.5F &&
+                               density[2] == 0.0F);
+    const auto& wind = cold.channels[channel(ChannelId::wind)].values;
+    PLANETSIM_EXPECT(test, wind.size() == 3U * planetsim::presentation::wind_vector_component_count);
+    PLANETSIM_EXPECT(test, wind[0] == 12.0F && wind[1] == -5.0F && wind[2] == -3.0F &&
+                               wind[3] == 4.0F);
+    PLANETSIM_EXPECT(test,
+                     warm.channels[channel(ChannelId::atmosphere_density)].values.empty() &&
+                         warm.channels[channel(ChannelId::wind)].values.empty());
     for (std::size_t cell = 0; cell < terrain.mean_elevation_m.size(); ++cell) {
         float sum = 0.0F;
         for (std::size_t weight = 0; weight < planetsim::presentation::surface_class_weight_count;

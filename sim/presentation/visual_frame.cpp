@@ -70,11 +70,20 @@ VisualFrame make_visual_frame(const StateSnapshot& snapshot, const TerrainSnapsh
 
     const bool snow = snapshot.land_snow_water_equivalent_kg_m2.size() == cells;
     const bool sea_ice = snapshot.sea_ice_mass_kg_m2.size() == cells;
+    const bool atmosphere = snapshot.sea_level_pressure_Pa.size() == cells;
+    const bool wind = snapshot.surface_eastward_wind_m_s.size() == cells &&
+                      snapshot.surface_northward_wind_m_s.size() == cells;
     if (snow) {
         frame.channels[index(ChannelId::snow_cover)].values.resize(cells);
     }
     if (sea_ice) {
         frame.channels[index(ChannelId::sea_ice)].values.resize(cells);
+    }
+    if (atmosphere) {
+        frame.channels[index(ChannelId::atmosphere_density)].values.resize(cells);
+    }
+    if (wind) {
+        frame.channels[index(ChannelId::wind)].values.resize(cells * wind_vector_component_count);
     }
     for (std::size_t cell = 0; cell < cells; ++cell) {
         const float height = terrain.mean_elevation_m[cell] - static_cast<float>(terrain.sea_level_m);
@@ -91,6 +100,18 @@ VisualFrame make_visual_frame(const StateSnapshot& snapshot, const TerrainSnapsh
             : 0.0F;
         if (snow) frame.channels[index(ChannelId::snow_cover)].values[cell] = snow_cover;
         if (sea_ice) frame.channels[index(ChannelId::sea_ice)].values[cell] = ice_cover;
+        if (atmosphere) {
+            frame.channels[index(ChannelId::atmosphere_density)].values[cell] = std::clamp(
+                snapshot.sea_level_pressure_Pa[cell] / atmosphere_density_reference_pressure_Pa,
+                0.0F, 1.0F);
+        }
+        if (wind) {
+            const std::size_t wind_offset = cell * wind_vector_component_count;
+            frame.channels[index(ChannelId::wind)].values[wind_offset] =
+                snapshot.surface_eastward_wind_m_s[cell];
+            frame.channels[index(ChannelId::wind)].values[wind_offset + 1U] =
+                snapshot.surface_northward_wind_m_s[cell];
+        }
         const float bare_land = land * (1.0F - snow_cover);
         float rock = 0.0F;
         float sand = 0.0F;
