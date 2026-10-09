@@ -81,55 +81,6 @@ constexpr std::int32_t channel_texture_width = 2048;
     return static_cast<std::size_t>(id) - 1U;
 }
 
-// Presentation shader: vertex colours are sRGB; the per-vertex insolation
-// texel comes from PlanetSim's snapshot, uploaded every tick.
-constexpr const char* planet_shader_code = R"(
-shader_type spatial;
-render_mode cull_disabled;
-
-uniform sampler2D daylight_map : filter_nearest;
-uniform bool day_night = true;
-uniform bool insolation_view = false;
-uniform bool data_view = false;
-
-varying float insolation;
-
-vec3 srgb_to_linear(vec3 c) {
-    return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
-}
-
-void vertex() {
-    insolation = texelFetch(daylight_map, ivec2(UV + 0.5), 0).r;
-}
-
-void fragment() {
-    float x = clamp(insolation, 0.0, 1.0);
-    float daylight = sqrt(x);
-    vec3 base;
-    if (insolation_view) {
-        base = vec3(0.015 + 0.95 * daylight, 0.025 + 0.68 * daylight, 0.08 + 0.28 * x);
-    } else {
-        base = COLOR.rgb;
-        if (day_night && !data_view) {
-            base *= 0.16 + 0.84 * daylight;
-        }
-    }
-    // Ramps are authored in sRGB. Forward+ and Mobile light in linear space;
-    // the Compatibility renderer lights and outputs in sRGB (OUTPUT_IS_SRGB).
-    if (!OUTPUT_IS_SRGB) {
-        base = srgb_to_linear(base);
-    }
-    if (data_view) {
-        // A data view: self-lit, so the ramp is shown as computed.
-        ALBEDO = vec3(0.0);
-        EMISSION = base;
-    } else {
-        ALBEDO = base;
-    }
-    ROUGHNESS = 0.9;
-}
-)";
-
 [[nodiscard]] godot::Vector2 texel_of(std::size_t texel) {
     const auto width = static_cast<std::size_t>(channel_texture_width);
     return {static_cast<godot::real_t>(texel % width), static_cast<godot::real_t>(texel / width)};
@@ -248,6 +199,12 @@ void PlanetMeshNode::_bind_methods() {
         &PlanetMeshNode::advance_presentation);
     godot::ClassDB::bind_method(godot::D_METHOD("get_geometry_revision"),
                                 &PlanetMeshNode::get_geometry_revision);
+    godot::ClassDB::bind_method(godot::D_METHOD("find_cell", "direction"),
+                                &PlanetMeshNode::find_cell);
+    godot::ClassDB::bind_method(godot::D_METHOD("has_channel", "channel_name"),
+                                &PlanetMeshNode::has_channel);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_channel_value", "cell", "channel_name"),
+                                &PlanetMeshNode::get_channel_value);
     godot::ClassDB::bind_method(godot::D_METHOD("get_seed"), &PlanetMeshNode::get_seed);
     godot::ClassDB::bind_method(godot::D_METHOD("get_subdivision"),
                                 &PlanetMeshNode::get_subdivision);
@@ -379,7 +336,7 @@ double PlanetMeshNode::get_simulation_time() const noexcept { return clock_.time
 
 void PlanetMeshNode::set_view_mode(std::int64_t mode) {
     if (mode < 0 || mode >= view_mode_count) {
-        godot::UtilityFunctions::push_error("PlanetMeshNode: view mode must be 0..5");
+        godot::UtilityFunctions::push_error("PlanetMeshNode: view mode must be 0..6");
         return;
     }
     view_mode_ = mode;
@@ -406,6 +363,8 @@ godot::String PlanetMeshNode::get_view_mode_name() const {
         return "daylight / top-of-atmosphere insolation";
     case view_drainage:
         return "drainage and catchment area";
+    case view_temperature_anomaly:
+        return "temperature anomaly (climate-lab overlay)";
     default:
         return "unknown";
     }
@@ -560,6 +519,50 @@ void PlanetMeshNode::advance_presentation(double wall_seconds,
 }
 
 std::int64_t PlanetMeshNode::get_geometry_revision() const noexcept { return geometry_revision_; }
+
+std::int64_t PlanetMeshNode::find_cell(const godot::Vector3& direction) const {
+    if (!mesh_ || direction.length_squared() <= 0.0F)
+        return -1;
+    const godot::Vector3 unit = direction.normalized();
+    std::size_t closest = 0U;
+    float closest_dot = -std::numeric_limits<float>::infinity();
+    for (const auto& cell : mesh_->cells()) {
+        const float alignment = unit.dot(to_godot(cell.center_unit));
+        if (alignment > closest_dot) {
+            closest_dot = alignment;
+            closest = cell.id.to_index();
+        }
+    }
+    return static_cast<std::int64_t>(closest);
+}
+
+bool PlanetMeshNode::has_channel(const godot::String& channel_name) const {
+    for (const auto& descriptor : presentation::channel_registry) {
+        if (channel_name == godot::String(descriptor.name.data())) {
+            return !displayed_frame_.channels[channel_index(descriptor.id)].values.empty();
+        }
+    }
+    return false;
+}
+
+double PlanetMeshNode::get_channel_value(std::int64_t cell,
+                                         const godot::String& channel_name) const {
+    if (cell < 0 || !mesh_ || static_cast<std::size_t>(cell) >= mesh_->cell_count()) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    for (const auto& descriptor : presentation::channel_registry) {
+        if (descriptor.kind != presentation::ChannelKind::scalar ||
+            channel_name != godot::String(descriptor.name.data())) {
+            continue;
+        }
+        const auto& values = displayed_frame_.channels[channel_index(descriptor.id)].values;
+        return values.size() == mesh_->cell_count()
+                   ? static_cast<double>(values[static_cast<std::size_t>(cell)])
+                   : std::numeric_limits<double>::quiet_NaN();
+    }
+    return std::numeric_limits<double>::quiet_NaN();
+}
+
 std::int64_t PlanetMeshNode::get_seed() const noexcept { return static_cast<std::int64_t>(seed_); }
 std::int64_t PlanetMeshNode::get_subdivision() const noexcept {
     return static_cast<std::int64_t>(parameters_.mesh_subdivision);
@@ -791,8 +794,11 @@ void PlanetMeshNode::update_shader_flags() {
     material_->set_shader_parameter("day_night", day_night_shading_);
     if (view_mode_ != view_style) {
         material_->set_shader_parameter("insolation_view", view_mode_ == view_insolation);
-        material_->set_shader_parameter("data_view", view_mode_ == view_insolation ||
-                                                         view_mode_ == view_drainage);
+        material_->set_shader_parameter("temperature_anomaly_view",
+                                        view_mode_ == view_temperature_anomaly);
+        material_->set_shader_parameter(
+            "data_view", view_mode_ == view_insolation || view_mode_ == view_drainage ||
+                             view_mode_ == view_temperature_anomaly);
     }
 }
 
@@ -883,8 +889,13 @@ void PlanetMeshNode::apply_render_material() {
         material_->set_shader(styles_[active_style_]->get_surface_shader());
     } else {
         if (overlay_shader_.is_null()) {
-            overlay_shader_.instantiate();
-            overlay_shader_->set_code(planet_shader_code);
+            const godot::Ref<godot::Resource> resource =
+                godot::ResourceLoader::get_singleton()->load(
+                    "res://shaders/climate_lab_overlay.gdshader");
+            overlay_shader_ = resource;
+            if (overlay_shader_.is_null()) {
+                throw std::runtime_error("shared climate-lab overlay shader did not load");
+            }
         }
         material_->set_shader(overlay_shader_);
     }
@@ -923,6 +934,7 @@ void PlanetMeshNode::upload_changed_channels() {
     upload_scalar_channel(presentation::ChannelId::daylight);
     upload_scalar_channel(presentation::ChannelId::snow_cover);
     upload_scalar_channel(presentation::ChannelId::sea_ice);
+    upload_scalar_channel(presentation::ChannelId::temperature_anomaly);
     upload_scalar_channel(presentation::ChannelId::known, 1.0F);
     upload_scalar_channel(presentation::ChannelId::guessed);
     upload_scalar_channel(presentation::ChannelId::knowledge_age);
@@ -1033,6 +1045,7 @@ void PlanetMeshNode::bind_channel_textures() {
     bind("daylight_map", presentation::ChannelId::daylight);
     bind("snow_cover_map", presentation::ChannelId::snow_cover);
     bind("sea_ice_map", presentation::ChannelId::sea_ice);
+    bind("temperature_anomaly_map", presentation::ChannelId::temperature_anomaly);
     bind("known_map", presentation::ChannelId::known);
     bind("guessed_map", presentation::ChannelId::guessed);
     bind("knowledge_age_map", presentation::ChannelId::knowledge_age);

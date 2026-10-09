@@ -40,6 +40,23 @@ func _run() -> void:
 				"changed": signal_name + ".ppm",
 			})
 
+	_material.shader = load("res://shaders/climate_lab_overlay.gdshader")
+	_material.set_shader_parameter("day_night", false)
+	_material.set_shader_parameter("insolation_view", false)
+	_material.set_shader_parameter("temperature_anomaly_view", true)
+	_material.set_shader_parameter("data_view", true)
+	_material.set_shader_parameter("daylight_map", _constant_texture(Color(1.0, 0.0, 0.0, 1.0)))
+	_material.set_shader_parameter("temperature_anomaly_map", _constant_texture(Color(-1.0, 0.0, 0.0, 1.0)))
+	await _capture(output_dir, "shared_overlay_temperature_baseline")
+	_material.set_shader_parameter("temperature_anomaly_map", _constant_texture(Color(1.0, 0.0, 0.0, 1.0)))
+	await _capture(output_dir, "shared_overlay_temperature_signal")
+	images.append({
+		"style": "shared-overlay",
+		"signal": "cold_vs_warm_temperature",
+		"baseline": "shared_overlay_temperature_baseline.ppm",
+		"changed": "shared_overlay_temperature_signal.ppm",
+	})
+
 	var manifest := {
 		"schema": "PlanetSim.readability-input.v1",
 		"width": IMAGE_SIZE,
@@ -50,7 +67,7 @@ func _run() -> void:
 	var file := FileAccess.open(output_dir.path_join("manifest.json"), FileAccess.WRITE)
 	file.store_string(JSON.stringify(manifest, "  ") + "\n")
 	file.close()
-	print("R1-03 rendered %d image pairs to %s" % [images.size(), output_dir])
+	print("presentation readability rendered %d image pairs to %s" % [images.size(), output_dir])
 	quit(0)
 
 

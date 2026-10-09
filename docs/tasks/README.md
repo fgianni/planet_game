@@ -34,6 +34,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [R1-01](R1-01-presentation-library-and-channels.md) | Presentation library and semantic channels (ADR-0018; rendering track, parallel to M6) | Complete |
 | [R1-02](R1-02-style-packs-and-switching.md) | Godot style packs, recorded playback and instant switching (ADR-0018) | Complete |
 | [R1-03](R1-03-readability-harness.md) | Offscreen style readability gate and colour-vision checks (ADR-0018) | Complete |
+| [R2-01](R2-01-temperature-overlay-and-readout.md) | Shared temperature-anomaly overlay and semantic cell readout (ADR-0018) | Complete |
 
 Completed tasks are records: they keep the specification and design versions
 they were written against, even after those files have left the tree. Read

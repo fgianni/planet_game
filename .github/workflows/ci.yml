@@ -194,6 +194,10 @@ jobs:
             --audio-driver Dummy --path godot \
             --script res://tests/test_style_switch.gd -- \
             /tmp/planetsim-r1-ci.pframe
+          xvfb-run -a ./godot4 --display-driver x11 --rendering-driver opengl3 \
+            --audio-driver Dummy --path godot \
+            --script res://tests/test_r2_overlay.gd -- \
+            /tmp/planetsim-r1-ci.pframe
 
       - name: Render and measure style readability (V8)
         run: |

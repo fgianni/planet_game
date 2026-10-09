@@ -20,6 +20,7 @@ var _dragging: bool = false
 var _yaw: float = 0.0
 var _pitch: float = 0.3
 var _distance: float = 3.2
+var _selected_cell: int = -1
 
 @onready var _planet = $Planet
 @onready var _pivot: Node3D = $CameraPivot
@@ -85,6 +86,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			_dragging = event.pressed
+		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			_select_cell(event.position)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			_distance = maxf(1.3, _distance * 0.9)
 			_update_camera()
@@ -97,7 +100,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_update_camera()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
-			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6:
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7:
 				_planet.set_view_mode(event.keycode - KEY_1)
 			KEY_S:
 				_planet.next_style()
@@ -132,6 +135,30 @@ func _update_camera() -> void:
 	_camera.position = Vector3(0.0, 0.0, _distance)
 
 
+func _select_cell(screen_position: Vector2) -> void:
+	var world_origin := _camera.project_ray_origin(screen_position)
+	var world_direction := _camera.project_ray_normal(screen_position)
+	var origin: Vector3 = _planet.to_local(world_origin)
+	var direction: Vector3 = (_planet.to_local(world_origin + world_direction) - origin).normalized()
+	var along: float = origin.dot(direction)
+	var discriminant: float = along * along - (origin.length_squared() - 1.0)
+	if discriminant < 0.0:
+		_selected_cell = -1
+		return
+	var distance: float = -along - sqrt(discriminant)
+	if distance < 0.0:
+		distance = -along + sqrt(discriminant)
+	_selected_cell = _planet.find_cell((origin + distance * direction).normalized()) \
+		if distance >= 0.0 else -1
+
+
+func _channel_reading(name: String, suffix: String, scale: float = 1.0) -> String:
+	if _selected_cell < 0 or not _planet.has_channel(name):
+		return "%s unavailable" % name.replace("_", " ")
+	var value: float = _planet.get_channel_value(_selected_cell, name) * scale
+	return "%s %.2f%s" % [name.replace("_", " "), value, suffix]
+
+
 func _update_hud() -> void:
 	var days: float = _planet.get_simulation_time() / 86400.0
 	var legend := "cyan: catchment/path   magenta: filled depression   pale cyan: coastal outlet" \
@@ -139,6 +166,14 @@ func _update_hud() -> void:
 	var playback := "frame %d/%d" % [
 		_planet.get_presentation_frame() + 1, _planet.get_presentation_frame_count()] \
 		if _planet.has_presentation_record() else "orbit preview"
+	var selection := "right-click: select a cell"
+	if _selected_cell >= 0:
+		selection = "cell %d   %s   %s   %s" % [
+			_selected_cell,
+			_channel_reading("temperature_anomaly", " (±3σ)"),
+			_channel_reading("snow_cover", "%", 100.0),
+			_channel_reading("sea_ice", "%", 100.0),
+		]
 	_hud.text = "\n".join([
 		"PlanetSim  L%d  seed %d  preset %s" % [_planet.get_subdivision(), _planet.get_seed(), _planet.get_preset()],
 		"view: %s   style: %s   day/night: %s   relief x%.0f" % [
@@ -149,10 +184,12 @@ func _update_hud() -> void:
 		"plates %d   land %.1f %%   sea level %.0f m" % [
 			_planet.get_plate_count(), 100.0 * _planet.get_land_fraction(), _planet.get_sea_level()],
 		"day %.2f   %s%s" % [days, playback, "  (paused)" if _paused else ""],
+		selection,
 		"drainage: %d outlets   %d basins   %d depressions" % [
 			_planet.get_drainage_outlet_count(), _planet.get_drainage_basin_count(),
 			_planet.get_drainage_depression_count()],
 		legend,
-		"drag: rotate  wheel: zoom  1-6: style/overlays  S: switch style  N: day/night  [ ]: relief",
+		"drag: rotate  right-click: select  wheel: zoom  1-7: style/overlays  S: switch style",
+		"N: day/night  [ ]: relief",
 		"R: new seed  P: preset  PgUp/PgDn: resolution  Space: pause  +/-: speed",
 	])

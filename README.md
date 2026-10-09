@@ -521,7 +521,9 @@ with exaggerated relief (the sea surface is flat at the solved sea level).
 Views: `1` natural semantic rendering, `2` the legacy terrain overlay,
 `3` plates with convergent (red), divergent (blue) and transform (green)
 boundaries, `4` crust age (young ocean red, old blue; continents grey), `5`
-daylight/top-of-atmosphere insolation, and `6` static drainage. Press `S` to switch
+daylight/top-of-atmosphere insolation, `6` static drainage, and `7` the shared
+temperature-anomaly overlay (navy cold, pale neutral, amber warm; fixed −1 to
++1 scale representing ±3 climatological standard deviations). Press `S` to switch
 instantly between the `stylised` and `map` packs without rebuilding the mesh.
 The drainage
 view colours land by logarithmically scaled upstream catchment area, marks
@@ -529,7 +531,7 @@ filled depressions in magenta, shows coastal outlets in pale cyan, and draws
 each downstream edge above the surface. These are potential routing paths,
 not simulated rivers. The simulated day/night is laid over the natural and
 terrain views (`N` toggles it); data overlays are self-lit. Drag to rotate,
-wheel to zoom,
+right-click a cell for its anomaly, snow-cover and sea-ice readings, wheel to zoom,
 `[`/`]` relief exaggeration, `R` new seed, `P` next preset,
 `PgUp`/`PgDn` resolution, `Space` pause, `+`/`-` simulation speed. Recorded
 frames play at two frames per second by default. The same

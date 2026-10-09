@@ -16,6 +16,7 @@
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/string.hpp>
+#include <godot_cpp/variant/vector3.hpp>
 
 #include <array>
 #include <cstdint>
@@ -37,9 +38,8 @@ namespace planetsim::godot_bridge {
 // per generated planet) and turns them into colours and exaggerated relief.
 //
 // Geometry and base colours are built once per planet, view or relief change.
-// Each tick only the per-cell insolation from the snapshot is uploaded, as a
-// small float texture the shader looks up (cells first, then corners, one
-// texel each), so large meshes stay cheap to animate.
+// Changed semantic channels are uploaded as small float textures (cells first,
+// then corners, one texel each), so large meshes stay cheap to animate.
 class PlanetMeshNode : public godot::MeshInstance3D {
     GDCLASS(PlanetMeshNode, godot::MeshInstance3D)
 
@@ -54,7 +54,8 @@ class PlanetMeshNode : public godot::MeshInstance3D {
         view_crust_age = 3,
         view_insolation = 4,
         view_drainage = 5,
-        view_mode_count = 6,
+        view_temperature_anomaly = 6,
+        view_mode_count = 7,
     };
 
     PlanetMeshNode();
@@ -88,6 +89,10 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     void advance_presentation_frame();
     void advance_presentation(double wall_seconds, double simulated_years_per_wall_second);
     [[nodiscard]] std::int64_t get_geometry_revision() const noexcept;
+    [[nodiscard]] std::int64_t find_cell(const godot::Vector3& direction) const;
+    [[nodiscard]] bool has_channel(const godot::String& channel_name) const;
+    [[nodiscard]] double get_channel_value(std::int64_t cell,
+                                           const godot::String& channel_name) const;
 
     [[nodiscard]] std::int64_t get_seed() const noexcept;
     [[nodiscard]] std::int64_t get_subdivision() const noexcept;
