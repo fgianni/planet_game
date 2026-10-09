@@ -208,6 +208,11 @@ jobs:
           python3 tools/ci/check_readability.py \
             readability-results/manifest.json \
             --output readability-results/readability.json
+          timeout 60s xvfb-run -a ./godot4 --display-driver x11 \
+            --rendering-driver opengl3 --audio-driver Dummy --path godot -- \
+            --subdivision=4 --live=true --water=true --view=8 \
+            --screenshot="$PWD/readability-results/live-precipitation.png" \
+            --quit-after-screenshot=true
 
       - name: Upload readability analytics
         if: always()

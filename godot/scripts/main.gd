@@ -23,6 +23,10 @@ var _pitch: float = 0.3
 var _distance: float = 3.2
 var _selected_cell: int = -1
 var _live_water_cycle: bool = false
+var _screenshot_path: String = ""
+var _quit_after_screenshot: bool = false
+var _screenshot_started: bool = false
+var _capture_generation: int = 0
 
 @onready var _planet = $Planet
 @onready var _pivot: Node3D = $CameraPivot
@@ -48,6 +52,9 @@ func _ready() -> void:
 			"presentation-record": presentation_record = parts[1]
 			"live": live = parts[1].to_lower() in ["1", "true", "yes"]
 			"water": _live_water_cycle = parts[1].to_lower() in ["1", "true", "yes"]
+			"screenshot": _screenshot_path = parts[1]
+			"quit-after-screenshot": _quit_after_screenshot = \
+				parts[1].to_lower() in ["1", "true", "yes"]
 			"yaw": _yaw = parts[1].to_float()
 			"pitch": _pitch = parts[1].to_float()
 			"distance": _distance = parts[1].to_float()
@@ -101,6 +108,12 @@ func _process(delta: float) -> void:
 		if _planet.has_presentation_record() else simulated_hours_per_second / (24.0 * 365.24219)
 	_planet.advance_presentation(delta, simulated_years_per_wall_second)
 	_update_hud()
+	if not _screenshot_path.is_empty() and not _screenshot_started:
+		var content_ready: bool = not _planet.has_live_run() \
+			or _planet.get_simulation_tick() > 0
+		if content_ready and not _planet.is_live_run_busy():
+			_screenshot_started = true
+			_capture_screenshot.call_deferred(_screenshot_path, _quit_after_screenshot)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -153,6 +166,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				_generate()
 			KEY_SPACE:
 				_paused = not _paused
+			KEY_F12:
+				var filename := "planet_%d.png" % int(Time.get_unix_time_from_system())
+				_capture_screenshot.call_deferred(
+					ProjectSettings.globalize_path("user://" + filename), false)
 			KEY_EQUAL, KEY_KP_ADD:
 				if _planet.has_live_run():
 					live_steps_per_second *= 2.0
@@ -172,6 +189,47 @@ func _unhandled_input(event: InputEvent) -> void:
 func _update_camera() -> void:
 	_pivot.rotation = Vector3(-_pitch, _yaw, 0.0)
 	_camera.position = Vector3(0.0, 0.0, _distance)
+
+
+func _capture_screenshot(path: String, quit_after: bool) -> void:
+	_capture_generation += 1
+	var generation := _capture_generation
+	RenderingServer.frame_post_draw.connect(
+		_save_screenshot.bind(path, quit_after, generation), CONNECT_ONE_SHOT)
+	get_tree().create_timer(15.0).timeout.connect(
+		_screenshot_timeout.bind(quit_after, generation), CONNECT_ONE_SHOT)
+
+
+func _save_screenshot(path: String, quit_after: bool, generation: int) -> void:
+	if generation != _capture_generation:
+		return
+	_capture_generation += 1
+	var succeeded := false
+	var image := get_viewport().get_texture().get_image()
+	if image == null or image.is_empty():
+		push_error("active display driver did not produce a screenshot")
+	else:
+		var absolute_path := path if path.is_absolute_path() else ProjectSettings.globalize_path(path)
+		var directory := absolute_path.get_base_dir()
+		if not directory.is_empty():
+			DirAccess.make_dir_recursive_absolute(directory)
+		var error := image.save_png(absolute_path)
+		if error == OK:
+			print("render screenshot written: ", absolute_path)
+			succeeded = true
+		else:
+			push_error("failed to save screenshot %s (error %d)" % [absolute_path, error])
+	if quit_after:
+		get_tree().quit(0 if succeeded else 1)
+
+
+func _screenshot_timeout(quit_after: bool, generation: int) -> void:
+	if generation != _capture_generation:
+		return
+	_capture_generation += 1
+	push_error("timed out waiting for a completed frame to capture")
+	if quit_after:
+		get_tree().quit(1)
 
 
 func _select_cell(screen_position: Vector2) -> void:
@@ -255,5 +313,5 @@ func _update_hud() -> void:
 		legend,
 		"drag: rotate  right-click: select  wheel: zoom  1-9: style/overlays  S: switch style",
 		"N: day/night  L: live climate  [ ]: relief",
-		"R: new seed  P: preset  PgUp/PgDn: resolution  Space: pause  +/-: speed",
+		"R: new seed  P: preset  PgUp/PgDn: resolution  Space: pause  +/-: speed  F12: screenshot",
 	])

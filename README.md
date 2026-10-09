@@ -540,6 +540,18 @@ changes; their motion then runs in the GPU shader with no per-frame geometry
 upload. Both intensity colour and shaft size come from the same normalized
 physical precipitation channel.
 
+Press `F12` to save the current rendered frame in Godot's user-data directory
+(the absolute path is printed). For deterministic command-line capture, the
+client waits for the first live snapshot before saving and may then exit:
+
+```bash
+godot4 --path godot -- --subdivision=4 --live=true --water=true --view=8 \
+  --screenshot=/tmp/live-precipitation.png --quit-after-screenshot=true
+```
+
+The Godot CI job runs this command under Mesa software rendering and retains
+the PNG beside the quantitative readability artifacts.
+
 The one-time headless editor command imports the project and registers the
 GDExtension. The extension registers `PlanetMeshNode`, which generates a
 planet with PlanetSim (default L6, about 112 km cells; `PgUp` reaches L7 at
