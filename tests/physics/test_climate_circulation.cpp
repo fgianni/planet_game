@@ -231,7 +231,7 @@ int main() {
     // 8. The presentation snapshot carries it (schema 4).
     {
         const auto& out = run.state().circulation();
-        PLANETSIM_EXPECT(test, last_frame.schema_version == 4U);
+        PLANETSIM_EXPECT(test, last_frame.schema_version == 5U);
         PLANETSIM_EXPECT(test, last_frame.sea_level_pressure_Pa.size() == run.state().mesh().cell_count());
         bool same = last_frame.sea_level_pressure_Pa.size() == run.state().mesh().cell_count();
         for (std::size_t i = 0; same && i < last_frame.sea_level_pressure_Pa.size(); ++i) {

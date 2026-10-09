@@ -10,7 +10,7 @@
 namespace planetsim {
 
 class PlanetState;
-inline constexpr std::uint32_t state_snapshot_schema_version = 4;
+inline constexpr std::uint32_t state_snapshot_schema_version = 5;
 
 struct StateSnapshot {
     std::uint32_t schema_version = state_snapshot_schema_version;
@@ -42,6 +42,9 @@ struct StateSnapshot {
     std::vector<float> sea_level_pressure_Pa;
     std::vector<float> surface_eastward_wind_m_s;
     std::vector<float> surface_northward_wind_m_s;
+    // Schema 5: the last completed step's model precipitation. This remains
+    // a read-only presentation copy; the registered field owns its meaning.
+    std::vector<float> precipitation_kg_m2_s;
 };
 
 [[nodiscard]] StateSnapshot make_state_snapshot(const PlanetState& state,

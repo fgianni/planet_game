@@ -18,6 +18,9 @@ inline constexpr float surface_class_rock_min_relief_m = 1'500.0F;
 // Surface pressure is proportional to atmospheric column mass at fixed
 // gravity, which is the density relevant to the R3 scattering channel.
 inline constexpr float atmosphere_density_reference_pressure_Pa = 101'325.0F;
+// The fixed upper end of the R4 precipitation display scale. Since
+// 1 kg/m² of water is 1 mm, this is 50 mm/day in SI rate units.
+inline constexpr float precipitation_display_maximum_kg_m2_s = 50.0F / 86'400.0F;
 
 struct ChannelData {
     std::vector<float> values;

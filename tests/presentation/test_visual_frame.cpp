@@ -42,6 +42,9 @@ void check_channels(planetsim::test::Context& test) {
     frames[0].sea_level_pressure_Pa = {101'325.0F, 50'662.5F, 0.0F};
     frames[0].surface_eastward_wind_m_s = {12.0F, -3.0F, 0.0F};
     frames[0].surface_northward_wind_m_s = {-5.0F, 4.0F, 0.0F};
+    frames[0].precipitation_kg_m2_s = {
+        0.0F, 0.5F * planetsim::presentation::precipitation_display_maximum_kg_m2_s,
+        2.0F * planetsim::presentation::precipitation_display_maximum_kg_m2_s};
     const auto reference = planetsim::presentation::make_presentation_reference(frames);
     const auto cold = planetsim::presentation::make_visual_frame(frames[0], terrain, reference);
     const auto warm = planetsim::presentation::make_visual_frame(frames[1], terrain, reference);
@@ -61,9 +64,13 @@ void check_channels(planetsim::test::Context& test) {
     PLANETSIM_EXPECT(test, wind.size() == 3U * planetsim::presentation::wind_vector_component_count);
     PLANETSIM_EXPECT(test, wind[0] == 12.0F && wind[1] == -5.0F && wind[2] == -3.0F &&
                                wind[3] == 4.0F);
+    const auto& precipitation = cold.channels[channel(ChannelId::precipitation)].values;
+    PLANETSIM_EXPECT(test, precipitation.size() == 3U && precipitation[0] == 0.0F &&
+                               precipitation[1] == 0.5F && precipitation[2] == 1.0F);
     PLANETSIM_EXPECT(test,
                      warm.channels[channel(ChannelId::atmosphere_density)].values.empty() &&
-                         warm.channels[channel(ChannelId::wind)].values.empty());
+                         warm.channels[channel(ChannelId::wind)].values.empty() &&
+                         warm.channels[channel(ChannelId::precipitation)].values.empty());
     for (std::size_t cell = 0; cell < terrain.mean_elevation_m.size(); ++cell) {
         float sum = 0.0F;
         for (std::size_t weight = 0; weight < planetsim::presentation::surface_class_weight_count;
@@ -104,17 +111,19 @@ void check_recording_is_non_authoritative(planetsim::test::Context& test) {
     PLANETSIM_EXPECT(test, !loaded.empty() &&
                                loaded.back().top_of_atmosphere_insolation_W_m2 ==
                                    frames.back().top_of_atmosphere_insolation_W_m2);
-    // Schema 4 carries the circulation (ADR-0011 §8); a schema 3 frame,
-    // without it, still round-trips.
+    // Schema 5 carries precipitation, schema 4 carries the circulation
+    // (ADR-0011 §8), and an older schema 3 frame still round-trips.
     // (L1 resolves no circulation, so the fields here are set by hand.)
-    PLANETSIM_EXPECT(test, !loaded.empty() && loaded.back().schema_version == 4U &&
-                               loaded.back().sea_level_pressure_Pa.empty());
+    PLANETSIM_EXPECT(test, !loaded.empty() && loaded.back().schema_version == 5U &&
+                               loaded.back().sea_level_pressure_Pa.empty() &&
+                               !loaded.back().precipitation_kg_m2_s.empty());
     if (!frames.empty()) {
         StateSnapshot current = frames.back();
         const std::size_t cells = current.surface_temperature_K.size();
         current.sea_level_pressure_Pa.assign(cells, 101'000.0F);
         current.surface_eastward_wind_m_s.assign(cells, 5.0F);
         current.surface_northward_wind_m_s.assign(cells, -1.0F);
+        current.precipitation_kg_m2_s.assign(cells, 0.0001F);
         planetsim::presentation::write_presentation_record(path, {current});
         const auto loaded_current = planetsim::presentation::read_presentation_record(path);
         std::filesystem::remove(path);
@@ -124,7 +133,22 @@ void check_recording_is_non_authoritative(planetsim::test::Context& test) {
                                    loaded_current[0].surface_eastward_wind_m_s ==
                                        current.surface_eastward_wind_m_s &&
                                    loaded_current[0].surface_northward_wind_m_s ==
-                                       current.surface_northward_wind_m_s);
+                                       current.surface_northward_wind_m_s &&
+                                   loaded_current[0].precipitation_kg_m2_s ==
+                                       current.precipitation_kg_m2_s);
+
+        StateSnapshot circulation_only = current;
+        circulation_only.schema_version = 4U;
+        circulation_only.precipitation_kg_m2_s.clear();
+        planetsim::presentation::write_presentation_record(path, {circulation_only});
+        const auto loaded_circulation_only =
+            planetsim::presentation::read_presentation_record(path);
+        std::filesystem::remove(path);
+        PLANETSIM_EXPECT(test, loaded_circulation_only.size() == 1U &&
+                                   loaded_circulation_only[0].schema_version == 4U &&
+                                   loaded_circulation_only[0].surface_eastward_wind_m_s ==
+                                       circulation_only.surface_eastward_wind_m_s &&
+                                   loaded_circulation_only[0].precipitation_kg_m2_s.empty());
 
         StateSnapshot old = frames.back();
         old.schema_version = 3U;

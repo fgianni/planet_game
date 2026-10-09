@@ -41,6 +41,7 @@ StateSnapshot make_state_snapshot(const PlanetState& state, const SimulationCloc
     copy_float(state.slow().land_snow_water_equivalent_kg_m2,
                snapshot.land_snow_water_equivalent_kg_m2);
     copy_float(state.slow().sea_ice_mass_kg_m2, snapshot.sea_ice_mass_kg_m2);
+    copy_float(forcing.precipitation_kg_m2_s, snapshot.precipitation_kg_m2_s);
 
     if (const auto& circulation = state.circulation();
         circulation.available() && circulation.eastward_wind_m_s.cell_count() == cells) {

@@ -49,6 +49,7 @@ void write_frame(std::ostream& stream, const StateSnapshot& frame) {
         for (const auto* values : {&frame.sea_level_pressure_Pa, &frame.surface_eastward_wind_m_s,
                  &frame.surface_northward_wind_m_s}) write_vector(stream, *values);
     }
+    if (frame.schema_version >= 5U) write_vector(stream, frame.precipitation_kg_m2_s);
 }
 [[nodiscard]] StateSnapshot read_frame(std::istream& stream) {
     StateSnapshot frame;
@@ -73,6 +74,7 @@ void write_frame(std::ostream& stream, const StateSnapshot& frame) {
         for (auto* values : {&frame.sea_level_pressure_Pa, &frame.surface_eastward_wind_m_s,
                  &frame.surface_northward_wind_m_s}) read_vector(stream, *values);
     }
+    if (frame.schema_version >= 5U) read_vector(stream, frame.precipitation_kg_m2_s);
     return frame;
 }
 }  // namespace
