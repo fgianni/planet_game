@@ -41,6 +41,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [R3-01](R3-01-atmosphere-and-wind-channels.md) | Snapshot-only atmospheric density and surface-wind channels (ADR-0018) | Complete |
 | [R3-02](R3-02-atmosphere-scattering-and-wind.md) | Godot atmosphere scattering and animated surface-wind overlay (ADR-0018) | Complete |
 | [R4-01](R4-01-precipitation-channel.md) | Snapshot-only normalized model-precipitation channel (ADR-0018) | Complete |
+| [R4-02](R4-02-precipitation-overlay.md) | Shared animated precipitation overlay and cell readout (ADR-0018) | Complete |
 
 Completed tasks are records: they keep the specification and design versions
 they were written against, even after those files have left the tree. Read

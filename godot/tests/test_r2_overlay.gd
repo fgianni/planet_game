@@ -20,9 +20,15 @@ func _initialize() -> void:
 	planet.load_presentation_record(arguments[0])
 	assert(planet.has_channel("temperature_anomaly"),
 		"recorded climate frame should expose temperature_anomaly")
+	assert(planet.has_channel("precipitation"),
+		"schema 5 recording should expose model precipitation")
 	var anomaly: float = planet.get_channel_value(0, "temperature_anomaly")
 	assert(is_finite(anomaly) and anomaly >= -1.0 and anomaly <= 1.0,
 		"temperature anomaly readout must retain the channel's documented range")
+	var recorded_precipitation: float = planet.get_channel_value(0, "precipitation")
+	assert(is_finite(recorded_precipitation) and recorded_precipitation >= 0.0 \
+		and recorded_precipitation <= 1.0,
+		"recorded precipitation must retain the channel's documented range")
 	assert(is_nan(planet.get_channel_value(-1, "temperature_anomaly")),
 		"invalid cells must not manufacture a reading")
 	var picked: int = planet.find_cell(Vector3(1.0, 0.0, 0.0))
@@ -74,12 +80,17 @@ func _initialize() -> void:
 		"L4 live climate worker did not publish atmosphere and wind")
 	assert(planet.has_channel("atmosphere_density") and planet.has_channel("wind"),
 		"resolved circulation must expose atmosphere and wind channels")
+	assert(planet.has_channel("precipitation"),
+		"live schema 5 frame must expose model precipitation")
 	var atmosphere: float = planet.get_channel_value(0, "atmosphere_density")
 	assert(is_finite(atmosphere) and atmosphere >= 0.0 and atmosphere <= 1.0,
 		"atmosphere density must retain its documented normalized range")
 	var wind: Vector2 = planet.get_vector_channel_value(0, "wind")
 	assert(is_finite(wind.x) and is_finite(wind.y),
 		"wind readout must retain finite signed east/north components")
+	var precipitation: float = planet.get_channel_value(0, "precipitation")
+	assert(is_finite(precipitation) and precipitation >= 0.0 and precipitation <= 1.0,
+		"precipitation must retain its documented normalized range")
 	revision = planet.get_geometry_revision()
 	var r3_hash: String = planet.get_live_state_hash()
 	planet.set_view_mode(7)
@@ -88,6 +99,10 @@ func _initialize() -> void:
 		"wind view must use a bounded non-empty streak set")
 	assert(planet.get_geometry_revision() == revision,
 		"selecting the wind overlay must not rebuild planet geometry")
+	planet.set_view_mode(8)
+	assert(planet.get_view_mode_name().contains("precipitation"))
+	assert(planet.get_geometry_revision() == revision,
+		"selecting the precipitation overlay must not rebuild planet geometry")
 	planet.next_style()
 	assert(planet.get_live_state_hash() == r3_hash,
 		"atmosphere rendering, wind rendering and style changes must not alter state")
@@ -95,5 +110,6 @@ func _initialize() -> void:
 	planet.stop_live_run()
 	planet.queue_free()
 	print("R2 live/overlay pass: cell ", picked, " anomaly ", anomaly,
-		" hash ", hash_after, "; R3 wind ", wind, " streaks ", streaks)
+		" hash ", hash_after, "; R3 wind ", wind, " streaks ", streaks,
+		"; R4 precipitation ", precipitation)
 	quit(0)

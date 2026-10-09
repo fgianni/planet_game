@@ -63,7 +63,8 @@ class PlanetMeshNode : public godot::MeshInstance3D {
         view_drainage = 5,
         view_temperature_anomaly = 6,
         view_wind = 7,
-        view_mode_count = 8,
+        view_precipitation = 8,
+        view_mode_count = 9,
     };
 
     PlanetMeshNode();

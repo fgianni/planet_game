@@ -119,7 +119,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_update_camera()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
-			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8:
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9:
 				_planet.set_view_mode(event.keycode - KEY_1)
 			KEY_S:
 				_planet.next_style()
@@ -203,6 +203,13 @@ func _wind_reading() -> String:
 	return "wind %.1f m/s (E %.1f, N %.1f)" % [wind.length(), wind.x, wind.y]
 
 
+func _precipitation_reading() -> String:
+	if _selected_cell < 0 or not _planet.has_channel("precipitation"):
+		return "precipitation unavailable"
+	var normalized: float = _planet.get_channel_value(_selected_cell, "precipitation")
+	return "precipitation %.1f mm/day" % (50.0 * normalized)
+
+
 func _update_hud() -> void:
 	var days: float = _planet.get_simulation_time() / 86400.0
 	var legend := ""
@@ -210,6 +217,8 @@ func _update_hud() -> void:
 		legend = "cyan: catchment/path   magenta: filled depression   pale cyan: coastal outlet"
 	elif _planet.get_view_mode() == 7:
 		legend = "wind: streak direction follows flow   cyan slow   amber 60+ m/s"
+	elif _planet.get_view_mode() == 8:
+		legend = "precipitation: dark dry   blue light   cyan 50+ mm/day"
 	var playback := "live climate%s  hash %s" % [
 		" (solving)" if _planet.is_live_run_busy() else "",
 		_planet.get_live_state_hash(),
@@ -218,12 +227,13 @@ func _update_hud() -> void:
 		if _planet.has_presentation_record() else "orbit preview"
 	var selection := "right-click: select a cell"
 	if _selected_cell >= 0:
-		selection = "cell %d   %s   %s   %s   %s" % [
+		selection = "cell %d   %s   %s   %s   %s   %s" % [
 			_selected_cell,
 			_channel_reading("temperature_anomaly", " (±3σ)"),
 			_channel_reading("snow_cover", "%", 100.0),
 			_channel_reading("sea_ice", "%", 100.0),
 			_wind_reading(),
+			_precipitation_reading(),
 		]
 	_hud.text = "\n".join([
 		"PlanetSim  L%d  seed %d  preset %s" % [_planet.get_subdivision(), _planet.get_seed(), _planet.get_preset()],
@@ -240,7 +250,7 @@ func _update_hud() -> void:
 			_planet.get_drainage_outlet_count(), _planet.get_drainage_basin_count(),
 			_planet.get_drainage_depression_count()],
 		legend,
-		"drag: rotate  right-click: select  wheel: zoom  1-8: style/overlays  S: switch style",
+		"drag: rotate  right-click: select  wheel: zoom  1-9: style/overlays  S: switch style",
 		"N: day/night  L: live climate  [ ]: relief",
 		"R: new seed  P: preset  PgUp/PgDn: resolution  Space: pause  +/-: speed",
 	])

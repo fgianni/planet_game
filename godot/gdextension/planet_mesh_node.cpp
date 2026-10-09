@@ -398,6 +398,8 @@ godot::String PlanetMeshNode::get_view_mode_name() const {
         return "temperature anomaly (climate-lab overlay)";
     case view_wind:
         return "surface wind particles (climate-lab overlay)";
+    case view_precipitation:
+        return "precipitation intensity (climate-lab overlay)";
     default:
         return "unknown";
     }
@@ -1015,9 +1017,12 @@ void PlanetMeshNode::update_shader_flags() {
         material_->set_shader_parameter("temperature_anomaly_view",
                                         view_mode_ == view_temperature_anomaly);
         material_->set_shader_parameter("wind_view", view_mode_ == view_wind);
+        material_->set_shader_parameter("precipitation_view",
+                                        view_mode_ == view_precipitation);
         material_->set_shader_parameter(
             "data_view", view_mode_ == view_insolation || view_mode_ == view_drainage ||
-                             view_mode_ == view_temperature_anomaly || view_mode_ == view_wind);
+                             view_mode_ == view_temperature_anomaly || view_mode_ == view_wind ||
+                             view_mode_ == view_precipitation);
     }
     if (wind_overlay_node_) {
         wind_overlay_node_->set_visible(view_mode_ == view_wind && wind_streak_count_ > 0);
@@ -1158,6 +1163,7 @@ void PlanetMeshNode::upload_changed_channels() {
     upload_scalar_channel(presentation::ChannelId::sea_ice);
     upload_scalar_channel(presentation::ChannelId::temperature_anomaly);
     upload_scalar_channel(presentation::ChannelId::atmosphere_density);
+    upload_scalar_channel(presentation::ChannelId::precipitation);
     update_wind_overlay();
     upload_scalar_channel(presentation::ChannelId::known, 1.0F);
     upload_scalar_channel(presentation::ChannelId::guessed);
@@ -1360,6 +1366,7 @@ void PlanetMeshNode::bind_channel_textures() {
     bind("sea_ice_map", presentation::ChannelId::sea_ice);
     bind("temperature_anomaly_map", presentation::ChannelId::temperature_anomaly);
     bind("atmosphere_density_map", presentation::ChannelId::atmosphere_density);
+    bind("precipitation_map", presentation::ChannelId::precipitation);
     bind("known_map", presentation::ChannelId::known);
     bind("guessed_map", presentation::ChannelId::guessed);
     bind("knowledge_age_map", presentation::ChannelId::knowledge_age);
