@@ -635,14 +635,16 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
     if (moisture != nullptr && convection) {
         // The convective adjustment moves the condensation's heat upward
         // and leaves the layers below supersaturated at their new
-        // temperatures: each condenses its excess isobarically,
-        // c_p (T' − T) = L (q − q_sat(T')), and the two adjustments
-        // alternate until nothing more condenses (ADR-0021 V4: no layer
-        // above saturation after the step).
+        // temperatures: each condenses its excess once, isobarically,
+        // c_p (T' − T) = L (q − q_sat(T')) (ADR-0021 V4: no layer above
+        // saturation after the step). Its heat may leave the column unstable
+        // for the next step's adjustment: alternating the two to the end
+        // made θ_c(h) non-smooth and tripled the coupled Newton's
+        // iterations (task M7-07).
         const double specific_heat = column.layer_heat_capacity_J_m2_K / moisture->layer_mass_kg_m2;
         const double heating = moisture->latent_J_kg / specific_heat;   // K per kg/kg
         double extra = 0.0;
-        for (int round = 0; round < 64; ++round) {
+        {
             double condensed = 0.0;
             for (std::size_t k = 0; k < n; ++k) {
                 const double pressure = moisture->pressure_Pa[k];
@@ -672,10 +674,6 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
                 condensed += condensate;
             }
             extra += condensed;
-            if (!(condensed > 0.0) || !convective_adjustment(column, temperature_K)) {
-                break;
-            }
-            result.adjusted = true;
         }
         result.precipitation_kg_m2_s += extra * moisture->layer_mass_kg_m2 / dt_s;
         result.condensation_W_m2 += condensation_rate * extra;
