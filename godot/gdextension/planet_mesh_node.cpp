@@ -14,6 +14,7 @@
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/core/memory.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
@@ -222,6 +223,11 @@ void PlanetMeshNode::_bind_methods() {
                                 &PlanetMeshNode::has_channel);
     godot::ClassDB::bind_method(godot::D_METHOD("get_channel_value", "cell", "channel_name"),
                                 &PlanetMeshNode::get_channel_value);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_vector_channel_value", "cell", "channel_name"),
+        &PlanetMeshNode::get_vector_channel_value);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_wind_streak_count"),
+                                &PlanetMeshNode::get_wind_streak_count);
     godot::ClassDB::bind_method(godot::D_METHOD("get_seed"), &PlanetMeshNode::get_seed);
     godot::ClassDB::bind_method(godot::D_METHOD("get_subdivision"),
                                 &PlanetMeshNode::get_subdivision);
@@ -303,6 +309,10 @@ void PlanetMeshNode::rebuild(std::int64_t subdivision, double radius_m, std::int
         surface_class_ice_texture_.unref();
         for (auto& values : uploaded_channels_)
             values.clear();
+        // A new resolution changes every channel's cell count. In particular,
+        // do not carry the smoothed snow/ice arrays into the first new frame.
+        displayed_frame_ = {};
+        target_frame_ = {};
         if (styles_[0].is_null())
             load_styles();
         build_preview_reference();
@@ -386,6 +396,8 @@ godot::String PlanetMeshNode::get_view_mode_name() const {
         return "drainage and catchment area";
     case view_temperature_anomaly:
         return "temperature anomaly (climate-lab overlay)";
+    case view_wind:
+        return "surface wind particles (climate-lab overlay)";
     default:
         return "unknown";
     }
@@ -738,6 +750,37 @@ double PlanetMeshNode::get_channel_value(std::int64_t cell,
     return std::numeric_limits<double>::quiet_NaN();
 }
 
+godot::Vector2 PlanetMeshNode::get_vector_channel_value(
+    std::int64_t cell, const godot::String& channel_name) const {
+    const auto absent = [] {
+        const auto nan = std::numeric_limits<godot::real_t>::quiet_NaN();
+        return godot::Vector2{nan, nan};
+    };
+    if (cell < 0 || !mesh_ || static_cast<std::size_t>(cell) >= mesh_->cell_count()) {
+        return absent();
+    }
+    for (const auto& descriptor : presentation::channel_registry) {
+        if (descriptor.kind != presentation::ChannelKind::vector ||
+            channel_name != godot::String(descriptor.name.data())) {
+            continue;
+        }
+        const auto& values = displayed_frame_.channels[channel_index(descriptor.id)].values;
+        const std::size_t cells = mesh_->cell_count();
+        if (descriptor.id != presentation::ChannelId::wind ||
+            values.size() != cells * presentation::wind_vector_component_count) {
+            return absent();
+        }
+        const std::size_t offset =
+            static_cast<std::size_t>(cell) * presentation::wind_vector_component_count;
+        return {values[offset], values[offset + 1U]};
+    }
+    return absent();
+}
+
+std::int64_t PlanetMeshNode::get_wind_streak_count() const noexcept {
+    return wind_streak_count_;
+}
+
 std::int64_t PlanetMeshNode::get_seed() const noexcept { return static_cast<std::int64_t>(seed_); }
 std::int64_t PlanetMeshNode::get_subdivision() const noexcept {
     return static_cast<std::int64_t>(parameters_.mesh_subdivision);
@@ -971,9 +1014,13 @@ void PlanetMeshNode::update_shader_flags() {
         material_->set_shader_parameter("insolation_view", view_mode_ == view_insolation);
         material_->set_shader_parameter("temperature_anomaly_view",
                                         view_mode_ == view_temperature_anomaly);
+        material_->set_shader_parameter("wind_view", view_mode_ == view_wind);
         material_->set_shader_parameter(
             "data_view", view_mode_ == view_insolation || view_mode_ == view_drainage ||
-                             view_mode_ == view_temperature_anomaly);
+                             view_mode_ == view_temperature_anomaly || view_mode_ == view_wind);
+    }
+    if (wind_overlay_node_) {
+        wind_overlay_node_->set_visible(view_mode_ == view_wind && wind_streak_count_ > 0);
     }
 }
 
@@ -1110,6 +1157,8 @@ void PlanetMeshNode::upload_changed_channels() {
     upload_scalar_channel(presentation::ChannelId::snow_cover);
     upload_scalar_channel(presentation::ChannelId::sea_ice);
     upload_scalar_channel(presentation::ChannelId::temperature_anomaly);
+    upload_scalar_channel(presentation::ChannelId::atmosphere_density);
+    update_wind_overlay();
     upload_scalar_channel(presentation::ChannelId::known, 1.0F);
     upload_scalar_channel(presentation::ChannelId::guessed);
     upload_scalar_channel(presentation::ChannelId::knowledge_age);
@@ -1204,6 +1253,95 @@ void PlanetMeshNode::upload_surface_class() {
     uploaded_channels_[index] = source;
 }
 
+void PlanetMeshNode::ensure_wind_overlay() {
+    if (wind_overlay_node_)
+        return;
+    wind_overlay_node_ = memnew(godot::MeshInstance3D);
+    wind_overlay_node_->set_name("WindParticles");
+    add_child(wind_overlay_node_);
+    wind_overlay_mesh_.instantiate();
+    wind_overlay_node_->set_mesh(wind_overlay_mesh_);
+    wind_overlay_material_.instantiate();
+    const godot::Ref<godot::Resource> resource =
+        godot::ResourceLoader::get_singleton()->load("res://shaders/wind_particles.gdshader");
+    const godot::Ref<godot::Shader> shader = resource;
+    if (shader.is_null()) {
+        throw std::runtime_error("wind particle shader did not load");
+    }
+    wind_overlay_material_->set_shader(shader);
+    wind_overlay_node_->set_material_override(wind_overlay_material_);
+    wind_overlay_node_->set_cast_shadows_setting(godot::GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+}
+
+void PlanetMeshNode::update_wind_overlay() {
+    const std::size_t channel = channel_index(presentation::ChannelId::wind);
+    const auto& source = displayed_frame_.channels[channel].values;
+    if (uploaded_channels_[channel] == source && wind_overlay_node_)
+        return;
+    ensure_wind_overlay();
+    wind_overlay_mesh_->clear_surfaces();
+    wind_streak_count_ = 0;
+    const std::size_t cells = mesh_->cell_count();
+    if (source.empty()) {
+        uploaded_channels_[channel] = source;
+        wind_overlay_node_->set_visible(false);
+        return;
+    }
+    if (source.size() != cells * presentation::wind_vector_component_count) {
+        throw std::logic_error("wind presentation channel does not match the mesh");
+    }
+
+    constexpr std::size_t maximum_streaks = 2'048U;
+    const std::size_t stride = std::max<std::size_t>(1U, (cells + maximum_streaks - 1U) /
+                                                            maximum_streaks);
+    godot::PackedVector3Array vertices;
+    godot::PackedVector2Array uv;
+    godot::PackedColorArray colors;
+    for (std::size_t cell = 0; cell < cells; cell += stride) {
+        const std::size_t offset = cell * presentation::wind_vector_component_count;
+        const double east = source[offset];
+        const double north = source[offset + 1U];
+        const double speed = std::hypot(east, north);
+        if (!(speed > 0.1))
+            continue;
+        const auto& geometry = mesh_->cells()[cell];
+        const Vec3d direction =
+            normalized(geometry.east_unit * east + geometry.north_unit * north);
+        const godot::Vector3 normal = to_godot(geometry.center_unit);
+        const godot::Vector3 tangent = to_godot(direction);
+        const godot::Vector3 side = normal.cross(tangent).normalized() * 0.0025F;
+        const float strength = static_cast<float>(std::clamp(speed / 60.0, 0.0, 1.0));
+        const godot::Vector3 centre = normal * 1.006F;
+        const godot::Vector3 half = tangent * (0.009F + 0.020F * strength);
+        const godot::Vector3 begin = centre - half;
+        const godot::Vector3 end = centre + half;
+        const float seed = std::fmod(static_cast<float>(cell) * 0.61803398875F, 1.0F);
+        const godot::Color color =
+            godot::Color{0.18F, 0.72F, 1.0F, seed}.lerp({1.0F, 0.74F, 0.12F, seed}, strength);
+        for (const auto& [position, coordinate] :
+             std::array<std::pair<godot::Vector3, godot::Vector2>, 6>{{
+                 {begin - side, {0.0F, -1.0F}}, {end - side, {1.0F, -1.0F}},
+                 {end + side, {1.0F, 1.0F}},    {begin - side, {0.0F, -1.0F}},
+                 {end + side, {1.0F, 1.0F}},    {begin + side, {0.0F, 1.0F}},
+             }}) {
+            vertices.push_back(position);
+            uv.push_back(coordinate);
+            colors.push_back(color);
+        }
+        ++wind_streak_count_;
+    }
+    if (!vertices.is_empty()) {
+        godot::Array arrays;
+        arrays.resize(godot::Mesh::ARRAY_MAX);
+        arrays[godot::Mesh::ARRAY_VERTEX] = vertices;
+        arrays[godot::Mesh::ARRAY_TEX_UV] = uv;
+        arrays[godot::Mesh::ARRAY_COLOR] = colors;
+        wind_overlay_mesh_->add_surface_from_arrays(godot::Mesh::PRIMITIVE_TRIANGLES, arrays);
+    }
+    uploaded_channels_[channel] = source;
+    wind_overlay_node_->set_visible(view_mode_ == view_wind && wind_streak_count_ > 0);
+}
+
 void PlanetMeshNode::bind_channel_textures() {
     if (material_.is_null())
         return;
@@ -1221,6 +1359,7 @@ void PlanetMeshNode::bind_channel_textures() {
     bind("snow_cover_map", presentation::ChannelId::snow_cover);
     bind("sea_ice_map", presentation::ChannelId::sea_ice);
     bind("temperature_anomaly_map", presentation::ChannelId::temperature_anomaly);
+    bind("atmosphere_density_map", presentation::ChannelId::atmosphere_density);
     bind("known_map", presentation::ChannelId::known);
     bind("guessed_map", presentation::ChannelId::guessed);
     bind("knowledge_age_map", presentation::ChannelId::knowledge_age);

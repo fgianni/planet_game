@@ -535,7 +535,8 @@ Views: `1` natural semantic rendering, `2` the legacy terrain overlay,
 boundaries, `4` crust age (young ocean red, old blue; continents grey), `5`
 daylight/top-of-atmosphere insolation, `6` static drainage, and `7` the shared
 temperature-anomaly overlay (navy cold, pale neutral, amber warm; fixed −1 to
-+1 scale representing ±3 climatological standard deviations). Press `S` to switch
++1 scale representing ±3 climatological standard deviations), and `8` surface
+wind (animated tangent streaks, cyan slow to amber at 60 m/s). Press `S` to switch
 instantly between the `stylised` and `map` packs without rebuilding the mesh.
 The drainage
 view colours land by logarithmically scaled upstream catchment area, marks
@@ -543,7 +544,8 @@ filled depressions in magenta, shows coastal outlets in pale cyan, and draws
 each downstream edge above the surface. These are potential routing paths,
 not simulated rivers. The simulated day/night is laid over the natural and
 terrain views (`N` toggles it); data overlays are self-lit. Drag to rotate,
-right-click a cell for its anomaly, snow-cover and sea-ice readings, wheel to zoom,
+right-click a cell for its anomaly, snow-cover, sea-ice and signed east/north
+wind readings, wheel to zoom,
 `[`/`]` relief exaggeration, `R` new seed, `P` next preset,
 `PgUp`/`PgDn` resolution, `Space` pause, `L` live climate, `+`/`-` simulation speed. Recorded
 frames play at two frames per second by default. The same
@@ -558,6 +560,13 @@ zooming in shows the model's real resolution, with no invented detail.
 Geometry is built once per planet. Each update uploads only changed semantic
 channels to cell-indexed textures read by the active style shader; switching
 styles reuses both the mesh and those textures.
+
+The natural view uses normalized atmospheric column density derived from the
+snapshot's sea-level pressure to add a view-dependent blue scattering rim in
+both styles. The wind overlay reconstructs tangent directions from the
+snapshot's SI east/north components. It samples at most 2,048 cells when a
+wind frame changes; animation then runs entirely in the shader and does not
+upload geometry per rendered frame.
 
 Style readability is an automated gate. From a Godot-enabled build, the
 offscreen harness can be run under an X server (CI uses Xvfb and llvmpipe):

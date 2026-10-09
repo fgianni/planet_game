@@ -38,6 +38,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [R2-01](R2-01-temperature-overlay-and-readout.md) | Shared temperature-anomaly overlay and semantic cell readout (ADR-0018) | Complete |
 | [R2-02](R2-02-live-climate-bridge.md) | Asynchronous live climate stepping through the snapshot boundary (ADR-0018) | Complete |
 | [R3-01](R3-01-atmosphere-and-wind-channels.md) | Snapshot-only atmospheric density and surface-wind channels (ADR-0018) | Complete |
+| [R3-02](R3-02-atmosphere-scattering-and-wind.md) | Godot atmosphere scattering and animated surface-wind overlay (ADR-0018) | Complete |
 
 Completed tasks are records: they keep the specification and design versions
 they were written against, even after those files have left the tree. Read

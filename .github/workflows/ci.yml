@@ -186,7 +186,7 @@ jobs:
           xvfb-run -a ./godot4 --editor --quit --display-driver x11
           --rendering-driver opengl3 --audio-driver Dummy --path godot
 
-      - name: Bridge style validation and switching (V7/V9)
+      - name: Bridge styles, live overlays and switching (V7/V9, R2/R3)
         run: |
           ./build-godot/planet_cli run --subdivision 2 --years 1 --workers 1 \
             --presentation-record /tmp/planetsim-r1-ci.pframe

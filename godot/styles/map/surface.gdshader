@@ -7,6 +7,7 @@ uniform sampler2D surface_class_ice_map : filter_nearest;
 uniform sampler2D daylight_map : filter_nearest;
 uniform sampler2D snow_cover_map : filter_nearest;
 uniform sampler2D sea_ice_map : filter_nearest;
+uniform sampler2D atmosphere_density_map : filter_nearest;
 uniform sampler2D known_map : filter_nearest;
 uniform sampler2D guessed_map : filter_nearest;
 uniform sampler2D knowledge_age_map : filter_nearest;
@@ -30,6 +31,7 @@ void fragment() {
 	float daylight = clamp(texelFetch(daylight_map, p, 0).r, 0.0, 1.0);
 	float snow = clamp(texelFetch(snow_cover_map, p, 0).r, 0.0, 1.0);
 	float sea_ice = clamp(texelFetch(sea_ice_map, p, 0).r, 0.0, 1.0);
+	float atmosphere = clamp(texelFetch(atmosphere_density_map, p, 0).r, 0.0, 1.0);
 	float known = clamp(texelFetch(known_map, p, 0).r, 0.0, 1.0);
 	float guessed = clamp(texelFetch(guessed_map, p, 0).r, 0.0, 1.0);
 	float age = clamp(texelFetch(knowledge_age_map, p, 0).r, 0.0, 1.0);
@@ -49,6 +51,8 @@ void fragment() {
 	if (day_night) {
 		base *= 0.32 + 0.68 * daylight;
 	}
+	float air_mass = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
+	base = mix(base, vec3(0.30, 0.63, 0.90), 0.22 * atmosphere * air_mass);
 	if (!OUTPUT_IS_SRGB) {
 		base = srgb_to_linear(base);
 	}

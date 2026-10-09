@@ -6,6 +6,7 @@ uniform sampler2D temperature_anomaly_map : filter_nearest;
 uniform bool day_night = true;
 uniform bool insolation_view = false;
 uniform bool temperature_anomaly_view = false;
+uniform bool wind_view = false;
 uniform bool data_view = false;
 
 varying vec2 channel_texel;
@@ -31,6 +32,8 @@ void fragment() {
 		base = anomaly < 0.0 ? mix(neutral, cold, -anomaly) : mix(neutral, warm, anomaly);
 	} else if (insolation_view) {
 		base = vec3(0.015 + 0.95 * daylight, 0.025 + 0.68 * daylight, 0.08 + 0.28 * x);
+	} else if (wind_view) {
+		base = vec3(0.018, 0.035, 0.075);
 	} else {
 		base = COLOR.rgb;
 		if (day_night && !data_view) {

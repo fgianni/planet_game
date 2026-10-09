@@ -62,7 +62,8 @@ class PlanetMeshNode : public godot::MeshInstance3D {
         view_insolation = 4,
         view_drainage = 5,
         view_temperature_anomaly = 6,
-        view_mode_count = 7,
+        view_wind = 7,
+        view_mode_count = 8,
     };
 
     PlanetMeshNode();
@@ -107,6 +108,9 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     [[nodiscard]] bool has_channel(const godot::String& channel_name) const;
     [[nodiscard]] double get_channel_value(std::int64_t cell,
                                            const godot::String& channel_name) const;
+    [[nodiscard]] godot::Vector2 get_vector_channel_value(
+        std::int64_t cell, const godot::String& channel_name) const;
+    [[nodiscard]] std::int64_t get_wind_streak_count() const noexcept;
 
     [[nodiscard]] std::int64_t get_seed() const noexcept;
     [[nodiscard]] std::int64_t get_subdivision() const noexcept;
@@ -131,6 +135,8 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     void upload_changed_channels();
     void upload_scalar_channel(presentation::ChannelId id, float absent_value = 0.0F);
     void upload_surface_class();
+    void update_wind_overlay();
+    void ensure_wind_overlay();
     void bind_channel_textures();
     void update_shader_flags();
     void live_run_loop(std::stop_token stop_token);
@@ -161,6 +167,10 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     godot::Ref<godot::ArrayMesh> rendered_mesh_;
     godot::Ref<godot::ShaderMaterial> material_;
     godot::Ref<godot::Shader> overlay_shader_;
+    godot::MeshInstance3D* wind_overlay_node_ = nullptr;
+    godot::Ref<godot::ArrayMesh> wind_overlay_mesh_;
+    godot::Ref<godot::ShaderMaterial> wind_overlay_material_;
+    std::int64_t wind_streak_count_ = 0;
     std::array<godot::Ref<PlanetStyle>, 2> styles_;
     std::size_t active_style_ = 0U;
     presentation::PresentationReference presentation_reference_;

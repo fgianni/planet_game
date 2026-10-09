@@ -63,7 +63,37 @@ func _initialize() -> void:
 		"rendering and style operations must not change the live state")
 	planet.stop_live_run()
 	assert(not planet.has_live_run(), "live worker must stop cleanly")
+
+	# The 36-band circulation is deliberately unresolved at L2. A single L4
+	# scheduler step publishes its physical pressure and surface winds.
+	planet.clear_presentation_record()
+	planet.rebuild(4, 6_371_000.0, 1, "earth_like")
+	planet.start_live_run(1)
+	planet.request_live_steps()
+	assert(await _wait_for_live_frame(planet),
+		"L4 live climate worker did not publish atmosphere and wind")
+	assert(planet.has_channel("atmosphere_density") and planet.has_channel("wind"),
+		"resolved circulation must expose atmosphere and wind channels")
+	var atmosphere: float = planet.get_channel_value(0, "atmosphere_density")
+	assert(is_finite(atmosphere) and atmosphere >= 0.0 and atmosphere <= 1.0,
+		"atmosphere density must retain its documented normalized range")
+	var wind: Vector2 = planet.get_vector_channel_value(0, "wind")
+	assert(is_finite(wind.x) and is_finite(wind.y),
+		"wind readout must retain finite signed east/north components")
+	revision = planet.get_geometry_revision()
+	var r3_hash: String = planet.get_live_state_hash()
+	planet.set_view_mode(7)
+	assert(planet.get_view_mode_name().contains("wind"))
+	assert(planet.get_wind_streak_count() > 0 and planet.get_wind_streak_count() <= 2048,
+		"wind view must use a bounded non-empty streak set")
+	assert(planet.get_geometry_revision() == revision,
+		"selecting the wind overlay must not rebuild planet geometry")
+	planet.next_style()
+	assert(planet.get_live_state_hash() == r3_hash,
+		"atmosphere rendering, wind rendering and style changes must not alter state")
+	var streaks: int = planet.get_wind_streak_count()
+	planet.stop_live_run()
 	planet.queue_free()
 	print("R2 live/overlay pass: cell ", picked, " anomaly ", anomaly,
-		" hash ", hash_after)
+		" hash ", hash_after, "; R3 wind ", wind, " streaks ", streaks)
 	quit(0)
