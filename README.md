@@ -534,6 +534,12 @@ This runs the authoritative existing `Scenario::water_cycle` path and makes
 View 9 show real model precipitation. It is not synthetic presentation rain;
 omitting `--water=true` preserves the current dry/default scenario.
 
+Raining cells also receive crossed, radially falling shafts above the surface.
+The bridge deterministically samples at most 2,048 wet cells when a snapshot
+changes; their motion then runs in the GPU shader with no per-frame geometry
+upload. Both intensity colour and shaft size come from the same normalized
+physical precipitation channel.
+
 The one-time headless editor command imports the project and registers the
 GDExtension. The extension registers `PlanetMeshNode`, which generates a
 planet with PlanetSim (default L6, about 112 km cells; `PgUp` reaches L7 at

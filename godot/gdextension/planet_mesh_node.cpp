@@ -229,6 +229,9 @@ void PlanetMeshNode::_bind_methods() {
         &PlanetMeshNode::get_vector_channel_value);
     godot::ClassDB::bind_method(godot::D_METHOD("get_wind_streak_count"),
                                 &PlanetMeshNode::get_wind_streak_count);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_precipitation_streak_count"),
+        &PlanetMeshNode::get_precipitation_streak_count);
     godot::ClassDB::bind_method(godot::D_METHOD("get_seed"), &PlanetMeshNode::get_seed);
     godot::ClassDB::bind_method(godot::D_METHOD("get_subdivision"),
                                 &PlanetMeshNode::get_subdivision);
@@ -310,6 +313,7 @@ void PlanetMeshNode::rebuild(std::int64_t subdivision, double radius_m, std::int
         surface_class_ice_texture_.unref();
         for (auto& values : uploaded_channels_)
             values.clear();
+        precipitation_overlay_source_.clear();
         // A new resolution changes every channel's cell count. In particular,
         // do not carry the smoothed snow/ice arrays into the first new frame.
         displayed_frame_ = {};
@@ -785,6 +789,10 @@ std::int64_t PlanetMeshNode::get_wind_streak_count() const noexcept {
     return wind_streak_count_;
 }
 
+std::int64_t PlanetMeshNode::get_precipitation_streak_count() const noexcept {
+    return precipitation_streak_count_;
+}
+
 std::int64_t PlanetMeshNode::get_seed() const noexcept { return static_cast<std::int64_t>(seed_); }
 std::int64_t PlanetMeshNode::get_subdivision() const noexcept {
     return static_cast<std::int64_t>(parameters_.mesh_subdivision);
@@ -1029,6 +1037,10 @@ void PlanetMeshNode::update_shader_flags() {
     if (wind_overlay_node_) {
         wind_overlay_node_->set_visible(view_mode_ == view_wind && wind_streak_count_ > 0);
     }
+    if (precipitation_overlay_node_) {
+        precipitation_overlay_node_->set_visible(view_mode_ == view_precipitation &&
+                                                 precipitation_streak_count_ > 0);
+    }
 }
 
 void PlanetMeshNode::refresh() {
@@ -1167,6 +1179,7 @@ void PlanetMeshNode::upload_changed_channels() {
     upload_scalar_channel(presentation::ChannelId::atmosphere_density);
     upload_scalar_channel(presentation::ChannelId::precipitation);
     update_wind_overlay();
+    update_precipitation_overlay();
     upload_scalar_channel(presentation::ChannelId::known, 1.0F);
     upload_scalar_channel(presentation::ChannelId::guessed);
     upload_scalar_channel(presentation::ChannelId::knowledge_age);
@@ -1348,6 +1361,102 @@ void PlanetMeshNode::update_wind_overlay() {
     }
     uploaded_channels_[channel] = source;
     wind_overlay_node_->set_visible(view_mode_ == view_wind && wind_streak_count_ > 0);
+}
+
+void PlanetMeshNode::ensure_precipitation_overlay() {
+    if (precipitation_overlay_node_)
+        return;
+    precipitation_overlay_node_ = memnew(godot::MeshInstance3D);
+    precipitation_overlay_node_->set_name("PrecipitationParticles");
+    add_child(precipitation_overlay_node_);
+    precipitation_overlay_mesh_.instantiate();
+    precipitation_overlay_node_->set_mesh(precipitation_overlay_mesh_);
+    precipitation_overlay_material_.instantiate();
+    const godot::Ref<godot::Resource> resource =
+        godot::ResourceLoader::get_singleton()->load(
+            "res://shaders/precipitation_particles.gdshader");
+    const godot::Ref<godot::Shader> shader = resource;
+    if (shader.is_null()) {
+        throw std::runtime_error("precipitation particle shader did not load");
+    }
+    precipitation_overlay_material_->set_shader(shader);
+    precipitation_overlay_node_->set_material_override(precipitation_overlay_material_);
+    precipitation_overlay_node_->set_cast_shadows_setting(
+        godot::GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+}
+
+void PlanetMeshNode::update_precipitation_overlay() {
+    const std::size_t channel = channel_index(presentation::ChannelId::precipitation);
+    const auto& source = displayed_frame_.channels[channel].values;
+    if (precipitation_overlay_source_ == source && precipitation_overlay_node_)
+        return;
+    ensure_precipitation_overlay();
+    precipitation_overlay_mesh_->clear_surfaces();
+    precipitation_streak_count_ = 0;
+    const std::size_t cells = mesh_->cell_count();
+    if (source.empty()) {
+        precipitation_overlay_source_ = source;
+        precipitation_overlay_node_->set_visible(false);
+        return;
+    }
+    if (source.size() != cells) {
+        throw std::logic_error("precipitation presentation channel does not match the mesh");
+    }
+
+    constexpr std::size_t maximum_streaks = 2'048U;
+    constexpr float visible_threshold = 1.0e-4F;
+    std::vector<std::size_t> wet_cells;
+    wet_cells.reserve(std::min(cells, maximum_streaks));
+    for (std::size_t cell = 0; cell < cells; ++cell) {
+        if (source[cell] > visible_threshold)
+            wet_cells.push_back(cell);
+    }
+    const std::size_t stride = std::max<std::size_t>(
+        1U, (wet_cells.size() + maximum_streaks - 1U) / maximum_streaks);
+    godot::PackedVector3Array vertices;
+    godot::PackedVector2Array uv;
+    godot::PackedColorArray colors;
+    for (std::size_t wet = 0; wet < wet_cells.size(); wet += stride) {
+        const std::size_t cell = wet_cells[wet];
+        const float intensity = std::clamp(source[cell], 0.0F, 1.0F);
+        const auto& geometry = mesh_->cells()[cell];
+        const godot::Vector3 normal = to_godot(geometry.center_unit);
+        const godot::Vector3 lower = normal * 1.008F;
+        const godot::Vector3 upper = normal * (1.014F + 0.018F * intensity);
+        const float width = 0.0009F + 0.0014F * intensity;
+        const float seed = std::fmod(static_cast<float>(cell) * 0.754877666F, 1.0F);
+        const godot::Color color =
+            godot::Color{0.12F, 0.48F, 0.96F, seed}.lerp(
+                {0.55F, 0.96F, 1.0F, seed}, intensity);
+        const auto append_quad = [&](const godot::Vector3& axis) {
+            const godot::Vector3 side = axis * width;
+            for (const auto& [position, coordinate] :
+                 std::array<std::pair<godot::Vector3, godot::Vector2>, 6>{{
+                     {lower - side, {0.0F, -1.0F}}, {upper - side, {1.0F, -1.0F}},
+                     {upper + side, {1.0F, 1.0F}},  {lower - side, {0.0F, -1.0F}},
+                     {upper + side, {1.0F, 1.0F}},  {lower + side, {0.0F, 1.0F}},
+                 }}) {
+                vertices.push_back(position);
+                uv.push_back(coordinate);
+                colors.push_back(color);
+            }
+        };
+        append_quad(to_godot(geometry.east_unit));
+        append_quad(to_godot(geometry.north_unit));
+        ++precipitation_streak_count_;
+    }
+    if (!vertices.is_empty()) {
+        godot::Array arrays;
+        arrays.resize(godot::Mesh::ARRAY_MAX);
+        arrays[godot::Mesh::ARRAY_VERTEX] = vertices;
+        arrays[godot::Mesh::ARRAY_TEX_UV] = uv;
+        arrays[godot::Mesh::ARRAY_COLOR] = colors;
+        precipitation_overlay_mesh_->add_surface_from_arrays(
+            godot::Mesh::PRIMITIVE_TRIANGLES, arrays);
+    }
+    precipitation_overlay_source_ = source;
+    precipitation_overlay_node_->set_visible(
+        view_mode_ == view_precipitation && precipitation_streak_count_ > 0);
 }
 
 void PlanetMeshNode::bind_channel_textures() {

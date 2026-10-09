@@ -106,15 +106,19 @@ func _initialize() -> void:
 		"selecting the wind overlay must not rebuild planet geometry")
 	planet.set_view_mode(8)
 	assert(planet.get_view_mode_name().contains("precipitation"))
+	assert(planet.get_precipitation_streak_count() > 0 \
+		and planet.get_precipitation_streak_count() <= 2048,
+		"precipitation view must use a bounded non-empty physical streak set")
 	assert(planet.get_geometry_revision() == revision,
 		"selecting the precipitation overlay must not rebuild planet geometry")
 	planet.next_style()
 	assert(planet.get_live_state_hash() == r3_hash,
 		"atmosphere rendering, wind rendering and style changes must not alter state")
 	var streaks: int = planet.get_wind_streak_count()
+	var rain_streaks: int = planet.get_precipitation_streak_count()
 	planet.stop_live_run()
 	planet.queue_free()
 	print("R2 live/overlay pass: cell ", picked, " anomaly ", anomaly,
 		" hash ", hash_after, "; R3 wind ", wind, " streaks ", streaks,
-		"; R4 precipitation max ", wettest)
+		"; R4 precipitation max ", wettest, " streaks ", rain_streaks)
 	quit(0)
