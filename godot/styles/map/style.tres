@@ -1,0 +1,13 @@
+[gd_resource type="PlanetStyle" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://styles/map/surface.gdshader" id="1_surface"]
+
+[resource]
+style_name = "map"
+version = 1
+author = "PlanetSim"
+license = "Project licence"
+channel_set_version = 28
+required_channels = PackedStringArray("relief", "surface_class", "daylight", "snow_cover", "sea_ice", "known", "guessed", "knowledge_age")
+surface_shader = ExtResource("1_surface")
+cost_tier = "low"

@@ -95,6 +95,7 @@ add_library(PlanetSimPresentation STATIC
 add_library(PlanetSim::Presentation ALIAS PlanetSimPresentation)
 target_include_directories(PlanetSimPresentation PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 target_link_libraries(PlanetSimPresentation PUBLIC PlanetSim::PlanetSim)
+set_target_properties(PlanetSimPresentation PROPERTIES POSITION_INDEPENDENT_CODE ON)
 planetsim_set_project_warnings(PlanetSimPresentation)
 planetsim_enable_sanitizers(PlanetSimPresentation)
 

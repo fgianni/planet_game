@@ -1,0 +1,13 @@
+[gd_resource type="PlanetStyle" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://styles/map/surface.gdshader" id="1_surface"]
+
+[resource]
+style_name = "incomplete-test-style"
+version = 1
+author = "PlanetSim test"
+license = "Project licence"
+channel_set_version = 28
+required_channels = PackedStringArray("relief")
+surface_shader = ExtResource("1_surface")
+cost_tier = "low"

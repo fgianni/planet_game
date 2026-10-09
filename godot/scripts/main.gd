@@ -8,11 +8,13 @@ extends Node3D
 @export var preset: String = "earth_like"
 @export var simulated_hours_per_second: float = 2.0
 @export var snapshot_updates_per_second: float = 12.0
+@export var presentation_frames_per_second: float = 2.0
 
 const PRESETS := ["earth_like", "aqua_planet", "dead_rock"]
 
 var _pending_simulation_ticks: float = 0.0
 var _time_since_snapshot_s: float = 0.0
+var _presentation_frame_accumulator: float = 0.0
 var _paused: bool = false
 var _dragging: bool = false
 var _yaw: float = 0.0
@@ -27,6 +29,8 @@ var _distance: float = 3.2
 
 func _ready() -> void:
 	var view := 0
+	var style := "stylised"
+	var presentation_record := ""
 	for argument in OS.get_cmdline_user_args():
 		var parts: PackedStringArray = argument.trim_prefix("--").split("=", true, 1)
 		if parts.size() != 2:
@@ -36,10 +40,15 @@ func _ready() -> void:
 			"subdivision": subdivision = parts[1].to_int()
 			"preset": preset = parts[1]
 			"view": view = parts[1].to_int()
+			"style": style = parts[1]
+			"presentation-record": presentation_record = parts[1]
 			"yaw": _yaw = parts[1].to_float()
 			"pitch": _pitch = parts[1].to_float()
 			"distance": _distance = parts[1].to_float()
 	_generate()
+	_planet.set_style(style)
+	if not presentation_record.is_empty():
+		_planet.load_presentation_record(presentation_record)
 	_planet.set_view_mode(view)
 	_update_camera()
 
@@ -51,16 +60,24 @@ func _generate() -> void:
 
 
 func _process(delta: float) -> void:
-	if not _paused:
+	if not _paused and _planet.has_presentation_record():
+		_presentation_frame_accumulator += delta * presentation_frames_per_second
+		while _presentation_frame_accumulator >= 1.0:
+			_planet.advance_presentation_frame()
+			_presentation_frame_accumulator -= 1.0
+	elif not _paused:
 		_pending_simulation_ticks += delta * simulated_hours_per_second * 60.0
 	_time_since_snapshot_s += delta
 	var update_interval_s := 1.0 / maxf(snapshot_updates_per_second, 1.0)
-	if _time_since_snapshot_s >= update_interval_s:
+	if not _planet.has_presentation_record() and _time_since_snapshot_s >= update_interval_s:
 		var whole_ticks := floori(_pending_simulation_ticks)
 		if whole_ticks > 0:
 			_planet.advance_simulation_ticks(whole_ticks)
 			_pending_simulation_ticks -= whole_ticks
-		_time_since_snapshot_s = 0.0
+			_time_since_snapshot_s = 0.0
+	var simulated_years_per_wall_second := presentation_frames_per_second / 12.0 \
+		if _planet.has_presentation_record() else simulated_hours_per_second / (24.0 * 365.24219)
+	_planet.advance_presentation(delta, simulated_years_per_wall_second)
 	_update_hud()
 
 
@@ -80,8 +97,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_update_camera()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
-			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6:
 				_planet.set_view_mode(event.keycode - KEY_1)
+			KEY_S:
+				_planet.next_style()
 			KEY_N:
 				_planet.set_day_night_shading(not _planet.get_day_night_shading())
 			KEY_R:
@@ -116,20 +135,24 @@ func _update_camera() -> void:
 func _update_hud() -> void:
 	var days: float = _planet.get_simulation_time() / 86400.0
 	var legend := "cyan: catchment/path   magenta: filled depression   pale cyan: coastal outlet" \
-		if _planet.get_view_mode() == 4 else ""
+		if _planet.get_view_mode() == 5 else ""
+	var playback := "frame %d/%d" % [
+		_planet.get_presentation_frame() + 1, _planet.get_presentation_frame_count()] \
+		if _planet.has_presentation_record() else "orbit preview"
 	_hud.text = "\n".join([
 		"PlanetSim  L%d  seed %d  preset %s" % [_planet.get_subdivision(), _planet.get_seed(), _planet.get_preset()],
-		"view: %s   day/night: %s   relief x%.0f" % [
+		"view: %s   style: %s   day/night: %s   relief x%.0f" % [
 			_planet.get_view_mode_name(),
+			_planet.get_style(),
 			"on" if _planet.get_day_night_shading() else "off",
 			_planet.get_relief_exaggeration()],
 		"plates %d   land %.1f %%   sea level %.0f m" % [
 			_planet.get_plate_count(), 100.0 * _planet.get_land_fraction(), _planet.get_sea_level()],
-		"day %.2f   %.2f sim h/s%s" % [days, simulated_hours_per_second, "  (paused)" if _paused else ""],
+		"day %.2f   %s%s" % [days, playback, "  (paused)" if _paused else ""],
 		"drainage: %d outlets   %d basins   %d depressions" % [
 			_planet.get_drainage_outlet_count(), _planet.get_drainage_basin_count(),
 			_planet.get_drainage_depression_count()],
 		legend,
-		"drag: rotate  wheel: zoom  1-5: view  N: day/night  [ ]: relief",
+		"drag: rotate  wheel: zoom  1-6: style/overlays  S: switch style  N: day/night  [ ]: relief",
 		"R: new seed  P: preset  PgUp/PgDn: resolution  Space: pause  +/-: speed",
 	])

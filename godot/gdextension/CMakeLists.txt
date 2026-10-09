@@ -1,11 +1,12 @@
 add_library(planetsim_gdextension SHARED
     entry.cpp
     planet_mesh_node.cpp
+    planet_style.cpp
 )
 
 target_link_libraries(planetsim_gdextension
     PRIVATE
-        PlanetSim::PlanetSim
+        PlanetSim::Presentation
         godot-cpp
 )
 target_include_directories(planetsim_gdextension PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

@@ -1,4 +1,5 @@
 #include "planet_mesh_node.hpp"
+#include "planet_style.hpp"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/defs.hpp>
@@ -10,6 +11,7 @@ void initialize_planetsim(godot::ModuleInitializationLevel level) {
     if (level != godot::MODULE_INITIALIZATION_LEVEL_SCENE) {
         return;
     }
+    godot::ClassDB::register_class<planetsim::godot_bridge::PlanetStyle>();
     godot::ClassDB::register_class<planetsim::godot_bridge::PlanetMeshNode>();
 }
 

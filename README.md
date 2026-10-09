@@ -502,6 +502,15 @@ godot4 --headless --editor --quit --path godot
 godot4 --path godot
 ```
 
+To view a recorded climate year through the semantic presentation channels:
+
+```bash
+./build/planet_cli run --subdivision 4 --seed 20260928 --years 1 \
+  --presentation-record /tmp/planet.pframe
+godot4 --path godot -- --subdivision=4 --seed=20260928 \
+  --presentation-record=/tmp/planet.pframe --style=stylised
+```
+
 The one-time headless editor command imports the project and registers the
 GDExtension. The extension registers `PlanetMeshNode`, which generates a
 planet with PlanetSim (default L6, about 112 km cells; `PgUp` reaches L7 at
@@ -509,28 +518,32 @@ about 56 km; seed 20260928, `earth_like`), reads the
 generated terrain once through a versioned `TerrainSnapshot` and the orbit and
 insolation every update through `StateSnapshot`, and draws the dual cells
 with exaggerated relief (the sea surface is flat at the solved sea level).
-Views: `1` terrain (elevation and land/ocean from the ADR-0005 land
-fraction), `2` plates with convergent (red), divergent (blue) and transform
-(green) boundaries, `3` crust age (young ocean red, old blue; continents
-grey), `4` top-of-atmosphere insolation, and `5` static drainage. The drainage
+Views: `1` natural semantic rendering, `2` the legacy terrain overlay,
+`3` plates with convergent (red), divergent (blue) and transform (green)
+boundaries, `4` crust age (young ocean red, old blue; continents grey), `5`
+daylight/top-of-atmosphere insolation, and `6` static drainage. Press `S` to switch
+instantly between the `stylised` and `map` packs without rebuilding the mesh.
+The drainage
 view colours land by logarithmically scaled upstream catchment area, marks
 filled depressions in magenta, shows coastal outlets in pale cyan, and draws
 each downstream edge above the surface. These are potential routing paths,
-not simulated rivers. The simulated day/night is laid over views 1--3
-(`N` toggles it); data views 4--5 are self-lit. Drag to rotate, wheel to zoom,
+not simulated rivers. The simulated day/night is laid over the natural and
+terrain views (`N` toggles it); data overlays are self-lit. Drag to rotate,
+wheel to zoom,
 `[`/`]` relief exaggeration, `R` new seed, `P` next preset,
-`PgUp`/`PgDn` resolution, `Space` pause, `+`/`-` simulation speed. The same
+`PgUp`/`PgDn` resolution, `Space` pause, `+`/`-` simulation speed. Recorded
+frames play at two frames per second by default. The same
 settings can be passed on the command line with zero-based view indices, for
-example `godot4 --path godot -- --seed=42 --subdivision=6 --view=4` opens the
-drainage view.
+example `godot4 --path godot -- --seed=42 --subdivision=6 --view=5` opens the
+drainage overlay.
 
 The visual sphere is unit-scale; authoritative geometry, time, terrain and
 forcing use SI units. Colour ramps, relief exaggeration, smooth normals and
 the corner averaging that smooths the terrain view are presentation only;
 zooming in shows the model's real resolution, with no invented detail.
-Geometry is built once per planet or view; each update uploads only the
-snapshot's per-cell insolation to a texture the shader reads, which keeps L7
-(2.9 million vertices) at the display refresh rate.
+Geometry is built once per planet. Each update uploads only changed semantic
+channels to cell-indexed textures read by the active style shader; switching
+styles reuses both the mesh and those textures.
 
 The versioned terrain snapshot also carries derived downstream, basin,
 depression and catchment values for the drainage view. It remains an
