@@ -30,6 +30,9 @@ struct AtmosphereDynamicsParameters {
     // Start from the climate mode's balanced circulation when one is
     // available (ADR-0011 §4.3), otherwise from rest.
     bool start_from_balanced_circulation = true;
+    // ADR-0021 §4.5: advect the layers' humidity with the winds (the water
+    // cycle's reference mode).
+    bool advect_humidity = false;
     SubstepRule rule;
 };
 
@@ -42,6 +45,12 @@ struct AtmosphereDynamicsDiagnostics {
     // from rest.
     bool started_from_balance = false;
     std::size_t starts = 0;
+    // The humidity's advection (ADR-0021 §4.5): the vapour before, its
+    // change (rounding), and what clipping the RK3's negative undershoots
+    // added (kg).
+    double vapour_kg = 0.0;
+    double vapour_change_kg = 0.0;
+    double clipped_kg = 0.0;
 };
 
 class AtmosphereDynamics {

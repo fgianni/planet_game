@@ -63,8 +63,8 @@ state, τ₀ refitted, the gates). Most recently completed task:
 M7 (humidity and evaporation) is in progress under ADR-0021 (accepted
 2026-10-09): M7-01 (water state, saturation, PSNAP schema 6), M7-02
 (evaporation and the bucket), M7-03 (saturation rainout), M7-04
-(humidity transport in climate mode) and M7-05 (vapour radiation) are
-complete; next is M7-06 (reference mode). Do not implement M8 or later
+(humidity transport in climate mode), M7-05 (vapour radiation) and M7-06
+(reference mode) are complete; next is M7-07 (refit and close). Do not implement M8 or later
 milestones unless explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0

@@ -66,9 +66,12 @@ namespace {
 [[nodiscard]] PrimitiveEquationState sized_like(const PrimitiveEquationState& state) {
     const auto& theta = state.mass_theta;
     const auto& u = state.normal_velocity_m_s;
+    const auto& q = state.mass_humidity;
     return {Field2D<double>(state.surface_pressure_Pa.size()),
             Field3D<double>(theta.layer_count(), theta.cell_count()),
-            Field3D<double>(u.layer_count(), u.cell_count())};
+            Field3D<double>(u.layer_count(), u.cell_count()),
+            q.layer_count() > 0U ? Field3D<double>(q.layer_count(), q.cell_count())
+                                 : Field3D<double>{}};
 }
 
 }  // namespace
@@ -172,7 +175,7 @@ PrimitiveEquationState PrimitiveEquationModel::state_at_rest(
         throw std::invalid_argument("rest state fields do not match the model");
     }
     PrimitiveEquationState state{surface_pressure_Pa, Field3D<double>(n, mesh.cell_count()),
-                                 Field3D<double>(n, mesh.edge_count(), 0.0)};
+                                 Field3D<double>(n, mesh.edge_count(), 0.0), Field3D<double>{}};
     // Θ from T needs π̄, which depends only on p_s: compute it with Θ = 1.
     for (std::size_t k = 0; k < n; ++k) {
         for (std::size_t i = 0; i < mesh.cell_count(); ++i) {
@@ -317,6 +320,48 @@ void PrimitiveEquationModel::tendency(const PrimitiveEquationState& state,
                 }
             }
         });
+
+    // The vapour (ADR-0021 §4.5): Q = μ q in flux form with upwind q on the
+    // edges and the interfaces, the limited, positive form of ADR-0002
+    // §4.2, with the same F and W as Θ.
+    if (state.mass_humidity.layer_count() == n) {
+        const auto humidity = [&](std::size_t k, std::size_t i) {
+            return state.mass_humidity.layer(k)[i] / (ps[i] / (g * n_d));
+        };
+        std::vector<double> humidity_flux(n * edges);
+        for_each_deterministic_block(
+            grid.edge_blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+                for (std::size_t e = block.begin; e < block.end; ++e) {
+                    const auto& edge = mesh.edge(edge_id(e));
+                    const std::size_t a = edge.first_cell.to_index();
+                    const std::size_t b = edge.second_cell.to_index();
+                    for (std::size_t k = 0; k < n; ++k) {
+                        const double f = flux[k * edges + e];
+                        humidity_flux[k * edges + e] = f * (f >= 0.0 ? humidity(k, a) : humidity(k, b));
+                    }
+                }
+            });
+        for_each_deterministic_block(
+            mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+                for (std::size_t i = block.begin; i < block.end; ++i) {
+                    for (std::size_t k = 0; k < n; ++k) {
+                        const double horizontal = cell_divergence(
+                            mesh, i,
+                            std::span<const double>(humidity_flux).subspan(k * edges, edges));
+                        // Upward across the layer's top and bottom, upwind;
+                        // none through the surface or the model top.
+                        const auto across = [&](std::size_t m) {
+                            if (m == 0U || m == n) {
+                                return 0.0;
+                            }
+                            const double w = vertical_flux[m * cells + i];
+                            return w * (w >= 0.0 ? humidity(m - 1U, i) : humidity(m, i));
+                        };
+                        rate.mass_humidity.layer(k)[i] = -horizontal - (across(k + 1U) - across(k));
+                    }
+                }
+            });
+    }
 
     // Corner potential vorticity and cell Bernoulli function, per layer.
     std::vector<double> corner_mass(corners);
@@ -566,6 +611,14 @@ void PrimitiveEquationModel::step(PrimitiveEquationState& state, double dt_s,
             auto o_u = out.normal_velocity_m_s.layer(k);
             for (std::size_t e = 0; e < a_u.size(); ++e) {
                 o_u[e] = a_u[e] + scale * r_u[e];
+            }
+            if (state.mass_humidity.layer_count() > 0U) {
+                const auto a_q = state.mass_humidity.layer(k);
+                const auto r_q = rate.mass_humidity.layer(k);
+                auto o_q = out.mass_humidity.layer(k);
+                for (std::size_t i = 0; i < a_q.size(); ++i) {
+                    o_q[i] = a_q[i] + scale * r_q[i];
+                }
             }
         }
     };

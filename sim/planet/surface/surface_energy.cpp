@@ -698,8 +698,11 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                                                 worker_count);
     }
     const auto& circulation_fields = state.circulation();
-    const bool has_wind = circulation_fields.available() &&
-                          circulation_fields.eastward_wind_m_s.cell_count() == cells;
+    // The climate circulation's balanced winds, or in reference mode the
+    // resolved ones (AtmosphereDynamics writes them with the water cycle).
+    const bool has_wind = circulation_fields.eastward_wind_m_s.cell_count() == cells &&
+                          circulation_fields.eastward_wind_m_s.layer_count() > 0U &&
+                          circulation_fields.northward_wind_m_s.cell_count() == cells;
     const double water_gravity = surface_gravity_m_s2(parameters);
     const double water_layers = static_cast<double>(surface.atmosphere.layer_count);
     const double water_lapse = critical_lapse_exponent(surface.atmosphere, water_gravity);

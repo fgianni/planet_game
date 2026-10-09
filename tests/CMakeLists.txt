@@ -71,6 +71,7 @@ add_planetsim_test(test_climate_circulation physics/test_climate_circulation.cpp
 add_planetsim_test(test_coupled_transport physics/test_coupled_transport.cpp)
 add_planetsim_test(test_water_cycle physics/test_water_cycle.cpp)
 add_planetsim_test(test_water_transport physics/test_water_transport.cpp)
+add_planetsim_test(test_reference_water physics/test_reference_water.cpp)
 add_planetsim_test(test_mesh_area conservation/test_mesh_area.cpp)
 add_planetsim_test(test_solar_balance conservation/test_solar_balance.cpp)
 add_planetsim_test(test_operator_conservation conservation/test_operator_conservation.cpp)

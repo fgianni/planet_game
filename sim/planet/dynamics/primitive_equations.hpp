@@ -48,6 +48,11 @@ struct PrimitiveEquationState {
     Field2D<double> surface_pressure_Pa;   // p_s, at cells
     Field3D<double> mass_theta;            // Θ_k = μ_k θ_k, layer × cell (kg K / m²)
     Field3D<double> normal_velocity_m_s;   // u_k, layer × edge
+    // Q_k = μ_k q_k, the layers' vapour (kg/m², layer × cell; ADR-0021
+    // §4.5): a passive tracer in flux form, carried upwind by the same edge
+    // mass fluxes F_k and vertical fluxes W as Θ, so the column's water is
+    // conserved. Empty: no tracer.
+    Field3D<double> mass_humidity;
 };
 
 struct PrimitiveEquationDiagnostics {

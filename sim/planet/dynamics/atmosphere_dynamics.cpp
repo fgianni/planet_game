@@ -5,6 +5,7 @@
 #include "sim/planet/dynamics/climate_circulation.hpp"
 #include "sim/planet/dynamics/orography.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <stdexcept>
@@ -138,8 +139,60 @@ void AtmosphereDynamics::step(PlanetState& state, double dt_s) {
         winds = Field3D<double>(n, mesh_->edge_count(), 0.0);
     }
     auto pe = model_state(state);
+    const auto& cells = mesh_->cells();
+    const double g = model_.parameters().gravity_m_s2;
+    const double n_d = static_cast<double>(n);
+    auto& humidity = state.slow().atmosphere_specific_humidity_kg_kg;
+    const bool water = parameters_.advect_humidity && humidity.layer_count() == n;
+    if (water) {
+        pe.mass_humidity = Field3D<double>(n, mesh_->cell_count());
+        last_.vapour_kg = 0.0;
+        for (std::size_t k = 0; k < n; ++k) {
+            for (std::size_t i = 0; i < mesh_->cell_count(); ++i) {
+                const double mass = pe.surface_pressure_Pa[i] / (g * n_d);
+                pe.mass_humidity.layer(k)[i] = mass * humidity.layer(k)[i];
+                last_.vapour_kg += cells[i].area_m2 * pe.mass_humidity.layer(k)[i];
+            }
+        }
+    }
     const double before = model_.diagnose(pe, worker_count_).energy_J();
     last_.steps = model_.advance(pe, dt_s, parameters_.rule, worker_count_);
+    if (water) {
+        double after = 0.0;
+        last_.clipped_kg = 0.0;
+        for (std::size_t k = 0; k < n; ++k) {
+            for (std::size_t i = 0; i < mesh_->cell_count(); ++i) {
+                double value = pe.mass_humidity.layer(k)[i];
+                after += cells[i].area_m2 * value;
+                if (value < 0.0) {
+                    last_.clipped_kg -= cells[i].area_m2 * value;
+                    value = 0.0;
+                }
+                humidity.layer(k)[i] = value / (pe.surface_pressure_Pa[i] / (g * n_d));
+            }
+        }
+        last_.vapour_change_kg = after - last_.vapour_kg;
+        // The derived cell winds are the resolved ones in reference mode:
+        // the evaporation's bulk wind (ADR-0021 §4.3) and the outputs.
+        auto& circulation = state.circulation();
+        if (circulation.eastward_wind_m_s.layer_count() != n ||
+            circulation.eastward_wind_m_s.cell_count() != mesh_->cell_count()) {
+            circulation.eastward_wind_m_s = Field3D<float>(n, mesh_->cell_count(), 0.0F);
+            circulation.northward_wind_m_s = Field3D<float>(n, mesh_->cell_count(), 0.0F);
+        }
+        Field2D<double> east(mesh_->cell_count());
+        Field2D<double> north(mesh_->cell_count());
+        for (std::size_t k = 0; k < n; ++k) {
+            EdgeField<double> layer(mesh_->edge_count());
+            const auto u = pe.normal_velocity_m_s.layer(k);
+            std::copy(u.begin(), u.end(), layer.values().begin());
+            reconstruct_cell_vector(*mesh_, grid_, layer, east, north, worker_count_);
+            for (std::size_t i = 0; i < mesh_->cell_count(); ++i) {
+                circulation.eastward_wind_m_s.layer(k)[i] = static_cast<float>(east[i]);
+                circulation.northward_wind_m_s.layer(k)[i] = static_cast<float>(north[i]);
+            }
+        }
+    }
     const auto after = model_.diagnose(pe, worker_count_);
     last_.kinetic_energy_J = after.kinetic_energy_J;
     last_.max_wind_m_s = after.max_wind_m_s;

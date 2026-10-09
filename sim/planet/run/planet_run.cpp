@@ -241,10 +241,11 @@ PlanetRun::PlanetRun(const Scenario& scenario, std::size_t worker_count,
     register_surface_energy(*scheduler_, state_, parameters_, surface_, fractions_, worker_count_,
                             &last_, !winds, coupled ? &circulation_->transport() : nullptr);
     if (winds) {
+        AtmosphereDynamicsParameters dynamics_parameters;
+        dynamics_parameters.advect_humidity = surface_.water_cycle;
         dynamics_ = std::make_unique<AtmosphereDynamics>(*mesh_, state_.slow(), parameters_,
                                                          surface_.atmosphere, fractions_,
-                                                         AtmosphereDynamicsParameters{},
-                                                         worker_count_);
+                                                         dynamics_parameters, worker_count_);
         register_atmosphere_dynamics(*scheduler_, state_, *dynamics_);
     }
     if (circulation_ && !coupled) {

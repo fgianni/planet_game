@@ -4,6 +4,7 @@
 #include "tests/test_support.hpp"
 
 #include <cmath>
+#include <iostream>
 #include <cstdint>
 
 // ADR-0011 V4 and V11, and the energy identity, for the dry
@@ -26,7 +27,8 @@ using planetsim::PrimitiveEquationState;
     return {Field2D<double>(state.surface_pressure_Pa.size()),
             Field3D<double>(state.mass_theta.layer_count(), state.mass_theta.cell_count()),
             Field3D<double>(state.normal_velocity_m_s.layer_count(),
-                            state.normal_velocity_m_s.cell_count())};
+                            state.normal_velocity_m_s.cell_count()),
+            Field3D<double>{}};
 }
 
 }  // namespace
@@ -81,11 +83,47 @@ int main() {
 
         // Mass is exact over a day of steps from this random state.
         const auto before = model.diagnose(state);
+        // ADR-0021 V6 in the core: a uniform humidity stays uniform, and a
+        // varying one keeps its total and stays non-negative to rounding.
+        auto uniform = state;
+        auto varying = state;
+        uniform.mass_humidity = Field3D<double>(n, cells);
+        varying.mass_humidity = Field3D<double>(n, cells);
+        const double g = parameters.gravity_m_s2;
+        double vapour_before = 0.0;
+        for (std::size_t k = 0; k < n; ++k) {
+            for (std::size_t i = 0; i < cells; ++i) {
+                const double mu = state.surface_pressure_Pa[i] / (g * static_cast<double>(n));
+                uniform.mass_humidity.layer(k)[i] = 0.01 * mu;
+                varying.mass_humidity.layer(k)[i] = 0.01 * (0.5 + noise(30, i * n + k)) * mu;
+                vapour_before += mesh.cells()[i].area_m2 * varying.mass_humidity.layer(k)[i];
+            }
+        }
         for (int step = 0; step < 20; ++step) {
             model.step(state, 120.0);
+            model.step(uniform, 120.0);
+            model.step(varying, 120.0);
         }
         const auto after = model.diagnose(state);
         PLANETSIM_EXPECT(test, std::abs(after.mass_kg - before.mass_kg) <= 1.0e-13 * before.mass_kg);
+        double spread = 0.0;
+        double vapour_after = 0.0;
+        double lowest = 0.0;
+        for (std::size_t k = 0; k < n; ++k) {
+            for (std::size_t i = 0; i < cells; ++i) {
+                const double mu = uniform.surface_pressure_Pa[i] / (g * static_cast<double>(n));
+                spread = std::max(spread, std::abs(uniform.mass_humidity.layer(k)[i] / mu / 0.01 - 1.0));
+                vapour_after += mesh.cells()[i].area_m2 * varying.mass_humidity.layer(k)[i];
+                const double mu_v = varying.surface_pressure_Pa[i] / (g * static_cast<double>(n));
+                lowest = std::min(lowest, varying.mass_humidity.layer(k)[i] / mu_v);
+            }
+        }
+        std::cout << "N=" << n << " humidity: uniform spread " << spread << ", conservation "
+                  << std::abs(vapour_after / vapour_before - 1.0) << ", lowest q " << lowest
+                  << '\n';
+        PLANETSIM_EXPECT(test, spread <= 1e-12);
+        PLANETSIM_EXPECT(test, std::abs(vapour_after / vapour_before - 1.0) <= 1e-13);
+        PLANETSIM_EXPECT(test, lowest >= -1e-6);
     }
 
     // V4: an isothermal atmosphere at rest over the terrain stays at rest.
