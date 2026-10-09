@@ -27,6 +27,8 @@ AtmosphereParameters atmosphere_parameters_for(PlanetPreset preset) noexcept {
     case PlanetPreset::earth_like:
         parameters.layer_count = 3U;
         parameters.longwave_optical_depth = earth_like_longwave_optical_depth;
+        parameters.dry_optical_depth = earth_like_dry_optical_depth;
+        parameters.vapour_absorption_m2_kg = earth_like_vapour_absorption_m2_kg;
         break;
     }
     return parameters;
@@ -53,6 +55,12 @@ void validate_atmosphere_parameters(const AtmosphereParameters& parameters) {
     if (!(parameters.linear_optical_depth_fraction >= 0.0 &&
           parameters.linear_optical_depth_fraction <= 1.0)) {
         throw std::invalid_argument("linear optical depth fraction must lie in [0, 1]");
+    }
+    if (!(parameters.dry_optical_depth >= 0.0) || !std::isfinite(parameters.dry_optical_depth) ||
+        !(parameters.vapour_absorption_m2_kg >= 0.0) ||
+        !std::isfinite(parameters.vapour_absorption_m2_kg)) {
+        throw std::invalid_argument("dry optical depth and vapour absorption must be finite and "
+                                    "non-negative");
     }
 }
 

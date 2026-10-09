@@ -2,6 +2,7 @@
 #include "sim/planet/atmosphere/atmosphere_column.hpp"
 #include "sim/planet/atmosphere/saturation.hpp"
 #include "sim/planet/planet_parameters.hpp"
+#include "sim/planet/geology/geology_parameters.hpp"
 #include "tests/test_support.hpp"
 
 #include <algorithm>
@@ -231,6 +232,45 @@ int main() {
         PLANETSIM_EXPECT(test, bounded);
         PLANETSIM_EXPECT(test, first_rain >= 0 && first_rain < 12);
         PLANETSIM_EXPECT(test, std::abs(ratio - 1.0) <= 1e-6);
+    }
+    // 5. The vapour path (ADR-0021 §4.6; task M7-05): each layer's depth is
+    // τ_d Δp / p₀ + κ_v q Δp / g, so the column's is τ_d p_s / p₀ + κ_v W.
+    {
+        planetsim::AtmosphereParameters parameters =
+            planetsim::atmosphere_parameters_for(planetsim::PlanetPreset::earth_like);
+        const double gravity =
+            planetsim::surface_gravity_m_s2(planetsim::PlanetParameters::earth_development());
+        const auto depth = [&](const planetsim::ColumnRadiation& column) {
+            double sum = 0.0;
+            for (std::size_t k = 0; k < column.layers; ++k) {
+                sum -= std::log1p(-column.emissivity[k]);
+            }
+            return sum;
+        };
+        const LayerArray dry{};
+        const LayerArray moist{0.012, 0.004, 0.001};
+        const auto none = planetsim::column_radiation(parameters, surface_pressure_Pa, gravity,
+                                                      std::span<const double>(dry.data(), 3U));
+        const auto wet = planetsim::column_radiation(parameters, surface_pressure_Pa, gravity,
+                                                     std::span<const double>(moist.data(), 3U));
+        const double dry_expected =
+            parameters.dry_optical_depth * surface_pressure_Pa / parameters.reference_pressure_Pa;
+        const double vapour_kg_m2 = (0.012 + 0.004 + 0.001) * surface_pressure_Pa / (3.0 * gravity);
+        const double wet_expected = dry_expected + parameters.vapour_absorption_m2_kg * vapour_kg_m2;
+        std::cout << "vapour path: dry depth " << depth(none) << ", wet " << depth(wet) << " ("
+                  << vapour_kg_m2 << " kg/m2)\n";
+        PLANETSIM_EXPECT(test, std::abs(depth(none) / dry_expected - 1.0) <= 1e-12);
+        PLANETSIM_EXPECT(test, std::abs(depth(wet) / wet_expected - 1.0) <= 1e-12);
+        PLANETSIM_EXPECT(test, wet.emissivity[0] > wet.emissivity[1] &&
+                                   wet.emissivity[1] > wet.emissivity[2]);
+        bool threw = false;
+        try {
+            static_cast<void>(planetsim::column_radiation(
+                parameters, surface_pressure_Pa, gravity, std::span<const double>(dry.data(), 2U)));
+        } catch (const std::invalid_argument&) {
+            threw = true;
+        }
+        PLANETSIM_EXPECT(test, threw);
     }
     return test.result();
 }

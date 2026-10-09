@@ -5,6 +5,7 @@
 - **Accepted:** 2026-10-09
 - **Amended:** 2026-10-09 — §4.3: the bulk formula's humidity is the surface air's (§10, decided with the user in task M7-03); §4.4: the condensate's freezing and the saturation adjustment after convection (§10)
 - **Amended:** 2026-10-09 — §4.5: the climate-mode solve couples the layers through their vertical fluxes; §4.2: L_s = L_v + L_f exactly; §4.3: the snow's melt-out keeps sublimating (§11, task M7-04)
+- **Amended:** 2026-10-09 — §4.6, §4.8: the vapour path's provisional constants and the feedback's bistability (§12, task M7-05)
 - **Milestone:** P0 / M7 (humidity and evaporation)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §9.3, §9.6, §13 M7–M9, §23, §24; Planetary Civilization Simulator — Design Record v1.4, §5, §15
 - **Related:** ADR-0001 (V1 water budget, V2 parity, §8 "first V2 parity tests" at M7), ADR-0003 (PSNAP migration), ADR-0006 (sub-steps), ADR-0007 (surface tiles), ADR-0008 (snow, sea ice, the prescribed-precipitation seam), ADR-0009 (implicit transport), ADR-0010 (layered atmosphere; τ's quartic vapour proxy; Γ_c), ADR-0011 (winds; "humidity advected by the same two paths"; §17's coupled transport)
@@ -315,4 +316,27 @@ within the step, it keeps sublimating U(T_s') at the new surface
 temperature, and S − U melts. The surface pays L_f S + L_v U, the
 clamped balance at the boundary. Stopping the sublimation there made the
 tile's response jump, and the column solves could not converge across it.
+
+## 12. Amendment: the vapour path's provisional constants (accepted 2026-10-09, task M7-05)
+
+The law is §4.6's: Δτ_k = τ_d Δp / p₀ + κ_v q_k Δp / g, from each
+layer's humidity at the start of the step. It applies only with the water
+cycle; otherwise τ₀'s profile stays. The first constants matter because
+the grey vapour feedback is bistable. Saturation rainout keeps the layers
+near RH 1, and the model starts with about 120 kg/m² of vapour against
+Earth's 25. On L3, coupled, over 12 years from the M6 state:
+
+| τ split (dry / vapour) | law | W_ref (kg/m²) | year 11 | vapour (kg/m²) |
+|---|---|---|---|---|
+| 0.1 / 0.9 | linear | 25 | 296 K, still drifting after a 304 K peak | 357, rising |
+| 0.1 / 0.9 | linear | 100 | 262 K | 13 |
+| 0.1 / 0.9 | √W (strong-line) | 25 | 312 K | 396, rising |
+| 0.5 / 0.5 | linear | 50 | 287 K | 51 |
+| 0.5 / 0.5 | √W | 50 | 292 K | 69 |
+
+The provisional constants are τ_d = τ₀/2 = 0.721 and
+κ_v = (τ₀/2) / 50 = 0.0144 m²/kg, the linear law kept. The refit (§4.8,
+M7-07) fits τ_d and κ_v jointly. It must start from a stable state and
+check that the fitted climate is not near the branches' edges, for
+example by perturbing the start by ±5 K.
 

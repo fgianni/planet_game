@@ -28,6 +28,11 @@ struct AtmosphereParameters {
     // in) and the share f_l of its well-mixed, linear-in-pressure part.
     double longwave_optical_depth = 0.0;
     double linear_optical_depth_fraction = 0.1;
+    // With the water cycle (ADR-0021 §4.6): τ(p) = τ_d p/p₀ + κ_v W(p), W
+    // the column's vapour mass above p, replacing τ₀'s profile; τ_d and κ_v
+    // are calibration constants (§4.8).
+    double dry_optical_depth = 0.0;           // τ_d
+    double vapour_absorption_m2_kg = 0.0;     // κ_v
     // Convective adjustment to Γ_c (§3.3 B); off only in tests of pure
     // radiative equilibrium (V2, V3).
     bool convection = true;
@@ -50,6 +55,18 @@ inline constexpr double gravitational_constant_m3_kg_s2 = 6.67430e-11;
 // (peak transport 2.83 PW): the 42 K target waits for latent and ocean
 // transport (M7, M11). M5's diffusive fit was 1.3581 with D (below).
 inline constexpr double earth_like_longwave_optical_depth = 1.442;
+
+// The vapour path's first values (ADR-0021 §4.6, task M7-05), until the
+// refit (M7-07): τ₀ split in half, τ_d = τ₀ / 2 and κ_v the other half at
+// 50 kg/m² of column vapour. On L3, coupled, 12 years from the M6 state:
+// this settles near 287 K with 51 kg/m² of vapour; vapour carrying 90% of
+// τ₀ (κ_v from Earth's 25 kg/m²) ran away to 304 K and 357 kg/m², and at
+// 100 kg/m² dried out to 262 K and 13 kg/m² (the grey vapour feedback is
+// bistable; saturation rainout keeps the layers near RH 1).
+inline constexpr double earth_like_reference_vapour_kg_m2 = 50.0;
+inline constexpr double earth_like_dry_optical_depth = 0.5 * earth_like_longwave_optical_depth;
+inline constexpr double earth_like_vapour_absorption_m2_kg =
+    0.5 * earth_like_longwave_optical_depth / earth_like_reference_vapour_kg_m2;
 
 // dead_rock and aqua_planet: no atmosphere (experiments A and B,
 // specification §13.1). earth_like: three layers (design record §15.1) of

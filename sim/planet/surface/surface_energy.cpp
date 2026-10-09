@@ -820,8 +820,21 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
         for_each_deterministic_block(
             mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
                 for (std::size_t cell = block.begin; cell < block.end; ++cell) {
-                    columns[cell] = column_radiation(
-                        atmosphere, slow.atmosphere_surface_pressure_Pa[cell], gravity);
+                    if (water) {
+                        // ADR-0021 §4.6: the vapour path, from the
+                        // humidity after the month's transport.
+                        LayerArray humidity{};
+                        for (std::size_t layer = 0; layer < layers; ++layer) {
+                            humidity[layer] =
+                                slow.atmosphere_specific_humidity_kg_kg.layer(layer)[cell];
+                        }
+                        columns[cell] = column_radiation(
+                            atmosphere, slow.atmosphere_surface_pressure_Pa[cell], gravity,
+                            std::span<const double>(humidity.data(), layers));
+                    } else {
+                        columns[cell] = column_radiation(
+                            atmosphere, slow.atmosphere_surface_pressure_Pa[cell], gravity);
+                    }
                     for (std::size_t layer = 0; layer < layers; ++layer) {
                         layers_before[cell * layers + layer] =
                             slow.atmosphere_temperature_K.layer(layer)[cell];
@@ -1605,6 +1618,9 @@ void compute_atmosphere_heating(const PlanetState& state, const PlanetParameters
     if (layers == 0U || slow.atmosphere_layer_count() != layers) {
         throw std::invalid_argument("atmosphere heating needs the state's atmosphere");
     }
+    // The vapour path where the water cycle runs (ADR-0021 §4.6).
+    const bool water = surface.water_cycle &&
+                       slow.atmosphere_specific_humidity_kg_kg.layer_count() == layers;
     validate_atmosphere_parameters(atmosphere);
     const Field2D<float>& precipitation = state.forcing().prescribed_precipitation_kg_m2_s;
     if (insolation_W_m2.size() != cells || fractions.land_fraction.size() != cells ||
@@ -1642,8 +1658,18 @@ void compute_atmosphere_heating(const PlanetState& state, const PlanetParameters
                 cell_surface.ocean_fraction = fractions.ocean_fraction[cell];
                 cell_surface.exchange = exchange;
 
+                LayerArray humidity{};
+                if (water) {
+                    for (std::size_t k = 0; k < layers; ++k) {
+                        humidity[k] = slow.atmosphere_specific_humidity_kg_kg.layer(k)[cell];
+                    }
+                }
                 const ColumnRadiation column =
-                    column_radiation(atmosphere, slow.atmosphere_surface_pressure_Pa[cell], gravity);
+                    water ? column_radiation(atmosphere, slow.atmosphere_surface_pressure_Pa[cell],
+                                             gravity,
+                                             std::span<const double>(humidity.data(), layers))
+                          : column_radiation(atmosphere, slow.atmosphere_surface_pressure_Pa[cell],
+                                             gravity);
                 LayerArray temperature{};
                 LayerArray emission{};
                 for (std::size_t k = 0; k < layers; ++k) {

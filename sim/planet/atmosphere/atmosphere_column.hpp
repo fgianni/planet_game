@@ -73,6 +73,30 @@ struct ColumnRadiation {
     return column;
 }
 
+// With the water cycle (ADR-0021 §4.6): each layer's depth is the dry part
+// τ_d Δp / p₀ and the vapour's κ_v q_k Δp / g, from its humidity at the
+// start of the step (the column solve holds it fixed).
+[[nodiscard]] inline ColumnRadiation column_radiation(const AtmosphereParameters& parameters,
+                                                      double surface_pressure_Pa,
+                                                      double gravity_m_s2,
+                                                      std::span<const double> humidity_kg_kg) {
+    ColumnRadiation column = column_radiation(parameters, surface_pressure_Pa, gravity_m_s2);
+    if (column.layers == 0U) {
+        return column;
+    }
+    if (humidity_kg_kg.size() != column.layers) {
+        throw std::invalid_argument("a column's humidity needs one value per layer");
+    }
+    const double layer_Pa = surface_pressure_Pa / static_cast<double>(column.layers);
+    const double dry = parameters.dry_optical_depth * layer_Pa / parameters.reference_pressure_Pa;
+    for (std::size_t layer = 0; layer < column.layers; ++layer) {
+        const double vapour_kg_m2 = std::max(0.0, humidity_kg_kg[layer]) * layer_Pa / gravity_m_s2;
+        column.emissivity[layer] =
+            -std::expm1(-(dry + parameters.vapour_absorption_m2_kg * vapour_kg_m2));
+    }
+    return column;
+}
+
 // The longwave of a column with layer emissions e_k = ε_k σ T_k⁴ over a
 // surface sending `upward_surface` into its base: what each layer absorbs
 // from the two streams, the downward flux at the surface and the outgoing
