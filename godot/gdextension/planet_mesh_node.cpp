@@ -203,8 +203,9 @@ void PlanetMeshNode::_bind_methods() {
         &PlanetMeshNode::advance_presentation);
     godot::ClassDB::bind_method(godot::D_METHOD("get_geometry_revision"),
                                 &PlanetMeshNode::get_geometry_revision);
-    godot::ClassDB::bind_method(godot::D_METHOD("start_live_run", "workers"),
-                                &PlanetMeshNode::start_live_run, DEFVAL(0));
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("start_live_run", "workers", "water_cycle"),
+        &PlanetMeshNode::start_live_run, DEFVAL(0), DEFVAL(false));
     godot::ClassDB::bind_method(godot::D_METHOD("stop_live_run"),
                                 &PlanetMeshNode::stop_live_run);
     godot::ClassDB::bind_method(godot::D_METHOD("has_live_run"),
@@ -556,7 +557,7 @@ void PlanetMeshNode::advance_presentation(double wall_seconds,
 
 std::int64_t PlanetMeshNode::get_geometry_revision() const noexcept { return geometry_revision_; }
 
-void PlanetMeshNode::start_live_run(std::int64_t workers) {
+void PlanetMeshNode::start_live_run(std::int64_t workers, bool water_cycle) {
     try {
         if (!mesh_) {
             throw std::logic_error("generate the planet before starting a live run");
@@ -574,6 +575,7 @@ void PlanetMeshNode::start_live_run(std::int64_t workers) {
         scenario.preset = *parsed_preset;
         scenario.seed = seed_;
         scenario.subdivision = parameters_.mesh_subdivision;
+        scenario.water_cycle = water_cycle;
         build_preview_reference();
         const std::size_t worker_count = workers > 0
             ? static_cast<std::size_t>(workers)

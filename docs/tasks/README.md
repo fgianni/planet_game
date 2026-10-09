@@ -43,6 +43,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [R4-01](R4-01-precipitation-channel.md) | Snapshot-only normalized model-precipitation channel (ADR-0018) | Complete |
 | [R4-02](R4-02-precipitation-overlay.md) | Shared animated precipitation overlay and cell readout (ADR-0018) | Complete |
 | [R4-03](R4-03-precipitation-readability.md) | Offscreen precipitation readability gate (ADR-0018) | Complete |
+| [R4-04](R4-04-live-water-preview.md) | Opt-in authoritative live-water preview for precipitation rendering (ADR-0018) | Complete |
 
 Completed tasks are records: they keep the specification and design versions
 they were written against, even after those files have left the tree. Read

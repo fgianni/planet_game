@@ -22,6 +22,7 @@ var _yaw: float = 0.0
 var _pitch: float = 0.3
 var _distance: float = 3.2
 var _selected_cell: int = -1
+var _live_water_cycle: bool = false
 
 @onready var _planet = $Planet
 @onready var _pivot: Node3D = $CameraPivot
@@ -46,6 +47,7 @@ func _ready() -> void:
 			"style": style = parts[1]
 			"presentation-record": presentation_record = parts[1]
 			"live": live = parts[1].to_lower() in ["1", "true", "yes"]
+			"water": _live_water_cycle = parts[1].to_lower() in ["1", "true", "yes"]
 			"yaw": _yaw = parts[1].to_float()
 			"pitch": _pitch = parts[1].to_float()
 			"distance": _distance = parts[1].to_float()
@@ -54,7 +56,7 @@ func _ready() -> void:
 	if not presentation_record.is_empty():
 		_planet.load_presentation_record(presentation_record)
 	elif live:
-		_planet.start_live_run()
+		_planet.start_live_run(0, _live_water_cycle)
 	_planet.set_view_mode(view)
 	_update_camera()
 
@@ -65,7 +67,7 @@ func _generate() -> void:
 	_planet.rebuild(subdivision, 6_371_000.0, world_seed, preset)
 	_selected_cell = -1
 	if resume_live:
-		_planet.start_live_run()
+		_planet.start_live_run(0, _live_water_cycle)
 	print("generated L%d seed %d (%s) in %d ms" % [subdivision, world_seed, preset, Time.get_ticks_msec() - start])
 
 
@@ -132,7 +134,7 @@ func _unhandled_input(event: InputEvent) -> void:
 					if _planet.has_presentation_record():
 						_planet.clear_presentation_record()
 					_presentation_frame_accumulator = 0.0
-					_planet.start_live_run()
+					_planet.start_live_run(0, _live_water_cycle)
 			KEY_R:
 				world_seed = randi()
 				_generate()
@@ -219,7 +221,8 @@ func _update_hud() -> void:
 		legend = "wind: streak direction follows flow   cyan slow   amber 60+ m/s"
 	elif _planet.get_view_mode() == 8:
 		legend = "precipitation: dark dry   blue light   cyan 50+ mm/day"
-	var playback := "live climate%s  hash %s" % [
+	var playback := "live climate%s%s  hash %s" % [
+		" + water" if _live_water_cycle else "",
 		" (solving)" if _planet.is_live_run_busy() else "",
 		_planet.get_live_state_hash(),
 	] if _planet.has_live_run() else "frame %d/%d" % [

@@ -98,7 +98,7 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     void advance_presentation_frame();
     void advance_presentation(double wall_seconds, double simulated_years_per_wall_second);
     [[nodiscard]] std::int64_t get_geometry_revision() const noexcept;
-    void start_live_run(std::int64_t workers = 0);
+    void start_live_run(std::int64_t workers = 0, bool water_cycle = false);
     void stop_live_run();
     [[nodiscard]] bool has_live_run() const noexcept;
     void request_live_steps(std::int64_t steps = 1);

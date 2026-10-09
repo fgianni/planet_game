@@ -523,6 +523,17 @@ frame and never waits for a climate step; the request queue is bounded so a
 slow simulation cannot accumulate presentation debt. Press `L` to start or
 stop live mode. Live mode and recorded playback are mutually exclusive.
 
+Until M7-07 closes and decides the preset default, the model water cycle is
+an explicit live-preview option:
+
+```bash
+godot4 --path godot -- --subdivision=4 --live=true --water=true --view=8
+```
+
+This runs the authoritative existing `Scenario::water_cycle` path and makes
+View 9 show real model precipitation. It is not synthetic presentation rain;
+omitting `--water=true` preserves the current dry/default scenario.
+
 The one-time headless editor command imports the project and registers the
 GDExtension. The extension registers `PlanetMeshNode`, which generates a
 planet with PlanetSim (default L6, about 112 km cells; `PgUp` reaches L7 at

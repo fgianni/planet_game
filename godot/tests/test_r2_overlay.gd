@@ -74,7 +74,7 @@ func _initialize() -> void:
 	# scheduler step publishes its physical pressure and surface winds.
 	planet.clear_presentation_record()
 	planet.rebuild(4, 6_371_000.0, 1, "earth_like")
-	planet.start_live_run(1)
+	planet.start_live_run(1, true)
 	planet.request_live_steps()
 	assert(await _wait_for_live_frame(planet),
 		"L4 live climate worker did not publish atmosphere and wind")
@@ -91,6 +91,11 @@ func _initialize() -> void:
 	var precipitation: float = planet.get_channel_value(0, "precipitation")
 	assert(is_finite(precipitation) and precipitation >= 0.0 and precipitation <= 1.0,
 		"precipitation must retain its documented normalized range")
+	var wettest: float = 0.0
+	for cell in range(2562):
+		wettest = maxf(wettest, planet.get_channel_value(cell, "precipitation"))
+	assert(wettest > 0.0,
+		"opt-in water cycle must publish at least one physically raining cell")
 	revision = planet.get_geometry_revision()
 	var r3_hash: String = planet.get_live_state_hash()
 	planet.set_view_mode(7)
@@ -111,5 +116,5 @@ func _initialize() -> void:
 	planet.queue_free()
 	print("R2 live/overlay pass: cell ", picked, " anomaly ", anomaly,
 		" hash ", hash_after, "; R3 wind ", wind, " streaks ", streaks,
-		"; R4 precipitation ", precipitation)
+		"; R4 precipitation max ", wettest)
 	quit(0)
