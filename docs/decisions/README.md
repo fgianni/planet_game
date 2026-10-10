@@ -22,6 +22,7 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0018 | [Presentation boundary, semantic channels and style packs](0018-presentation-channels-and-style-packs.md) | Accepted | 2026-10-04 |
 | 0020 | [The planet's read contract: published snapshots, field descriptors, accumulators, regions and the observation interface](0020-planet-read-contract.md) | Proposed | — |
 | 0021 | [Water vapour, evaporation, the land bucket and saturation rainout](0021-water-vapour-evaporation-and-rainout.md) | Accepted | 2026-10-09 |
+| 0022 | [Player placement, zoning and the three camera scales](0022-player-placement-zoning-and-camera-scales.md) | Proposed | — |
 
 Records cite the design record by version and section (for example "Design
 Record v0.4, §28"). The current design record is
