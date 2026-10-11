@@ -46,6 +46,12 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [R4-04](R4-04-live-water-preview.md) | Opt-in authoritative live-water preview for precipitation rendering (ADR-0018) | Complete |
 | [R4-05](R4-05-precipitation-particles.md) | Bounded GPU-animated precipitation shafts (ADR-0018) | Complete |
 | [R4-06](R4-06-render-capture.md) | Deterministic live-frame screenshot capture and CI artifact (ADR-0018) | Complete |
+| [G1-01](G1-01-industrial-dawn-scaffold.md) | Vertical slice: Industrial Dawn scaffold, 1880–1980 in the GDScript prototype (`docs/VERTICAL_SLICE.md`) | Proposed |
+| [G1-02](G1-02-routes-as-data.md) | Vertical slice: capabilities and routes as data — coal, algae, dams, with counterweights | Proposed |
+| [G1-03](G1-03-cohorts-and-grievance.md) | Vertical slice: three cohorts, grievance, trust and protest | Proposed |
+| [G1-04](G1-04-levers-promises-and-knowledge.md) | Vertical slice: levers, promise ledger, local records and climatology | Proposed |
+| [G1-05](G1-05-turn-flow-end-report-and-playtests.md) | Vertical slice: turn flow, end report, logging, balance runner and playtest kit | Proposed |
+| [G1-06](G1-06-local-scale-consequence-view.md) | Vertical slice (stretch): watch-only local scale for consequences (ADR-0022) | Proposed |
 
 Completed tasks are records: they keep the specification and design versions
 they were written against, even after those files have left the tree. Read
