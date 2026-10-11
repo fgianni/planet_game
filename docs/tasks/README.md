@@ -46,6 +46,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [R4-04](R4-04-live-water-preview.md) | Opt-in authoritative live-water preview for precipitation rendering (ADR-0018) | Complete |
 | [R4-05](R4-05-precipitation-particles.md) | Bounded GPU-animated precipitation shafts (ADR-0018) | Complete |
 | [R4-06](R4-06-render-capture.md) | Deterministic live-frame screenshot capture and CI artifact (ADR-0018) | Complete |
+| [R1-04](R1-04-continuous-globe-camera-and-terrain-tiles.md) | Continuous Earth-viewer camera, altitude bands and streamed terrain tiles (ADR-0022, proposed) | Proposed |
 
 Completed tasks are records: they keep the specification and design versions
 they were written against, even after those files have left the tree. Read
