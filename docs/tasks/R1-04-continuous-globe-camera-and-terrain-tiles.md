@@ -6,7 +6,7 @@
   with an Earth-viewer camera and a quadtree of terrain tiles, on today's
   terrain, so the player can zoom continuously from orbit to about a hundred
   metres above the ground.
-- **Governing decisions:** ADR-0022 §4.1, §4.8, V4, V9–V12; ADR-0018
+- **Governing decisions:** ADR-0022 §4.1, §4.8, V4, V9–V13; ADR-0018
   (presentation boundary, presentation RNG); ADR-0005 (sub-cell
   hypsometry); specification §31.5, §31.9
 - **Must not touch:** solvers, field meanings, PSNAP, the simulation tick;
@@ -20,8 +20,43 @@ camera at 1.3–10 planet radii with mouse-wheel zoom. Channels are uploaded
 as float textures indexed by cell. There is no level of detail, no tilt and
 no relief below cell resolution.
 
+Vertices are built in `double` and handed to Godot as 32-bit `Vector3` in
+units of the planet radius (`build_geometry`, radius 1.0). A 32-bit float
+near 1.0 resolves about 1.2 × 10⁻⁷, which is about 0.8 m on an Earth-sized
+planet. That is invisible from orbit and visible as vertex jitter, z-fighting
+and shaking camera motion at 100 m. Changing units does not help: the
+precision is relative to the distance from the origin.
+
 ## 2. What to build
 
+0. **Precision spike, first and before any tile code.** A throwaway scene
+   in `godot/tests/precision_spike/` with a flat-shaded procedural patch of
+   1 m relief placed on an Earth-radius sphere, and a camera flying from
+   orbit to 100 m and holding there while turning. Measure it twice:
+   - **(a) camera-relative rendering** in a stock Godot build: the patch's
+     vertices are stored relative to a tile origin in `double`, and each
+     frame the client sets the tile's transform to `origin − camera_position`
+     computed in `double`, so the GPU only sees small numbers. The camera
+     stays at the scene origin and the world moves around it;
+   - **(b) large-world coordinates**: the same scene in a Godot editor and
+     export templates built with `precision=double`, and the extension built
+     against a matching godot-cpp, with no camera-relative trick.
+
+   For each, capture frames with the R4-06 path and report: maximum vertex
+   screen jitter in pixels while the camera holds still at 100 m (from
+   frame differences), visible z-fighting, the shadow and depth artefacts at
+   1080p, the frame time, and for (b) the build time and any incompatibility
+   with the current extension or styles. Also check the depth buffer:
+   Godot's reverse-Z depth should be enough from 100 m to the horizon; say so
+   explicitly or note the near/far planes needed.
+
+   **Decision rule.** Pass is less than 0.5 px of jitter at 100 m, no
+   z-fighting, and a frame time inside the §31.9 budget. Choose (a) if it
+   passes: it keeps stock Godot and the existing CI. Choose (b) if only (b)
+   passes. If neither passes, stop the task and report: that is the trigger
+   to reconsider the engine for the client (PlanetSim is unaffected, since it
+   has no Godot dependency). Record the choice as an amendment to ADR-0022
+   §4.8 before writing the tile system, and build steps 1–6 on it.
 1. **Camera** (`scripts/globe_camera.gd`): drag to turn the globe; zoom
    towards the point under the cursor; tilt that follows altitude, from
    straight down in orbit to near-horizontal close to the ground, with a
@@ -51,6 +86,10 @@ them to presentation as ADR-0022 §4.6 specifies, without changing PSNAP.
 
 ## 3. Acceptance and report
 
+- **Precision (step 0):** the spike report and the chosen approach are in
+  the task's report and in ADR-0022 §4.8 before any tile code is merged; the
+  final tile system meets the same pass line (under 0.5 px of jitter at
+  100 m, no z-fighting) in the V9 flight.
 - **V4 (region and local tiles):** for sampled cells, each generated
   quantile is within 2 % of the cell's elevation range.
 - **V9:** a scripted flight from orbit to 100 m and back, captured with the

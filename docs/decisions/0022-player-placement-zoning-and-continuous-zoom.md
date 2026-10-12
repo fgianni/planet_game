@@ -312,6 +312,16 @@ Every style pack draws every band; a realistic, satellite-like pack is one
 pack among others and stays a non-goal before P1 (specification §31.12).
 Styles add only per-band assets and materials.
 
+**Precision.** Godot uses 32-bit floats for positions by default; near an
+Earth-sized planet that is about 0.8 m, enough to make terrain and camera
+jitter in the local band. The client must therefore render either camera-
+relative (tile origins and the camera kept in `double` on the CPU, with only
+small offsets reaching the GPU) or with a double-precision engine build.
+Task R1-04 step 0 measures both and records the choice here as an amendment
+before any tile code is written. If neither meets the pass line (under
+0.5 px of jitter at 100 m, no z-fighting), the engine choice for the client
+is reopened; PlanetSim is unaffected.
+
 **Budget.** The 60 frames-per-second target of §31.9 holds at every
 altitude, with tile generation and upload spread over frames.
 
@@ -332,8 +342,9 @@ altitude, with tile generation and upload spread over frames.
 | V10 | Path independence: the same tile reached by two different camera paths renders identically | determinism test |
 | V11 | 60 frames per second at L6 in the `stylised` style at three altitudes (planet, region, local), with tile generation running | performance gate (§31.9) |
 | V12 | Fog-of-knowledge blur and loading blur are distinguishable to the readability harness | readability harness (ADR-0018 §4.9) |
+| V13 | Under 0.5 px of vertex jitter with the camera holding still 100 m above the terrain, and no z-fighting | capture test (R1-04 step 0, then in the V9 flight) |
 
-V4–V7, V9 and V10 run headless on synthetic snapshots before any
+V4–V7, V9, V10 and V13 run headless on synthetic snapshots before any
 civilization state exists, so the generator and the camera can be built and
 tested on the rendering track.
 
