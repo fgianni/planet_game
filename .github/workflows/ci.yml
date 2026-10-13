@@ -186,10 +186,16 @@ jobs:
             -DGODOT_CPP_PATH="$PWD/godot-cpp"
           cmake --build build-godot --parallel 4
 
+      # Godot loads GDExtensions from .godot/extension_list.cfg, which the
+      # editor writes during its first filesystem scan; `--editor --quit`
+      # aborts that scan (4.2 has no waiting --import), so without the list
+      # PlanetMeshNode is never registered and the scripts fail to parse.
       - name: Import Godot project
-        run: >
-          xvfb-run -a ./godot4 --editor --quit --display-driver x11
-          --rendering-driver opengl3 --audio-driver Dummy --path godot
+        run: |
+          mkdir -p godot/.godot
+          printf 'res://planetsim.gdextension\n' > godot/.godot/extension_list.cfg
+          xvfb-run -a ./godot4 --editor --quit --display-driver x11 \
+            --rendering-driver opengl3 --audio-driver Dummy --path godot
 
       - name: Bridge styles, live overlays and switching (V7/V9, R2–R4)
         run: |
