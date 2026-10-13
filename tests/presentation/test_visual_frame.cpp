@@ -104,19 +104,28 @@ void check_recording_is_non_authoritative(planetsim::test::Context& test) {
         static_cast<void>(planetsim::presentation::make_visual_frame(frame, terrain, reference));
     });
     const auto path = std::filesystem::temp_directory_path() / "planetsim_r1_test.pframe";
-    planetsim::presentation::write_presentation_record(path, frames);
+    planetsim::presentation::PresentationRecord record;
+    record.mesh = planetsim::presentation::PresentationMeshDescriptor{
+        scenario.subdivision, recorded.parameters().radius_m};
+    record.terrain = recorded.terrain_snapshot();
+    record.frames = frames;
+    planetsim::presentation::write_presentation_record(path, record);
     const auto loaded = planetsim::presentation::read_presentation_record(path);
     std::filesystem::remove(path);
-    PLANETSIM_EXPECT(test, loaded.size() == frames.size());
-    PLANETSIM_EXPECT(test, !loaded.empty() &&
-                               loaded.back().top_of_atmosphere_insolation_W_m2 ==
+    PLANETSIM_EXPECT(test, loaded.is_playback_ready());
+    PLANETSIM_EXPECT(test, loaded.frames.size() == frames.size());
+    PLANETSIM_EXPECT(test, loaded.terrain.has_value() &&
+                               loaded.terrain->mean_elevation_m ==
+                                   recorded.terrain_snapshot().mean_elevation_m);
+    PLANETSIM_EXPECT(test, !loaded.frames.empty() &&
+                               loaded.frames.back().top_of_atmosphere_insolation_W_m2 ==
                                    frames.back().top_of_atmosphere_insolation_W_m2);
     // Schema 5 carries precipitation, schema 4 carries the circulation
     // (ADR-0011 §8), and an older schema 3 frame still round-trips.
     // (L1 resolves no circulation, so the fields here are set by hand.)
-    PLANETSIM_EXPECT(test, !loaded.empty() && loaded.back().schema_version == 5U &&
-                               loaded.back().sea_level_pressure_Pa.empty() &&
-                               !loaded.back().precipitation_kg_m2_s.empty());
+    PLANETSIM_EXPECT(test, !loaded.frames.empty() && loaded.frames.back().schema_version == 5U &&
+                               loaded.frames.back().sea_level_pressure_Pa.empty() &&
+                               !loaded.frames.back().precipitation_kg_m2_s.empty());
     if (!frames.empty()) {
         StateSnapshot current = frames.back();
         const std::size_t cells = current.surface_temperature_K.size();
@@ -127,14 +136,14 @@ void check_recording_is_non_authoritative(planetsim::test::Context& test) {
         planetsim::presentation::write_presentation_record(path, {current});
         const auto loaded_current = planetsim::presentation::read_presentation_record(path);
         std::filesystem::remove(path);
-        PLANETSIM_EXPECT(test, loaded_current.size() == 1U &&
-                                   loaded_current[0].sea_level_pressure_Pa ==
+        PLANETSIM_EXPECT(test, loaded_current.frames.size() == 1U &&
+                                   loaded_current.frames[0].sea_level_pressure_Pa ==
                                        current.sea_level_pressure_Pa &&
-                                   loaded_current[0].surface_eastward_wind_m_s ==
+                                   loaded_current.frames[0].surface_eastward_wind_m_s ==
                                        current.surface_eastward_wind_m_s &&
-                                   loaded_current[0].surface_northward_wind_m_s ==
+                                   loaded_current.frames[0].surface_northward_wind_m_s ==
                                        current.surface_northward_wind_m_s &&
-                                   loaded_current[0].precipitation_kg_m2_s ==
+                                   loaded_current.frames[0].precipitation_kg_m2_s ==
                                        current.precipitation_kg_m2_s);
 
         StateSnapshot circulation_only = current;
@@ -144,11 +153,11 @@ void check_recording_is_non_authoritative(planetsim::test::Context& test) {
         const auto loaded_circulation_only =
             planetsim::presentation::read_presentation_record(path);
         std::filesystem::remove(path);
-        PLANETSIM_EXPECT(test, loaded_circulation_only.size() == 1U &&
-                                   loaded_circulation_only[0].schema_version == 4U &&
-                                   loaded_circulation_only[0].surface_eastward_wind_m_s ==
+        PLANETSIM_EXPECT(test, loaded_circulation_only.frames.size() == 1U &&
+                                   loaded_circulation_only.frames[0].schema_version == 4U &&
+                                   loaded_circulation_only.frames[0].surface_eastward_wind_m_s ==
                                        circulation_only.surface_eastward_wind_m_s &&
-                                   loaded_circulation_only[0].precipitation_kg_m2_s.empty());
+                                   loaded_circulation_only.frames[0].precipitation_kg_m2_s.empty());
 
         StateSnapshot old = frames.back();
         old.schema_version = 3U;
@@ -158,9 +167,9 @@ void check_recording_is_non_authoritative(planetsim::test::Context& test) {
         planetsim::presentation::write_presentation_record(path, {old});
         const auto loaded_old = planetsim::presentation::read_presentation_record(path);
         std::filesystem::remove(path);
-        PLANETSIM_EXPECT(test, loaded_old.size() == 1U && loaded_old[0].schema_version == 3U &&
-                                   loaded_old[0].sea_level_pressure_Pa.empty() &&
-                                   loaded_old[0].surface_temperature_K == old.surface_temperature_K);
+        PLANETSIM_EXPECT(test, loaded_old.frames.size() == 1U && loaded_old.frames[0].schema_version == 3U &&
+                                   loaded_old.frames[0].sea_level_pressure_Pa.empty() &&
+                                   loaded_old.frames[0].surface_temperature_K == old.surface_temperature_K);
     }
     PLANETSIM_EXPECT(test, baseline.state_hash() == recorded.state_hash());
     const auto baseline_manifest = baseline.manifest();

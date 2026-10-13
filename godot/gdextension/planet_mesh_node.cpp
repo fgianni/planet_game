@@ -473,10 +473,18 @@ void PlanetMeshNode::load_presentation_record(const godot::String& path) {
             throw std::logic_error("generate the planet before loading a presentation record");
         stop_live_run();
         const std::filesystem::path record_path{std::string(path.utf8().get_data())};
-        auto frames = presentation::read_presentation_record(record_path);
+        presentation::PresentationRecord record = presentation::read_presentation_record(record_path);
+        auto frames = std::move(record.frames);
         if (frames.empty())
             throw std::runtime_error("presentation record contains no frames");
         const std::size_t cells = mesh_->cell_count();
+        // PFRAME02 names its mesh: it must be this planet's. (Its cached
+        // terrain could replace the node's generated one; the node keeps its
+        // own until the bridge rebuilds geometry from a record.)
+        if (record.mesh && record.terrain &&
+            record.terrain->mean_elevation_m.size() != cells) {
+            throw std::runtime_error("presentation record terrain does not match the planet");
+        }
         for (const StateSnapshot& frame : frames) {
             if (frame.top_of_atmosphere_insolation_W_m2.size() != cells) {
                 throw std::runtime_error(
