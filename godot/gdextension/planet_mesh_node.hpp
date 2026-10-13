@@ -162,6 +162,8 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     godot::PackedVector3Array vertices_;
     godot::PackedVector3Array normals_;
     godot::PackedVector2Array texels_;   // channel texel of each vertex
+    godot::PackedVector2Array texels2_;  // SURVEY: first corner's texel
+    godot::PackedFloat32Array custom0_;  // SURVEY: second corner's texel, barycentrics
     godot::PackedColorArray colors_;
     godot::PackedVector3Array drainage_vertices_;
     godot::PackedVector2Array drainage_texels_;

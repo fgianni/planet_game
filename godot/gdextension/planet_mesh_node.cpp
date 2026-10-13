@@ -879,6 +879,8 @@ void PlanetMeshNode::build_geometry() {
     vertices_.resize(static_cast<std::int64_t>(packed_size));
     normals_.resize(static_cast<std::int64_t>(packed_size));
     texels_.resize(static_cast<std::int64_t>(packed_size));
+    texels2_.resize(static_cast<std::int64_t>(packed_size));
+    custom0_.resize(static_cast<std::int64_t>(packed_size) * 4);
     std::int64_t packed = 0;
     for (const auto& cell : mesh_->cells()) {
         const std::size_t index = cell.id.to_index();
@@ -886,15 +888,25 @@ void PlanetMeshNode::build_geometry() {
         for (std::size_t k = 0; k < corners.size(); ++k) {
             const CornerIndex first = corners[k];
             const CornerIndex second = corners[(k + 1U) % corners.size()];
-            vertices_.set(packed, center_position[index]);
-            normals_.set(packed, center_normal[index].normalized());
-            texels_.set(packed++, texel_of(index));
-            vertices_.set(packed, corner_position[first]);
-            normals_.set(packed, corner_normal[first].normalized());
-            texels_.set(packed++, texel_of(cell_count + first));
-            vertices_.set(packed, corner_position[second]);
-            normals_.set(packed, corner_normal[second].normalized());
-            texels_.set(packed++, texel_of(cell_count + second));
+            // SURVEY: every vertex of the fan triangle carries the same three
+            // texel addresses (cell, first corner, second corner), so their
+            // interpolation is exact; barycentric weights ride in CUSTOM0.zw.
+            const godot::Vector2 tc = texel_of(index);
+            const godot::Vector2 t1 = texel_of(cell_count + first);
+            const godot::Vector2 t2 = texel_of(cell_count + second);
+            const float bary[3][2] = {{1.0F, 0.0F}, {0.0F, 1.0F}, {0.0F, 0.0F}};
+            const godot::Vector3 pos[3] = {center_position[index], corner_position[first], corner_position[second]};
+            const godot::Vector3 nor[3] = {center_normal[index].normalized(), corner_normal[first].normalized(), corner_normal[second].normalized()};
+            for (int v = 0; v < 3; ++v) {
+                vertices_.set(packed, pos[v]);
+                normals_.set(packed, nor[v]);
+                texels2_.set(packed, t1);
+                custom0_.set(packed * 4, t2.x);
+                custom0_.set(packed * 4 + 1, t2.y);
+                custom0_.set(packed * 4 + 2, bary[v][0]);
+                custom0_.set(packed * 4 + 3, bary[v][1]);
+                texels_.set(packed++, tc);
+            }
         }
     }
 
@@ -1004,6 +1016,8 @@ void PlanetMeshNode::upload_mesh() {
     arrays[godot::Mesh::ARRAY_NORMAL] = normals_;
     arrays[godot::Mesh::ARRAY_COLOR] = colors_;
     arrays[godot::Mesh::ARRAY_TEX_UV] = texels_;
+    arrays[godot::Mesh::ARRAY_TEX_UV2] = texels2_;
+    arrays[godot::Mesh::ARRAY_CUSTOM0] = custom0_;
     if (rendered_mesh_.is_null()) {
         rendered_mesh_.instantiate();
         set_mesh(rendered_mesh_);
@@ -1013,7 +1027,8 @@ void PlanetMeshNode::upload_mesh() {
         set_material_override(material_);
     }
     rendered_mesh_->clear_surfaces();
-    rendered_mesh_->add_surface_from_arrays(godot::Mesh::PRIMITIVE_TRIANGLES, arrays);
+    rendered_mesh_->add_surface_from_arrays(godot::Mesh::PRIMITIVE_TRIANGLES, arrays, godot::Array(), godot::Dictionary(),
+        static_cast<godot::BitField<godot::Mesh::ArrayFormat>>(static_cast<int64_t>(godot::Mesh::ARRAY_CUSTOM_RGBA_FLOAT) << godot::Mesh::ARRAY_FORMAT_CUSTOM0_SHIFT));
     if (view_mode_ == view_drainage) {
         godot::Array drainage_arrays;
         drainage_arrays.resize(godot::Mesh::ARRAY_MAX);
