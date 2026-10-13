@@ -2139,6 +2139,15 @@ question is cheap there and expensive in C++:
     becomes local housekeeping and the global story disappears (design v0.9 §36.4)?
     This is open question 1 of section 27 and only a playtest can close it.
 
+The queue is built into one playable target, the **Industrial Dawn vertical
+slice** (`docs/VERTICAL_SLICE.md`, proposed 2026-10-11): one region from 1880
+to 1980, two capabilities reached by three planet-dependent routes, three
+cohorts, four levers and the first two knowledge stages. It answers items 1,
+3 and 5 above, adds route, counterweight and promise questions, and carries
+a cut list that tags every section of this specification it touches as
+slice, alpha or later. Its tasks are G1-01 to G1-06. It runs in the GDScript
+prototype only and never changes PlanetSim.
+
 ## 26. Current implementation status and outstanding migration tasks
 
 Status (2026-10-08): M0 through M6 complete. Climate mode's balanced
