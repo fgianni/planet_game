@@ -61,6 +61,7 @@ VisualFrame make_visual_frame(const StateSnapshot& snapshot, const TerrainSnapsh
 
     VisualFrame frame;
     frame.tick = snapshot.simulation_tick;
+    frame.sun_direction_body_unit = snapshot.sun_direction_body_unit;
     auto& relief = frame.channels[index(ChannelId::relief)].values;
     auto& surface_class = frame.channels[index(ChannelId::surface_class)].values;
     auto& daylight = frame.channels[index(ChannelId::daylight)].values;

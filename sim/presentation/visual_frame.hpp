@@ -40,6 +40,9 @@ struct VisualFrame {
     SimulationTick tick = 0;
     std::array<ChannelData, channel_count> channels;
     std::vector<VisualEvent> events;
+    // Direction to the sun in the planet's frame, for lighting: like events
+    // it is frame-level, not a per-cell channel, and is not smoothed.
+    Vec3d sun_direction_body_unit{1.0, 0.0, 0.0};
 };
 
 // Built from one complete recorded orbital year. The annual maximum is the

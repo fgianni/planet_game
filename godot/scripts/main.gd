@@ -20,6 +20,14 @@ var _paused: bool = false
 var _dragging: bool = false
 var _yaw: float = 0.0
 var _pitch: float = 0.3
+var _view_given := false # --yaw or --pitch; otherwise start on the day side
+
+# The camera's light: a soft fill beside the planet's own sun with day/night
+# shading, the only light without it.
+const FILL_WITH_SUN := 0.25
+const FILL_ALONE := 0.8
+# Start the view this far from the subsolar point, so relief shades.
+const DAY_SIDE_OFFSET := 0.6 # rad
 var _distance: float = 3.2
 var _selected_cell: int = -1
 var _live_water_cycle: bool = false
@@ -31,6 +39,7 @@ var _capture_generation: int = 0
 @onready var _planet = $Planet
 @onready var _pivot: Node3D = $CameraPivot
 @onready var _camera: Camera3D = $CameraPivot/Camera3D
+@onready var _fill: DirectionalLight3D = $CameraPivot/Camera3D/Light
 @onready var _hud: Label = $Hud/Info
 
 
@@ -55,8 +64,12 @@ func _ready() -> void:
 			"screenshot": _screenshot_path = parts[1]
 			"quit-after-screenshot": _quit_after_screenshot = \
 				parts[1].to_lower() in ["1", "true", "yes"]
-			"yaw": _yaw = parts[1].to_float()
-			"pitch": _pitch = parts[1].to_float()
+			"yaw":
+				_yaw = parts[1].to_float()
+				_view_given = true
+			"pitch":
+				_pitch = parts[1].to_float()
+				_view_given = true
 			"distance": _distance = parts[1].to_float()
 	_generate()
 	_planet.set_style(style)
@@ -65,7 +78,20 @@ func _ready() -> void:
 	elif live:
 		_planet.start_live_run(0, _live_water_cycle)
 	_planet.set_view_mode(view)
+	if not _view_given:
+		_face_day_side()
+	_update_lighting()
 	_update_camera()
+
+
+func _face_day_side() -> void:
+	var sun: Vector3 = _planet.get_sun_direction()
+	_pitch = clampf(asin(clampf(sun.y, -1.0, 1.0)), -1.2, 1.2)
+	_yaw = atan2(sun.x, sun.z) + DAY_SIDE_OFFSET
+
+
+func _update_lighting() -> void:
+	_fill.light_energy = FILL_WITH_SUN if _planet.get_day_night_shading() else FILL_ALONE
 
 
 func _generate() -> void:
@@ -140,6 +166,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				_planet.next_style()
 			KEY_N:
 				_planet.set_day_night_shading(not _planet.get_day_night_shading())
+				_update_lighting()
 			KEY_L:
 				if _planet.has_live_run():
 					_planet.stop_live_run()

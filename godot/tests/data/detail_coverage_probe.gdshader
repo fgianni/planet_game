@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode unshaded, cull_disabled; // the fans are not wound for culling
+render_mode unshaded, cull_back;
 
 // Test-only probe for test_detail_coverage.gd: draws the coverages of
 // surface_detail.gdshaderinc, the code the style packs draw with.

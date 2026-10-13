@@ -45,9 +45,13 @@ void check_channels(planetsim::test::Context& test) {
     frames[0].precipitation_kg_m2_s = {
         0.0F, 0.5F * planetsim::presentation::precipitation_display_maximum_kg_m2_s,
         2.0F * planetsim::presentation::precipitation_display_maximum_kg_m2_s};
+    frames[0].sun_direction_body_unit = {0.0, 0.6, 0.8};
     const auto reference = planetsim::presentation::make_presentation_reference(frames);
     const auto cold = planetsim::presentation::make_visual_frame(frames[0], terrain, reference);
     const auto warm = planetsim::presentation::make_visual_frame(frames[1], terrain, reference);
+    // The sun's direction reaches the frame for lighting, unchanged.
+    PLANETSIM_EXPECT(test, cold.sun_direction_body_unit.y == 0.6 &&
+                               cold.sun_direction_body_unit.z == 0.8);
     PLANETSIM_EXPECT(test, cold.channels[channel(ChannelId::daylight)].values[0] == 1.0F);
     PLANETSIM_EXPECT(test, cold.channels[channel(ChannelId::daylight)].values[1] == 0.0F);
     PLANETSIM_EXPECT(test, cold.channels[channel(ChannelId::relief)].values[0] == 0.0F);

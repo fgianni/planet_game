@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode unshaded, cull_disabled; // the fans are not wound for culling
+render_mode unshaded, cull_back; // also checks the fans face outward
 
 // Test-only probe for test_cell_texels.gd: shows the texel addresses the
 // planet mesh hands a style, not any channel's appearance.

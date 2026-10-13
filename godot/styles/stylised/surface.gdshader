@@ -56,7 +56,7 @@ void fragment() {
 	float grain = detail_field(direction, detail_seed_texture);
 
 	float highland = smoothstep(500.0, 4200.0, relief);
-	vec3 water = mix(vec3(0.018, 0.075, 0.20), vec3(0.08, 0.31, 0.54), smoothstep(-6000.0, 0.0, relief));
+	vec3 water = mix(vec3(0.03, 0.11, 0.27), vec3(0.08, 0.31, 0.54), smoothstep(-6000.0, 0.0, relief));
 	vec3 rock = mix(vec3(0.36, 0.30, 0.28), vec3(0.68, 0.65, 0.60), highland);
 	vec3 sand = vec3(0.78, 0.64, 0.34);
 	vec3 soil = mix(vec3(0.25, 0.54, 0.20), vec3(0.52, 0.43, 0.20), highland);
@@ -70,8 +70,10 @@ void fragment() {
 	base *= 1.0 + amount * 0.24 * (grain - 0.47);
 	base = mix(base, vec3(0.49, 0.51, 0.53), 0.42 * guessed + 0.28 * age);
 	base *= mix(0.42, 1.0, known);
+	// Day/night: the bridge's sun light shades the day side towards the
+	// terminator; daylight keeps the night side dark under the fill light.
 	if (day_night) {
-		base *= 0.13 + 0.87 * sqrt(daylight);
+		base *= mix(0.25, 1.0, smoothstep(0.0, 0.12, daylight));
 	}
 
 	// Fine relief on land at region scale (surface-gradient bump).
@@ -82,7 +84,7 @@ void fragment() {
 	vec3 r2 = cross(NORMAL, dpdx);
 	float det = dot(dpdx, r1);
 	vec3 gradient = (dFdx(bump) * r1 + dFdy(bump) * r2) / max(abs(det), 1e-12) * sign(det);
-	NORMAL = normalize(NORMAL - gradient * 60.0);
+	NORMAL = normalize(NORMAL - gradient * 8.0);
 
 	float air_mass = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
 	base = mix(base, vec3(0.18, 0.55, 0.96), 0.38 * atmosphere * air_mass);
@@ -90,5 +92,5 @@ void fragment() {
 		base = srgb_to_linear(base);
 	}
 	ALBEDO = base;
-	ROUGHNESS = mix(0.88, 0.35, amount * open_water * (1.0 - floe));
+	ROUGHNESS = mix(0.88, 0.6, amount * open_water * (1.0 - floe));
 }

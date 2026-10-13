@@ -8,6 +8,7 @@
 #include "planet_style.hpp"
 
 #include <godot_cpp/classes/array_mesh.hpp>
+#include <godot_cpp/classes/directional_light3d.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
@@ -84,6 +85,7 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     [[nodiscard]] double get_relief_exaggeration() const noexcept;
     void set_day_night_shading(bool enabled);
     [[nodiscard]] bool get_day_night_shading() const noexcept;
+    [[nodiscard]] godot::Vector3 get_sun_direction() const;
     void set_style(const godot::String& style_name);
     void next_style();
     void reload_styles();
@@ -132,6 +134,7 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     void refresh();
     void build_preview_reference();
     void load_styles();
+    void update_sun_light();
     [[nodiscard]] godot::String validate_style(const godot::Ref<PlanetStyle>& style) const;
     void apply_render_material();
     void set_visual_frame(presentation::VisualFrame frame, bool reset_smoothing);
@@ -174,6 +177,7 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     godot::Ref<godot::ArrayMesh> rendered_mesh_;
     godot::Ref<godot::ShaderMaterial> material_;
     godot::Ref<godot::Shader> overlay_shader_;
+    godot::DirectionalLight3D* sun_light_ = nullptr; // from the frame's sun, with day/night
     godot::MeshInstance3D* wind_overlay_node_ = nullptr;
     godot::Ref<godot::ArrayMesh> wind_overlay_mesh_;
     godot::Ref<godot::ShaderMaterial> wind_overlay_material_;

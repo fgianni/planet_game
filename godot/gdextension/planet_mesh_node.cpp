@@ -82,6 +82,7 @@ struct ColorStop {
 }
 
 constexpr std::int32_t channel_texture_width = 2048;
+constexpr double sun_light_energy = 1.0;
 
 [[nodiscard]] std::size_t channel_index(presentation::ChannelId id) {
     return static_cast<std::size_t>(id) - 1U;
@@ -178,6 +179,8 @@ void PlanetMeshNode::_bind_methods() {
                                 &PlanetMeshNode::set_day_night_shading);
     godot::ClassDB::bind_method(godot::D_METHOD("get_day_night_shading"),
                                 &PlanetMeshNode::get_day_night_shading);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_sun_direction"),
+                                &PlanetMeshNode::get_sun_direction);
     godot::ClassDB::bind_method(godot::D_METHOD("set_style", "style_name"),
                                 &PlanetMeshNode::set_style);
     godot::ClassDB::bind_method(godot::D_METHOD("next_style"), &PlanetMeshNode::next_style);
@@ -429,6 +432,31 @@ void PlanetMeshNode::set_day_night_shading(bool enabled) {
 }
 
 bool PlanetMeshNode::get_day_night_shading() const noexcept { return day_night_shading_; }
+
+godot::Vector3 PlanetMeshNode::get_sun_direction() const {
+    return to_godot(target_frame_.sun_direction_body_unit).normalized();
+}
+
+// With day/night shading the planet is lit by its own sun, from the frame's
+// sun direction in the planet's frame, so relief shades towards the
+// terminator the simulation computes. The light is the node's child: it
+// turns with the planet.
+void PlanetMeshNode::update_sun_light() {
+    if (sun_light_ == nullptr) {
+        sun_light_ = memnew(godot::DirectionalLight3D);
+        sun_light_->set_name("Sun");
+        add_child(sun_light_);
+    }
+    const godot::Vector3 sun = get_sun_direction();
+    if (sun.length_squared() > 0.5F) {
+        const godot::Vector3 up = std::abs(sun.y) > 0.99F ? godot::Vector3(1, 0, 0)
+                                                           : godot::Vector3(0, 1, 0);
+        // A DirectionalLight3D shines along its -Z axis, away from the sun.
+        sun_light_->set_transform(godot::Transform3D(godot::Basis::looking_at(-sun, up)));
+    }
+    sun_light_->set_param(godot::Light3D::PARAM_ENERGY, sun_light_energy);
+    sun_light_->set_visible(day_night_shading_);
+}
 
 void PlanetMeshNode::set_style(const godot::String& style_name) {
     if (styles_.empty())
@@ -914,7 +942,11 @@ void PlanetMeshNode::build_geometry() {
             const float bary[3][2] = {{1.0F, 0.0F}, {0.0F, 1.0F}, {0.0F, 0.0F}};
             const godot::Vector3 pos[3] = {center_position[index], corner_position[first], corner_position[second]};
             const godot::Vector3 nor[3] = {center_normal[index].normalized(), corner_normal[first].normalized(), corner_normal[second].normalized()};
-            for (int v = 0; v < 3; ++v) {
+            // Godot's front faces wind clockwise seen from outside, the
+            // corners run anticlockwise: emit centre, second, first. Wound
+            // the other way, every fragment is a back face, its normal points
+            // inward and no light reaches the surface.
+            for (const int v : {0, 2, 1}) {
                 vertices_.set(packed, pos[v]);
                 normals_.set(packed, nor[v]);
                 texels2_.set(packed, t1);
@@ -1062,6 +1094,8 @@ void PlanetMeshNode::update_shader_flags() {
         return;
     }
     material_->set_shader_parameter("day_night", day_night_shading_);
+    if (sun_light_ != nullptr)
+        sun_light_->set_visible(day_night_shading_);
     // Sub-cell detail (surface_detail.gdshaderinc): its scale follows the
     // mesh and its noise the world, drawn from the presentation stream.
     if (mesh_) {
@@ -1234,8 +1268,10 @@ void PlanetMeshNode::set_visual_frame(presentation::VisualFrame frame, bool rese
         displayed_frame_.channels[channel_index(presentation::ChannelId::relief)].values.empty()) {
         target_frame_ = frame;
         displayed_frame_ = std::move(frame);
+        update_sun_light();
     } else {
         target_frame_ = std::move(frame);
+        update_sun_light();
         displayed_frame_.tick = target_frame_.tick;
         displayed_frame_.events = target_frame_.events;
         for (std::size_t index = 0; index < presentation::channel_count; ++index) {
