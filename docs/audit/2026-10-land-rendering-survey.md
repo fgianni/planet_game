@@ -143,6 +143,6 @@ The first four steps fit the current R-track rules with no ADR change and no sol
 | 5 | `potential_biome` channel (road B) | ADR-0018 amendment, `sim/presentation`, presentation snapshot | headless direction tests (wet/warm → forest, dry → desert) |
 | 6 | Tree and boulder instancing, `assets` in the manifest | bridge, `PlanetStyle`, both styles | density-vs-channel test; frame budget of §31.9 at L6 |
 
-Open question: should step 5 be road B now, or do you prefer to hold forests for M10 and keep the planet strictly to authoritative fields?
+Decided 13 Oct 2026: forests are held for M10 (road A). Step 5 is not pursued, no `potential_biome` channel is added, and the planet stays strictly to authoritative fields; tree instancing in step 6 waits for `vegetation_vigour`.
 
 Files from this survey: `exact-interpolation.patch` (step 1) landed in `0f7fa97`, with `godot/shaders/surface_detail.gdshader` (step 3 prototype).
