@@ -47,7 +47,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [R4-04](R4-04-live-water-preview.md) | Opt-in authoritative live-water preview for precipitation rendering (ADR-0018) | Complete |
 | [R4-05](R4-05-precipitation-particles.md) | Bounded GPU-animated precipitation shafts (ADR-0018) | Complete |
 | [R4-06](R4-06-render-capture.md) | Deterministic live-frame screenshot capture and CI artifact (ADR-0018) | Complete |
-| [R1-04](R1-04-continuous-globe-camera-and-terrain-tiles.md) | Continuous Earth-viewer camera, altitude bands and streamed terrain tiles (ADR-0022, proposed) | Proposed |
+| [R1-04](R1-04-continuous-globe-camera-and-terrain-tiles.md) | Continuous Earth-viewer camera, altitude bands and streamed terrain tiles (ADR-0022) | Ready |
 | [G1-01](G1-01-industrial-dawn-scaffold.md) | Vertical slice: Industrial Dawn scaffold, 1880–1980 in the GDScript prototype (`docs/VERTICAL_SLICE.md`) | Proposed |
 | [G1-02](G1-02-routes-as-data.md) | Vertical slice: capabilities and routes as data — coal, algae, dams, with counterweights | Proposed |
 | [G1-03](G1-03-cohorts-and-grievance.md) | Vertical slice: three cohorts, grievance, trust and protest | Proposed |

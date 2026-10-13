@@ -3491,15 +3491,20 @@ sequence.
 
 ### 31.5 Camera scales and procedural detail
 
-| Scale | Geometry | Detail |
-|---|---|---|
-| Planet | the cell mesh at the shipped level, corners interpolated | none beyond channels |
-| Region | the same mesh, refined in view | procedural detail from channels |
-| Local | a generated patch for a few cells | procedural detail and assets |
+The three scales are altitude bands of one continuous Earth-viewer camera
+(ADR-0022 §4.8); the bands blend, and the player never leaves the globe.
 
-Procedural detail uses a presentation RNG stream keyed by
-`(world_seed, cell_id, detail_kind)`, separate from every simulation stream,
-so the same place always looks the same. Detail must respect its cell:
+| Band | Altitude | Geometry | Detail |
+|---|---|---|---|
+| Planet | above about 10 cell sizes | the cell mesh at the shipped level, corners interpolated | none beyond channels |
+| Region | about 30 km to 10 cell sizes | streamed terrain tiles, refined in view | procedural detail from channels |
+| Local | below about 30 km; watch-only | streamed terrain tiles constrained by the cell's hypsometry | procedural detail and assets |
+
+Procedural detail uses a presentation RNG stream separate from every
+simulation stream, so the same place always looks the same. A spatial
+detail field is keyed by `(world_seed, detail_kind)` and sampled by position
+on the sphere (ADR-0022 §4.9); `(world_seed, cell_id, detail_kind)` keys
+only per-cell choices that are not spatial fields. Detail must respect its cell:
 tree density follows `vegetation_vigour`, snow follows `snow_cover`,
 buildings follow `urban`. A test samples generated detail and asserts it
 never contradicts the channel values beyond a tolerance.
@@ -3562,14 +3567,14 @@ step lands with or after the milestone that provides its fields.
 | Track | Content | Needs | Acceptance |
 |---|---|---|---|
 | R0 | Existing terrain, plates, crust age, insolation, drainage views | M0--M3 | done |
-| R1 | `sim/presentation`, `VisualFrame`, channels R0--R2, style packs, `stylised` and `map` styles, switching, readability harness, render-does-not-change-state test | ADR-0018 | both styles pass the R1 signals; switching is instant |
+| R1 | `sim/presentation`, `VisualFrame`, channels R0--R2, style packs, `stylised` and `map` styles, switching, readability harness, render-does-not-change-state test; the continuous globe camera and terrain tiles (R1-04) | ADR-0018, ADR-0022 | both styles pass the R1 signals; switching is instant; ADR-0022 V4, V9--V11, V13 |
 | R2 | Snow, sea ice, temperature-anomaly overlay | M4 | cold and warm years distinguishable in both styles |
 | R3 | Atmosphere scattering, wind particles | M5, M6 | wind patterns visible; no frame waits on the simulation |
 | R4 | Clouds, precipitation | M7, M8 | cloud bands and a cyclone distinguishable; clouds sit where the fields put them |
 | R5 | Rivers, floods, moving coastlines, vegetation, dryness | M9, M10 | drought, flood and deforestation signals pass |
 | R6 | Ocean tint, currents | M11 | current patterns and a bloom are distinguishable |
 | R7 | Haze, volcanic veil, fire, event staging | M12--M15 | smog, eruption and fire signals pass; staging never changes ticks |
-| R8 | Civilization footprint, camera scales, society views, newspaper, reports, debrief | P1 onward | footprint signals pass; detail never contradicts channels |
+| R8 | Civilization footprint, sites and the local band's city views, society views, newspaper, reports, debrief | P1 onward | footprint signals pass; detail never contradicts channels |
 
 The old M14 obligation ("render authoritative temperature, wind, currents,
 precipitation, soil moisture, vegetation, snow/ice, clouds, SST and energy
@@ -3581,6 +3586,9 @@ section 31.7.
 ADR-0018 (section 26.1) decides the `sim/presentation` library, the channel
 registry and its versioning, the style manifest and its validation, the
 presentation RNG stream, and the readability threshold. It blocks R1.
+ADR-0022 (accepted 2026-10-13) decides what the player places and paints,
+the altitude bands of one continuous camera, the terrain tiles, the site
+list and detail keyed by position. It blocks R1-04.
 
 ### 31.12 Non-goals
 

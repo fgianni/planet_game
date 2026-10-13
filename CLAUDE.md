@@ -47,7 +47,10 @@ The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is
 [`docs/tasks/R1-01-presentation-library-and-channels.md`](docs/tasks/R1-01-presentation-library-and-channels.md),
 under ADR-0018 (accepted 2026-10-04). It may proceed alongside the P0 milestones, but
-must never change a solver, a field's meaning or the PSNAP format.
+must never change a solver, a field's meaning or the PSNAP format. Its next
+task is [`docs/tasks/R1-04-continuous-globe-camera-and-terrain-tiles.md`](docs/tasks/R1-04-continuous-globe-camera-and-terrain-tiles.md),
+under ADR-0022 (accepted 2026-10-13), which starts with its precision spike
+(step 0).
 
 When starting work, first audit the repository and propose the concrete
 implementation plan for the current milestone against the specification. Then implement in

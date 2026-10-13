@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-04
 - **Accepted:** 2026-10-04
-- **Amended:** 2026-10-12 — §11: asset sourcing, licences and the public/restricted split (proposed)
+- **Amended:** 2026-10-12 — §11: asset sourcing, licences and the public/restricted split (proposed); 2026-10-13 — §4.1 and §4.8 by ADR-0022 (accepted): the site list, detail keyed by position
 - **Milestone:** rendering track R1 (specification §31.10), in parallel with P0 / M6
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_8.md` §2, §3, §7, §8 (pacing is presentation), §17.2, §31, §32.9; Planetary Civilization Simulator — Design Record v1.3, §3.4, §21.4, §42, §44.8
 - **Related:** ADR-0002 (mesh, cell and corner layout), ADR-0003 (snapshots, history store, determinism scope), ADR-0005 (land fraction, hypsometry), ADR-0008 (snow and sea-ice cover), ADR-0012 and ADR-0019 (not yet written; this record reserves their channels)
@@ -110,6 +110,7 @@ struct VisualFrame {
     // One entry per channel; absent channels have an empty value vector.
     std::array<ChannelData, channel_count> channels;  // cell-major float32
     std::vector<VisualEvent> events;                   // empty in R1
+    std::vector<VisualSite> sites;                     // ADR-0022 §4.5; added with the first sites (P1)
 };
 
 [[nodiscard]] VisualFrame make_visual_frame(const StateSnapshot&,
@@ -198,10 +199,15 @@ unsmoothed. Smoothing is presentation state, never snapshotted.
 
 ### 4.8 Presentation randomness
 
-Procedural detail uses a presentation stream keyed by
-`(world_seed, cell_id, detail_kind)` through the counter RNG, with stream
-ids in a reserved presentation range that no simulation stream may use.
-R1 uses it only if a style needs per-cell variation.
+Procedural detail uses a presentation stream through the counter RNG, with
+stream ids in a reserved presentation range that no simulation stream may
+use. R1 uses it only if a style needs per-cell variation.
+
+*Amended by ADR-0022 §4.9 (2026-10-13):* a spatial detail field is keyed by
+`(world_seed, detail_kind)` and sampled by position on the sphere, so it
+has no seam at cell edges and does not depend on a tile or its level. The
+key `(world_seed, cell_id, detail_kind)` remains for per-cell choices that
+are not spatial fields, such as a site's position among its candidates.
 
 ### 4.9 Readability threshold
 

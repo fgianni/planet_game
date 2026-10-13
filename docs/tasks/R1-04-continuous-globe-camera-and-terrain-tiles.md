@@ -1,7 +1,7 @@
 # Task R1-04 — Continuous globe camera and streamed terrain tiles
 
 - **Track:** rendering (specification §31.10), in parallel with P0 / M7
-- **Status:** proposed (2026-10-11); may start when ADR-0022 is accepted
+- **Status:** ready (ADR-0022 accepted 2026-10-13)
 - **Scope:** replace the client's single fixed planet mesh and orbit camera
   with an Earth-viewer camera and a quadtree of terrain tiles, on today's
   terrain, so the player can zoom continuously from orbit to about a hundred
@@ -72,7 +72,9 @@ precision is relative to the distance from the origin.
    `(world_seed, detail_kind = terrain)` and sampled by position, mapped
    through each cell's inverse hypsometry so its area–elevation
    distribution still matches its nine quantiles. No tile or cell seeds
-   anything. Neighbouring tiles of different levels are stitched (skirts or
+   anything. The quantiles reach the client as `TerrainSnapshot::hypsometry_m`
+   (nine floats per cell, ADR-0022 §4.6), a presentation copy of slow-state
+   data; PSNAP does not change. Neighbouring tiles of different levels are stitched (skirts or
    edge morphing) so there are no cracks.
 4. **Selection and streaming**: tiles chosen by screen-space error;
    generated on worker threads; cached with a bounded memory budget; a
