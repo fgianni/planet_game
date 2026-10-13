@@ -1,11 +1,11 @@
 # ADR-0022 — Player placement, zoning and a continuous Earth-viewer camera
 
 - **Status:** Proposed
-- **Date:** 2026-10-10; revised 2026-10-11 (the three camera scales become altitude bands of one continuous view, §4.8)
+- **Date:** 2026-10-10; revised 2026-10-11 (the three camera scales become altitude bands of one continuous view, §4.8); revised 2026-10-13 after review (detail is a function of position, §4.9; the history slider's data, §4.8)
 - **Milestone:** none in P0. The presentation parts may be prototyped on the rendering track (R5, R8) against synthetic frames; the command and state parts must not be implemented before ADR-0012 (society state and regions) and ADR-0014 (player commands) are accepted.
 - **Context documents:** Design Record v1.4 §8.4 (the player's identity), §42.5 (camera scales), §42.6 (civilization on the planet), §42.8 (staging events), §46.2 (what we avoid from Civ), §46.8 (player levers as government); `docs/DEVELOPMENT_SPEC_v0_8.md` §9.10, §18.1, §26.1 items 5 and 7, §31.2, §31.5–§31.7
 - **Related:** ADR-0005 (sub-cell hypsometry), ADR-0012 and ADR-0014 (reserved, not yet written), ADR-0018 (presentation boundary, channels, presentation RNG), ADR-0019 (reserved: fog of knowledge)
-- **Amends on acceptance:** ADR-0018 §4.1 (`VisualFrame` gains a site list, §4.5 below); the presentation `TerrainSnapshot` gains the per-cell hypsometry (§4.6); specification §31.5 (the camera-scale table becomes the altitude bands of §4.8) and §31.10 (the camera part of R8 moves to task R1-04, which needs only M2 terrain). Neither PSNAP nor any solver changes.
+- **Amends on acceptance:** ADR-0018 §4.1 (`VisualFrame` gains a site list, §4.5 below) and §4.8 (procedural detail is keyed by `(world_seed, detail_kind)` and sampled by position, not keyed by cell, §4.9); the presentation `TerrainSnapshot` gains the per-cell hypsometry (§4.6); specification §31.5 (the camera-scale table becomes the altitude bands of §4.8, and its presentation RNG key changes as in ADR-0018 §4.8) and §31.10 (the camera part of R8 moves to task R1-04, which needs only M2 terrain). Neither PSNAP nor any solver changes.
 
 ## 1. Context
 
@@ -55,7 +55,8 @@ view (§4.8); what the player may do in each band is unchanged.
 - **The 0.5 prototype** placed buildings directly on cells. That is the
   behaviour this record replaces.
 - **The Godot client** (`godot/`) builds one `ArrayMesh` for the whole planet
-  at a fixed subdivision (`PlanetMeshNode::rebuild`, default L5) and orbits a
+  at a fixed subdivision (`PlanetMeshNode::rebuild`, default L5; L6 since
+  the land rendering survey) and orbits a
   camera at 1.3 to 10 planet radii (`scripts/main.gd`). There is no level of
   detail, no tilt and no terrain below cell resolution: a continuous view
   needs all three.
@@ -167,8 +168,10 @@ capacity    kind-specific, SI units
   tagged at source (§9.10; design §46.2), land-use fractions, and for a dike the
   protected elevation of §18.1. An investment adds no damage multiplier.
 - **Exposure from the band:** an investment in band `b` is flooded when the
-  water level in its cell exceeds quantile `b`. Damage follows from that, not
-  from a probability attached to the kind.
+  water level in its cell exceeds quantile `b`, the band's lower edge. This
+  is deliberately conservative: a band partly under water counts as
+  flooded, since the model has no position within the band. Damage follows
+  from that, not from a probability attached to the kind.
 - **A `city_zone`** marks where urban growth is allowed and encouraged; it
   does not create population. Growth comes from PopSim's urbanization
   (§29.6.2).
@@ -209,9 +212,11 @@ VisualSite { kind, cell, band, state, capacity_norm, protected_elevation_m }
   P1, never faked.
 - At region scale a site is drawn as a landmark asset. Its 2D position within
   the cell is chosen by the presentation RNG keyed by
-  `(world_seed, cell_id, detail_kind = site, site index)` among points of the
-  region's detail terrain whose elevation lies in the site's band. The
-  position is presentation, never state.
+  `(world_seed, detail_kind = site, cell_id, site index)` among the points of
+  the cell whose hypsometric rank (§4.9) lies in the site's band. The rank
+  does not depend on the camera, so the site stands on the same ground, in
+  its band, in the region and the local band. The position is presentation,
+  never state.
 - Zoning is drawn as a player overlay (§31.7), not by the style. It is the
   player's own decision and is not gated by knowledge.
 
@@ -225,12 +230,14 @@ and streamed as the camera descends (§4.8). Each tile is generated from:
   already snapshotted; PSNAP does not change;
 - the cell's channels, and its neighbours' for the edges;
 - the sites in the cell;
-- the presentation seed `(world_seed, cell_id, detail_kind = local, tile_id)`.
+- the presentation detail fields of §4.9, sampled at the tile's points.
 
 Rules:
 
-1. **Terrain matches the cell.** The patch's area–elevation distribution
-   reproduces the cell's nine quantiles within a tolerance (§5, V4).
+1. **Terrain matches the cell.** The terrain's area–elevation distribution
+   over the cell reproduces its nine quantiles within a tolerance (§4.9;
+   §5, V4). No single tile, which covers a few kilometres of a cell about
+   110 km across, is held to the whole curve.
 2. **Water from state.** The water level is the elevation at which the
    cell's hypsometric fraction equals `water_extent` (R5); before R5, the sea
    level alone. A dike holds water below its protected elevation; if the
@@ -280,7 +287,10 @@ terrain, as fractions of the shipped cell size `d` (about 110 km at L6):
 | Local | below ≈ 0.3 `d` | the §4.6 tiles: quantile-constrained terrain, sites, fields, streets | cross-fade over the band edge |
 
 The thresholds are style-independent constants of the client, so all
-styles share the interaction rules.
+styles share the interaction rules. The planet–region threshold scales with
+the shipped cell size `d`, because the cell mesh is what the planet band
+draws. The region–local threshold is fixed in metres (about 30 km, which is
+0.3 `d` at L6), so a city looks the same size at every mesh level.
 
 **Terrain tiles.** The client replaces its single fixed mesh with a
 quadtree of terrain tiles on the sphere (chunked level of detail). The
@@ -289,15 +299,17 @@ inside cells, constrained so that the area–elevation distribution of every
 cell still matches its hypsometry (V4) and neighbouring cells meet without
 cracks. Tiles are chosen by screen-space error, generated off the render
 thread, and cached; a missing tile is drawn from its parent until it arrives,
-never left as a hole. A tile's content depends only on
-`(world_seed, tile_id)` and the current `VisualFrame`, never on the
-camera's path (driver 6).
+never left as a hole. A tile only samples the detail fields of §4.9 at its
+points: its content depends on `world_seed`, the positions it covers and the
+current `VisualFrame`, never on the tile's id, its level or the camera's
+path (driver 6). Neighbouring tiles and levels therefore agree wherever they
+overlap.
 
 **Earth-viewer features mapped to the design.**
 
 | Earth viewer | Here | Governed by |
 |---|---|---|
-| Historical imagery slider | scrubbing the stored snapshot history for the place in view | ADR-0003; presentation time only |
+| Historical imagery slider | scrubbing the stored snapshot history for the place in view (see below) | ADR-0003, ADR-0020; presentation time only |
 | Layers panel | overlays and lenses | §31.7 |
 | Blurry areas before tiles load | the fog of knowledge: unexplored land stays at the detail the society has mapped | ADR-0019 (reserved) |
 | "Fly to" | event staging and the newspaper's links fly the camera to the place | §31.6 |
@@ -307,10 +319,19 @@ The fog row is a deliberate difference from Google Earth: blur means "not
 yet mapped by this society", not "still loading". The two must look
 different (V12).
 
+**History.** The ADR-0003 history stores the slow state only. A past
+moment therefore shows only the channels that can be computed from slow
+state (terrain, snow, sea ice, surface temperature; later land use and
+water extent); fields that are derived each step, such as precipitation,
+winds and the climatology, are absent there and shown neutral, never
+interpolated from the present. Turning a stored snapshot into a
+`VisualFrame` is a PlanetSim service behind ADR-0020's read contract; the
+client never opens PSNAP files. The slider waits for ADR-0020.
+
 **Look.** Continuous zoom is a camera and a terrain system, not a style.
 Every style pack draws every band; a realistic, satellite-like pack is one
 pack among others and stays a non-goal before P1 (specification §31.12).
-Styles add only per-band assets and materials.
+Styles add only per-band assets and materials, sourced under ADR-0018 §11.
 
 **Precision.** Godot uses 32-bit floats for positions by default; near an
 Earth-sized planet that is about 0.8 m, enough to make terrain and camera
@@ -325,6 +346,40 @@ is reopened; PlanetSim is unaffected.
 **Budget.** The 60 frames-per-second target of §31.9 holds at every
 altitude, with tile generation and upload spread over frames.
 
+### 4.9 Detail is a function of position
+
+Survey step 3 (`sim/presentation/detail_seed.hpp`) found that per-cell
+random keys put a seam at every cell edge. Every procedural quantity in
+every band is therefore a deterministic function of the position on the
+sphere and of `(world_seed, detail_kind)`, drawn from ADR-0018's reserved
+presentation stream. Tiles, levels and cells only sample it; none of them
+seeds it. This amends ADR-0018 §4.8 and specification §31.5, whose key
+`(world_seed, cell_id, detail_kind)` stays valid only for per-cell choices
+that are not spatial fields, such as a site's index among its candidates.
+
+**Terrain.** Sub-cell elevation is built by rank, so that it matches the
+cell's hypsometry at any resolution:
+
+``` text
+n(x)     continuous noise for detail_kind = terrain, with known distribution F
+r(x)     = F(n(x)) in [0, 1]           the point's hypsometric rank
+h(x)     = Q_cell^-1(r(x))             the cell's inverse hypsometry, interpolating
+                                        its nine quantiles at ranks 0, 1/8, ..., 1
+```
+
+- Every point is computed locally and identically at every level, so tiles
+  need no neighbours to generate and cannot crack against them.
+- The area–elevation distribution over the cell follows its quantiles
+  statistically, to within the noise's sampling over the cell's area (V4).
+- Near a cell's edge, `h` blends towards the neighbour's curve over a
+  fixed width so that the surface is continuous. That blend is the only
+  departure from the cell's curve, and V4's tolerance bounds it.
+- Band `b` is the region `r(x) ∈ [b/8, (b+1)/8)`, so a site's ground (§4.5)
+  and its flooding (§4.6 rule 3) are the same at every altitude.
+- `n` is one fixed field with all its octaves. A level only samples it
+  more or less densely, and coarse levels draw a filtered version for
+  display, so a point's rank, and its band, never depend on the level.
+
 ## 5. Validation plan
 
 | ID | Check | Where |
@@ -332,12 +387,11 @@ altitude, with tile generation and upload spread over frames.
 | V1 | Rendering at region and local scale leaves every state hash unchanged | regression test (extends ADR-0018 V6) |
 | V2 | Commands at region scale are recorded and replay bit-identically; no command can be issued from the local band | command tests (ADR-0014) |
 | V3 | An investment refused by validation names the failed rule | unit test |
-| V4 | Local terrain reproduces the cell's hypsometry: each generated quantile within 2 % of the cell's elevation range | headless generator test |
+| V4 | Terrain reproduces the cell's hypsometry: over points sampled across the whole cell, at region and local resolution, each quantile within 2 % of the cell's elevation range, edge blends included | headless generator test |
 | V5 | Flooded area of the patch equals `water_extent` within 2 %; a site in band `b` is wet exactly when the state's water level exceeds quantile `b` | headless generator test |
 | V6 | Field count and failed-field share stay within tolerance of `farmland` and `dryness` | headless generator test (§31.5) |
-| V7 | Same `(world_seed, cell_id)` gives the same patch and the same site positions across runs and platforms | determinism test |
+| V7 | The same `world_seed` and position give the same terrain, detail and site positions across runs, platforms and tile levels | determinism test |
 | V8 | Readability: city dry vs flooded, and crops normal vs drought, pass ADR-0018 §4.9 in the local band of both styles | readability harness |
-
 | V9 | Zooming from orbit to the ground and back shows no crack between tiles and no tile left missing for more than a frame (a parent stands in) | headless capture test |
 | V10 | Path independence: the same tile reached by two different camera paths renders identically | determinism test |
 | V11 | 60 frames per second at L6 in the `stylised` style at three altitudes (planet, region, local), with tile generation running | performance gate (§31.9) |
@@ -393,5 +447,6 @@ tested on the rendering track.
 5. How fine should region-band relief be before the terrain generator
    implies valleys and ridges the hypsometry does not support? The local band
    has V4; the region band needs its own tolerance.
-6. Should the band thresholds scale with the shipped mesh level, or stay in
-   metres so a city looks the same size at every level?
+6. ~~Should the band thresholds scale with the shipped mesh level, or stay
+   in metres?~~ Answered 2026-10-13 in §4.8: planet–region scales with the
+   cell size, region–local is in metres.

@@ -67,10 +67,12 @@ precision is relative to the distance from the origin.
    tasks (placement tools, staging) can query it.
 3. **Terrain tile quadtree** (C++ in `godot/gdextension/`): a cube-sphere
    (or icosahedral) quadtree whose root level reproduces today's cell mesh.
-   Each finer level adds procedural relief inside cells from the
-   presentation RNG keyed by `(world_seed, tile_id)`, constrained so each
-   cell's area–elevation distribution still matches its nine hypsometry
-   quantiles. Neighbouring tiles of different levels are stitched (skirts or
+   Each finer level samples procedural relief inside cells by hypsometric
+   rank (ADR-0022 §4.9): a fixed noise field keyed by
+   `(world_seed, detail_kind = terrain)` and sampled by position, mapped
+   through each cell's inverse hypsometry so its area–elevation
+   distribution still matches its nine quantiles. No tile or cell seeds
+   anything. Neighbouring tiles of different levels are stitched (skirts or
    edge morphing) so there are no cracks.
 4. **Selection and streaming**: tiles chosen by screen-space error;
    generated on worker threads; cached with a bounded memory budget; a
