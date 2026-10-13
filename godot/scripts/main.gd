@@ -159,9 +159,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		_pitch = clampf(_pitch + event.relative.y * 0.006, -1.5, 1.5)
 		_update_camera()
 	elif event is InputEventKey and event.pressed and not event.echo:
+		# Views by key position, not character: AZERTY's top row types
+		# & é " ' ( - è _ ç. The keypad digits work too.
+		var physical_view: int = event.physical_keycode - KEY_1
+		var keypad_view: int = event.keycode - KEY_KP_1
+		if physical_view >= 0 and physical_view < 9:
+			_planet.set_view_mode(physical_view)
+			return
+		if keypad_view >= 0 and keypad_view < 9:
+			_planet.set_view_mode(keypad_view)
+			return
 		match event.keycode:
-			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9:
-				_planet.set_view_mode(event.keycode - KEY_1)
 			KEY_S:
 				_planet.next_style()
 			KEY_N:

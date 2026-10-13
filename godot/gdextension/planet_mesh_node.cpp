@@ -30,6 +30,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <limits>
+#include <numbers>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -1101,7 +1102,7 @@ void PlanetMeshNode::update_shader_flags() {
     if (mesh_) {
         material_->set_shader_parameter(
             "cell_angular_size",
-            std::sqrt(4.0 * Math_PI / static_cast<double>(mesh_->cell_count())));
+            std::sqrt(4.0 * std::numbers::pi / static_cast<double>(mesh_->cell_count())));
     }
     static constexpr std::array<std::pair<presentation::DetailKind, const char*>, 5> detail_seeds{{
         {presentation::DetailKind::coast, "detail_seed_coast"},
