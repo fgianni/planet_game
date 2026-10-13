@@ -14,3 +14,4 @@ and accepted decisions instead.
 |---|---|
 | [2026-09 ADR conformance](2026-09-ADR-conformance.md) | Current |
 | [2026-09-23 pre-migration audit](history/2026-09-23-pre-migration.md) | Historical baseline |
+| [2026-10 land rendering survey](2026-10-land-rendering-survey.md) | Rendering track (R1) survey and plan; point-in-time |
