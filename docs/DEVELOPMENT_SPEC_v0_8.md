@@ -2152,8 +2152,9 @@ Status (2026-10-13): M0 through M7 complete. The water cycle (ADR-0021:
 evaporation, the Manabe bucket, saturation rainout, humidity transport,
 the vapour path) is on in the Earth-like preset; τ_d = 1.022 and
 κ_v = 0.00511 m²/kg give 288 K with a 53 K equator-to-pole difference and
-about 1 m/yr of precipitation. With it the 250-year gates are L5 405 s and
-L6 1 350 s (ADR-0021 §13.6 amends the L6 run's ten minutes to thirty).
+about 1 m/yr of precipitation. With it the 250-year runs take 405 s (L5)
+and 1 350 s (L6) on the 16-thread reference machine. CI's 4-vCPU runners
+gate 25 years on each push and the 250 years nightly (ADR-0021 §13.6).
 Climate–reference parity (ADR-0001 V2) is recorded failing (+5.4 K) and
 gated in M8.
 

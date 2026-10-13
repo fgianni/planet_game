@@ -398,13 +398,28 @@ circulation run dry. The bulk wind comes from the coupled circulation, or
 in reference mode from the resolved winds. A diagnostic circulation does
 not reach the state.
 
-**13.6 Performance (V12; amends ADR-0001 §5's CI caps, decided with the
-user).** 250 years with the water cycle, 16 workers:
-- L5: 405 s (37 years per minute; CI cap 480 s, was 240 s);
-- L6: 1 350 s (11.1 years per minute; CI cap 1 800 s, was 600 s).
+**13.6 Performance (V12; amends ADR-0001 §5's CI gates, decided with the
+user).** 250 years with the water cycle on the 16-thread reference
+machine:
+- L5: 405 s (37 years per minute);
+- L6: 1 350 s (11.1 years per minute).
 
 Both meet the specification's rates, 20 and 5 years per minute, and L5
-meets its ten minutes. Most of the remaining cost is the moist columns
+meets its ten minutes.
+
+GitHub's 4-vCPU runners cannot meet them. The caps since M6-04 had been
+set from the reference machine, and CI had failed since 2026-10-06: the
+dry L5 took 360–385 s on the runner against a 240 s cap. With 4 workers
+the reference machine takes 58 s and 243 s for 25 water years at L5 and
+L6, and the runner has been about 1.6 times slower. CI is therefore split:
+- every push gates 25 years at L5 (at least 10 years per minute, 180 s)
+  and at L6 (at least 2.5 years per minute, 720 s), and replays the L5 run;
+- a nightly workflow (`nightly.yml`) runs 250 years at both levels with
+  the replay (L5 1 500 s, L6 6 000 s), to be tightened to its first
+  measurements.
+
+The specification's rates stay targets for the reference machine,
+recorded by each milestone's task record. Most of the remaining cost is the moist columns
 under the coupled Newton's 9–16 iterations. Warm-starting it from the
 previous month would need the transport in the state (a PSNAP schema).
 

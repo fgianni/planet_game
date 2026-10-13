@@ -73,18 +73,22 @@ jobs:
           ./build/planet_cli mesh --subdivision 6
           ./build/planet_cli solar --subdivision 5 --time-days 91.31055
 
+      # Push CI gates a 25-year run at L5 and L6 on the 4-vCPU runner; the
+      # 250-year runs and their replay are nightly (nightly.yml). Caps are
+      # the runner's, not the reference machine's (ADR-0021 §13.6): with 4
+      # workers a 16-thread machine took 58 s and 243 s, and the runner has
+      # been about 1.6 times slower.
       - name: Climate-mode performance gate (ADR-0001 §5, V4; ADR-0021 §13.6)
         if: matrix.build_type == 'Release'
         run: |
-          # With the water cycle (M7-07): L5 405 s, L6 1350 s measured.
-          ./build/planet_cli run --subdivision 5 --years 250 \
-            --min-years-per-minute 20 --max-seconds 480 --manifest run_L5_250y.prun
-          ./build/planet_cli run --subdivision 6 --years 250 \
-            --min-years-per-minute 5 --max-seconds 1800
+          ./build/planet_cli run --subdivision 5 --years 25 \
+            --min-years-per-minute 10 --max-seconds 180 --manifest run_L5_25y.prun
+          ./build/planet_cli run --subdivision 6 --years 25 \
+            --min-years-per-minute 2.5 --max-seconds 720
 
-      - name: Replay the 250-year run (ADR-0003 V2)
+      - name: Replay the 25-year run (ADR-0003 V2)
         if: matrix.build_type == 'Release'
-        run: ./build/planet_cli replay run_L5_250y.prun
+        run: ./build/planet_cli replay run_L5_25y.prun
 
       - name: Operator validation (ADR-0002 V3/V4)
         if: matrix.build_type == 'Release'

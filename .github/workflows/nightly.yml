@@ -1,0 +1,53 @@
+name: Nightly
+
+# The 250-year climate-mode runs and their replay (ADR-0001 §5 V4, ADR-0003
+# V2, ADR-0021 §13.6), too long for every push. Caps are the 4-vCPU
+# runner's: a 16-thread machine with 4 workers projects to about 580 s (L5)
+# and 2 430 s (L6), and the runner has been about 1.6 times slower; tighten
+# them to the first nights' measurements.
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  climate-gates:
+    name: 250-year gates (clang Release)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Ninja and libzstd
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libzstd-dev pkg-config
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_BUILD_TYPE=Release
+          -DPLANETSIM_BUILD_TESTS=OFF
+
+      - name: Build
+        run: cmake --build build --parallel --target planet_cli
+
+      - name: L5, 250 years
+        run: >
+          ./build/planet_cli run --subdivision 5 --years 250
+          --min-years-per-minute 10 --max-seconds 1500 --manifest run_L5_250y.prun
+
+      - name: Replay the 250-year run (ADR-0003 V2)
+        run: ./build/planet_cli replay run_L5_250y.prun
+
+      - name: L6, 250 years
+        run: >
+          ./build/planet_cli run --subdivision 6 --years 250
+          --min-years-per-minute 2.5 --max-seconds 6000

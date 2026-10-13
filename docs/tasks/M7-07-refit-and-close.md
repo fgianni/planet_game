@@ -55,7 +55,10 @@
   - L5: 405 s (37 years per minute);
   - L6: 1 350 s (11.1 years per minute);
   - every month's circulation solved;
-  - CI caps are now 480 s and 1 800 s.
+  - those are the 16-thread machine's times. The 4-vCPU CI runners cannot
+    hold them, and CI had failed on the gate's wall-time caps since
+    M6-04. Push CI now gates 25 years at each level with runner caps, and
+    a nightly workflow runs the 250 years (ADR-0021 §13.6).
 - **V9** (L3, 10-year spin-up, one year in each mode): FAILS, recorded
   and deferred to M8.
   - climate: 288.20 K, 0.95 m/yr;
