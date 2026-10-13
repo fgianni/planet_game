@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-04
 - **Accepted:** 2026-10-04
+- **Amended:** 2026-10-12 — §11: asset sourcing, licences and the public/restricted split (proposed)
 - **Milestone:** rendering track R1 (specification §31.10), in parallel with P0 / M6
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_8.md` §2, §3, §7, §8 (pacing is presentation), §17.2, §31, §32.9; Planetary Civilization Simulator — Design Record v1.3, §3.4, §21.4, §42, §44.8
 - **Related:** ADR-0002 (mesh, cell and corner layout), ADR-0003 (snapshots, history store, determinism scope), ADR-0005 (land fraction, hypsometry), ADR-0008 (snow and sea-ice cover), ADR-0012 and ADR-0019 (not yet written; this record reserves their channels)
@@ -272,3 +273,140 @@ it can, and the ADR is amended to say so.
 - Sharma, Wu and Dalal (2005), *The CIEDE2000 colour-difference formula*.
 - Machado, Oliveira and Fernandes (2009), *A physiologically-based model
   for simulation of color vision deficiency*.
+
+## 11. Amendment: asset sourcing, licences and the public/restricted split (proposed 2026-10-12)
+
+### 11.1 Context
+
+The owner wants to use free third-party 3D assets, starting with free
+listings on Epic's Fab marketplace, as region- and local-band detail
+(ADR-0022 §4.8). This record already says a style pack is a directory of
+shaders and assets (§4.5), but not where assets may come from, under which
+licence, or where they may be stored. Two facts force a rule:
+
+- **The repository is public.** Fab's Standard License (summary read
+  2026-10-12, which is explicitly non-binding) allows use "with any
+  compatible tool", modification, commercial use, no attribution, and
+  sharing with collaborators through a private repository; it forbids
+  "reselling or freely redistributing resources on their own". Committing a
+  Fab asset to `fgianni/planet_game` would publish it on its own, so it
+  would very likely breach that licence. Other licences on the same
+  marketplace (CC-BY, engine-restricted listings, `.uasset`-only downloads)
+  differ again.
+- **CI and coding agents must work without paid or restricted content.**
+  The readability gates (§4.9, V8), the render capture (R4-06) and every
+  agent working from a fresh clone run on the public tree.
+
+### 11.2 Decision
+
+**Three tiers.** Every asset file used by the client belongs to exactly one:
+
+| Tier | Licences | Stored in | Example sources |
+|---|---|---|---|
+| `public` | CC0; CC-BY 4.0; MIT, BSD or Apache-2.0 for code-like assets; our own work | this repository, `godot/assets/public/` | Kenney, Poly Haven, ambientCG, assets we make |
+| `restricted` | licences that allow use in a shipped game but not redistribution of the files: Fab Standard License, other marketplace EULAs | a private repository, `fgianni/planet_game_assets`, checked out to `godot/assets/restricted/`, which is git-ignored here | free Fab listings |
+| refused | anything engine-restricted to a different engine; `.uasset` or other formats only one engine can open; non-commercial (NC) or no-derivatives (ND) licences; editorial-only; unknown or unclear licence | nowhere | — |
+
+A free price is not a licence: each listing's licence is read and recorded
+at download, and an asset whose licence cannot be determined is refused.
+
+**The manifest.** `godot/assets/manifest.json`, in the public repository,
+lists every asset of both tiers:
+
+``` text
+id              stable asset id used by style packs
+tier            public | restricted
+path            relative to godot/assets/<tier>/
+source_url      the listing or download page
+author          as credited by the source
+licence         SPDX id where one exists (CC0-1.0, CC-BY-4.0), else
+                "Fab-Standard" or the marketplace's licence name
+licence_url     the licence text
+attribution     the credit line, required for CC-BY
+retrieved       date of download
+sha256          of the file as committed or stored
+fallback        id of a public asset used when this one is absent
+                (required for restricted assets)
+uses            style packs and bands that use it
+```
+
+Listing a restricted asset in the public manifest reveals only metadata,
+never the file.
+
+**Formats.** Assets are imported from glTF 2.0, FBX or OBJ and stored as
+glTF 2.0 (`.glb`) with PNG or KTX2 textures, so that Godot imports them
+directly and a future client could too.
+
+**Fallbacks.** Every restricted asset names a public fallback with the same
+role and footprint (a generic tree, rock or crate). The style loader
+resolves a restricted asset to its fallback when `godot/assets/restricted/`
+is absent, and logs once that it did. Gameplay, picking and every channel
+are unaffected, because assets are detail only (§4.5,
+specification §31.12: no gameplay difference between styles).
+
+**Which styles may use which tier.**
+
+- `stylised` and `map`, and any style that a readability gate in public CI
+  depends on, use `public` assets only.
+- A style pack may use `restricted` assets only if it declares
+  `requires_restricted = true` in its manifest. Its readability results are
+  recorded locally against the full asset set, as §5 already allows for
+  jobs CI cannot run; public CI checks it with fallbacks only.
+- Community style packs (specification §27) may use `public` assets only.
+
+**Where third-party assets fit.** Third-party assets are for natural and
+generic detail at region and local bands: vegetation, rocks, ground
+materials, water-side and street props, vehicles of a generic kind.
+Buildings are assembled from parts kits (Systems Architecture doc,
+"procedural cities") so that a society's technology route shows in its
+architecture; a third-party building may supply parts to a kit, but not
+stand in for a route. A restricted asset never carries information the
+public fallback does not, so the readability invariant (design §42.3)
+holds in every tier.
+
+**Credits.** The game's credits screen and the repository's
+`godot/assets/CREDITS.md` are generated from the manifest; every CC-BY
+asset appears with its attribution line.
+
+**Shipping.** Exported builds may contain restricted assets, packed into
+the game's resources as the licences allow. Source releases and mod kits
+contain public assets only.
+
+### 11.3 Validation
+
+| ID | Check | Where |
+|---|---|---|
+| V10 | Every file under `godot/assets/public/` has a manifest entry with an allowed `public` licence and a matching `sha256` | CI script |
+| V11 | No file under `godot/assets/restricted/` is tracked by git, and the path is git-ignored | CI script |
+| V12 | Every `restricted` entry names a `public` fallback that exists | CI script |
+| V13 | With `godot/assets/restricted/` absent, every style loads, the R1–R4 readability gates pass and the render capture runs | readability job (public CI) |
+| V14 | `CREDITS.md` is up to date with the manifest | CI script |
+
+### 11.4 Consequences
+
+- Free marketplace assets can be used without putting the repository's
+  licence or the owner's Fab account at risk.
+- Contributors and agents without access to the private repository get a
+  complete, if plainer, game; nothing breaks.
+- Each restricted asset costs a fallback and a manifest entry. That is
+  cheap compared with untangling an unlicensed file from git history after
+  the fact.
+- The realistic style pack, already a non-goal before P1
+  (specification §31.12), is the natural first user of `restricted` assets.
+
+### 11.5 Open questions
+
+1. The Fab summary is non-binding: before the first restricted asset is
+   committed to the private repository, read the full Fab EULA and record
+   in this section whether anything in it changes the tiers above.
+2. If the game's source is ever released under an open licence, are
+   restricted assets dropped from the release, or is the realistic style
+   shipped as a separate download?
+
+### 11.6 Proposed task
+
+**R1-05 — Asset manifest and tiers**: create `godot/assets/` with the
+`public` tree, the manifest schema and an empty manifest, the git-ignore
+rule, a `tools/fetch_restricted_assets.sh` that clones the private
+repository when the user has access, fallback resolution in the style
+loader, `CREDITS.md` generation, and checks V10–V14. Needs only R1-02.

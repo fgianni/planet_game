@@ -78,3 +78,5 @@ vcpkg_installed/
 Testing/
 .cache/
 
+# Restricted-licence assets live in a private repository (ADR-0018 §11)
+/godot/assets/restricted/
