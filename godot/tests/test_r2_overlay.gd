@@ -39,7 +39,7 @@ func _initialize() -> void:
 	assert(planet.get_geometry_revision() == revision,
 		"selecting the temperature overlay must not rebuild geometry")
 
-	planet.start_live_run(1)
+	planet.start_live_run(1, 0)
 	assert(planet.has_live_run(), "live climate run should start explicitly")
 	assert(planet.has_channel("snow_cover") and planet.has_channel("sea_ice"),
 		"initial live frame must reset newly available smoothed channels")
@@ -74,7 +74,7 @@ func _initialize() -> void:
 	# scheduler step publishes its physical pressure and surface winds.
 	planet.clear_presentation_record()
 	planet.rebuild(4, 6_371_000.0, 1, "earth_like")
-	planet.start_live_run(1, true)
+	planet.start_live_run(1, 1)
 	planet.request_live_steps()
 	assert(await _wait_for_live_frame(planet),
 		"L4 live climate worker did not publish atmosphere and wind")

@@ -212,11 +212,13 @@ void PlanetMeshNode::_bind_methods() {
                                 &PlanetMeshNode::get_geometry_revision);
     godot::ClassDB::bind_method(
         godot::D_METHOD("start_live_run", "workers", "water_cycle"),
-        &PlanetMeshNode::start_live_run, DEFVAL(0), DEFVAL(false));
+        &PlanetMeshNode::start_live_run, DEFVAL(0), DEFVAL(-1));
     godot::ClassDB::bind_method(godot::D_METHOD("stop_live_run"),
                                 &PlanetMeshNode::stop_live_run);
     godot::ClassDB::bind_method(godot::D_METHOD("has_live_run"),
                                 &PlanetMeshNode::has_live_run);
+    godot::ClassDB::bind_method(godot::D_METHOD("has_live_water_cycle"),
+                                &PlanetMeshNode::has_live_water_cycle);
     godot::ClassDB::bind_method(godot::D_METHOD("request_live_steps", "steps"),
                                 &PlanetMeshNode::request_live_steps, DEFVAL(1));
     godot::ClassDB::bind_method(godot::D_METHOD("poll_live_frame"),
@@ -615,7 +617,7 @@ void PlanetMeshNode::advance_presentation(double wall_seconds,
 
 std::int64_t PlanetMeshNode::get_geometry_revision() const noexcept { return geometry_revision_; }
 
-void PlanetMeshNode::start_live_run(std::int64_t workers, bool water_cycle) {
+void PlanetMeshNode::start_live_run(std::int64_t workers, std::int64_t water_cycle) {
     try {
         if (!mesh_) {
             throw std::logic_error("generate the planet before starting a live run");
@@ -633,13 +635,16 @@ void PlanetMeshNode::start_live_run(std::int64_t workers, bool water_cycle) {
         scenario.preset = *parsed_preset;
         scenario.seed = seed_;
         scenario.subdivision = parameters_.mesh_subdivision;
-        scenario.water_cycle = water_cycle;
+        if (water_cycle >= 0) {
+            scenario.water_cycle = water_cycle != 0;
+        }
         build_preview_reference();
         const std::size_t worker_count = workers > 0
             ? static_cast<std::size_t>(workers)
             : std::max<std::size_t>(1U, std::thread::hardware_concurrency());
         auto run = std::make_unique<PlanetRun>(scenario, worker_count);
         live_state_hash_.store(run->state_hash(), std::memory_order_release);
+        live_water_cycle_ = scenario.resolved_water_cycle();
         presentation_frames_.clear();
         presentation_frame_ = 0U;
         SimulationClock initial_clock;
@@ -672,6 +677,9 @@ void PlanetMeshNode::stop_live_run() {
 }
 
 bool PlanetMeshNode::has_live_run() const noexcept { return live_run_ != nullptr; }
+bool PlanetMeshNode::has_live_water_cycle() const noexcept {
+    return live_run_ != nullptr && live_water_cycle_;
+}
 
 void PlanetMeshNode::request_live_steps(std::int64_t steps) {
     if (!live_run_ || steps <= 0)

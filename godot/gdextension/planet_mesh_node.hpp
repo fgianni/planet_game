@@ -101,9 +101,11 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     void advance_presentation_frame();
     void advance_presentation(double wall_seconds, double simulated_years_per_wall_second);
     [[nodiscard]] std::int64_t get_geometry_revision() const noexcept;
-    void start_live_run(std::int64_t workers = 0, bool water_cycle = false);
+    // water_cycle: -1 the preset's (Scenario::water_cycle empty), 0 off, 1 on.
+    void start_live_run(std::int64_t workers = 0, std::int64_t water_cycle = -1);
     void stop_live_run();
     [[nodiscard]] bool has_live_run() const noexcept;
+    [[nodiscard]] bool has_live_water_cycle() const noexcept;
     void request_live_steps(std::int64_t steps = 1);
     [[nodiscard]] bool poll_live_frame();
     [[nodiscard]] bool is_live_run_busy() const noexcept;
@@ -202,6 +204,7 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     std::optional<StateSnapshot> live_snapshot_;
     std::string live_error_;
     std::atomic<std::uint64_t> live_state_hash_{0U};
+    bool live_water_cycle_ = false;  // the live run's resolved water cycle
     std::atomic<bool> live_busy_{false};
     std::array<godot::Ref<godot::ImageTexture>, presentation::channel_count> channel_textures_;
     godot::Ref<godot::ImageTexture> surface_class_ice_texture_;

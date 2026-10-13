@@ -30,7 +30,7 @@ const FILL_ALONE := 0.8
 const DAY_SIDE_OFFSET := 0.6 # rad
 var _distance: float = 3.2
 var _selected_cell: int = -1
-var _live_water_cycle: bool = false
+var _live_water_cycle: int = -1 # -1 the preset's, 0 off, 1 on
 var _screenshot_path: String = ""
 var _quit_after_screenshot: bool = false
 var _screenshot_started: bool = false
@@ -60,7 +60,7 @@ func _ready() -> void:
 			"style": style = parts[1]
 			"presentation-record": presentation_record = parts[1]
 			"live": live = parts[1].to_lower() in ["1", "true", "yes"]
-			"water": _live_water_cycle = parts[1].to_lower() in ["1", "true", "yes"]
+			"water": _live_water_cycle = 1 if parts[1].to_lower() in ["1", "true", "yes"] else 0
 			"screenshot": _screenshot_path = parts[1]
 			"quit-after-screenshot": _quit_after_screenshot = \
 				parts[1].to_lower() in ["1", "true", "yes"]
@@ -315,7 +315,7 @@ func _update_hud() -> void:
 	elif _planet.get_view_mode() == 8:
 		legend = "precipitation: dark dry   blue light   cyan 50+ mm/day"
 	var playback := "live climate%s%s  hash %s" % [
-		" + water" if _live_water_cycle else "",
+		" + water" if _planet.has_live_water_cycle() else "",
 		" (solving)" if _planet.is_live_run_busy() else "",
 		_planet.get_live_state_hash(),
 	] if _planet.has_live_run() else "frame %d/%d" % [
