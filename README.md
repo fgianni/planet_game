@@ -1,11 +1,13 @@
 # Planetary Civilization Simulator
 
-The repository has completed **P0 / M5 — Atmosphere and pressure**, on top
-of M4's snow, sea ice and diffusive heat transport, M3's surface energy
-columns and M2's geological planet, terrain and ocean basins. It contains a
-standalone C++20 `PlanetSim` library; headless mesh, solar, terrain,
-drainage, calendar, thermal and atmosphere diagnostics; recorded and
-replayable runs; tests; and an optional Godot 4 presentation adapter.
+The repository has completed **P0 / M7 — Humidity and evaporation**, on top
+of M6's winds and climate circulation, M5's layered atmosphere, M4's snow,
+sea ice and diffusive heat transport, M3's surface energy columns and M2's
+geological planet, terrain and ocean basins. M8 (clouds and precipitation)
+is next. It contains a standalone C++20 `PlanetSim` library; headless mesh,
+solar, terrain, drainage, calendar, thermal, atmosphere, wind and water
+diagnostics; recorded and replayable runs; tests; and an optional Godot 4
+presentation adapter.
 
 ## Requirements
 
@@ -217,7 +219,8 @@ Reference mode resolves the winds (ADR-0011, task M6-03).
 - **`reference`** runs the Earth-like planet with its physics. Mass is
   exact, and once spun up the energy drifts by 4e-8 per year.
 
-Climate mode's circulation (ADR-0011 §14, task M6-04) is under way:
+Climate mode solves the circulation instead (ADR-0011 §14–§17, tasks M6-04
+and M6-05):
 
 ```bash
 ./build/planet_cli zonal-circulation --layers 3 \
@@ -394,22 +397,25 @@ from radiative equilibrium and prints the last year's global, land and ocean
 mean temperature, energy balance, transport, zonal means and the cost per
 sub-step.
 
-Until the winds of M6, heat moves by diffusion (ADR-0009), on the mesh one
-level coarser, solved implicitly (Newton with a multigrid-preconditioned
+On the Earth-like planet the climate circulation carries the heat (see
+[Winds](#winds)). Diffusion (ADR-0009) carries it on the planets without
+air, and in any month whose circulation fails, on the mesh one level
+coarser, solved implicitly (Newton with a multigrid-preconditioned
 conjugate-gradient solve) so that energy closes exactly and the monthly
-step stays stable. On the Earth-like planet it diffuses the atmospheric
-columns' mean potential temperature and enters their bottom layer. Dead rock
-(no tilt) and the aqua planet, which have no atmosphere, are experiments A
-and B of the specification.
+step stays stable. On a planet with air it diffuses the atmospheric
+columns' mean potential temperature and enters their bottom layer. Dead
+rock (no tilt) and the aqua planet, which have no atmosphere, are
+experiments A and B of the specification.
 
-Snow lies on the land tile (ADR-0008). Until the atmosphere supplies
-moisture, precipitation is a prescribed forcing, zero by default:
+Snow lies on the land tile (ADR-0008). With the water cycle on (the
+Earth-like default, below), the precipitation is the model's. Otherwise it
+is a prescribed forcing, zero by default:
 
 ```bash
-./build/planet_cli thermal --precipitation 1e-5
+./build/planet_cli thermal --dry --precipitation 1e-5
 ```
 
-falls as snow where the land surface is at or below 0 °C, raises the tile's
+Precipitation falls as snow where the land surface is at or below 0 °C, raises the tile's
 albedo with snow cover, and melts with latent heat when the surface would
 warm past 0 °C. Energy (with the latent term) and water close to rounding.
 With the transport, snow now clears seasonally from about 15 % of land
@@ -448,14 +454,53 @@ tiles are solved together, implicitly, every step, and the energy budget of
 surface and air closes to rounding. Nothing imposes a lapse rate on the
 surface, yet a dome 4 km high cools at about 6 K/km.
 
-The optical depth `τ₀ = 1.442` is a calibration constant, fitted with the
-climate circulation carrying the heat to a 288 K global mean (ADR-0011
-§17.7). The eddy closure keeps reference mode's own fit, so the
-equator-to-pole difference is 52 K and the poleward transport peaks at
-2.8 PW: Earth's 42 K needs the latent and ocean transport of M7 and M11.
-M5's diffusive fit, `τ₀ = 1.3581` with `D = 0.6371 W/m²/K` (42 K, 3.8 PW),
+With the water cycle on, each layer's longwave optical depth is a dry
+part plus its water vapour, `τ_d Δp/p₀ + κ_v q Δp/g` (ADR-0021). Both are
+fitted together to a 288 K global mean: `τ_d = 1.0220` and
+`κ_v = 0.005110 m²/kg` (task M7-07). On a dry run, `τ₀ = 1.442` is the
+whole depth, fitted with the circulation carrying the heat (ADR-0011
+§17.7); M5's diffusive fit, `τ₀ = 1.3581` with `D = 0.6371 W/m²/K`,
 survives only as the circulation's fallback. Sunlight still passes through
-the air unabsorbed, and there is no water vapour or cloud yet (M7–M8).
+the air unabsorbed, and there are no clouds yet (M8).
+
+## Water cycle
+
+```bash
+./build/planet_cli thermal --water --years 20
+./build/planet_cli thermal --water --calibrate 288
+./build/planet_cli parity --subdivision 3 --spin-up-years 10
+```
+
+The Earth-like planet carries water (ADR-0021, tasks M7-01 to M7-07); the
+water cycle is on in its preset, and `--dry` turns it off.
+- **State.** Each atmospheric layer has a specific humidity, and the land
+  tile a bucket that holds up to 150 mm (PSNAP schema 6). Older snapshots
+  start at 60 % relative humidity with the bucket half full.
+- **Evaporation.** Open water, sea-ice floes, snow and the bucket evaporate
+  or sublimate by bulk transfer, implicitly in the surface temperature.
+  The bucket's evaporation slows as it dries; it overflows to runoff.
+- **Rainout.** Each layer condenses what it holds above saturation, inside
+  the column solve and again after convection, with a 12-hour condensation
+  time. The latent heat warms the layer. The condensate reaches the ground
+  as snow on frozen land and as rain otherwise.
+- **Transport.** In climate mode the circulation's overturning and eddies
+  move the humidity, with an implicit upwind tracer solve that conserves
+  it to rounding. In reference mode the resolved winds advect it.
+- **Radiation.** The vapour thickens each layer's longwave depth, so the
+  water cycle feeds back on temperature.
+- **Budgets.** Every step books energy, with the latent terms, and water;
+  each column closes to rounding and the planet within its gates.
+
+After 150 years at L4 the planet averages 287.98 K, with a 53.3 K
+equator-to-pole difference and a 3.60 PW poleward transport peak. At L3 it
+rains 0.95 m a year, against Earth's about 1.0. Two targets are still open:
+
+- Earth's 42 K equator-to-pole difference needs clouds (M8) and ocean
+  currents (M11); with inert vapour the model gives 45.9 K.
+- `parity` compares a year in climate mode with a year in reference mode
+  from the same state. It fails ADR-0021's V9 gate: reference mode is
+  5.45 K warmer (gate 0.3 K) and rains 29 % more (gate 10 %). This is
+  deferred to M8's moist convection.
 
 ## Recorded runs and replay
 
@@ -463,8 +508,8 @@ the air unabsorbed, and there is no water vapour or cloud yet (M7–M8).
 ./build/planet_cli run --subdivision 5 --years 10 \
     --command 600000,set_solar_luminosity_factor,1.02 --manifest run.prun
 ./build/planet_cli replay run.prun
-./build/planet_cli run --subdivision 5 --years 250 \
-    --min-years-per-minute 20 --max-seconds 240
+./build/planet_cli run --subdivision 5 --years 25 \
+    --min-years-per-minute 10 --max-seconds 180
 ```
 
 `run` builds a scenario (`--preset`, `--seed`, `--subdivision`,
@@ -481,8 +526,10 @@ either `replay matched` or the first tick at which the state diverged. The
 same build replays bit for bit; another build is only statistically
 equivalent, and `replay` says so. `run` also prints the stepping rate in
 simulated years per minute; `--min-years-per-minute` and `--max-seconds` turn
-it into the ADR-0001 performance gate that CI applies to 250-year runs at L5
-and L6.
+it into the ADR-0001 performance gate. CI applies it to 25-year runs at L5
+and L6 on every push, and [`nightly.yml`](.github/workflows/nightly.yml) to
+250-year runs. On a 16-thread machine, 250 years with the water cycle take
+405 s at L5 and 1,350 s at L6.
 
 ## Optional Godot preview
 
@@ -523,16 +570,13 @@ frame and never waits for a climate step; the request queue is bounded so a
 slow simulation cannot accumulate presentation debt. Press `L` to start or
 stop live mode. Live mode and recorded playback are mutually exclusive.
 
-Until M7-07 closes and decides the preset default, the model water cycle is
-an explicit live-preview option:
+Live mode runs the preset's water cycle, on for `earth_like`, so View 9
+shows the model's own precipitation, not synthetic presentation rain.
+`--water=false` runs the planet dry and `--water=true` forces it on:
 
 ```bash
-godot4 --path godot -- --subdivision=4 --live=true --water=true --view=8
+godot4 --path godot -- --subdivision=4 --live=true --view=8
 ```
-
-This runs the authoritative existing `Scenario::water_cycle` path and makes
-View 9 show real model precipitation. It is not synthetic presentation rain;
-omitting `--water=true` preserves the current dry/default scenario.
 
 Raining cells also receive crossed, radially falling shafts above the surface.
 The bridge deterministically samples at most 2,048 wet cells when a snapshot
@@ -578,7 +622,9 @@ terrain views (`N` toggles it); data overlays are self-lit. Drag to rotate,
 right-click a cell for its anomaly, snow-cover, sea-ice, signed east/north
 wind and precipitation readings, wheel to zoom,
 `[`/`]` relief exaggeration, `R` new seed, `P` next preset,
-`PgUp`/`PgDn` resolution, `Space` pause, `L` live climate, `+`/`-` simulation speed. Recorded
+`PgUp`/`PgDn` resolution, `Space` pause, `L` live climate, `+`/`-` simulation speed.
+The view keys are read by position, so the top row selects views on any
+keyboard layout (on AZERTY, too), as do the keypad digits. Recorded
 frames play at two frames per second by default. The same
 settings can be passed on the command line with zero-based view indices, for
 example `godot4 --path godot -- --seed=42 --subdivision=6 --view=5` opens the
@@ -634,10 +680,11 @@ not alter persistent `PSNAP` files.
   `Field3D<T>`, or `EdgeField<T>` arrays indexed by strong IDs.
 - `PlanetState` retains a shared immutable mesh handle. Its authoritative
   `SlowState` owns hypsometry, global sea level, the four surface
-  temperatures, snow and sea-ice mass, and the atmosphere's surface
-  pressure and layer temperatures; `FastState` is
-  optional and lazily allocated, `Climatology` is derived, and forcing remains
-  outside the persistent partition.
+  temperatures, snow and sea-ice mass, the atmosphere's surface pressure,
+  layer temperatures and humidity, and the land's water bucket;
+  `FastState` (reference mode's winds) is optional and lazily allocated,
+  `Climatology` is derived, and forcing remains outside the persistent
+  partition.
 - The mesh is body-fixed with geographic north on `+Z`; physical rotation and
   a fixed Keplerian orbit are derived from simulation time and planet/star
   parameters.
@@ -675,7 +722,10 @@ The main decisions are recorded in:
 - [surface energy columns](docs/decisions/0007-surface-energy-columns.md);
 - [snow, sea ice and the ice–albedo feedback](docs/decisions/0008-snow-and-sea-ice.md);
 - [diffusive horizontal heat transport](docs/decisions/0009-diffusive-heat-transport.md);
-- [the layered atmosphere](docs/decisions/0010-layered-atmosphere.md).
+- [the layered atmosphere](docs/decisions/0010-layered-atmosphere.md);
+- [winds and the climate circulation](docs/decisions/0011-winds-and-circulation.md);
+- [presentation channels and style packs](docs/decisions/0018-presentation-channels-and-style-packs.md);
+- [water vapour, evaporation and rainout](docs/decisions/0021-water-vapour-evaporation-and-rainout.md).
 
 The precise M1 coordinate and validation conventions are in
 [`docs/M1_TECHNICAL_SPEC.md`](docs/M1_TECHNICAL_SPEC.md).
@@ -686,19 +736,19 @@ M2 provides the finite-volume operators, state partitions, persistent
 snapshots, procedural plate-scale terrain with sea level, and static drainage
 topology; M3 surface temperatures from radiative columns, with recorded,
 replayable runs; M4 snow, sea ice and their albedo feedback; M5 a layered
-atmosphere with pressure, grey longwave and convection; M6 (in progress)
-winds in reference mode and a balanced circulation in climate mode that
-carries the heat. Without water vapour or ocean currents its transport is
-weaker than Earth's (52 K equator to pole), and the azonal flow carries no
-heat. There is no water vapour or cloud: sunlight
-reaches the surface unabsorbed, and precipitation is a prescribed forcing. Dynamic runoff, discharge and lake water balance,
-orbital precession and perturbations are not yet computed. Geology and
-drainage are generated once and are not time-evolving, and `GeologyState` is
-not persisted. Autosaves remain assigned to a later milestone. Velocities
-live normal to the edges (ADR-0011); tracer advection arrives with
-humidity (M7). The two-point
-Laplacian's pointwise truncation error does not converge next to the pentagons
-or along the icosahedron's edges, although discrete solutions do (ADR-0002
-§9). The
+atmosphere with pressure, grey longwave and convection; M6 winds in
+reference mode and a balanced circulation in climate mode that carries the
+heat; M7 water vapour, evaporation, rainout and the vapour's longwave
+absorption. Without clouds or ocean currents the transport is weaker than
+Earth's (53 K equator to pole, against 42 K), and the azonal flow carries no
+heat. Climate and reference mode do not yet agree (ADR-0021 V9, deferred
+to M8). There are no clouds: sunlight reaches the surface unabsorbed, and
+convection is dry. The bucket's runoff is booked but not routed; discharge,
+rivers and lake water balance, orbital precession and perturbations are not
+yet computed. Geology and drainage are generated once and are not
+time-evolving, and `GeologyState` is not persisted. Autosaves remain
+assigned to a later milestone. The two-point Laplacian's pointwise
+truncation error does not converge next to the pentagons or along the
+icosahedron's edges, although discrete solutions do (ADR-0002 §9). The
 optional Godot adapter must be compiled against an external matching
 `godot-cpp` checkout and is not part of the default headless CI path.
