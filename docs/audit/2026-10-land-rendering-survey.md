@@ -8,7 +8,7 @@ The land is not short of detail so much as scrambled: the surface shaders read c
 
 Surveyed at `b465ba5` (9 Oct 2026), built against the pinned Godot 4.2.2 / godot-cpp and rendered offscreen at L6, seed 20260928, `earth_like`, day/night off.
 
-> **Status (13 Oct 2026).** Point-in-time survey, not implementation guidance; the specification and accepted ADRs govern. Step 1 landed: the mesh change in `0f7fa97`, with the `surface_detail.gdshader` prototype (step 3, not yet selected by any material), and the non-constant readability case that closes it. The placement decision below is now carried by the proposed ADR-0022. The survey's screenshots were not exported; the image references are kept as captions only.
+> **Status (13 Oct 2026).** Point-in-time survey, not implementation guidance; the specification and accepted ADRs govern. Step 1 landed: the mesh change in `0f7fa97`, with the `surface_detail.gdshader` prototype (step 3, not yet selected by any material), and the non-constant readability case that closes it. Step 2 landed: the bridge loads every `godot/styles/<name>/style.tres` it finds, refusing an invalid pack by name, and `reload_styles()` picks up a new directory without C++. The placement decision below is now carried by the proposed ADR-0022. The survey's screenshots were not exported; the image references are kept as captions only.
 
 Three moves, in order:
 

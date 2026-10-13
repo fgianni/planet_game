@@ -86,6 +86,7 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     [[nodiscard]] bool get_day_night_shading() const noexcept;
     void set_style(const godot::String& style_name);
     void next_style();
+    void reload_styles();
     [[nodiscard]] godot::String get_style() const;
     [[nodiscard]] godot::PackedStringArray get_available_styles() const;
     [[nodiscard]] godot::String validate_style_manifest(const godot::String& path) const;
@@ -182,7 +183,7 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     godot::Ref<godot::ShaderMaterial> precipitation_overlay_material_;
     std::vector<float> precipitation_overlay_source_;
     std::int64_t precipitation_streak_count_ = 0;
-    std::array<godot::Ref<PlanetStyle>, 2> styles_;
+    std::vector<godot::Ref<PlanetStyle>> styles_; // one per godot/styles/<name>/, by name
     std::size_t active_style_ = 0U;
     presentation::PresentationReference presentation_reference_;
     presentation::VisualFrame displayed_frame_;

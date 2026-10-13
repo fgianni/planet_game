@@ -9,6 +9,7 @@
 #include "sim/planet/terrain/terrain_generator.hpp"
 #include "sim/presentation/presentation_record.hpp"
 
+#include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
@@ -179,6 +180,7 @@ void PlanetMeshNode::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("set_style", "style_name"),
                                 &PlanetMeshNode::set_style);
     godot::ClassDB::bind_method(godot::D_METHOD("next_style"), &PlanetMeshNode::next_style);
+    godot::ClassDB::bind_method(godot::D_METHOD("reload_styles"), &PlanetMeshNode::reload_styles);
     godot::ClassDB::bind_method(godot::D_METHOD("get_style"), &PlanetMeshNode::get_style);
     godot::ClassDB::bind_method(godot::D_METHOD("get_available_styles"),
                                 &PlanetMeshNode::get_available_styles);
@@ -318,7 +320,7 @@ void PlanetMeshNode::rebuild(std::int64_t subdivision, double radius_m, std::int
         // do not carry the smoothed snow/ice arrays into the first new frame.
         displayed_frame_ = {};
         target_frame_ = {};
-        if (styles_[0].is_null())
+        if (styles_.empty())
             load_styles();
         build_preview_reference();
         build_geometry();
@@ -428,7 +430,7 @@ void PlanetMeshNode::set_day_night_shading(bool enabled) {
 bool PlanetMeshNode::get_day_night_shading() const noexcept { return day_night_shading_; }
 
 void PlanetMeshNode::set_style(const godot::String& style_name) {
-    if (styles_[0].is_null())
+    if (styles_.empty())
         load_styles();
     for (std::size_t index = 0; index < styles_.size(); ++index) {
         if (styles_[index].is_valid() && styles_[index]->get_style_name() == style_name) {
@@ -441,15 +443,29 @@ void PlanetMeshNode::set_style(const godot::String& style_name) {
 }
 
 void PlanetMeshNode::next_style() {
-    if (styles_[0].is_null())
+    if (styles_.empty())
         load_styles();
     active_style_ = (active_style_ + 1U) % styles_.size();
     apply_render_material();
 }
 
+void PlanetMeshNode::reload_styles() {
+    try {
+        const godot::String active = get_style();
+        load_styles();
+        for (std::size_t index = 0; index < styles_.size(); ++index) {
+            if (styles_[index]->get_style_name() == active)
+                active_style_ = index;
+        }
+        apply_render_material();
+    } catch (const std::exception& error) {
+        godot::UtilityFunctions::push_error("PlanetMeshNode: ", error.what());
+    }
+}
+
 godot::String PlanetMeshNode::get_style() const {
-    return styles_[active_style_].is_valid() ? styles_[active_style_]->get_style_name()
-                                             : "unloaded";
+    return active_style_ < styles_.size() ? styles_[active_style_]->get_style_name()
+                                          : godot::String("unloaded");
 }
 
 godot::PackedStringArray PlanetMeshNode::get_available_styles() const {
@@ -1101,20 +1117,42 @@ void PlanetMeshNode::build_preview_reference() {
     update_solar_forcing(*state_, parameters_, restore_tick);
 }
 
+// ADR-0018 §4.5: a style pack is a directory, godot/styles/<name>/style.tres.
+// Packs load in directory order; one that fails validation or repeats a
+// name is refused, naming why, and the others still load. ResourceLoader
+// rather than a file listing finds the manifest, so exported projects
+// (where style.tres may be remapped to a binary resource) load the same.
 void PlanetMeshNode::load_styles() {
-    static constexpr std::array<const char*, 2> paths{{
-        "res://styles/stylised/style.tres",
-        "res://styles/map/style.tres",
-    }};
-    for (std::size_t index = 0; index < paths.size(); ++index) {
+    static constexpr const char* styles_root = "res://styles";
+    static constexpr const char* default_style = "stylised";
+    godot::PackedStringArray directories = godot::DirAccess::get_directories_at(styles_root);
+    directories.sort();
+    std::vector<godot::Ref<PlanetStyle>> loaded;
+    for (const godot::String& directory : directories) {
+        const godot::String path = godot::String(styles_root) + "/" + directory + "/style.tres";
+        if (!godot::ResourceLoader::get_singleton()->exists(path))
+            continue;
         const godot::Ref<godot::Resource> resource =
-            godot::ResourceLoader::get_singleton()->load(paths[index]);
+            godot::ResourceLoader::get_singleton()->load(path);
         godot::Ref<PlanetStyle> style = resource;
-        const godot::String error = validate_style(style);
-        if (!error.is_empty()) {
-            throw std::runtime_error(std::string(error.utf8().get_data()));
+        godot::String error = validate_style(style);
+        for (const auto& other : loaded) {
+            if (error.is_empty() && other->get_style_name() == style->get_style_name())
+                error = godot::String("style ") + style->get_style_name() + " is already loaded";
         }
-        styles_[index] = style;
+        if (!error.is_empty()) {
+            godot::UtilityFunctions::push_error("PlanetMeshNode: refused ", path, ": ", error);
+            continue;
+        }
+        loaded.push_back(style);
+    }
+    if (loaded.empty())
+        throw std::runtime_error("no valid style pack under res://styles");
+    styles_ = std::move(loaded);
+    active_style_ = 0U;
+    for (std::size_t index = 0; index < styles_.size(); ++index) {
+        if (styles_[index]->get_style_name() == default_style)
+            active_style_ = index;
     }
 }
 
@@ -1148,7 +1186,7 @@ void PlanetMeshNode::apply_render_material() {
     if (material_.is_null())
         return;
     if (view_mode_ == view_style) {
-        if (styles_[active_style_].is_null())
+        if (active_style_ >= styles_.size())
             return;
         material_->set_shader(styles_[active_style_]->get_surface_shader());
     } else {
