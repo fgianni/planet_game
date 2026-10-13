@@ -228,9 +228,10 @@ double solve_column_surface(const ColumnSystem& system, double sink_W_m2) {
             const double latent = system.latent_flux_W_m2(x);
             const double value = system.a * x + emitted + latent - b;
             // At the root to rounding: the residual is at the level of its
-            // own terms' last bits.
+            // own terms' last bits (a short step's C/Δt · T makes them large,
+            // so a few ulps only).
             const double terms = system.a * x + emitted + std::abs(latent) + std::abs(b);
-            if (std::abs(value) <= 64.0 * std::numeric_limits<double>::epsilon() * terms) {
+            if (std::abs(value) <= 8.0 * std::numeric_limits<double>::epsilon() * terms) {
                 return x;
             }
             (value > 0.0 ? high : low) = x;

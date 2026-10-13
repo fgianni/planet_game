@@ -164,6 +164,8 @@ struct ColumnMoisture {
     LayerArray pressure_Pa{};
     double layer_mass_kg_m2 = 0.0;
     double latent_J_kg = 0.0;
+    // The share of the excess a step condenses, 1 − exp(−Δt/τ_c) (1: all).
+    double condensation_fraction = 1.0;
 };
 
 struct ColumnSolveSettings {
@@ -413,9 +415,9 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
             }
             e.humidity[0] += e.exchange.vapour_kg_m2_s * dt_s / moisture->layer_mass_kg_m2;
             for (std::size_t k = 0; k < n; ++k) {
-                e.condensate[k] = std::max(
-                    0.0, e.humidity[k] -
-                             saturation_specific_humidity(t[k], moisture->pressure_Pa[k]));
+                e.condensate[k] = moisture->condensation_fraction *
+                                  std::max(0.0, e.humidity[k] - saturation_specific_humidity(
+                                                                    t[k], moisture->pressure_Pa[k]));
             }
         }
         for (std::size_t k = 0; k < n; ++k) {
@@ -468,7 +470,7 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
                         d_condensate -= saturation_specific_humidity_slope(
                             e.temperature[r], moisture->pressure_Pa[r]);
                     }
-                    value -= condensation_rate * d_condensate;
+                    value -= condensation_rate * moisture->condensation_fraction * d_condensate;
                 }
                 j[r][c] = value;
             }
@@ -652,13 +654,15 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
                 if (!(q > saturation_specific_humidity(temperature_K[k], pressure))) {
                     continue;
                 }
-                // Newton on g(T') = T' − T − h (q − q_sat(T')), increasing.
+                // Newton on g(T') = T' − T − f h (q − q_sat(T')), increasing
+                // (f the condensation fraction).
+                const double share = heating * moisture->condensation_fraction;
                 double t = temperature_K[k];
                 for (int iteration = 0; iteration < 30; ++iteration) {
-                    const double g = t - temperature_K[k] -
-                                     heating * (q - saturation_specific_humidity(t, pressure));
+                    const double g =
+                        t - temperature_K[k] - share * (q - saturation_specific_humidity(t, pressure));
                     const double next =
-                        t - g / (1.0 + heating * saturation_specific_humidity_slope(t, pressure));
+                        t - g / (1.0 + share * saturation_specific_humidity_slope(t, pressure));
                     if (std::abs(next - t) <= 4.0 * std::numeric_limits<double>::epsilon() * t) {
                         t = next;
                         break;

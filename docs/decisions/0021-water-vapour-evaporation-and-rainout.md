@@ -6,6 +6,7 @@
 - **Amended:** 2026-10-09 — §4.3: the bulk formula's humidity is the surface air's (§10, decided with the user in task M7-03); §4.4: the condensate's freezing and the saturation adjustment after convection (§10)
 - **Amended:** 2026-10-09 — §4.5: the climate-mode solve couples the layers through their vertical fluxes; §4.2: L_s = L_v + L_f exactly; §4.3: the snow's melt-out keeps sublimating (§11, task M7-04)
 - **Amended:** 2026-10-09 — §4.6, §4.8: the vapour path's provisional constants and the feedback's bistability (§12, task M7-05)
+- **Amended:** 2026-10-13 — the refit and the close of M7 (§13, task M7-07): the fitted constants, saturation continuous at 0 °C, one condensation pass after convection, the condensation time, the preset's default, the performance gates, V9 recorded
 - **Milestone:** P0 / M7 (humidity and evaporation)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §9.3, §9.6, §13 M7–M9, §23, §24; Planetary Civilization Simulator — Design Record v1.4, §5, §15
 - **Related:** ADR-0001 (V1 water budget, V2 parity, §8 "first V2 parity tests" at M7), ADR-0003 (PSNAP migration), ADR-0006 (sub-steps), ADR-0007 (surface tiles), ADR-0008 (snow, sea ice, the prescribed-precipitation seam), ADR-0009 (implicit transport), ADR-0010 (layered atmosphere; τ's quartic vapour proxy; Γ_c), ADR-0011 (winds; "humidity advected by the same two paths"; §17's coupled transport)
@@ -339,4 +340,82 @@ The provisional constants are τ_d = τ₀/2 = 0.721 and
 M7-07) fits τ_d and κ_v jointly. It must start from a stable state and
 check that the fitted climate is not near the branches' edges, for
 example by perturbing the start by ±5 K.
+
+## 13. Amendment: the refit and the close of M7 (accepted 2026-10-13, task M7-07)
+
+**13.1 The refit (V8; amends §4.8; split decided with the user).**
+The 42 K target is out of reach in M7. Spun up 100 years on L4, coupled:
+- vapour carrying half of τ₀: 58.9 K (150 years);
+- τ_d = 1.0, κ_v = 0.008: 54.6 K;
+- τ_d = 1.2, κ_v = 0.005: 51.0 K;
+- inert vapour (κ_v = 0): 45.9 K, at 295 K.
+
+The latent transport takes about 6 K off M6's 52 K. The grey vapour
+greenhouse, strongest in the humid tropics, adds it back. The refit
+therefore keeps a moderate feedback:
+- split 0.8 / 0.2 of τ₀, with κ_v's share at 50 kg/m²;
+- one common factor fitted by bisection to 288 K (L4, seed 1, N = 3,
+  150 years);
+- τ_d = 1.0220 and κ_v = 0.005110 m²/kg give 287.98 K, with a P2 gradient
+  of 53.3 K and a peak transport of 3.60 PW.
+
+The fit's neighbourhood is smooth and monotone: scales 0.75–0.90 give
+282.7–288.5 K, with no branch jump (§12). The 42 K target waits for M8's
+clouds and M11's ocean.
+
+**13.2 Saturation continuous at 0 °C (amends §4.2).** The ice branch is
+scaled to meet Bolton exactly at 0 °C; the two had differed by about 1e-4.
+A tile solving its surface temperature converged onto that jump and left
+0.008 W/m² in its equation.
+
+**13.3 One condensation pass after convection (amends §10.3).** Each
+layer condenses its excess once at its adjusted temperature; its heat is
+the next step's adjustment's. Alternating the two adjustments to
+completion made the columns' response non-smooth, and tripled the
+coupled Newton's iterations: an L6 water month took 1.32 s, now 0.52 s.
+
+**13.4 The condensation time (amends §4.4; decided with the user).** In
+reference mode, a 10-minute step released all the condensation the core's
+ascent produced at the grid scale. After a climate spin-up the global
+latent heating reached 1 300–2 900 W/m², and the winds passed 150 m/s
+within hours: a grid-scale moist instability. Each step now condenses
+1 − exp(−Δt/τ_c) of the excess, with τ_c = 12 h:
+- a climate month is unchanged bit for bit (the fraction rounds to 1);
+- 3 h held after a 2-year spin-up but not after 10;
+- 12 h holds, with winds near 75 m/s and condensation near 131 W/m²,
+  matching climate mode's latent flux.
+
+M8's moist convection replaces τ_c.
+
+**13.5 The default.** The earth_like preset has the water cycle on.
+`Scenario::water_cycle` resolves to the preset's, and the manifest
+records it; a manifest written before M7 reads as off.
+
+Climate mode moves the humidity only with the coupled circulation. Runs
+with no circulation or a diagnostic one keep it in place, so the tests of
+ADR-0008's snow and sea ice, ADR-0009's diffusion and the diagnostic
+circulation run dry. The bulk wind comes from the coupled circulation, or
+in reference mode from the resolved winds. A diagnostic circulation does
+not reach the state.
+
+**13.6 Performance (V12; amends ADR-0001 §5's CI caps, decided with the
+user).** 250 years with the water cycle, 16 workers:
+- L5: 405 s (37 years per minute; CI cap 480 s, was 240 s);
+- L6: 1 350 s (11.1 years per minute; CI cap 1 800 s, was 600 s).
+
+Both meet the specification's rates, 20 and 5 years per minute, and L5
+meets its ten minutes. Most of the remaining cost is the moist columns
+under the coupled Newton's 9–16 iterations. Warm-starting it from the
+previous month would need the transport in the state (a PSNAP schema).
+
+**13.7 V9, recorded and deferred to M8 (decided with the user).** See the
+task record `docs/tasks/M7-07-refit-and-close.md` for the measurement.
+Reference mode warms by several kelvin within days against climate mode.
+Likely causes:
+- supersaturation lingering under τ_c adds vapour greenhouse;
+- reference mode resolves the diurnal cycle, while climate months
+  evaporate under monthly means;
+- there is no moist convection.
+
+M8 gates V9.
 

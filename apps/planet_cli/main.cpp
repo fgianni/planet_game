@@ -134,6 +134,11 @@ struct ThermalOptions {
     // --calibrate-gradient then fits c_E instead of D.
     bool coupled = false;
     std::optional<double> eddy_generation;   // c_E
+    // ADR-0021: the water cycle, and the vapour path's τ_d and κ_v; with it
+    // --calibrate scales τ_d and κ_v together (their split kept).
+    std::optional<bool> water;
+    std::optional<double> dry_depth;
+    std::optional<double> vapour_absorption;
     std::size_t worker_count = 0;        // 0: hardware concurrency
 };
 
@@ -179,7 +184,8 @@ void print_usage(std::ostream& output) {
               " [--years N] [--grey G | --layers N [--optical-depth TAU]]"
               " [--calibrate KELVIN] [--coupled [--eddy-generation C_E]]"
               " [--transport D | --calibrate-gradient KELVIN | --calibrate-transport PW]"
-              " [--precipitation KG_M2_S]"
+              " [--precipitation KG_M2_S] [--water | --dry]"
+              " [--dry-depth TAU_D] [--vapour-absorption KAPPA_V]"
               " [--workers W]\n"
            << "  planet_cli run [--subdivision LEVEL] [--seed N] [--preset NAME] [--years N]"
               " [--spin-up-years N] [--initial-mode climate|reference]"
@@ -196,6 +202,8 @@ void print_usage(std::ostream& output) {
               " [--layers N] [--days D] [--average-days D] [--damping-hours H] [--seed N]"
               " [--lapse-rate K_PER_KM] [--orography-passes P | --orography-step M] [--workers W]"
               " [--zonal-csv FILE.csv]\n"
+           << "  planet_cli parity [--subdivision LEVEL] [--seed N] [--layers N]"
+              " [--spin-up-years N] [--days D] [--workers W]\n"
            << "  planet_cli reference [--subdivision LEVEL] [--seed N] [--layers N]"
               " [--spin-up-years N] [--days D] [--average-days D] [--workers W]"
               " [--zonal-csv FILE.csv]\n"
@@ -409,6 +417,10 @@ void print_usage(std::ostream& output) {
             options.coupled = true;
             continue;
         }
+        if (argument == "--water" || argument == "--dry") {
+            options.water = argument == "--water";
+            continue;
+        }
         if (++index >= argument_count) {
             throw std::invalid_argument(std::string(argument) + " requires a value");
         }
@@ -417,6 +429,10 @@ void print_usage(std::ostream& output) {
             options.subdivision = parse_subdivision(value);
         } else if (argument == "--seed") {
             options.seed = parse_unsigned(value, "seed");
+        } else if (argument == "--dry-depth") {
+            options.dry_depth = parse_double(value, "dry optical depth");
+        } else if (argument == "--vapour-absorption") {
+            options.vapour_absorption = parse_double(value, "vapour absorption");
         } else if (argument == "--preset") {
             const auto preset = planetsim::parse_planet_preset(value);
             if (!preset) {
@@ -1609,6 +1625,77 @@ int run_reference(const ReferenceOptions& options) {
     return 0;
 }
 
+// ADR-0001 V2 / ADR-0021 V9: climate mode against reference mode from the
+// same spun-up state under the same forcing, over the same span: the
+// duration-weighted mean surface temperature and the global precipitation.
+int run_parity(const ReferenceOptions& options) {
+    const std::size_t workers =
+        options.workers != 0U ? options.workers
+                              : std::max<std::size_t>(1U, std::thread::hardware_concurrency());
+    struct Record {
+        double temperature_K_s = 0.0;
+        double precipitation_kg = 0.0;
+        double evaporation_kg = 0.0;
+        double seconds = 0.0;
+        double wall_s = 0.0;
+    };
+    const auto measure = [&](planetsim::SimulationMode mode) {
+        planetsim::Scenario scenario;
+        scenario.seed = options.seed;
+        scenario.subdivision = options.subdivision;
+        scenario.spin_up_years = options.spin_up_years;
+        scenario.initial_mode = mode;
+        scenario.atmosphere_layers = options.layers;
+        planetsim::PlanetRun run(scenario, workers);
+        Record record;
+        const auto start = std::chrono::steady_clock::now();
+        const planetsim::SimulationTick end =
+            static_cast<planetsim::SimulationTick>(std::llround(options.days * 1'440.0));
+        while (run.tick() < end) {
+            const planetsim::SimulationTick before = run.tick();
+            run.run_until(mode == planetsim::SimulationMode::reference
+                              ? std::min<planetsim::SimulationTick>(before + 10, end)
+                              : planetsim::climate_substep_containing(before, run.parameters())
+                                    .end_tick);
+            if (run.tick() == before) {
+                throw std::runtime_error("parity: a step did not advance");
+            }
+            const auto& step = run.last_step();
+            record.temperature_K_s += step.mean_surface_temperature_K * step.duration_s;
+            record.precipitation_kg += step.precipitation_kg;
+            record.evaporation_kg += step.water_evaporation_kg + step.bucket_evaporation_kg +
+                                     step.snow_sublimation_kg + step.ice_sublimation_kg;
+            record.seconds += step.duration_s;
+        }
+        record.wall_s =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        double area = 0.0;
+        for (const auto& cell : run.state().mesh().cells()) {
+            area += cell.area_m2;
+        }
+        const double to_m_yr = 1.0 / area / 1000.0 / record.seconds * 365.25 * 86'400.0;
+        std::cout << std::setprecision(6) << planetsim::simulation_mode_name(mode)
+                  << ": mean_K=" << record.temperature_K_s / record.seconds
+                  << " precipitation_m_yr=" << record.precipitation_kg * to_m_yr
+                  << " evaporation_m_yr=" << record.evaporation_kg * to_m_yr
+                  << " wall_s=" << record.wall_s << std::endl;
+        return record;
+    };
+    const Record climate = measure(planetsim::SimulationMode::climate);
+    const Record reference = measure(planetsim::SimulationMode::reference);
+    const double temperature_difference = reference.temperature_K_s / reference.seconds -
+                                          climate.temperature_K_s / climate.seconds;
+    const double precipitation_ratio =
+        (reference.precipitation_kg / reference.seconds) /
+        (climate.precipitation_kg / climate.seconds);
+    const bool passed = std::abs(temperature_difference) <= 0.3 &&
+                        std::abs(precipitation_ratio - 1.0) <= 0.1;
+    std::cout << "parity reference_minus_climate_K=" << temperature_difference
+              << " precipitation_ratio=" << precipitation_ratio
+              << " gate=" << (passed ? "pass" : "fail") << " (V2: 0.3 K, 10 %)" << std::endl;
+    return passed ? 0 : 3;
+}
+
 struct ZonalCirculationOptions {
     bool planet = false;   // the Earth-like planet's climate year, not Held–Suarez
     bool balanced = false; // with --planet: also the azonal balance (§4.6) each month
@@ -2530,7 +2617,22 @@ int run_thermal(const ThermalOptions& options) {
     if (options.optical_depth) {
         surface.atmosphere.longwave_optical_depth = *options.optical_depth;
     }
+    if (options.water) {
+        surface.water_cycle = *options.water;
+    }
+    if (options.dry_depth) {
+        surface.atmosphere.dry_optical_depth = *options.dry_depth;
+    }
+    if (options.vapour_absorption) {
+        surface.atmosphere.vapour_absorption_m2_kg = *options.vapour_absorption;
+    }
     const bool layered = surface.atmosphere.layer_count > 0U;
+    const bool water = surface.water_cycle && layered;
+    // With the water cycle the mean is fitted by a common factor on τ_d and
+    // κ_v (their split kept).
+    const double base_dry_depth = surface.atmosphere.dry_optical_depth;
+    const double base_vapour_absorption = surface.atmosphere.vapour_absorption_m2_kg;
+    double vapour_scale = 1.0;
     auto& precipitation = state.forcing().prescribed_precipitation_kg_m2_s;
     for (std::size_t cell = 0; cell < precipitation.size(); ++cell) {
         precipitation[cell] = static_cast<float>(options.precipitation_kg_m2_s);
@@ -2637,7 +2739,30 @@ int run_thermal(const ThermalOptions& options) {
                    negative_gradient, "D");
         }
         if (options.calibrate_K) {
-            if (layered) {
+            if (water) {
+                // Narrow: the grey vapour feedback is bistable (ADR-0021
+                // §12), and a scale far from 1 can leave the stable branch.
+                double low = 0.6;
+                double high = 1.2;
+                for (int iteration = 0; iteration < 40; ++iteration) {
+                    vapour_scale = 0.5 * (low + high);
+                    auto candidate = surface;
+                    candidate.atmosphere.dry_optical_depth = vapour_scale * base_dry_depth;
+                    candidate.atmosphere.vapour_absorption_m2_kg =
+                        vapour_scale * base_vapour_absorption;
+                    const double value = mean_K(spin_up(candidate));
+                    std::cout << "calibrate scale=" << vapour_scale
+                              << " tau_d=" << candidate.atmosphere.dry_optical_depth
+                              << " kappa_v=" << candidate.atmosphere.vapour_absorption_m2_kg
+                              << " value=" << value << '\n';
+                    (value < *options.calibrate_K ? low : high) = vapour_scale;
+                    if (std::abs(value - *options.calibrate_K) <= 0.02) {
+                        break;
+                    }
+                }
+                surface.atmosphere.dry_optical_depth = vapour_scale * base_dry_depth;
+                surface.atmosphere.vapour_absorption_m2_kg = vapour_scale * base_vapour_absorption;
+            } else if (layered) {
                 bisect(0.2, 12.0, *options.calibrate_K, 0.02, optical_depth, mean_K, "tau");
             } else {
                 bisect(0.2, 0.8, *options.calibrate_K, 0.02, grey, mean_K, "g");
@@ -2680,6 +2805,10 @@ int run_thermal(const ThermalOptions& options) {
               << " relative_imbalance=" << year.relative_imbalance()
               << " coupled=" << (options.coupled ? 1 : 0) << " c_E=" << eddy_generation
               << " failed_months=" << failed_months << '\n'
+              << "water=" << (water ? 1 : 0) << std::setprecision(6)
+              << " tau_d=" << surface.atmosphere.dry_optical_depth
+              << " kappa_v=" << surface.atmosphere.vapour_absorption_m2_kg
+              << std::setprecision(9) << '\n'
               << "transport peak_poleward_PW=" << peak_PW(year)
               << " equator_to_pole_K=" << year.equator_to_pole_difference_K()
               << " p2_equator_to_pole_K=" << year.p2_equator_to_pole_K() << " northward_PW";
@@ -3092,6 +3221,9 @@ int main(int argument_count, char** arguments) {
         }
         if (command == "reference") {
             return run_reference(parse_reference_options(argument_count, arguments));
+        }
+        if (command == "parity") {
+            return run_parity(parse_reference_options(argument_count, arguments));
         }
         if (command == "dynamics") {
             return run_dynamics(parse_dynamics_options(argument_count, arguments));

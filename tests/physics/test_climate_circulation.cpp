@@ -14,6 +14,9 @@ int main() {
     planetsim::test::Context test;
     planetsim::Scenario scenario;
     scenario.subdivision = 3;
+    // The diagnostic circulation over the dry M6 climate: a circulation that
+    // does not carry the heat carries no humidity either (ADR-0021 §4.5).
+    scenario.water_cycle = false;
     const planetsim::SimulationTick year_end = [&] {
         const planetsim::PlanetRun probe(scenario, 1U, planetsim::ClimateCirculationUse::none);
         return planetsim::orbital_year_begin_tick(1, probe.parameters());

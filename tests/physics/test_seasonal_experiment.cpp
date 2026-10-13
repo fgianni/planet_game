@@ -34,6 +34,10 @@ struct Planet {
         : mesh(std::move(shared_mesh)),
           surface(planetsim::surface_energy_parameters_for(preset)),
           state(mesh) {
+        // ADR-0008's snow and sea ice on the dry columns, as validated in M4–M5:
+        // without the circulation the water cycle's humidity would not move, a
+        // configuration the model uses only in a failed month.
+        surface.water_cycle = false;
         static_cast<void>(planetsim::generate_terrain(
             state, test_seed, planetsim::geology_parameters_for(preset), 4U));
         fractions = planetsim::compute_surface_fractions(*mesh, state.slow().hypsometry_m,

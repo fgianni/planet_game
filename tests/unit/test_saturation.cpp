@@ -23,10 +23,11 @@ int main() {
         std::cout << "e_s(" << celsius << " C) = " << e << " Pa (reference " << pascal << ")\n";
         PLANETSIM_EXPECT(test, std::abs(e / pascal - 1.0) <= 2.0e-3);
     }
-    // The two branches meet at 0 °C.
+    // The two branches meet at 0 °C: exactly, up to the 1e-9 K offset's
+    // slope (the ice branch is scaled to Bolton there, task M7-07).
     const double below = planetsim::saturation_vapour_pressure_Pa(planetsim::freezing_point_K - 1e-9);
     const double above = planetsim::saturation_vapour_pressure_Pa(planetsim::freezing_point_K);
-    PLANETSIM_EXPECT(test, std::abs(below / above - 1.0) <= 1.0e-4);
+    PLANETSIM_EXPECT(test, std::abs(below / above - 1.0) <= 1.0e-10);
 
     for (const double temperature : {200.0, 240.0, 265.0, 280.0, 300.0, 315.0}) {
         const double h = 1e-4;

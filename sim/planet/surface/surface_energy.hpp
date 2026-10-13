@@ -51,12 +51,21 @@ struct SurfaceEnergyParameters {
     AtmosphereParameters atmosphere;
     // ADR-0021: evaporation from the tiles into the bottom layer, the
     // layers' saturation rainout, which replaces the prescribed
-    // precipitation, the land's bucket and its runoff (needs an atmosphere).
-    // Off: the step is exactly M6's.
+    // precipitation, the land's bucket and its runoff, the humidity's
+    // transport and the vapour path (needs an atmosphere). On in the
+    // earth_like preset since M7-07; off: the step is exactly M6's.
     bool water_cycle = false;
     // The gustiness added to the monthly mean wind in the bulk transfer
     // (ADR-0021 §4.3).
     double gustiness_m_s = 5.0;
+    // The condensation time τ_c (ADR-0021 §13.4): a step condenses
+    // 1 − exp(−Δt/τ_c) of the layers' excess over saturation. A climate
+    // month condenses all of it (the fraction rounds to 1); a 10-minute
+    // reference step about 1 %, so the core's ascent cannot release its
+    // latent heat at the grid scale at once. 3 h held after a 2-year climate
+    // spin-up but not after 10 (winds past 150 m/s within 3 hours at L3);
+    // 12 h holds. M8's moist convection replaces it.
+    double condensation_time_s = 12.0 * 3600.0;
 };
 
 // The bulk transfer coefficients of evaporation (ADR-0021 §4.3): the tiles'

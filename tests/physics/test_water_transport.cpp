@@ -84,12 +84,19 @@ int main() {
     scenario.subdivision = 3;
     scenario.water_cycle = true;
     using planetsim::ClimateCirculationUse;
-    // The manifest records the water cycle only when it is on.
+    // The manifest records the resolved water cycle; the earth_like preset
+    // has it on, and a manifest without it (before M7) reads as off.
     {
-        const planetsim::Scenario off;
-        PLANETSIM_EXPECT(test, off.entries().size() == off.base_entries().size());
-        PLANETSIM_EXPECT(test, !planetsim::Scenario::from_entries(off.entries()).water_cycle);
-        PLANETSIM_EXPECT(test, planetsim::Scenario::from_entries(scenario.entries()).water_cycle);
+        planetsim::Scenario preset;
+        PLANETSIM_EXPECT(test, preset.resolved_water_cycle());
+        PLANETSIM_EXPECT(test, planetsim::Scenario::from_entries(preset.entries()).resolved_water_cycle());
+        preset.water_cycle = false;
+        PLANETSIM_EXPECT(test, !planetsim::Scenario::from_entries(preset.entries()).resolved_water_cycle());
+        PLANETSIM_EXPECT(test,
+                         !planetsim::Scenario::from_entries(preset.base_entries()).resolved_water_cycle());
+        planetsim::Scenario rock;
+        rock.preset = planetsim::PlanetPreset::dead_rock;
+        PLANETSIM_EXPECT(test, !rock.resolved_water_cycle());
     }
 
     planetsim::PlanetRun run(scenario, 4U, ClimateCirculationUse::coupled);

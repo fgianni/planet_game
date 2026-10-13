@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <cstddef>
 #include <vector>
 
@@ -17,7 +18,9 @@ int main() {
     planetsim::test::Context test;
     planetsim::Scenario scenario;
     scenario.subdivision = 4;
-    scenario.spin_up_years = 1;
+    // Three years: with the water cycle the first year from the initial
+    // humidity is a transient whose southern jet sits subtropical (27.5°).
+    scenario.spin_up_years = 3;
     planetsim::PlanetRun run(scenario, 4U);
     const auto& mesh = run.state().mesh();
     const auto& surface = run.surface_parameters();
@@ -113,6 +116,8 @@ int main() {
             }
         }
         const double latitude = std::abs(solution.latitude_deg[jet]);
+        std::cout << (north ? "north" : "south") << " jet " << latitude << " deg, "
+                  << solution.at_band(solution.eastward_m_s, top, jet) << " m/s\n";
         PLANETSIM_EXPECT(test, latitude >= 37.5 && latitude <= 67.5);
         PLANETSIM_EXPECT(test, solution.at_band(solution.eastward_m_s, top, jet) > 15.0);
     }

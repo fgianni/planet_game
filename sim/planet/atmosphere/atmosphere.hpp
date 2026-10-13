@@ -56,17 +56,18 @@ inline constexpr double gravitational_constant_m3_kg_s2 = 6.67430e-11;
 // transport (M7, M11). M5's diffusive fit was 1.3581 with D (below).
 inline constexpr double earth_like_longwave_optical_depth = 1.442;
 
-// The vapour path's first values (ADR-0021 §4.6, task M7-05), until the
-// refit (M7-07): τ₀ split in half, τ_d = τ₀ / 2 and κ_v the other half at
-// 50 kg/m² of column vapour. On L3, coupled, 12 years from the M6 state:
-// this settles near 287 K with 51 kg/m² of vapour; vapour carrying 90% of
-// τ₀ (κ_v from Earth's 25 kg/m²) ran away to 304 K and 357 kg/m², and at
-// 100 kg/m² dried out to 262 K and 13 kg/m² (the grey vapour feedback is
-// bistable; saturation rainout keeps the layers near RH 1).
-inline constexpr double earth_like_reference_vapour_kg_m2 = 50.0;
-inline constexpr double earth_like_dry_optical_depth = 0.5 * earth_like_longwave_optical_depth;
-inline constexpr double earth_like_vapour_absorption_m2_kg =
-    0.5 * earth_like_longwave_optical_depth / earth_like_reference_vapour_kg_m2;
+// The vapour path's constants (ADR-0021 §4.6, §4.8, §12): calibration
+// constants. Fit (2026-10-09, task M7-07): with the water cycle, the coupled
+// circulation, L4, seed 1, three layers, 150 years
+// (`planet_cli thermal --subdivision 4 --years 150 --layers 3 --coupled
+// --water --dry-depth 1.1536 --vapour-absorption 0.005768 --calibrate 288`):
+// the split 0.8 / 0.2 of τ₀ (κ_v's at 50 kg/m²; decided with the user) scaled
+// together by bisection to 287.98 K (scale 0.8859). The P2 equator-to-pole
+// difference is 53.3 K and the peak poleward transport 3.60 PW: the 42 K
+// target waits for M8's clouds and M11's ocean (even inert vapour gives
+// about 46 K).
+inline constexpr double earth_like_dry_optical_depth = 1.0220175;
+inline constexpr double earth_like_vapour_absorption_m2_kg = 0.0051100875;
 
 // dead_rock and aqua_planet: no atmosphere (experiments A and B,
 // specification §13.1). earth_like: three layers (design record §15.1) of

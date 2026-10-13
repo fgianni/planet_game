@@ -31,8 +31,14 @@ constexpr int spin_up_years = 15;
 struct Planet {
     std::shared_ptr<const planetsim::PlanetMesh> mesh;
     planetsim::PlanetParameters parameters = planetsim::PlanetParameters::earth_development();
-    planetsim::SurfaceEnergyParameters surface =
-        planetsim::surface_energy_parameters_for(PlanetPreset::earth_like);
+    planetsim::SurfaceEnergyParameters surface = [] {
+        // ADR-0008's snow and sea ice on the dry columns, as validated in M4–M5:
+        // without the circulation the water cycle's humidity would not move, a
+        // configuration the model uses only in a failed month.
+        auto preset = planetsim::surface_energy_parameters_for(PlanetPreset::earth_like);
+        preset.water_cycle = false;
+        return preset;
+    }();
     planetsim::PlanetState state;
     planetsim::SurfaceFractions fractions;
 

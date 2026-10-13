@@ -4,13 +4,31 @@
 
 namespace planetsim {
 
+namespace {
+
+// Murphy and Koop (2005) over ice.
+[[nodiscard]] double murphy_koop_Pa(double temperature_K) noexcept {
+    return std::exp(9.550426 - 5723.265 / temperature_K + 3.53068 * std::log(temperature_K) -
+                    0.00728332 * temperature_K);
+}
+
+// The ice branch scaled to meet Bolton's 611.2 Pa exactly at 0 °C (they
+// differ by about 1e-4 there): a jump in q_sat would be a jump in the
+// tiles' latent flux, whose solves could then not converge across it
+// (task M7-07).
+[[nodiscard]] double ice_scale() noexcept {
+    static const double scale = 611.2 / murphy_koop_Pa(freezing_point_K);
+    return scale;
+}
+
+}  // namespace
+
 double saturation_vapour_pressure_Pa(double temperature_K) noexcept {
     if (temperature_K >= freezing_point_K) {
         const double celsius = temperature_K - freezing_point_K;
         return 611.2 * std::exp(17.67 * celsius / (temperature_K - 29.65));
     }
-    return std::exp(9.550426 - 5723.265 / temperature_K + 3.53068 * std::log(temperature_K) -
-                    0.00728332 * temperature_K);
+    return ice_scale() * murphy_koop_Pa(temperature_K);
 }
 
 double saturation_vapour_pressure_slope_Pa_K(double temperature_K) noexcept {

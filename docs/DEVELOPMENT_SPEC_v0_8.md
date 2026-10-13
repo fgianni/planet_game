@@ -4,7 +4,7 @@ Version: 0.8 (reconciled with design v1.3 and accepted ADRs 0001--0011 in
 `docs/decisions/`)\
 Purpose: implementation contract for Codex / Claude Code\
 Primary target: PC/Linux, C++20 + Godot 4\
-Current phase: P0 --- Living Planet (M0 through M6 complete, M7 in progress)
+Current phase: P0 --- Living Planet (M0 through M7 complete)
 
 Design document: `docs/planetary_civilization_simulator_design_v1_4.docx`. Design v1.4 adds
 section 46 (systems architecture) and changes nothing earlier; this
@@ -2147,6 +2147,15 @@ circulation carries the heat (ADR-0011 §17); the azonal flow carries none,
 M11 add latent and ocean transport; both 250-year gates are met (L5 219 s,
 L6 588 s). Task-level status is kept in `docs/tasks/README.md`, which
 takes precedence over the history below.
+
+Status (2026-10-13): M0 through M7 complete. The water cycle (ADR-0021:
+evaporation, the Manabe bucket, saturation rainout, humidity transport,
+the vapour path) is on in the Earth-like preset; τ_d = 1.022 and
+κ_v = 0.00511 m²/kg give 288 K with a 53 K equator-to-pole difference and
+about 1 m/yr of precipitation. With it the 250-year gates are L5 405 s and
+L6 1 350 s (ADR-0021 §13.6 amends the L6 run's ten minutes to thirty).
+Climate–reference parity (ADR-0001 V2) is recorded failing (+5.4 K) and
+gated in M8.
 
 Status at v0.4 (2026-09-29): M0 through M3 complete; the ADR
 migration (integer tick clock, dual mesh, field registry, keyed RNG, aligned SoA fields,

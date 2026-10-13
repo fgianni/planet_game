@@ -58,14 +58,15 @@ ADR-0009 §13: tasks M6-01 (C-grid geometry and vector operators), M6-02
 (shallow-water core), M6-03 (primitive equations, Held–Suarez, the winds
 in reference mode), M6-04 (the climate-mode balanced circulation) and
 M6-05 (the circulation carries the heat, the balanced p_s in the slow
-state, τ₀ refitted, the gates). Most recently completed task:
-[`docs/tasks/M6-05-transport-refit-and-close.md`](docs/tasks/M6-05-transport-refit-and-close.md).
-M7 (humidity and evaporation) is in progress under ADR-0021 (accepted
-2026-10-09): M7-01 (water state, saturation, PSNAP schema 6), M7-02
-(evaporation and the bucket), M7-03 (saturation rainout), M7-04
-(humidity transport in climate mode), M7-05 (vapour radiation) and M7-06
-(reference mode) are complete; next is M7-07 (refit and close). Do not implement M8 or later
-milestones unless explicitly requested.
+state, τ₀ refitted, the gates). M7 (humidity and evaporation, ADR-0021,
+amended §10–§13) is complete: M7-01 (water state, saturation, PSNAP
+schema 6), M7-02 (evaporation and the bucket), M7-03 (saturation rainout),
+M7-04 (humidity transport in climate mode), M7-05 (vapour radiation),
+M7-06 (reference mode) and M7-07 (the refit, the water cycle on in the
+preset, the gates; V9 parity recorded failing, deferred to M8). Most
+recently completed task:
+[`docs/tasks/M7-07-refit-and-close.md`](docs/tasks/M7-07-refit-and-close.md).
+Do not implement M8 or later milestones unless explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is

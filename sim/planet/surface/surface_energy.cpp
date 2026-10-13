@@ -39,9 +39,13 @@ SurfaceEnergyParameters surface_energy_parameters_for(PlanetPreset preset) noexc
         return {SurfaceMaterial::rock, 0.0, 0.0, 0.0, {}};
     case PlanetPreset::aqua_planet:
         return {SurfaceMaterial::dry_soil, 0.0, 0.0, 0.0, {}};
-    case PlanetPreset::earth_like:
-        return {SurfaceMaterial::dry_soil, 0.0, earth_like_transport_coefficient_W_m2_K,
-                bulk_air_exchange_W_m2_K, atmosphere_parameters_for(preset)};
+    case PlanetPreset::earth_like: {
+        SurfaceEnergyParameters surface{SurfaceMaterial::dry_soil, 0.0,
+                                        earth_like_transport_coefficient_W_m2_K,
+                                        bulk_air_exchange_W_m2_K, atmosphere_parameters_for(preset)};
+        surface.water_cycle = true;   // ADR-0021, since the M7-07 refit
+        return surface;
+    }
     }
     return {};
 }
@@ -687,6 +691,9 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                   slow.land_surface_water_kg_m2.size() != cells)) {
         throw std::invalid_argument("the water cycle needs the state's water (initialise_water)");
     }
+    if (water && !(surface.condensation_time_s > 0.0 && std::isfinite(surface.condensation_time_s))) {
+        throw std::invalid_argument("the condensation time must be positive and finite");
+    }
     // ADR-0021 §4.5: the month's transport moves the humidity first, with the
     // circulation's fixed fluxes on the coarse graph (split B: the columns
     // then evaporate and rain out). A month whose circulation failed moves
@@ -698,9 +705,14 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                                                 worker_count);
     }
     const auto& circulation_fields = state.circulation();
-    // The climate circulation's balanced winds, or in reference mode the
-    // resolved ones (AtmosphereDynamics writes them with the water cycle).
-    const bool has_wind = circulation_fields.eastward_wind_m_s.cell_count() == cells &&
+    // The coupled climate circulation's balanced winds, or in reference mode
+    // the resolved ones (AtmosphereDynamics writes them with the water
+    // cycle). A circulation solved only for diagnostics must not reach the
+    // state (ADR-0011 §17.2), so its winds are not used.
+    const bool wind_source = (circulation != nullptr && circulation->active) ||
+                             state.has_fast_state();
+    const bool has_wind = wind_source &&
+                          circulation_fields.eastward_wind_m_s.cell_count() == cells &&
                           circulation_fields.eastward_wind_m_s.layer_count() > 0U &&
                           circulation_fields.northward_wind_m_s.cell_count() == cells;
     const double water_gravity = surface_gravity_m_s2(parameters);
@@ -868,6 +880,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 moisture.pressure_Pa[layer] = layer_sigma(layer, layers) * ps;
             }
             moisture.layer_mass_kg_m2 = bottom_mass[cell];
+            moisture.condensation_fraction = -std::expm1(-dt_s / surface.condensation_time_s);
             moisture.latent_J_kg = latent_heat_vaporisation_J_kg +
                                    snow_share[cell] * latent_heat_of_fusion_J_kg;
             cell_surface.water = true;

@@ -33,15 +33,17 @@ struct Scenario {
     // The manifest records the resolved count. A preset without an
     // atmosphere cannot be given one.
     std::optional<std::uint32_t> atmosphere_layers;
-    // ADR-0021: evaporation, rainout and humidity transport
-    // (SurfaceEnergyParameters::water_cycle), off until the M7 refit. The
-    // manifest records it only when on, so earlier manifests read as off.
-    bool water_cycle = false;
+    // ADR-0021: evaporation, rainout, humidity transport and the vapour path
+    // (SurfaceEnergyParameters::water_cycle); empty means the preset's (on
+    // for earth_like since M7-07). The manifest records the resolved value;
+    // a manifest without it (before M7) reads as off.
+    std::optional<bool> water_cycle;
 
     // The layer count the run uses.
     [[nodiscard]] std::uint32_t resolved_atmosphere_layers() const noexcept;
     [[nodiscard]] ScenarioEntries entries() const;
-    [[nodiscard]] ScenarioEntries base_entries() const;   // without the optional water_cycle
+    [[nodiscard]] bool resolved_water_cycle() const noexcept;
+    [[nodiscard]] ScenarioEntries base_entries() const;   // without water_cycle
     // Throws std::runtime_error on a missing, unknown or invalid entry. A
     // manifest written before M5 has no atmosphere_layers entry and takes
     // the preset's.

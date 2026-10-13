@@ -49,6 +49,9 @@ struct Planet {
           surface(planetsim::surface_energy_parameters_for(preset)),
           state(mesh) {
         surface.transport_coefficient_W_m2_K = coefficient;
+        // ADR-0009's diffusive transport on the dry columns: with the water
+        // cycle it runs only in a month whose circulation failed.
+        surface.water_cycle = false;
         // Transport diffuses the cells' air (ADR-0009 §11), which needs air
         // exchange even on the presets that have none.
         surface.air_exchange_W_m2_K = planetsim::bulk_air_exchange_W_m2_K;

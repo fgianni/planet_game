@@ -21,15 +21,17 @@ The specification defines the architecture, physical design, P0 roadmap,
 validation strategy, and current implementation task for the Planetary
 Civilization Simulator.
 
-Most recently completed milestone: **P0 / M6 --- Wind and Coriolis**
-(ADR-0011, amended §12--§17; ADR-0009 §13): M6-01 (C-grid operators),
-M6-02 (shallow-water core), M6-03 (primitive equations, the winds in
-reference mode), M6-04 (the climate-mode balanced circulation) and M6-05
-(`docs/tasks/M6-05-transport-refit-and-close.md`: the circulation carries
-the heat, the balanced p_s in the slow state, τ₀ refitted, the gates).
-M0--M5 (mesh, orbit, terrain, drainage, scheduler and calendar, surface
+Most recently completed milestone: **P0 / M7 --- Humidity and evaporation**
+(ADR-0021, amended §10--§13): M7-01 (water state, saturation, PSNAP schema
+6), M7-02 (evaporation and the bucket), M7-03 (saturation rainout, the
+surface air's humidity), M7-04 (humidity transport in climate mode), M7-05
+(the vapour path), M7-06 (reference mode) and M7-07
+(`docs/tasks/M7-07-refit-and-close.md`: the refit, the water cycle on in
+the preset, τ_c, the gates; V9 parity recorded failing, deferred to M8).
+M0--M6 (mesh, orbit, terrain, drainage, scheduler and calendar, surface
 energy columns, replay, snow and sea ice, diffusive transport, snapshot
-history, the layered atmosphere) are complete.
+history, the layered atmosphere, winds and the climate circulation) are
+complete.
 
 Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI
@@ -37,15 +39,9 @@ units; - deterministic and testable implementation; - physical
 state/fluxes rather than scripted climate modifiers; - production code
 and tests together; - do not proceed to M8 unless explicitly requested.
 
-Current milestone: **P0 / M7 --- Humidity and evaporation** (ADR-0021,
-accepted 2026-10-09: saturation rainout, the Manabe bucket). M7-01 (water
-state, saturation, PSNAP schema 6), M7-02 (evaporation and the bucket) and
-M7-03 (saturation rainout; ADR-0021 amended §10: the surface air's
-humidity) and M7-04 (humidity transport in climate mode, §11), M7-05 (vapour
-radiation, provisional constants, §12) and M7-06 (reference mode), all behind
-`SurfaceEnergyParameters::water_cycle` (scenario `water_cycle`), off by
-default, are complete; next is M7-07 (refit and close). The 42 K equator-to-pole target waits for M7's latent and
-M11's ocean transport (ADR-0011 §17.7).
+Current milestone: none in progress. M8 (clouds and precipitation) is
+next but must not start unless explicitly requested; its first gates
+include ADR-0021's V9 parity and the 42 K equator-to-pole target.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is

@@ -65,7 +65,7 @@ template <typename Integer>
 [[nodiscard]] SurfaceEnergyParameters scenario_surface_parameters(const Scenario& scenario) {
     SurfaceEnergyParameters surface = surface_energy_parameters_for(scenario.preset);
     surface.atmosphere.layer_count = scenario.resolved_atmosphere_layers();
-    surface.water_cycle = scenario.water_cycle;
+    surface.water_cycle = scenario.resolved_water_cycle();
     return surface;
 }
 
@@ -79,6 +79,9 @@ template <typename Integer>
     if (scenario.initial_mode != SimulationMode::climate &&
         scenario.initial_mode != SimulationMode::reference) {
         throw std::invalid_argument("a run starts in climate or reference mode");
+    }
+    if (scenario.water_cycle.value_or(false) && scenario.resolved_atmosphere_layers() == 0U) {
+        throw std::invalid_argument("the water cycle needs an atmosphere");
     }
     if (scenario.atmosphere_layers) {
         const std::uint32_t preset_layers = atmosphere_parameters_for(scenario.preset).layer_count;
@@ -98,20 +101,17 @@ std::uint32_t Scenario::resolved_atmosphere_layers() const noexcept {
     return atmosphere_layers ? *atmosphere_layers : atmosphere_parameters_for(preset).layer_count;
 }
 
-namespace {
-
-// Scenario::entries with the water cycle's entry where it is on.
-[[nodiscard]] ScenarioEntries with_water_cycle(ScenarioEntries entries, bool water_cycle) {
-    if (water_cycle) {
-        entries.push_back({"water_cycle", "1"});
+bool Scenario::resolved_water_cycle() const noexcept {
+    if (resolved_atmosphere_layers() == 0U) {
+        return false;
     }
-    return entries;
+    return water_cycle ? *water_cycle : surface_energy_parameters_for(preset).water_cycle;
 }
 
-}  // namespace
-
 ScenarioEntries Scenario::entries() const {
-    return with_water_cycle(base_entries(), water_cycle);
+    auto entries = base_entries();
+    entries.push_back({"water_cycle", resolved_water_cycle() ? "1" : "0"});
+    return entries;
 }
 
 ScenarioEntries Scenario::base_entries() const {
@@ -130,19 +130,22 @@ ScenarioEntries Scenario::base_entries() const {
 Scenario Scenario::from_entries(const ScenarioEntries& entries) {
     Scenario scenario;
     auto defaults = scenario.entries();
-    // atmosphere_layers is optional (manifests before M5), water_cycle is
-    // written only when on.
+    // atmosphere_layers is optional (manifests before M5) and water_cycle
+    // (before M7, which then reads as off).
+    defaults = scenario.base_entries();
     if (!scenario_value(entries, "atmosphere_layers")) {
         defaults.pop_back();
     }
     const auto water = scenario_value(entries, "water_cycle");
     if (water) {
-        if (*water != "1") {
-            throw std::runtime_error("scenario water_cycle must be 1 when present: '" +
+        if (*water != "0" && *water != "1") {
+            throw std::runtime_error("scenario water_cycle must be 0 or 1: '" +
                                      std::string(*water) + "'");
         }
-        scenario.water_cycle = true;
-        defaults = with_water_cycle(std::move(defaults), true);
+        scenario.water_cycle = *water == "1";
+        defaults.push_back({"water_cycle", std::string(*water)});
+    } else {
+        scenario.water_cycle = false;
     }
     if (entries.size() != defaults.size()) {
         throw std::runtime_error("scenario has " + std::to_string(entries.size()) +

@@ -233,6 +233,33 @@ int main() {
         PLANETSIM_EXPECT(test, first_rain >= 0 && first_rain < 12);
         PLANETSIM_EXPECT(test, std::abs(ratio - 1.0) <= 1e-6);
     }
+    // 6. The condensation time (ADR-0021 §13.4): a step condenses its
+    // fraction of the excess, and a month's fraction is exactly 1.
+    {
+        PLANETSIM_EXPECT(test, -std::expm1(-month_s / (12.0 * 3600.0)) == 1.0);
+        Column column(3U);
+        column.humidity(2.0);
+        const HeldSurface surface;
+        LayerArray full_after{};
+        LayerArray part_after{};
+        const auto full = column.solve(surface, full_after, true);
+        column.moisture.condensation_fraction = 0.25;
+        const auto part = column.solve(surface, part_after, true);
+        PLANETSIM_EXPECT(test, full.converged && part.converged);
+        PLANETSIM_EXPECT(test, part.precipitation_kg_m2_s > 0.0 &&
+                                   part.precipitation_kg_m2_s < full.precipitation_kg_m2_s);
+        // The water still closes.
+        double before = 0.0;
+        double after = 0.0;
+        for (std::size_t k = 0; k < 3U; ++k) {
+            before += column.moisture.humidity_kg_kg[k];
+            after += part.humidity_kg_kg[k];
+        }
+        const double m = column.moisture.layer_mass_kg_m2;
+        PLANETSIM_EXPECT(test, std::abs(m * (before - after) - part.precipitation_kg_m2_s * month_s) <=
+                                   1e-12 * m * before);
+    }
+
     // 5. The vapour path (ADR-0021 §4.6; task M7-05): each layer's depth is
     // τ_d Δp / p₀ + κ_v q Δp / g, so the column's is τ_d p_s / p₀ + κ_v W.
     {

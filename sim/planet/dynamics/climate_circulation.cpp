@@ -421,7 +421,12 @@ void ClimateCirculation::write_outputs(const PlanetState& state,
     }
 
     // 4. Every cell: winds, vertical flux, sea-level pressure and stress.
-    if (outputs.eastward_wind_m_s.layer_count() != n || outputs.eastward_wind_m_s.cell_count() != cells) {
+    // Reference mode's dynamics may have written the winds alone (with the
+    // water cycle): size every output.
+    if (outputs.eastward_wind_m_s.layer_count() != n || outputs.eastward_wind_m_s.cell_count() != cells ||
+        outputs.vertical_mass_flux_kg_m2_s.cell_count() != cells ||
+        outputs.sea_level_pressure_Pa.size() != cells ||
+        outputs.surface_stress_east_N_m2.size() != cells) {
         outputs.eastward_wind_m_s = Field3D<float>(n, cells, 0.0F);
         outputs.northward_wind_m_s = Field3D<float>(n, cells, 0.0F);
         outputs.vertical_mass_flux_kg_m2_s = Field3D<float>(n, cells, 0.0F);
