@@ -11,6 +11,9 @@ enum class RandomStreamId : std::uint32_t {
     weather = 0x0001'0001U,
     hydrology = 0x0002'0001U,
     geology = 0x0003'0001U,
+    // 0x7F00'0000--0x7FFF'FFFF is reserved for presentation (ADR-0018 §4.8);
+    // no simulation stream may use it.
+    presentation_detail = 0x7F00'0001U,
 };
 
 [[nodiscard]] constexpr std::uint64_t mix_random_key(std::uint64_t value) noexcept {

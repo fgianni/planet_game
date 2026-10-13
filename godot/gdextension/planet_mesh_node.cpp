@@ -7,6 +7,7 @@
 #include "sim/planet/run/planet_run.hpp"
 #include "sim/planet/planet_state.hpp"
 #include "sim/planet/terrain/terrain_generator.hpp"
+#include "sim/presentation/detail_seed.hpp"
 #include "sim/presentation/presentation_record.hpp"
 
 #include <godot_cpp/classes/dir_access.hpp>
@@ -1061,6 +1062,26 @@ void PlanetMeshNode::update_shader_flags() {
         return;
     }
     material_->set_shader_parameter("day_night", day_night_shading_);
+    // Sub-cell detail (surface_detail.gdshaderinc): its scale follows the
+    // mesh and its noise the world, drawn from the presentation stream.
+    if (mesh_) {
+        material_->set_shader_parameter(
+            "cell_angular_size",
+            std::sqrt(4.0 * Math_PI / static_cast<double>(mesh_->cell_count())));
+    }
+    static constexpr std::array<std::pair<presentation::DetailKind, const char*>, 5> detail_seeds{{
+        {presentation::DetailKind::coast, "detail_seed_coast"},
+        {presentation::DetailKind::land_mix, "detail_seed_land_mix"},
+        {presentation::DetailKind::snow, "detail_seed_snow"},
+        {presentation::DetailKind::sea_ice, "detail_seed_sea_ice"},
+        {presentation::DetailKind::texture, "detail_seed_texture"},
+    }};
+    for (const auto& [kind, parameter] : detail_seeds) {
+        const auto offset = presentation::detail_noise_offset(seed_, kind);
+        material_->set_shader_parameter(parameter, godot::Vector3(static_cast<godot::real_t>(offset[0]),
+                                                                  static_cast<godot::real_t>(offset[1]),
+                                                                  static_cast<godot::real_t>(offset[2])));
+    }
     if (view_mode_ != view_style) {
         material_->set_shader_parameter("insolation_view", view_mode_ == view_insolation);
         material_->set_shader_parameter("temperature_anomaly_view",

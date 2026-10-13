@@ -1,6 +1,8 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled;
 
+#include "res://shaders/surface_detail.gdshaderinc"
+
 uniform sampler2D relief_map : filter_nearest;
 uniform sampler2D surface_class_map : filter_nearest;
 uniform sampler2D surface_class_ice_map : filter_nearest;
@@ -13,28 +15,45 @@ uniform sampler2D guessed_map : filter_nearest;
 uniform sampler2D knowledge_age_map : filter_nearest;
 uniform bool day_night = true;
 
-varying vec2 channel_texel;
+varying vec2 cell_texel;
+varying vec2 first_corner_texel;
+varying vec4 second_corner_and_weights;
+varying vec3 model_position;
+
+#define CHANNEL(map) detail_fetch(map, cell_texel, first_corner_texel, second_corner_and_weights)
 
 vec3 srgb_to_linear(vec3 c) {
 	return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
 }
 
 void vertex() {
-	channel_texel = UV;
+	cell_texel = UV;
+	first_corner_texel = UV2;
+	second_corner_and_weights = CUSTOM0;
+	model_position = VERTEX;
 }
 
 void fragment() {
-	ivec2 p = ivec2(channel_texel + 0.5);
-	vec4 classes = texelFetch(surface_class_map, p, 0);
-	float ice_weight = texelFetch(surface_class_ice_map, p, 0).r;
-	float relief = texelFetch(relief_map, p, 0).r;
-	float daylight = clamp(texelFetch(daylight_map, p, 0).r, 0.0, 1.0);
-	float snow = clamp(texelFetch(snow_cover_map, p, 0).r, 0.0, 1.0);
-	float sea_ice = clamp(texelFetch(sea_ice_map, p, 0).r, 0.0, 1.0);
-	float atmosphere = clamp(texelFetch(atmosphere_density_map, p, 0).r, 0.0, 1.0);
-	float known = clamp(texelFetch(known_map, p, 0).r, 0.0, 1.0);
-	float guessed = clamp(texelFetch(guessed_map, p, 0).r, 0.0, 1.0);
-	float age = clamp(texelFetch(knowledge_age_map, p, 0).r, 0.0, 1.0);
+	vec4 classes = CHANNEL(surface_class_map);
+	float ice_weight = CHANNEL(surface_class_ice_map).r;
+	float relief = CHANNEL(relief_map).r;
+	float daylight = clamp(CHANNEL(daylight_map).r, 0.0, 1.0);
+	float snow = clamp(CHANNEL(snow_cover_map).r, 0.0, 1.0);
+	float sea_ice = clamp(CHANNEL(sea_ice_map).r, 0.0, 1.0);
+	float atmosphere = clamp(CHANNEL(atmosphere_density_map).r, 0.0, 1.0);
+	float known = clamp(CHANNEL(known_map).r, 0.0, 1.0);
+	float guessed = clamp(CHANNEL(guessed_map).r, 0.0, 1.0);
+	float age = clamp(CHANNEL(knowledge_age_map).r, 0.0, 1.0);
+
+	// Sub-cell detail: none at planet scale; at region scale flat symbolic
+	// patches with fractal coasts, no texture.
+	vec3 direction = normalize(model_position);
+	float amount = detail_amount(direction);
+	float open_water = detail_cover(classes.r, detail_uniform(direction, detail_seed_coast), amount);
+	vec4 cover = detail_partition(vec4(classes.g, classes.b, classes.a, ice_weight),
+	                              detail_uniform(direction, detail_seed_land_mix), amount);
+	float snow_patch = detail_cover(snow, detail_uniform(direction, detail_seed_snow), amount);
+	float floe = detail_cover(sea_ice, detail_uniform(direction, detail_seed_sea_ice), amount);
 
 	float contour = 0.5 + 0.5 * cos(relief * 0.0062831853);
 	vec3 water = vec3(0.14, 0.29, 0.40);
@@ -42,9 +61,12 @@ void fragment() {
 	vec3 sand = vec3(0.88, 0.78, 0.53);
 	vec3 soil = vec3(0.55, 0.62, 0.25);
 	vec3 ice = vec3(0.95, 0.97, 0.96);
-	vec3 base = classes.r * water + classes.g * rock + classes.b * sand + classes.a * soil + ice_weight * ice;
+	vec3 ground = cover.x * rock + cover.y * sand + cover.z * soil + cover.w * ice;
+	vec3 base = mix(ground, water, open_water);
 	base *= mix(0.93, 1.05, smoothstep(0.42, 0.58, contour));
-	base = mix(base, ice, 0.28 * snow + 0.20 * sea_ice);
+	float snow_tint = mix(0.28, 0.85, amount) * snow_patch * mix(1.0, 1.0 - open_water, amount);
+	float floe_tint = mix(0.20, 0.85, amount) * floe * mix(1.0, open_water, amount);
+	base = mix(base, ice, clamp(snow_tint + floe_tint, 0.0, 1.0));
 	base = mix(base, vec3(0.74, 0.70, 0.61), 0.55 * guessed);
 	base = mix(base, vec3(dot(base, vec3(0.299, 0.587, 0.114))), 0.55 * age);
 	base *= mix(0.52, 1.0, known);
