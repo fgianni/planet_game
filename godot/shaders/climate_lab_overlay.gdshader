@@ -1,6 +1,8 @@
 shader_type spatial;
 render_mode cull_disabled;
 
+#include "res://shaders/display_transfer.gdshaderinc"
+
 uniform sampler2D daylight_map : filter_nearest;
 uniform sampler2D temperature_anomaly_map : filter_nearest;
 uniform sampler2D precipitation_map : filter_nearest;
@@ -49,14 +51,11 @@ void fragment() {
 			base *= 0.16 + 0.84 * daylight;
 		}
 	}
-	if (!OUTPUT_IS_SRGB) {
-		base = srgb_to_linear(base);
-	}
 	if (data_view) {
 		ALBEDO = vec3(0.0);
-		EMISSION = base;
+		EMISSION = OUTPUT_IS_SRGB ? display_unshaded(base) : srgb_to_linear(base);
 	} else {
-		ALBEDO = base;
+		ALBEDO = OUTPUT_IS_SRGB ? display_albedo(base) : srgb_to_linear(base);
 	}
 	ROUGHNESS = 0.9;
 }

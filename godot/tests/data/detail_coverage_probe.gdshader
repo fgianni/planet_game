@@ -17,9 +17,10 @@ uniform sampler2D fraction_map : filter_nearest; // r water, g snow, b sea ice
 uniform sampler2D class_map : filter_nearest; // four class weights
 uniform int mode = 0;
 
-// The offscreen readback is exact only from about 62/255 up (darker values
-// come back compressed, 7/255 and below as 0), so every value is written in
-// 64/255..1: an affine code, or two such bytes for 16 bits.
+// The renderer shows values exactly only from about 62/255 up (darker ones
+// darker, 7/255 and below as 0; see shaders/display_transfer.gdshaderinc),
+// so every value is written in 64/255..1: an affine code, or two such
+// bytes for 16 bits.
 vec3 probe_encode(vec3 value) {
 	return 0.25 + 0.75 * clamp(value, 0.0, 1.0);
 }

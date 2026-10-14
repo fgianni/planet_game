@@ -2,6 +2,7 @@ shader_type spatial;
 render_mode cull_disabled;
 
 #include "res://shaders/surface_detail.gdshaderinc"
+#include "res://shaders/display_transfer.gdshaderinc"
 
 uniform sampler2D relief_map : filter_nearest;
 uniform sampler2D surface_class_map : filter_nearest;
@@ -90,6 +91,8 @@ void fragment() {
 	base = mix(base, vec3(0.18, 0.55, 0.96), 0.38 * atmosphere * air_mass);
 	if (!OUTPUT_IS_SRGB) {
 		base = srgb_to_linear(base);
+	} else {
+		base = display_albedo(base);
 	}
 	ALBEDO = base;
 	ROUGHNESS = mix(0.88, 0.6, amount * open_water * (1.0 - floe));

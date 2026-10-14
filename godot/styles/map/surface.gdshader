@@ -2,6 +2,7 @@ shader_type spatial;
 render_mode unshaded, cull_disabled;
 
 #include "res://shaders/surface_detail.gdshaderinc"
+#include "res://shaders/display_transfer.gdshaderinc"
 
 uniform sampler2D relief_map : filter_nearest;
 uniform sampler2D surface_class_map : filter_nearest;
@@ -77,6 +78,8 @@ void fragment() {
 	base = mix(base, vec3(0.30, 0.63, 0.90), 0.22 * atmosphere * air_mass);
 	if (!OUTPUT_IS_SRGB) {
 		base = srgb_to_linear(base);
+	} else {
+		base = display_unshaded(base);
 	}
 	ALBEDO = base;
 }
