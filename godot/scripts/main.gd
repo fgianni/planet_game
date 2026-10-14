@@ -152,10 +152,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			_select_cell(event.position)
 	elif event is InputEventKey and event.pressed and not event.echo:
 		# Views by key position, not character: AZERTY's top row types
-		# & é " ' ( - è _ ç. The keypad digits work too.
+		# & é " ' ( - è _ ç. The keypad digits work too. With AltGr, Alt or
+		# Ctrl held the row types other characters, so it selects no view.
 		var physical_view: int = event.physical_keycode - KEY_1
 		var keypad_view: int = event.keycode - KEY_KP_1
-		if physical_view >= 0 and physical_view < 9:
+		var modified: bool = event.alt_pressed or event.ctrl_pressed
+		# Relief by key position too: the two keys right of P ([ ] on
+		# QWERTY, ^ $ on AZERTY).
+		if event.physical_keycode == KEY_BRACKETLEFT:
+			_planet.set_relief_exaggeration(_planet.get_relief_exaggeration() / 1.5)
+			return
+		if event.physical_keycode == KEY_BRACKETRIGHT:
+			_planet.set_relief_exaggeration(maxf(1.0, _planet.get_relief_exaggeration() * 1.5))
+			return
+		if physical_view >= 0 and physical_view < 9 and not modified:
 			_planet.set_view_mode(physical_view)
 			return
 		if keypad_view >= 0 and keypad_view < 9:
@@ -181,10 +191,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_P:
 				preset = PRESETS[(PRESETS.find(preset) + 1) % PRESETS.size()]
 				_generate()
-			KEY_BRACKETLEFT:
-				_planet.set_relief_exaggeration(_planet.get_relief_exaggeration() / 1.5)
-			KEY_BRACKETRIGHT:
-				_planet.set_relief_exaggeration(maxf(1.0, _planet.get_relief_exaggeration() * 1.5))
 			KEY_PAGEUP:
 				subdivision = mini(7, subdivision + 1)
 				_generate()
@@ -347,6 +353,6 @@ func _update_hud() -> void:
 			_planet.get_drainage_depression_count()],
 		legend,
 		"drag: turn  Shift+drag: heading/tilt  wheel: zoom  right-click: select  1-9: style/overlays  S: style",
-		"N: day/night  L: live climate  [ ]: relief",
+		"N: day/night  L: live climate  2 keys right of P: relief -/+",
 		"R: new seed  P: preset  PgUp/PgDn: resolution  Space: pause  +/-: speed  F12: screenshot",
 	])

@@ -114,12 +114,37 @@ func _run() -> void:
 	var moved: Vector3 = globe.get_camera_position().normalized()
 	_expect(moved.x > start.x + 1e-3, "dragging left did not turn the globe eastwards: %s" % moved)
 
+	# Keys by position (main.gd): the two keys right of P change the relief
+	# on any layout; with AltGr (Alt) held the number row selects no view,
+	# since on AZERTY AltGr+5 types "[".
+	var relief: float = planet.get_relief_exaggeration()
+	main._unhandled_input(_key(KEY_BRACKETRIGHT, false))
+	_expect(abs(planet.get_relief_exaggeration() - relief * 1.5) < 1e-6, "the key right of [ did not raise the relief")
+	main._unhandled_input(_key(KEY_BRACKETLEFT, false))
+	_expect(abs(planet.get_relief_exaggeration() - relief) < 1e-6, "the key right of P did not lower the relief")
+	planet.set_view_mode(0)
+	main._unhandled_input(_key(KEY_5, true))
+	_expect(planet.get_view_mode() == 0, "AltGr+5 switched the view")
+	main._unhandled_input(_key(KEY_5, false))
+	_expect(planet.get_view_mode() == 4, "5 did not select view 5")
+
 	main.free()
 	if _failures > 0:
 		quit(1)
 		return
 	print("globe camera pass")
 	quit(0)
+
+
+## A key press at a physical (QWERTY) position, as an AZERTY keyboard sends
+## it: the keycode differs, the position does not.
+func _key(physical: Key, alt: bool) -> InputEventKey:
+	var key := InputEventKey.new()
+	key.physical_keycode = physical
+	key.keycode = KEY_DOLLAR if physical == KEY_BRACKETRIGHT else KEY_NONE
+	key.alt_pressed = alt
+	key.pressed = true
+	return key
 
 
 func _wheel(globe: Node3D, position: Vector2) -> void:
