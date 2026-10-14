@@ -285,6 +285,20 @@ func _select_cell(screen_position: Vector2) -> void:
 		if distance >= 0.0 else -1
 
 
+## The two keys right of P as the current layout prints them. Godot reports
+## AZERTY's dead ^ as "[", so French and Belgian layouts are named outright.
+func _relief_keys() -> String:
+	var layout := DisplayServer.keyboard_get_current_layout()
+	var language := DisplayServer.keyboard_get_layout_language(layout) if layout >= 0 else ""
+	if language.begins_with("fr") or language.begins_with("be"):
+		return "^ $"
+	var keys := PackedStringArray()
+	for physical in [KEY_BRACKETLEFT, KEY_BRACKETRIGHT]:
+		var code: int = DisplayServer.keyboard_get_keycode_from_physical(physical)
+		keys.append(String.chr(code) if code > 32 and code < 127 else OS.get_keycode_string(code))
+	return " ".join(keys)
+
+
 func _altitude_text(metres: float) -> String:
 	return "%.0f m" % metres if metres < 10_000.0 else "%.0f km" % (metres / 1000.0)
 
@@ -353,6 +367,6 @@ func _update_hud() -> void:
 			_planet.get_drainage_depression_count()],
 		legend,
 		"drag: turn  Shift+drag: heading/tilt  wheel: zoom  right-click: select  1-9: style/overlays  S: style",
-		"N: day/night  L: live climate  2 keys right of P: relief -/+",
+		"N: day/night  L: live climate  %s: relief -/+" % _relief_keys(),
 		"R: new seed  P: preset  PgUp/PgDn: resolution  Space: pause  +/-: speed  F12: screenshot",
 	])
