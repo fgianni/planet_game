@@ -311,10 +311,40 @@ licence, or where they may be stored. Two facts force a rule:
 |---|---|---|---|
 | `public` | CC0; CC-BY 4.0; MIT, BSD or Apache-2.0 for code-like assets; our own work | this repository, `godot/assets/public/` | Kenney, Poly Haven, ambientCG, assets we make |
 | `restricted` | licences that allow use in a shipped game but not redistribution of the files: Fab Standard License, other marketplace EULAs | a private repository, `fgianni/planet_game_assets`, checked out to `godot/assets/restricted/`, which is git-ignored here | free Fab listings |
-| refused | anything engine-restricted to a different engine; `.uasset` or other formats only one engine can open; non-commercial (NC) or no-derivatives (ND) licences; editorial-only; unknown or unclear licence | nowhere | — |
+| refused | anything engine-restricted to a different engine; `.uasset` or other formats only one engine can open; non-commercial (NC), no-derivatives (ND) or share-alike (SA) licences; Fab's Personal - Reference Only tier (no source files); code plugins; editorial-only; unknown or unclear licence | nowhere | — |
 
 A free price is not a licence: each listing's licence is read and recorded
-at download, and an asset whose licence cannot be determined is refused.
+at download, and an asset whose licence cannot be determined is refused. A
+Fab listing offered under an open licence (an "Alternative License", Fab
+EULA §2(c)), such as CC0 or CC-BY, is governed by that licence and belongs
+to the `public` tier.
+
+**What the Fab EULA requires** (full text of 1 October 2024 read
+2026-10-14; this is a reading, not legal advice):
+
+- *Sharing* (§5(a)): only with collaborators developing the game, directly
+  or through a private repository; they may not redistribute it and must
+  delete it when no longer needed, and the owner is liable for them. The
+  private repository is shared with no one else; CI and cloud-hosted coding
+  agents work on the public tree only.
+- *No copyleft* (§6(a)): Standard-licence content may not be combined with
+  GPL, LGPL (except dynamic linking) or CC-BY-SA material. The `public` tier
+  therefore refuses share-alike licences, and the game's own licence may
+  not be copyleft.
+- *Shipping* (§4(c)): a build may carry restricted assets in object code,
+  but must restrict end users from extracting or using them outside the
+  game: the game's end-user terms forbid it, and builds carrying restricted
+  assets encrypt their pack.
+- *No editors* (§6(b)(iii)): restricted assets are never offered in a
+  scenario, level or style editor that can export works, nor in mod kits.
+- *Terms fixed per acquisition* (§2(a), §2(d), §7(a)): the Personal tier
+  needs under $100,000 of revenue in the twelve months before the
+  acquisition; the terms in force when an asset was acquired stay its
+  terms, so the manifest records the tier and the EULA's date.
+- *No generative-AI training* on content tagged "NoAI" (§6(b)(vii),
+  §16(l)); the manifest records the tag.
+- Screenshots and videos may be distributed freely (§4(b)); credit is not
+  required for Standard-licence content.
 
 **The manifest.** `godot/assets/manifest.json`, in the public repository,
 lists every asset of both tiers:
@@ -331,6 +361,9 @@ licence_url     the licence text
 attribution     the credit line, required for CC-BY
 modified        whether we changed the file; CC-BY requires saying so,
                 and the credit line does
+fab_tier        Personal | Professional, for Fab Standard-licence assets
+licence_version the EULA's date as acquired (Fab: "2024-10-01")
+no_ai           whether the listing is tagged NoAI
 retrieved       date of download
 sha256          of the file as committed or stored
 fallback        id of a public asset used when this one is absent
@@ -400,8 +433,9 @@ asset appears with its attribution line, its licence and, if `modified`,
 a note that it was changed.
 
 **Shipping.** Exported builds may contain restricted assets, packed into
-the game's resources as the licences allow. Source releases and mod kits
-contain public assets only.
+the game's resources and encrypted, under end-user terms that forbid
+extracting them (Fab EULA §4(c)). Source releases, mod kits and any
+exporting editor contain public assets only.
 
 ### 11.3 Validation
 
@@ -431,23 +465,20 @@ from V1, so a reference from elsewhere says "ADR-0018 V12".
 
 ### 11.5 Open questions
 
-1. The Fab summary is non-binding: before the first restricted asset is
-   committed to the private repository, read the full Fab EULA and record
-   in this section whether anything in it changes the tiers above.
-   The full text could not be fetched by tools on 2026-10-14 (fab.com
-   refuses non-browser clients); it must be read in a browser. Its answer
-   also decides the "Shipping" paragraph: whether exported builds may carry
-   restricted assets.
+1. ~~Read the full Fab EULA before the first restricted asset.~~ Answered
+   2026-10-14 (EULA of 1 October 2024): the tiers stand; its requirements
+   are recorded in §11.2 ("What the Fab EULA requires") and in the
+   "Shipping" paragraph.
 2. If the game's source is ever released under an open licence, are
    restricted assets dropped from the release, or is the realistic style
    shipped as a separate download?
 3. The repository is public but has no licence. Under which licence are
    our own assets (the `public` tier's "our own work") published: CC0,
-   CC-BY 4.0, or the repository's licence once one is chosen?
-4. Which further licences join the `public` tier: SIL OFL 1.1 for fonts
-   (the `ui_skin` of specification §31.3 carries fonts), CC-BY 3.0 (common
-   for older assets), CC-BY-SA (whose share-alike terms bind derivatives;
-   the review recommends refusing it)?
+   CC-BY 4.0, or the repository's licence once one is chosen? Whatever is
+   chosen may not be copyleft (Fab EULA §6(a)).
+4. Do SIL OFL 1.1 for fonts (the `ui_skin` of specification §31.3 carries
+   fonts) and CC-BY 3.0 (common for older assets) join the `public` tier?
+   (CC-BY-SA is refused, §11.2.)
 
 ### 11.6 Proposed task
 
