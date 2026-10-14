@@ -7,6 +7,8 @@
 #include "sim/planet/terrain/hypsometry.hpp"
 #include "sim/planet/terrain/surface_fractions.hpp"
 
+#include <algorithm>
+#include <cstddef>
 #include <stdexcept>
 
 namespace planetsim {
@@ -51,10 +53,14 @@ TerrainSnapshot make_terrain_snapshot(const PlanetState& state, const GeologySta
     snapshot.basin_id.resize(cell_count);
     snapshot.depression_id.resize(cell_count);
     snapshot.catchment_area_m2.resize(cell_count);
+    snapshot.hypsometry_m.resize(cell_count * hypsometry_quantile_count);
     for (std::size_t index = 0; index < cell_count; ++index) {
         const CellId cell{static_cast<std::uint32_t>(index)};
-        snapshot.mean_elevation_m[index] =
-            static_cast<float>(mean_elevation_m(cell_hypsometry(slow.hypsometry_m, cell)));
+        const HypsometryQuantiles quantiles = cell_hypsometry(slow.hypsometry_m, cell);
+        snapshot.mean_elevation_m[index] = static_cast<float>(mean_elevation_m(quantiles));
+        std::copy(quantiles.begin(), quantiles.end(),
+                  snapshot.hypsometry_m.begin() +
+                      static_cast<std::ptrdiff_t>(index * hypsometry_quantile_count));
         snapshot.land_fraction[index] = fractions.land_fraction[index];
         snapshot.plate_id[index] = geology.plate_id[index].value();
         snapshot.crust_type[index] = static_cast<std::uint8_t>(geology.crust_type[index]);

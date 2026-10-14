@@ -1,6 +1,7 @@
 #include "sim/presentation/visual_frame.hpp"
 #include "sim/presentation/presentation_record.hpp"
 #include "sim/planet/run/planet_run.hpp"
+#include "sim/planet/terrain/hypsometry.hpp"
 #include "tests/test_support.hpp"
 
 #include <array>
@@ -121,6 +122,28 @@ void check_recording_is_non_authoritative(planetsim::test::Context& test) {
     PLANETSIM_EXPECT(test, loaded.terrain.has_value() &&
                                loaded.terrain->mean_elevation_m ==
                                    recorded.terrain_snapshot().mean_elevation_m);
+    // Schema 3 terrain carries the hypsometry (ADR-0022 §4.6): nine
+    // quantiles per cell, rising, whose mean is the cell's mean elevation.
+    const auto& hypsometry = recorded.terrain_snapshot().hypsometry_m;
+    const std::size_t terrain_cells = recorded.terrain_snapshot().mean_elevation_m.size();
+    bool rising = hypsometry.size() == terrain_cells * planetsim::hypsometry_quantile_count;
+    for (std::size_t index = 0; rising && index + 1U < hypsometry.size(); ++index) {
+        if ((index + 1U) % planetsim::hypsometry_quantile_count != 0U)
+            rising = hypsometry[index] <= hypsometry[index + 1U];
+    }
+    PLANETSIM_EXPECT(test, rising && loaded.terrain->hypsometry_m == hypsometry);
+    {
+        // An older record's schema-2 terrain still reads, without hypsometry.
+        planetsim::presentation::PresentationRecord old_record = record;
+        old_record.terrain->schema_version = 2U;
+        planetsim::presentation::write_presentation_record(path, old_record);
+        const auto loaded_old = planetsim::presentation::read_presentation_record(path);
+        std::filesystem::remove(path);
+        PLANETSIM_EXPECT(test, loaded_old.terrain.has_value() &&
+                                   loaded_old.terrain->schema_version == 2U &&
+                                   loaded_old.terrain->hypsometry_m.empty() &&
+                                   loaded_old.frames.size() == frames.size());
+    }
     PLANETSIM_EXPECT(test, !loaded.frames.empty() &&
                                loaded.frames.back().top_of_atmosphere_insolation_W_m2 ==
                                    frames.back().top_of_atmosphere_insolation_W_m2);

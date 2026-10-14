@@ -90,6 +90,7 @@ void write_terrain(std::ostream& stream, const TerrainSnapshot& terrain) {
     write_vector(stream, terrain.crust_age_myr); write_vector(stream, terrain.boundary_class);
     write_vector(stream, terrain.downstream); write_vector(stream, terrain.basin_id);
     write_vector(stream, terrain.depression_id); write_vector(stream, terrain.catchment_area_m2);
+    if (terrain.schema_version >= 3U) write_vector(stream, terrain.hypsometry_m);
 }
 [[nodiscard]] TerrainSnapshot read_terrain(std::istream& stream) {
     TerrainSnapshot terrain;
@@ -102,6 +103,8 @@ void write_terrain(std::ostream& stream, const TerrainSnapshot& terrain) {
     read_vector(stream, terrain.crust_age_myr); read_vector(stream, terrain.boundary_class);
     read_vector(stream, terrain.downstream); read_vector(stream, terrain.basin_id);
     read_vector(stream, terrain.depression_id); read_vector(stream, terrain.catchment_area_m2);
+    // Schema 3 adds the hypsometry; an older record's terrain has none.
+    if (terrain.schema_version >= 3U) read_vector(stream, terrain.hypsometry_m);
     return terrain;
 }
 

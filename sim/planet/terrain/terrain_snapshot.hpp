@@ -10,7 +10,7 @@ class PlanetState;
 struct GeologyState;
 struct DrainageState;
 
-inline constexpr std::uint32_t terrain_snapshot_schema_version = 2;
+inline constexpr std::uint32_t terrain_snapshot_schema_version = 3;
 
 // Read-oriented copy of the generated terrain for presentation clients
 // (specification §7): per-cell values derived from the ADR-0005 slow state
@@ -36,6 +36,10 @@ struct TerrainSnapshot {
     std::vector<std::uint32_t> basin_id;      // terminal outlet CellId
     std::vector<std::uint32_t> depression_id; // no_depression outside raised components
     std::vector<float> catchment_area_m2;      // upstream land area
+    // Schema 3 (ADR-0022 §4.6): the slow state's sub-cell hypsometry, cell-major,
+    // hypsometry_quantile_count elevations per cell at ranks 0, 1/8, ..., 1.
+    // A presentation copy for the terrain tiles; PSNAP does not change.
+    std::vector<float> hypsometry_m;
 };
 
 [[nodiscard]] TerrainSnapshot make_terrain_snapshot(const PlanetState& state,
