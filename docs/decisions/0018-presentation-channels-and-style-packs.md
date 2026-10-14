@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-04
 - **Accepted:** 2026-10-04
-- **Amended:** 2026-10-12 — §11: asset sourcing, licences and the public/restricted split (proposed); 2026-10-13 — §4.1 and §4.8 by ADR-0022 (accepted): the site list, detail keyed by position
+- **Amended:** 2026-10-12 — §11: asset sourcing, licences and the public/restricted split (proposed; revised 2026-10-14 after review); 2026-10-13 — §4.1 and §4.8 by ADR-0022 (accepted): the site list, detail keyed by position
 - **Milestone:** rendering track R1 (specification §31.10), in parallel with P0 / M6
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_8.md` §2, §3, §7, §8 (pacing is presentation), §17.2, §31, §32.9; Planetary Civilization Simulator — Design Record v1.3, §3.4, §21.4, §42, §44.8
 - **Related:** ADR-0002 (mesh, cell and corner layout), ADR-0003 (snapshots, history store, determinism scope), ADR-0005 (land fraction, hypsometry), ADR-0008 (snow and sea-ice cover), ADR-0012 and ADR-0019 (not yet written; this record reserves their channels)
@@ -280,7 +280,7 @@ it can, and the ADR is amended to say so.
 - Machado, Oliveira and Fernandes (2009), *A physiologically-based model
   for simulation of color vision deficiency*.
 
-## 11. Amendment: asset sourcing, licences and the public/restricted split (proposed 2026-10-12)
+## 11. Amendment: asset sourcing, licences and the public/restricted split (proposed 2026-10-12, revised 2026-10-14)
 
 ### 11.1 Context
 
@@ -329,6 +329,8 @@ licence         SPDX id where one exists (CC0-1.0, CC-BY-4.0), else
                 "Fab-Standard" or the marketplace's licence name
 licence_url     the licence text
 attribution     the credit line, required for CC-BY
+modified        whether we changed the file; CC-BY requires saying so,
+                and the credit line does
 retrieved       date of download
 sha256          of the file as committed or stored
 fallback        id of a public asset used when this one is absent
@@ -339,9 +341,29 @@ uses            style packs and bands that use it
 Listing a restricted asset in the public manifest reveals only metadata,
 never the file.
 
-**Formats.** Assets are imported from glTF 2.0, FBX or OBJ and stored as
-glTF 2.0 (`.glb`) with PNG or KTX2 textures, so that Godot imports them
-directly and a future client could too.
+**References by id.** Style packs and scenes refer to an asset only by its
+manifest `id`, never by a `res://` path or a Godot `uid`; the style loader
+maps an id to its file, or to its fallback when the file is absent. A
+tracked resource that named a restricted file directly would fail to load
+on a fresh clone and in public CI before any fallback could apply. No
+tracked file may mention `res://assets/restricted/`.
+
+**Styles list their assets.** `PlanetStyle` gains the `assets` entry that
+specification §31.3 already names: for each band of ADR-0022 §4.8, the
+manifest ids the style draws there. The style loader (the directory scan of
+`godot/styles/`) resolves them when it loads the pack.
+
+**Formats.** Meshes are imported from glTF 2.0, FBX or OBJ and stored as
+glTF 2.0 (`.glb`); textures and materials as PNG or KTX2, HDR images and
+sky maps as EXR; fonts as TTF or OTF. Godot imports all of them directly,
+and a future client could too. Godot's `.import` sidecar of each file is
+kept with it (tracked here for `public` assets, in the private repository
+for `restricted` ones), so import settings are reproducible.
+
+**Size.** No single `public` file exceeds 10 MB, and `godot/assets/public/`
+stays under 200 MB in total, so a clone and a CI checkout stay small.
+Anything larger, or moving binary assets to Git LFS, is decided by
+amendment.
 
 **Fallbacks.** Every restricted asset names a public fallback with the same
 role and footprint (a generic tree, rock or crate). The style loader
@@ -355,8 +377,10 @@ specification §31.12: no gameplay difference between styles).
 - `stylised` and `map`, and any style that a readability gate in public CI
   depends on, use `public` assets only.
 - A style pack may use `restricted` assets only if it declares
-  `requires_restricted = true` in its manifest. Its readability results are
-  recorded locally against the full asset set, as §5 already allows for
+  `requires_restricted = true` in its manifest. The loader refuses a style
+  that names a `restricted` id without declaring it, naming the asset, as it
+  refuses a style missing a required channel (V7). Its readability results
+  are recorded locally against the full asset set, as §5 already allows for
   jobs CI cannot run; public CI checks it with fallbacks only.
 - Community style packs (specification §27) may use `public` assets only.
 
@@ -372,7 +396,8 @@ holds in every tier.
 
 **Credits.** The game's credits screen and the repository's
 `godot/assets/CREDITS.md` are generated from the manifest; every CC-BY
-asset appears with its attribution line.
+asset appears with its attribution line, its licence and, if `modified`,
+a note that it was changed.
 
 **Shipping.** Exported builds may contain restricted assets, packed into
 the game's resources as the licences allow. Source releases and mod kits
@@ -382,11 +407,15 @@ contain public assets only.
 
 | ID | Check | Where |
 |---|---|---|
-| V10 | Every file under `godot/assets/public/` has a manifest entry with an allowed `public` licence and a matching `sha256` | CI script |
-| V11 | No file under `godot/assets/restricted/` is tracked by git, and the path is git-ignored | CI script |
+| V10 | Every file under `godot/assets/public/` has a manifest entry with an allowed `public` licence and a matching `sha256`, and the size limits hold | CI script |
+| V11 | No file under `godot/assets/restricted/` is tracked by git, the path is git-ignored, and no tracked file mentions `res://assets/restricted/` | CI script |
 | V12 | Every `restricted` entry names a `public` fallback that exists | CI script |
 | V13 | With `godot/assets/restricted/` absent, every style loads, the R1–R4 readability gates pass and the render capture runs | readability job (public CI) |
 | V14 | `CREDITS.md` is up to date with the manifest | CI script |
+| V15 | A style naming a `restricted` asset without `requires_restricted = true` is refused, naming the asset | bridge test (Godot job) |
+
+These checks extend this record's V1–V9. ADR-0022 numbers its own checks
+from V1, so a reference from elsewhere says "ADR-0018 V12".
 
 ### 11.4 Consequences
 
@@ -405,14 +434,27 @@ contain public assets only.
 1. The Fab summary is non-binding: before the first restricted asset is
    committed to the private repository, read the full Fab EULA and record
    in this section whether anything in it changes the tiers above.
+   The full text could not be fetched by tools on 2026-10-14 (fab.com
+   refuses non-browser clients); it must be read in a browser. Its answer
+   also decides the "Shipping" paragraph: whether exported builds may carry
+   restricted assets.
 2. If the game's source is ever released under an open licence, are
    restricted assets dropped from the release, or is the realistic style
    shipped as a separate download?
+3. The repository is public but has no licence. Under which licence are
+   our own assets (the `public` tier's "our own work") published: CC0,
+   CC-BY 4.0, or the repository's licence once one is chosen?
+4. Which further licences join the `public` tier: SIL OFL 1.1 for fonts
+   (the `ui_skin` of specification §31.3 carries fonts), CC-BY 3.0 (common
+   for older assets), CC-BY-SA (whose share-alike terms bind derivatives;
+   the review recommends refusing it)?
 
 ### 11.6 Proposed task
 
 **R1-05 — Asset manifest and tiers**: create `godot/assets/` with the
 `public` tree, the manifest schema and an empty manifest, the git-ignore
 rule, a `tools/fetch_restricted_assets.sh` that clones the private
-repository when the user has access, fallback resolution in the style
-loader, `CREDITS.md` generation, and checks V10–V14. Needs only R1-02.
+repository when the user has access, the `assets` entry in `PlanetStyle`,
+resolution of ids to files or fallbacks in the style loader (the directory
+scan of `godot/styles/`), `CREDITS.md` generation, and checks V10–V15.
+Needs only R1-02.
