@@ -91,6 +91,7 @@ add_library(PlanetSim::PlanetSim ALIAS PlanetSim)
 add_library(PlanetSimPresentation STATIC
     sim/presentation/detail_seed.cpp
     sim/presentation/presentation_record.cpp
+    sim/presentation/terrain_relief.cpp
     sim/presentation/visual_frame.cpp
 )
 add_library(PlanetSim::Presentation ALIAS PlanetSimPresentation)
