@@ -17,7 +17,6 @@ var _pending_simulation_ticks: float = 0.0
 var _time_since_snapshot_s: float = 0.0
 var _presentation_frame_accumulator: float = 0.0
 var _paused: bool = false
-var _dragging: bool = false
 var _yaw: float = 0.0
 var _pitch: float = 0.3
 var _view_given := false # --yaw or --pitch; otherwise start on the day side
@@ -28,7 +27,7 @@ const FILL_WITH_SUN := 0.25
 const FILL_ALONE := 0.8
 # Start the view this far from the subsolar point, so relief shades.
 const DAY_SIDE_OFFSET := 0.6 # rad
-var _distance: float = 3.2
+var _distance: float = 3.2 # the opening view's distance from the centre, in radii
 var _selected_cell: int = -1
 var _live_water_cycle: int = -1 # -1 the preset's, 0 off, 1 on
 var _screenshot_path: String = ""
@@ -37,7 +36,7 @@ var _screenshot_started: bool = false
 var _capture_generation: int = 0
 
 @onready var _planet = $Planet
-@onready var _pivot: Node3D = $CameraPivot
+@onready var _globe: Node3D = $CameraPivot # scripts/globe_camera.gd
 @onready var _camera: Camera3D = $CameraPivot/Camera3D
 @onready var _fill: DirectionalLight3D = $CameraPivot/Camera3D/Light
 @onready var _hud: Label = $Hud/Info
@@ -78,6 +77,8 @@ func _ready() -> void:
 	elif live:
 		_planet.start_live_run(0, _live_water_cycle)
 	_planet.set_view_mode(view)
+	_globe.planet = _planet
+	_globe.camera = _camera
 	if not _view_given:
 		_face_day_side()
 	_update_lighting()
@@ -98,6 +99,7 @@ func _generate() -> void:
 	var resume_live: bool = _planet.has_live_run()
 	var start := Time.get_ticks_msec()
 	_planet.rebuild(subdivision, 6_371_000.0, world_seed, preset)
+	_globe.set_cell_spacing(sqrt(4.0 * PI / (10.0 * pow(4.0, _planet.get_subdivision()) + 2.0)))
 	_selected_cell = -1
 	if resume_live:
 		_planet.start_live_run(0, _live_water_cycle)
@@ -143,21 +145,11 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _globe.handle_input(event):
+		return
 	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT:
-			_dragging = event.pressed
-		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 			_select_cell(event.position)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-			_distance = maxf(1.3, _distance * 0.9)
-			_update_camera()
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-			_distance = minf(10.0, _distance * 1.1)
-			_update_camera()
-	elif event is InputEventMouseMotion and _dragging:
-		_yaw -= event.relative.x * 0.006
-		_pitch = clampf(_pitch + event.relative.y * 0.006, -1.5, 1.5)
-		_update_camera()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		# Views by key position, not character: AZERTY's top row types
 		# & é " ' ( - è _ ç. The keypad digits work too.
@@ -221,9 +213,12 @@ func _unhandled_input(event: InputEvent) -> void:
 					simulated_hours_per_second = maxf(0.125, simulated_hours_per_second / 2.0)
 
 
+## Places the view at once from _yaw, _pitch and _distance (the opening
+## view, and --yaw, --pitch, --distance): looking down at the point in that
+## direction from that distance from the centre.
 func _update_camera() -> void:
-	_pivot.rotation = Vector3(-_pitch, _yaw, 0.0)
-	_camera.position = Vector3(0.0, 0.0, _distance)
+	var direction := Vector3(cos(_pitch) * sin(_yaw), sin(_pitch), cos(_pitch) * cos(_yaw))
+	_globe.look_at_direction(direction, maxf(_distance - 1.0, 0.0))
 
 
 func _capture_screenshot(path: String, quit_after: bool) -> void:
@@ -284,6 +279,10 @@ func _select_cell(screen_position: Vector2) -> void:
 		if distance >= 0.0 else -1
 
 
+func _altitude_text(metres: float) -> String:
+	return "%.0f m" % metres if metres < 10_000.0 else "%.0f km" % (metres / 1000.0)
+
+
 func _channel_reading(name: String, suffix: String, scale: float = 1.0) -> String:
 	if _selected_cell < 0 or not _planet.has_channel(name):
 		return "%s unavailable" % name.replace("_", " ")
@@ -341,12 +340,13 @@ func _update_hud() -> void:
 		"plates %d   land %.1f %%   sea level %.0f m" % [
 			_planet.get_plate_count(), 100.0 * _planet.get_land_fraction(), _planet.get_sea_level()],
 		"day %.2f   %s%s" % [days, playback, "  (paused)" if _paused else ""],
+		"altitude %s   band %s" % [_altitude_text(_globe.get_altitude_m()), _globe.get_current_band()],
 		selection,
 		"drainage: %d outlets   %d basins   %d depressions" % [
 			_planet.get_drainage_outlet_count(), _planet.get_drainage_basin_count(),
 			_planet.get_drainage_depression_count()],
 		legend,
-		"drag: rotate  right-click: select  wheel: zoom  1-9: style/overlays  S: switch style",
+		"drag: turn  Shift+drag: heading/tilt  wheel: zoom  right-click: select  1-9: style/overlays  S: style",
 		"N: day/night  L: live climate  [ ]: relief",
 		"R: new seed  P: preset  PgUp/PgDn: resolution  Space: pause  +/-: speed  F12: screenshot",
 	])

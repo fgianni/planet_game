@@ -229,6 +229,10 @@ void PlanetMeshNode::_bind_methods() {
                                 &PlanetMeshNode::get_live_state_hash);
     godot::ClassDB::bind_method(godot::D_METHOD("find_cell", "direction"),
                                 &PlanetMeshNode::find_cell);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_surface_radius", "direction"),
+                                &PlanetMeshNode::get_surface_radius);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_cell_direction", "cell"),
+                                &PlanetMeshNode::get_cell_direction);
     godot::ClassDB::bind_method(godot::D_METHOD("has_channel", "channel_name"),
                                 &PlanetMeshNode::has_channel);
     godot::ClassDB::bind_method(godot::D_METHOD("get_channel_value", "cell", "channel_name"),
@@ -793,6 +797,54 @@ std::int64_t PlanetMeshNode::find_cell(const godot::Vector3& direction) const {
     return static_cast<std::int64_t>(closest);
 }
 
+godot::Vector3 PlanetMeshNode::get_cell_direction(std::int64_t cell) const {
+    if (!mesh_ || cell < 0 || static_cast<std::size_t>(cell) >= mesh_->cell_count())
+        return {0.0F, 0.0F, 1.0F};
+    return to_godot(mesh_->cell(CellId{static_cast<std::uint32_t>(cell)}).center_unit);
+}
+
+double PlanetMeshNode::get_surface_radius(const godot::Vector3& direction) const {
+    if (!mesh_ || center_radius_.size() != mesh_->cell_count() || direction.length_squared() <= 0.0F)
+        return 1.0;
+    const godot::Vector3 unit_f = direction.normalized();
+    const Vec3d unit{unit_f.x, unit_f.y, unit_f.z};
+    // The nearest cell, by a greedy walk from the last one found.
+    CellId cell{surface_hint_ < mesh_->cell_count() ? surface_hint_ : 0U};
+    double best = dot(unit, mesh_->cell(cell).center_unit);
+    for (bool moved = true; moved;) {
+        moved = false;
+        for (const CellEdgeGeometry& edge : mesh_->cell_edges(cell)) {
+            const double alignment = dot(unit, mesh_->cell(edge.neighbor).center_unit);
+            if (alignment > best) {
+                best = alignment;
+                cell = edge.neighbor;
+                moved = true;
+            }
+        }
+    }
+    surface_hint_ = cell.value();
+    // The fan triangle (centre, corner, next corner) the direction passes
+    // through, and the radius interpolated across it as the mesh draws it.
+    const Vec3d center = mesh_->cell(cell).center_unit;
+    const auto corners = mesh_->cell_corners(cell);
+    for (std::size_t k = 0; k < corners.size(); ++k) {
+        const CornerIndex first = corners[k];
+        const CornerIndex second = corners[(k + 1U) % corners.size()];
+        const Vec3d a = mesh_->corners_unit()[first];
+        const Vec3d b = mesh_->corners_unit()[second];
+        const double weight_center = dot(unit, cross(a, b));
+        const double weight_a = dot(unit, cross(b, center));
+        const double weight_b = dot(unit, cross(center, a));
+        const double total = weight_center + weight_a + weight_b;
+        if (total == 0.0) continue;
+        if (weight_center / total >= -1e-9 && weight_a / total >= -1e-9 && weight_b / total >= -1e-9) {
+            return (weight_center * center_radius_[cell.to_index()] + weight_a * corner_radius_[first] +
+                    weight_b * corner_radius_[second]) / total;
+        }
+    }
+    return center_radius_[cell.to_index()];
+}
+
 bool PlanetMeshNode::has_channel(const godot::String& channel_name) const {
     for (const auto& descriptor : presentation::channel_registry) {
         if (channel_name == godot::String(descriptor.name.data())) {
@@ -892,6 +944,8 @@ void PlanetMeshNode::build_geometry() {
     };
 
     std::vector<godot::Vector3> corner_position(mesh_->corner_count());
+    corner_radius_.assign(mesh_->corner_count(), 1.0);
+    center_radius_.assign(cell_count, 1.0);
     for (std::size_t corner = 0; corner < corner_cells_.size(); ++corner) {
         double elevation = 0.0;
         double land = 0.0;
@@ -900,6 +954,7 @@ void PlanetMeshNode::build_geometry() {
             land += terrain_.land_fraction[cell];
         }
         const double radius = 1.0 + scale * height_above_sea(elevation / 3.0, land / 3.0);
+        corner_radius_[corner] = radius;
         corner_position[corner] = to_godot(mesh_->corners_unit()[corner] * radius);
     }
     std::vector<godot::Vector3> center_position(cell_count);
@@ -907,6 +962,7 @@ void PlanetMeshNode::build_geometry() {
         const std::size_t index = cell.id.to_index();
         const double radius = 1.0 + scale * height_above_sea(terrain_.mean_elevation_m[index],
                                                              terrain_.land_fraction[index]);
+        center_radius_[index] = radius;
         center_position[index] = to_godot(cell.center_unit * radius);
     }
 

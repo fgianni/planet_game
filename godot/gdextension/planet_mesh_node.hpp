@@ -111,6 +111,10 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     [[nodiscard]] bool is_live_run_busy() const noexcept;
     [[nodiscard]] godot::String get_live_state_hash() const;
     [[nodiscard]] std::int64_t find_cell(const godot::Vector3& direction) const;
+    // Distance from the centre, in planet radii, of the surface as drawn
+    // (the displaced cell fans) along a direction: for camera collision.
+    [[nodiscard]] double get_surface_radius(const godot::Vector3& direction) const;
+    [[nodiscard]] godot::Vector3 get_cell_direction(std::int64_t cell) const;
     [[nodiscard]] bool has_channel(const godot::String& channel_name) const;
     [[nodiscard]] double get_channel_value(std::int64_t cell,
                                            const godot::String& channel_name) const;
@@ -158,6 +162,9 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     std::unique_ptr<PlanetState> state_;
     TerrainSnapshot terrain_;
     std::vector<std::array<std::uint32_t, 3>> corner_cells_;
+    std::vector<double> center_radius_; // displaced radius of each cell centre, as drawn
+    std::vector<double> corner_radius_; // and of each corner
+    mutable std::uint32_t surface_hint_ = 0U; // last cell get_surface_radius found
     std::uint64_t seed_ = 1;
     godot::String preset_ = "earth_like";
 

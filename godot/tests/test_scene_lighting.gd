@@ -41,7 +41,10 @@ func _run() -> void:
 	_expect(planet.get_node_or_null("Sun") is DirectionalLight3D and planet.get_node("Sun").visible,
 		"the planet has no visible sun light")
 	var sun: Vector3 = planet.get_sun_direction()
-	var view: Vector3 = camera.global_position.normalized()
+	# The view is camera-relative: the camera sits at the origin and the
+	# planet moves, so the camera's place on the planet is the globe's.
+	var globe: Node3D = main.get_node("CameraPivot")
+	var view: Vector3 = globe.get_camera_position().normalized()
 	_expect(view.dot(sun) > 0.5, "the scene does not open on the day side (view·sun %.2f)" % view.dot(sun))
 
 	for style in STYLES:
@@ -55,7 +58,7 @@ func _run() -> void:
 			image.convert(Image.FORMAT_RGB8)
 			if not output_dir.is_empty():
 				image.save_png(output_dir.path_join("lighting_%s_%s.png" % [style, scale]))
-			_measure(style, scale, image, camera, planet)
+			_measure(style, scale, image, camera, planet, globe.get_camera_position())
 
 	main.free()
 	if _failures > 0:
@@ -66,12 +69,12 @@ func _run() -> void:
 
 
 func _measure(style: String, scale: String, image: Image, camera: Camera3D,
-		planet: PlanetMeshNode) -> void:
+		planet: PlanetMeshNode, camera_position: Vector3) -> void:
 	var land := Vector4.ZERO # summed linear-light-free sRGB and count
 	var ocean := Vector4.ZERO
 	for y in range(STEP / 2, image.get_height(), STEP):
 		for x in range(STEP / 2, image.get_width(), STEP):
-			var origin := camera.project_ray_origin(Vector2(x, y))
+			var origin := camera_position
 			var direction := camera.project_ray_normal(Vector2(x, y))
 			var hit := _sphere_hit(origin, direction)
 			if hit == Vector3.ZERO:
