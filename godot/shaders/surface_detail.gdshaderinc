@@ -118,6 +118,27 @@ vec3 detail_planet_position(vec3 vertex, vec4 custom1) {
 	return dot(custom1.xyz, custom1.xyz) > 0.25 ? custom1.xyz : vertex;
 }
 
+// Terrain tiles (R1-04) carry their drawn surface: (1, height above sea in
+// metres) from CUSTOM1; the cell mesh reads (0, 0).
+vec2 detail_tile_surface(vec4 custom1) {
+	return dot(custom1.xyz, custom1.xyz) > 0.25 ? vec2(1.0, custom1.w) : vec2(0.0);
+}
+
+// On a tile the coast follows the geometry: water where the drawn surface
+// is below sea level, antialiased over a pixel. The relief reproduces each
+// cell's hypsometry, so the area below sea level is the cell's water.
+float detail_geometry_water(float height_m) {
+	return clamp(0.5 - height_m / max(fwidth(height_m), 1e-3), 0.0, 1.0);
+}
+
+// The ice weight that belongs to land: on a tile the water, sea ice
+// included, comes from the geometry, so the land's share of the classes
+// leaves out the sea ice of the cell's water.
+float detail_land_ice(float ice_weight, float open_water_weight, float sea_ice) {
+	float water = clamp(open_water_weight / max(1.0 - sea_ice, 1e-3), 0.0, 1.0);
+	return max(0.0, ice_weight - sea_ice * water);
+}
+
 // Barycentric blend of the cell texel and its two corner texels, from the
 // planet mesh's UV, UV2 and CUSTOM0 (exact; see test_cell_texels.gd).
 vec4 detail_fetch(sampler2D channel, vec2 cell, vec2 first_corner, vec4 second_corner_and_weights) {

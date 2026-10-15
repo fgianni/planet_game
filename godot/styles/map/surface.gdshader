@@ -20,6 +20,7 @@ varying vec2 cell_texel;
 varying vec2 first_corner_texel;
 varying vec4 second_corner_and_weights;
 varying vec3 model_position;
+varying vec2 tile_surface; // (1, height above sea) on a terrain tile, (0, 0) on the cell mesh
 
 #define CHANNEL(map) detail_fetch(map, cell_texel, first_corner_texel, second_corner_and_weights)
 
@@ -32,12 +33,14 @@ void vertex() {
 	first_corner_texel = UV2;
 	second_corner_and_weights = CUSTOM0;
 	model_position = detail_planet_position(VERTEX, CUSTOM1);
+	tile_surface = detail_tile_surface(CUSTOM1);
 }
 
 void fragment() {
 	vec4 classes = CHANNEL(surface_class_map);
 	float ice_weight = CHANNEL(surface_class_ice_map).r;
-	float relief = CHANNEL(relief_map).r;
+	// On a terrain tile, the drawn surface's own height (sub-cell relief).
+	float relief = mix(CHANNEL(relief_map).r, tile_surface.y, tile_surface.x);
 	float daylight = clamp(CHANNEL(daylight_map).r, 0.0, 1.0);
 	float snow = clamp(CHANNEL(snow_cover_map).r, 0.0, 1.0);
 	float sea_ice = clamp(CHANNEL(sea_ice_map).r, 0.0, 1.0);
@@ -50,8 +53,11 @@ void fragment() {
 	// patches with fractal coasts, no texture.
 	vec3 direction = normalize(model_position);
 	float amount = detail_amount(direction);
-	float open_water = detail_cover(classes.r, detail_uniform(direction, detail_seed_coast), amount);
-	vec4 cover = detail_partition(vec4(classes.g, classes.b, classes.a, ice_weight),
+	// On a terrain tile the coast follows the drawn surface.
+	float open_water = mix(detail_cover(classes.r, detail_uniform(direction, detail_seed_coast), amount),
+	                       detail_geometry_water(tile_surface.y), tile_surface.x);
+	float land_ice = mix(ice_weight, detail_land_ice(ice_weight, classes.r, sea_ice), tile_surface.x);
+	vec4 cover = detail_partition(vec4(classes.g, classes.b, classes.a, land_ice),
 	                              detail_uniform(direction, detail_seed_land_mix), amount);
 	float snow_patch = detail_cover(snow, detail_uniform(direction, detail_seed_snow), amount);
 	float floe = detail_cover(sea_ice, detail_uniform(direction, detail_seed_sea_ice), amount);
