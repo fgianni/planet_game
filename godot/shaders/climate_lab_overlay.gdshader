@@ -12,8 +12,16 @@ uniform bool temperature_anomaly_view = false;
 uniform bool wind_view = false;
 uniform bool precipitation_view = false;
 uniform bool data_view = false;
+// The base colour of the climate-lab views (terrain, plates, crust age,
+// drainage), one texel per cell and per corner like the channels, so they
+// draw the same on the cell mesh and on terrain tiles; terrain blends to
+// the corners, the categorical views stay flat per cell.
+uniform sampler2D view_color_map : filter_nearest;
+uniform bool view_color_smooth = false;
 
 varying vec2 channel_texel;
+varying vec2 first_corner_texel;
+varying vec4 second_corner_and_weights;
 
 vec3 srgb_to_linear(vec3 c) {
 	return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
@@ -21,6 +29,18 @@ vec3 srgb_to_linear(vec3 c) {
 
 void vertex() {
 	channel_texel = UV;
+	first_corner_texel = UV2;
+	second_corner_and_weights = CUSTOM0;
+}
+
+vec3 view_color(ivec2 cell) {
+	vec3 own = texelFetch(view_color_map, cell, 0).rgb;
+	if (!view_color_smooth) {
+		return own;
+	}
+	vec2 w = second_corner_and_weights.zw;
+	return w.x * own + w.y * texelFetch(view_color_map, ivec2(first_corner_texel + 0.5), 0).rgb
+	     + (1.0 - w.x - w.y) * texelFetch(view_color_map, ivec2(second_corner_and_weights.xy + 0.5), 0).rgb;
 }
 
 void fragment() {
@@ -46,7 +66,7 @@ void fragment() {
 	} else if (wind_view) {
 		base = vec3(0.018, 0.035, 0.075);
 	} else {
-		base = COLOR.rgb;
+		base = view_color(p);
 		if (day_night && !data_view) {
 			base *= 0.16 + 0.84 * daylight;
 		}

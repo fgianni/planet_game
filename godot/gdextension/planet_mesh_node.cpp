@@ -1184,6 +1184,24 @@ void PlanetMeshNode::build_colors() {
         corner_color[corner] = terrain_color(elevation / 3.0, land / 3.0);
     }
     const bool smooth = view_mode_ == view_terrain;
+    // The same colours as a texture laid out like the channels (cells, then
+    // corners), which the overlay shader reads on the cell mesh and tiles.
+    if (texture_width_ > 0 && texture_height_ > 0) {
+        const std::size_t cells = mesh_->cell_count();
+        godot::PackedByteArray bytes;
+        bytes.resize(static_cast<std::int64_t>(texture_width_) * texture_height_ * 4);
+        const auto put = [&bytes](std::size_t texel, const godot::Color& color) {
+            const auto at = static_cast<std::int64_t>(texel * 4U);
+            bytes.set(at, static_cast<std::uint8_t>(std::lround(std::clamp(color.r, 0.0F, 1.0F) * 255.0F)));
+            bytes.set(at + 1, static_cast<std::uint8_t>(std::lround(std::clamp(color.g, 0.0F, 1.0F) * 255.0F)));
+            bytes.set(at + 2, static_cast<std::uint8_t>(std::lround(std::clamp(color.b, 0.0F, 1.0F) * 255.0F)));
+            bytes.set(at + 3, 255U);
+        };
+        for (std::size_t index = 0; index < cells; ++index) put(index, cell_color(index));
+        for (std::size_t corner = 0; corner < corner_color.size(); ++corner) put(cells + corner, corner_color[corner]);
+        view_color_texture_ = godot::ImageTexture::create_from_image(godot::Image::create_from_data(
+            texture_width_, texture_height_, false, godot::Image::FORMAT_RGBA8, bytes));
+    }
     colors_.resize(vertices_.size());
     std::int64_t packed = 0;
     for (const auto& cell : mesh_->cells()) {
@@ -1234,6 +1252,8 @@ void PlanetMeshNode::update_shader_flags() {
         return;
     }
     material_->set_shader_parameter("day_night", day_night_shading_);
+    material_->set_shader_parameter("view_color_map", view_color_texture_);
+    material_->set_shader_parameter("view_color_smooth", view_mode_ == view_terrain);
     if (sun_light_ != nullptr)
         sun_light_->set_visible(day_night_shading_);
     // Sub-cell detail (surface_detail.gdshaderinc): its scale follows the

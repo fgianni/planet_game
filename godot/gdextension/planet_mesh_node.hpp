@@ -227,6 +227,7 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     std::atomic<bool> live_busy_{false};
     std::array<godot::Ref<godot::ImageTexture>, presentation::channel_count> channel_textures_;
     godot::Ref<godot::ImageTexture> surface_class_ice_texture_;
+    godot::Ref<godot::ImageTexture> view_color_texture_; // climate-lab view colours, per cell and corner
     std::array<std::vector<float>, presentation::channel_count> uploaded_channels_;
     std::int64_t geometry_revision_ = 0;
 };
