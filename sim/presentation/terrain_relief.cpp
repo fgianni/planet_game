@@ -52,10 +52,6 @@ namespace {
     return result;
 }
 
-[[nodiscard]] double angle_between(const Vec3d& a, const Vec3d& b) noexcept {
-    return std::acos(std::clamp(dot(a, b), -1.0, 1.0));
-}
-
 }  // namespace
 
 TerrainRelief::TerrainRelief(std::shared_ptr<const PlanetMesh> mesh, const TerrainSnapshot& terrain,
@@ -66,38 +62,54 @@ TerrainRelief::TerrainRelief(std::shared_ptr<const PlanetMesh> mesh, const Terra
     if (terrain.mean_elevation_m.size() != cells) {
         throw std::invalid_argument("terrain relief: the terrain does not match the mesh");
     }
-    quantiles_m_.resize(cells * hypsometry_quantile_count);
+    constexpr std::size_t q = hypsometry_quantile_count;
+    quantiles_m_.resize(cells * q);
     if (terrain.hypsometry_m.size() == quantiles_m_.size()) {
         quantiles_m_ = terrain.hypsometry_m;
     } else {
         for (std::size_t cell = 0; cell < cells; ++cell) {
-            std::fill_n(quantiles_m_.begin() +
-                            static_cast<std::ptrdiff_t>(cell * hypsometry_quantile_count),
-                        hypsometry_quantile_count, terrain.mean_elevation_m[cell]);
+            std::fill_n(quantiles_m_.begin() + static_cast<std::ptrdiff_t>(cell * q), q,
+                        terrain.mean_elevation_m[cell]);
         }
     }
     mean_m_.resize(cells);
     for (std::size_t cell = 0; cell < cells; ++cell) {
-        HypsometryQuantiles q{};
-        std::copy_n(quantiles_m_.begin() + static_cast<std::ptrdiff_t>(cell * hypsometry_quantile_count),
-                    hypsometry_quantile_count, q.begin());
-        mean_m_[cell] = mean_elevation_m(q);
+        HypsometryQuantiles curve{};
+        std::copy_n(quantiles_m_.begin() + static_cast<std::ptrdiff_t>(cell * q), q, curve.begin());
+        mean_m_[cell] = mean_elevation_m(curve);
     }
+    // A corner's curve is the mean of its cells' curves (quantile averaging
+    // keeps a curve monotone), as the cell mesh averages corners.
+    std::vector<double> corner_sum(mesh_->corner_count() * q, 0.0);
     corner_mean_m_.assign(mesh_->corner_count(), 0.0);
     std::vector<int> corner_cells(mesh_->corner_count(), 0);
     for (const auto& cell : mesh_->cells()) {
         for (const CornerIndex corner : mesh_->cell_corners(cell.id)) {
+            for (std::size_t k = 0; k < q; ++k)
+                corner_sum[corner * q + k] += quantiles_m_[cell.id.to_index() * q + k];
             corner_mean_m_[corner] += mean_m_[cell.id.to_index()];
             ++corner_cells[corner];
         }
     }
-    for (std::size_t corner = 0; corner < corner_mean_m_.size(); ++corner)
-        corner_mean_m_[corner] /= std::max(corner_cells[corner], 1);
+    corner_quantiles_m_.resize(corner_sum.size());
+    for (std::size_t corner = 0; corner < corner_mean_m_.size(); ++corner) {
+        const double count = std::max(corner_cells[corner], 1);
+        corner_mean_m_[corner] /= count;
+        for (std::size_t k = 0; k < q; ++k)
+            corner_quantiles_m_[corner * q + k] = static_cast<float>(corner_sum[corner * q + k] / count);
+    }
     spacing_rad_ = std::sqrt(4.0 * std::numbers::pi / static_cast<double>(cells));
     frequency_ = relief_features_per_cell / spacing_rad_;
     offset_ = detail_noise_offset(world_seed, DetailKind::terrain);
     lattice_key_ = keyed_random_u64(world_seed, RandomStreamId::presentation_detail, 0,
                                     static_cast<std::uint32_t>(DetailKind::terrain), 3U);
+    corner_cells_.assign(mesh_->corner_count(), {0U, 0U, 0U});
+    std::vector<std::uint32_t> fill(mesh_->corner_count(), 0U);
+    for (const auto& cell : mesh_->cells()) {
+        for (const CornerIndex corner : mesh_->cell_corners(cell.id)) {
+            if (fill[corner] < 3U) corner_cells_[corner][fill[corner]++] = cell.id.value();
+        }
+    }
     ranks_ = std::make_unique<RankTable[]>(cells);
 }
 
@@ -200,58 +212,83 @@ double TerrainRelief::cell_rank(CellId cell, double noise_value) const {
     return (static_cast<double>(lower) + t) / static_cast<double>(relief_rank_knots - 1U);
 }
 
-double TerrainRelief::cell_elevation_m(CellId cell, double rank) const {
-    const float* quantiles = quantiles_m_.data() + cell.to_index() * hypsometry_quantile_count;
+double TerrainRelief::corner_rank(CornerIndex corner, double noise_value) const {
+    double sum = 0.0;
+    for (const std::uint32_t cell : corner_cells_[corner]) sum += cell_rank(CellId{cell}, noise_value);
+    return sum / 3.0;
+}
+
+double TerrainRelief::curve_m(const float* quantiles, double rank) noexcept {
     const double position = std::clamp(rank, 0.0, 1.0) * static_cast<double>(hypsometry_quantile_count - 1U);
     const auto lower = std::min(static_cast<std::size_t>(position), hypsometry_quantile_count - 2U);
     const double t = position - static_cast<double>(lower);
     return static_cast<double>(quantiles[lower]) * (1.0 - t) + static_cast<double>(quantiles[lower + 1U]) * t;
 }
 
-ReliefSample TerrainRelief::smooth_sample(const Vec3d& direction_unit, CellId hint) const {
-    const CellId cell = nearest_cell(direction_unit, hint);
+double TerrainRelief::cell_elevation_m(CellId cell, double rank) const {
+    return curve_m(quantiles_m_.data() + cell.to_index() * hypsometry_quantile_count, rank);
+}
+
+// The fan triangle (centre, corner, next corner) of `cell` the direction is
+// in, and the weights of the three curves there: the cell's own weight is a
+// smoothstep of its barycentric weight over relief_handover, the rest goes
+// to the corners in proportion to theirs. Along a centre-corner line one
+// corner drops out on both sides; on the cell's edge the cell drops out, and
+// the neighbour, sharing those corners and weights, gives the same curve.
+TerrainRelief::Blend TerrainRelief::blend(const Vec3d& direction_unit, CellId cell) const {
     const Vec3d center = mesh_->cell(cell).center_unit;
     const auto corners = mesh_->cell_corners(cell);
+    Blend best;
+    best.cell = cell;
     double best_margin = -1e300;
-    double elevation = mean_m_[cell.to_index()];
     for (std::size_t k = 0; k < corners.size(); ++k) {
         const CornerIndex first = corners[k];
         const CornerIndex second = corners[(k + 1U) % corners.size()];
         const Vec3d a = mesh_->corners_unit()[first];
         const Vec3d b = mesh_->corners_unit()[second];
-        const double wc = dot(direction_unit, cross(a, b));
-        const double wa = dot(direction_unit, cross(b, center));
-        const double wb = dot(direction_unit, cross(center, a));
+        double wc = dot(direction_unit, cross(a, b));
+        double wa = dot(direction_unit, cross(b, center));
+        double wb = dot(direction_unit, cross(center, a));
         const double total = wc + wa + wb;
-        const double margin = std::min({wc, wa, wb}) / total;
-        if (margin > best_margin) {
-            best_margin = margin;
-            elevation = (wc * mean_m_[cell.to_index()] + wa * corner_mean_m_[first] +
-                         wb * corner_mean_m_[second]) / total;
-        }
+        wc /= total;
+        wa /= total;
+        wb /= total;
+        const double margin = std::min({wc, wa, wb});
+        if (margin <= best_margin) continue;
+        best_margin = margin;
+        const double own = smoothstep01(std::max(wc, 0.0) / relief_handover);
+        const double corner_total = std::max(wa, 0.0) + std::max(wb, 0.0);
+        best.first = first;
+        best.second = second;
+        best.own = own;
+        best.first_weight = corner_total > 0.0 ? (1.0 - own) * std::max(wa, 0.0) / corner_total : 0.0;
+        best.second_weight = corner_total > 0.0 ? (1.0 - own) * std::max(wb, 0.0) / corner_total : 0.0;
+        if (corner_total <= 0.0) best.own = 1.0;
     }
-    return {elevation, 0.5, cell};
+    return best;
 }
 
 ReliefSample TerrainRelief::sample(const Vec3d& direction_unit, CellId hint) const {
     const CellId cell = nearest_cell(direction_unit, hint);
     const double n = noise(direction_unit);
-    const double rank = cell_rank(cell, n);
-    // Blend towards the neighbours within the blend width of an edge; the
-    // weights depend only on distances, so they agree on both sides.
-    const double width = relief_blend_width * spacing_rad_;
-    const double own = angle_between(direction_unit, mesh_->cell(cell).center_unit);
-    double weighted = cell_elevation_m(cell, rank);
-    double weights = 1.0;
-    for (const CellEdgeGeometry& edge : mesh_->cell_edges(cell)) {
-        const double excess = angle_between(direction_unit, mesh_->cell(edge.neighbor).center_unit) - own;
-        // Half the angular excess is the distance past the shared edge.
-        const double weight = smoothstep01(1.0 - 0.5 * excess / width);
-        if (weight <= 0.0) continue;
-        weighted += weight * cell_elevation_m(edge.neighbor, cell_rank(edge.neighbor, n));
-        weights += weight;
-    }
-    return {weighted / weights, rank, cell};
+    const Blend w = blend(direction_unit, cell);
+    // Rank and curve hand over with the same weights.
+    const double r = w.own * cell_rank(cell, n) +
+                     (w.first_weight > 0.0 ? w.first_weight * corner_rank(w.first, n) : 0.0) +
+                     (w.second_weight > 0.0 ? w.second_weight * corner_rank(w.second, n) : 0.0);
+    constexpr std::size_t q = hypsometry_quantile_count;
+    const double elevation = w.own * cell_elevation_m(cell, r) +
+                             w.first_weight * curve_m(corner_quantiles_m_.data() + w.first * q, r) +
+                             w.second_weight * curve_m(corner_quantiles_m_.data() + w.second * q, r);
+    return {elevation, r, cell};
+}
+
+ReliefSample TerrainRelief::smooth_sample(const Vec3d& direction_unit, CellId hint) const {
+    const CellId cell = nearest_cell(direction_unit, hint);
+    const Blend w = blend(direction_unit, cell);
+    const double elevation = w.own * mean_m_[cell.to_index()] + w.first_weight * corner_mean_m_[w.first] +
+                             w.second_weight * corner_mean_m_[w.second];
+    return {elevation, 0.5, cell};
 }
 
 }  // namespace planetsim::presentation

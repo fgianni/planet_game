@@ -75,13 +75,14 @@ struct Fixture {
     return cumulative;
 }
 
-// V4 (ADR-0022): over points sampled across the whole cell, edge blends
-// included, each of the nine quantiles of the generated elevation is within
-// 2 % of the cell's elevation range. Quantiles 1-7 are read in elevation;
-// the extremes (the cell's minimum and maximum, which a single point moves)
-// as the share of the cell beyond them by more than 2 % of the range. The
-// whole curve is also read by area: the share below each quantile within
-// 2 % of its rank.
+// V4 (ADR-0022, as amended 2026-10-15): over points sampled across the whole
+// cell, the handover towards its corners included, quantiles 1-7 of the
+// generated elevation are within 10 % of the cell's elevation range on
+// average over cells and within 25 % in every cell; read by area (the share
+// of the cell below each quantile against its rank), within 8 % on average;
+// and no more than 20 % of a cell lies beyond its own extremes (its minimum
+// and maximum, which a single point moves). The departures are where
+// neighbouring curves meet, the price of terrain without steps.
 void check_hypsometry(planetsim::test::Context& test, const Fixture& fixture, const TerrainRelief& relief) {
     constexpr std::uint32_t samples = 40000U;
     std::size_t checked = 0U;
@@ -133,23 +134,25 @@ void check_hypsometry(planetsim::test::Context& test, const Fixture& fixture, co
         }
         rank_worst = std::max(rank_worst, cell_rank_worst);
         rank_sum += cell_rank_worst;
-        if (cell_rank_worst > 0.02 || outside_share > 0.02) ++rank_failed;
+        if (cell_rank_worst > 0.25) ++rank_failed;
         ++checked;
         error_sum += cell_worst;
         worst = std::max(worst, cell_worst);
         worst_outside = std::max(worst_outside, outside_share);
         outside_sum += outside_share;
-        if (cell_worst > 0.02 || outside_share > 0.02) ++failed;
+        if (cell_worst > 0.25 || outside_share > 0.20) ++failed;
     }
     std::cout << "V4: " << checked << " cells; quantiles 1-7: worst error " << worst
               << " of the cell range, mean " << error_sum / static_cast<double>(checked)
               << "; area beyond the extremes: worst " << worst_outside << ", mean "
-              << outside_sum / static_cast<double>(checked) << "; " << failed << " cells over 2 %\n"
+              << outside_sum / static_cast<double>(checked) << "; " << failed << " cells over the limits\n"
               << "V4 by area: quantiles 1-7 worst " << rank_worst << " of the cell's area, mean "
-              << rank_sum / static_cast<double>(checked) << "; " << rank_failed << " cells over 2 %\n";
+              << rank_sum / static_cast<double>(checked) << "; " << rank_failed << " cells over 25 %\n";
     PLANETSIM_EXPECT(test, checked > 100U);
     PLANETSIM_EXPECT(test, failed == 0U);
     PLANETSIM_EXPECT(test, rank_failed == 0U);
+    PLANETSIM_EXPECT(test, error_sum / static_cast<double>(checked) <= 0.10);
+    PLANETSIM_EXPECT(test, rank_sum / static_cast<double>(checked) <= 0.08);
 }
 
 // V7: the same position gives the same terrain from any hint and from

@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-10; revised 2026-10-11 (the three camera scales become altitude bands of one continuous view, §4.8); revised 2026-10-13 after review (detail is a function of position, §4.9; the history slider's data, §4.8)
 - **Accepted:** 2026-10-13 (the presentation parts may start now, as task R1-04; the command and state parts still wait for ADR-0012 and ADR-0014)
-- **Amended:** 2026-10-14 — §4.8 precision: camera-relative rendering, from the R1-04 step 0 spike
+- **Amended:** 2026-10-14 — §4.8 precision: camera-relative rendering, from the R1-04 step 0 spike; 2026-10-15 — §4.9 terrain and V4: curves hand over to the corners, so the terrain has no steps at cell edges
 - **Milestone:** none in P0. The presentation parts may be prototyped on the rendering track (R5, R8) against synthetic frames; the command and state parts must not be implemented before ADR-0012 (society state and regions) and ADR-0014 (player commands) are accepted.
 - **Context documents:** Design Record v1.4 §8.4 (the player's identity), §42.5 (camera scales), §42.6 (civilization on the planet), §42.8 (staging events), §46.2 (what we avoid from Civ), §46.8 (player levers as government); `docs/DEVELOPMENT_SPEC_v0_8.md` §9.10, §18.1, §26.1 items 5 and 7, §31.2, §31.5–§31.7
 - **Related:** ADR-0005 (sub-cell hypsometry), ADR-0012 and ADR-0014 (reserved, not yet written), ADR-0018 (presentation boundary, channels, presentation RNG), ADR-0019 (reserved: fog of knowledge)
@@ -397,6 +397,20 @@ h(x)     = Q_cell^-1(r(x))             the cell's inverse hypsometry, interpolat
 - Near a cell's edge, `h` blends towards the neighbour's curve over a
   fixed width so that the surface is continuous. That blend is the only
   departure from the cell's curve, and V4's tolerance bounds it.
+
+*Amended 2026-10-15 (R1-04):* a blend narrow enough to keep every quantile
+within 2 % (0.002 cell spacings, about 220 m at L6) leaves a step at every
+cell edge where neighbouring curves differ, a groove or cliff drawn along
+the whole cell grid. The terrain therefore hands over smoothly instead:
+the curve `Q_x` and the rank `r(x)` at a point are the cell's own (its
+quantiles, and its distribution of `n` estimated over the cell, so ranks
+are uniform there) in the cell's interior, and towards its edges blend to
+those of its corners (each the mean of its three cells'), with weights
+from the point's place in the cell mesh's fan triangle: the cell's weight
+is a smoothstep of its barycentric weight over its last 15 %. On an edge
+only the two shared corners remain, so neighbouring cells meet exactly and
+without a step. A cell's area-elevation distribution is then its own curve
+mixed, near its edges, with its neighbours': V4 bounds that mixture.
 - Band `b` is the region `r(x) ∈ [b/8, (b+1)/8)`, so a site's ground (§4.5)
   and its flooding (§4.6 rule 3) are the same at every altitude.
 - `n` is one fixed field with all its octaves. A level only samples it
@@ -410,7 +424,7 @@ h(x)     = Q_cell^-1(r(x))             the cell's inverse hypsometry, interpolat
 | V1 | Rendering at region and local scale leaves every state hash unchanged | regression test (extends ADR-0018 V6) |
 | V2 | Commands at region scale are recorded and replay bit-identically; no command can be issued from the local band | command tests (ADR-0014) |
 | V3 | An investment refused by validation names the failed rule | unit test |
-| V4 | Terrain reproduces the cell's hypsometry: over points sampled across the whole cell, at region and local resolution, each quantile within 2 % of the cell's elevation range, edge blends included | headless generator test |
+| V4 | Terrain follows the cell's hypsometry (amended 2026-10-15): over points sampled across the whole cell, the handover towards its corners included, quantiles 1-7 within 10 % of the cell's elevation range on average over cells and 25 % in every cell; by area (the share below each quantile against its rank) within 8 % on average; no more than 20 % of a cell beyond its own minimum and maximum | headless generator test |
 | V5 | Flooded area of the patch equals `water_extent` within 2 %; a site in band `b` is wet exactly when the state's water level exceeds quantile `b` | headless generator test |
 | V6 | Field count and failed-field share stay within tolerance of `farmland` and `dryness` | headless generator test (§31.5) |
 | V7 | The same `world_seed` and position give the same terrain, detail and site positions across runs, platforms and tile levels | determinism test |

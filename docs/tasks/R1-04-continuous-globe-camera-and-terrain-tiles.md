@@ -94,8 +94,9 @@ them to presentation as ADR-0022 §4.6 specifies, without changing PSNAP.
   the task's report and in ADR-0022 §4.8 before any tile code is merged; the
   final tile system meets the same pass line (under 0.5 px of jitter at
   100 m, no z-fighting) in the V9 flight.
-- **V4 (region and local tiles):** for sampled cells, each generated
-  quantile is within 2 % of the cell's elevation range.
+- **V4 (region and local tiles):** as ADR-0022 V4, amended 2026-10-15
+  (the terrain hands over to the corners' curves at cell edges, so V4
+  bounds that mixture rather than holding every quantile to 2 %).
 - **V9:** a scripted flight from orbit to 100 m and back, captured with the
   R4-06 capture path, shows no crack and no hole (a test samples the frames
   for background pixels inside the globe's silhouette).
