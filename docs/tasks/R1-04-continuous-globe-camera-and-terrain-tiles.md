@@ -1,7 +1,7 @@
 # Task R1-04 — Continuous globe camera and streamed terrain tiles
 
 - **Track:** rendering (specification §31.10), in parallel with P0 / M7
-- **Status:** ready (ADR-0022 accepted 2026-10-13)
+- **Status:** complete (2026-10-15; report in §5)
 - **Scope:** replace the client's single fixed planet mesh and orbit camera
   with an Earth-viewer camera and a quadtree of terrain tiles, on today's
   terrain, so the player can zoom continuously from orbit to about a hundred
