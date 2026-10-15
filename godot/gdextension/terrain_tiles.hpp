@@ -40,6 +40,7 @@ public:
         double forward_y = 0.0;
         double forward_z = -1.0;
         double half_diagonal_rad = 0.8;    // half the view cone's angle, corner to corner
+        double relief_scale = 1.0;         // drawn over baked relief exaggeration (the shaders rescale heights)
     };
 
     struct Stats {

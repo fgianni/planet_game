@@ -236,3 +236,28 @@ tiles settled. Worst: 0.00006 px at L6 and 0.0002 px at L4, in Godot
 own position, as absolute coordinates would, gives 2.7 px at L6, as the
 spike measured. No z-fighting: a parent and its children are never drawn
 together, and the depth probe of step 0 holds.
+
+### The remaining items (2026-10-15)
+
+- **Band cross-fade:** across the planet-region edge the cell mesh and the
+  tiles both draw, and `shaders/view_transition.gdshaderinc` passes each
+  pixel from one to the other with an ordered dither, by the tiles' weight
+  (one material: a tile carries CUSTOM1, the cell mesh does not).
+- **Relief exaggeration** falls from the planet's (x25 by default) at the
+  top of the region band to true scale at the region-local edge, in log
+  altitude: the vertex shader rescales a tile's land heights and the slope
+  of its normals, the camera collides with the drawn height, and culling,
+  splitting and Godot's own bounds use the drawn range. The local band then
+  needs about 44 tiles and draws in 3.6 ms at p95.
+- **Picking (step 6):** right-click marches the camera ray, in double,
+  against the surface as drawn and refines by bisection; the camera test
+  checks that the cell under the screen's centre is the focus's at planet,
+  region and local altitude.
+- **Tiles and memory** (L6 flight, `stylised`): at most about 170 tiles drawn
+  at planet altitude (across the cross-fade), 230 at region and 44 at
+  local; the cache holds up to 512 tiles, about 243 MB of vertex data
+  (6912 vertices of 72 bytes each).
+- **Relief tolerance for the region band** (ADR-0022 open question 5):
+  answered in the ADR; one generator and the amended V4 at every
+  resolution, the filtered surface for tiles too coarse to show sub-cell
+  relief.

@@ -89,6 +89,57 @@ func get_band_weights() -> Dictionary:
 	return _band_weights
 
 
+## The planet-centred unit direction of the drawn ground under a screen
+## point, or null: the ray is marched against the surface as drawn (relief
+## and its exaggeration included), then refined by bisection, in double.
+func pick(cursor: Vector2):
+	var origin := _camera_position
+	var normal := camera.project_ray_normal(cursor)
+	var direction := [normal.x, normal.y, normal.z]
+	var ceiling: float = 1.0 + planet.get_relief_exaggeration() * 9_000.0 / RADIUS_M
+	var b := _dot(origin, direction)
+	var c: float = _dot(origin, origin) - ceiling * ceiling
+	if b * b - c < 0.0:
+		return null
+	var t := maxf(-b - sqrt(b * b - c), 0.0)
+	var far := -b + sqrt(b * b - c)
+	var floor_step := maxf(_altitude_m / RADIUS_M, MIN_ALTITUDE_M / RADIUS_M) * 0.002
+	var previous := t
+	for step in 2000:
+		var point := _add(origin, _scale(direction, t))
+		var radius := sqrt(_dot(point, point))
+		var height: float = radius - planet.get_surface_radius(_vector(point))
+		if height <= 0.0:
+			# Crossed the surface between previous and t: bisect.
+			var low := previous
+			var high := t
+			for refine in 40:
+				var middle := 0.5 * (low + high)
+				var probe := _add(origin, _scale(direction, middle))
+				if sqrt(_dot(probe, probe)) - planet.get_surface_radius(_vector(probe)) <= 0.0:
+					high = middle
+				else:
+					low = middle
+			return _vector(_normalized(_add(origin, _scale(direction, high))))
+		if t > far:
+			return null
+		previous = t
+		t += maxf(0.5 * height, floor_step)
+	return null
+
+
+## The relief exaggeration to draw the tiles at: the planet's own at the
+## top of the region band, falling in log altitude to true scale (1) at the
+## region-local edge, so the local band shows the ground as it is.
+func drawn_exaggeration() -> float:
+	var exaggeration: float = planet.get_relief_exaggeration()
+	var top := log(PLANET_REGION_CELLS * _cell_spacing_rad * RADIUS_M)
+	var bottom := log(REGION_LOCAL_M)
+	var t := clampf((log(maxf(_altitude_m, 1.0)) - bottom) / maxf(top - bottom, 1e-6), 0.0, 1.0)
+	t = t * t * (3.0 - 2.0 * t)
+	return minf(exaggeration, 1.0 + (exaggeration - 1.0) * t)
+
+
 func get_camera_position() -> Vector3:
 	return _vector(_camera_position)
 
@@ -170,7 +221,7 @@ func _apply() -> void:
 		var aspect := size.x / maxf(size.y, 1.0)
 		var half_diagonal := atan(half_height * sqrt(1.0 + aspect * aspect))
 		planet.update_terrain_tiles(PackedFloat64Array(_camera_position), PackedFloat64Array(look),
-			focal, half_diagonal, _band_weights["planet"] < 0.5)
+			focal, half_diagonal, 1.0 - _band_weights["planet"], drawn_exaggeration())
 
 
 ## 0 (straight down) above ORBIT_TILT_FROM_CELLS cell sizes, rising in

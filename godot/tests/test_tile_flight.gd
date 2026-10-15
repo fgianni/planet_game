@@ -26,6 +26,7 @@ const STEP := 6 # pixels between samples, both ways
 const BACKGROUND := Color(0.02, 0.02, 0.04)
 const INSIDE := 0.995 # rays meeting a sphere this much smaller are well inside
 const FRAME_BUDGET_MS := 16.7
+const TILE_BYTES := 6912 * 72 # vertices per tile, bytes per vertex (position, normal, UV, UV2, CUSTOM0, CUSTOM1)
 const JITTER_PASS_PX := 0.5 # ADR-0022 V13
 const LOW_FRAMES := 240     # turning, then creeping, at 100 m (at most half of --frames)
 
@@ -68,6 +69,7 @@ func _run() -> void:
 	var low: float = globe.range_for_altitude(100.0)
 	var times := {"planet": [], "region": [], "local": []}
 	var gpu := {"planet": [], "region": [], "local": []}
+	var most := {"planet": Vector2i.ZERO, "region": Vector2i.ZERO, "local": Vector2i.ZERO} # drawn, cached
 	var holes_total := 0
 	var frames_checked := 0
 	var deepest := 0
@@ -103,6 +105,8 @@ func _run() -> void:
 		last = now
 		var stats: Dictionary = planet.get_terrain_tile_stats()
 		deepest = maxi(deepest, int(stats.get("deepest_level", 0)))
+		most[band] = Vector2i(maxi(most[band].x, int(stats.get("drawn", 0)) if stats.get("active", false) else 0),
+			maxi(most[band].y, int(stats.get("cached", 0))))
 		# At the bottom, hold until the tiles have settled (at most a minute).
 		var settling := frame == hold_end - 1 and int(stats.get("pending", 0)) > 0
 		if settling and settle == 0:
@@ -163,8 +167,9 @@ func _run() -> void:
 	for band in ["planet", "region", "local"]:
 		var wall := _percentiles(times[band])
 		var g := _percentiles(gpu[band])
-		print("V11 %s: %d frames; wall p50 %.1f p95 %.1f p99 %.1f ms; GPU p50 %.1f p95 %.1f ms" % [
-			band, times[band].size(), wall[0], wall[1], wall[2], g[0], g[1]])
+		print("V11 %s: %d frames; wall p50 %.1f p95 %.1f p99 %.1f ms; GPU p50 %.1f p95 %.1f ms; at most %d tiles drawn, %d cached (%.0f MB of vertices)" % [
+			band, times[band].size(), wall[0], wall[1], wall[2], g[0], g[1], most[band].x, most[band].y,
+			most[band].y * TILE_BYTES / 1048576.0])
 		if gate_fps and wall[1] > FRAME_BUDGET_MS:
 			push_error("the %s band misses 60 fps: p95 %.1f ms" % [band, wall[1]])
 			_failures += 1

@@ -3,6 +3,7 @@ render_mode cull_disabled;
 
 #include "res://shaders/surface_detail.gdshaderinc"
 #include "res://shaders/display_transfer.gdshaderinc"
+#include "res://shaders/view_transition.gdshaderinc"
 
 uniform sampler2D relief_map : filter_nearest;
 uniform sampler2D surface_class_map : filter_nearest;
@@ -32,11 +33,15 @@ void vertex() {
 	cell_texel = UV;
 	first_corner_texel = UV2;
 	second_corner_and_weights = CUSTOM0;
+	view_relief(VERTEX, NORMAL, CUSTOM1);
 	model_position = detail_planet_position(VERTEX, CUSTOM1);
 	tile_surface = detail_tile_surface(CUSTOM1);
 }
 
 void fragment() {
+	if (view_faded_out(tile_surface.x, FRAGCOORD.xy)) {
+		discard;
+	}
 	vec4 classes = CHANNEL(surface_class_map);
 	float ice_weight = CHANNEL(surface_class_ice_map).r;
 	// On a terrain tile, the drawn surface's own height (sub-cell relief).

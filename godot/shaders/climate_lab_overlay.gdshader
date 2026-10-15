@@ -2,6 +2,7 @@ shader_type spatial;
 render_mode cull_disabled;
 
 #include "res://shaders/display_transfer.gdshaderinc"
+#include "res://shaders/view_transition.gdshaderinc"
 
 uniform sampler2D daylight_map : filter_nearest;
 uniform sampler2D temperature_anomaly_map : filter_nearest;
@@ -22,6 +23,7 @@ uniform bool view_color_smooth = false;
 varying vec2 channel_texel;
 varying vec2 first_corner_texel;
 varying vec4 second_corner_and_weights;
+varying float is_tile;
 
 vec3 srgb_to_linear(vec3 c) {
 	return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
@@ -31,6 +33,8 @@ void vertex() {
 	channel_texel = UV;
 	first_corner_texel = UV2;
 	second_corner_and_weights = CUSTOM0;
+	is_tile = view_tile(CUSTOM1);
+	view_relief(VERTEX, NORMAL, CUSTOM1);
 }
 
 vec3 view_color(ivec2 cell) {
@@ -44,6 +48,9 @@ vec3 view_color(ivec2 cell) {
 }
 
 void fragment() {
+	if (view_faded_out(is_tile, FRAGCOORD.xy)) {
+		discard;
+	}
 	ivec2 p = ivec2(channel_texel + 0.5);
 	float x = clamp(texelFetch(daylight_map, p, 0).r, 0.0, 1.0);
 	float daylight = sqrt(x);

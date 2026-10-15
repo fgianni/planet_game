@@ -273,20 +273,9 @@ func _screenshot_timeout(quit_after: bool, generation: int) -> void:
 
 
 func _select_cell(screen_position: Vector2) -> void:
-	var world_origin := _camera.project_ray_origin(screen_position)
-	var world_direction := _camera.project_ray_normal(screen_position)
-	var origin: Vector3 = _planet.to_local(world_origin)
-	var direction: Vector3 = (_planet.to_local(world_origin + world_direction) - origin).normalized()
-	var along: float = origin.dot(direction)
-	var discriminant: float = along * along - (origin.length_squared() - 1.0)
-	if discriminant < 0.0:
-		_selected_cell = -1
-		return
-	var distance: float = -along - sqrt(discriminant)
-	if distance < 0.0:
-		distance = -along + sqrt(discriminant)
-	_selected_cell = _planet.find_cell((origin + distance * direction).normalized()) \
-		if distance >= 0.0 else -1
+	# The ground as drawn, at every altitude (R1-04 step 6).
+	var ground = _globe.pick(screen_position)
+	_selected_cell = _planet.find_cell(ground) if ground != null else -1
 
 
 ## The two keys right of P as the current layout prints them. Godot reports

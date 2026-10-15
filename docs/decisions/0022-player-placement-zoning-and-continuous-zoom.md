@@ -481,9 +481,14 @@ tested on the rendering track.
 3. May the player zoom into the local band over another civilization's city, and
    what does fog (ADR-0019) show there?
 4. Should a `rail_link` be a site pair or a new edge-based list?
-5. How fine should region-band relief be before the terrain generator
+5. ~~How fine should region-band relief be before the terrain generator
    implies valleys and ridges the hypsometry does not support? The local band
-   has V4; the region band needs its own tolerance.
+   has V4; the region band needs its own tolerance.~~ Answered 2026-10-15
+   (R1-04): one generator draws both bands, and V4, amended, holds at every
+   resolution, since every point is the same function of position. A tile
+   too coarse to show sub-cell relief (vertex spacing over 0.2 of a cell)
+   draws the filtered surface of §4.9 instead, so the region band never
+   implies relief finer than it can resolve.
 6. ~~Should the band thresholds scale with the shipped mesh level, or stay
    in metres?~~ Answered 2026-10-13 in §4.8: planet–region scales with the
    cell size, region–local is in metres.

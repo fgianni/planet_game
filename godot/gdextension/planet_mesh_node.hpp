@@ -116,13 +116,15 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     // (the displaced cell fans) along a direction: for camera collision.
     [[nodiscard]] double get_surface_radius(const godot::Vector3& direction) const;
     [[nodiscard]] godot::Vector3 get_cell_direction(std::int64_t cell) const;
-    // R1-04: the streamed terrain tiles. With `enabled` the tiles draw for a
-    // camera at `position` (x, y, z planet radii, double) looking along
-    // `forward` (x, y, z) within `half_diagonal` radians, and the cell mesh
-    // does not.
+    // R1-04: the streamed terrain tiles, for a camera at `position` (x, y, z
+    // planet radii, double) looking along `forward` (x, y, z) within
+    // `half_diagonal` radians. `tiles_weight` is the tiles' share across the
+    // planet-region band edge (0: the cell mesh only, 1: the tiles only;
+    // between, both draw and the shaders dither from one to the other), and
+    // `exaggeration` the relief exaggeration to draw the tiles at.
     void update_terrain_tiles(const godot::PackedFloat64Array& position,
                               const godot::PackedFloat64Array& forward, double focal_px,
-                              double half_diagonal, bool enabled);
+                              double half_diagonal, double tiles_weight, double exaggeration);
     [[nodiscard]] godot::Dictionary get_terrain_tile_stats() const;
     [[nodiscard]] bool has_channel(const godot::String& channel_name) const;
     [[nodiscard]] double get_channel_value(std::int64_t cell,
@@ -176,7 +178,9 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     mutable std::uint32_t surface_hint_ = 0U; // last cell get_surface_radius found
     void reset_terrain_tiles();
     std::unique_ptr<TerrainTiles> tiles_;   // made on first use, remade when the planet changes
-    bool tiles_active_ = false;
+    bool tiles_active_ = false;         // tiles drawn at all
+    double tiles_weight_ = 0.0;
+    double drawn_exaggeration_ = 25.0;  // the tiles' drawn relief exaggeration
     std::uint64_t seed_ = 1;
     godot::String preset_ = "earth_like";
 

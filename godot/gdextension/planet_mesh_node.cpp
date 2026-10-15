@@ -235,7 +235,7 @@ void PlanetMeshNode::_bind_methods() {
                                 &PlanetMeshNode::get_cell_direction);
     godot::ClassDB::bind_method(
         godot::D_METHOD("update_terrain_tiles", "position", "forward", "focal_px", "half_diagonal",
-                        "enabled"),
+                        "tiles_weight", "exaggeration"),
         &PlanetMeshNode::update_terrain_tiles);
     godot::ClassDB::bind_method(godot::D_METHOD("get_terrain_tile_stats"),
                                 &PlanetMeshNode::get_terrain_tile_stats);
@@ -819,7 +819,9 @@ void PlanetMeshNode::reset_terrain_tiles() {
 
 void PlanetMeshNode::update_terrain_tiles(const godot::PackedFloat64Array& position,
                                           const godot::PackedFloat64Array& forward, double focal_px,
-                                          double half_diagonal, bool enabled) {
+                                          double half_diagonal, double tiles_weight, double exaggeration) {
+    const double weight = std::clamp(tiles_weight, 0.0, 1.0);
+    const bool enabled = weight > 0.0;
     try {
         if (!mesh_ || material_.is_null() || position.size() != 3 || forward.size() != 3) return;
         if (enabled && !tiles_) {
@@ -835,16 +837,27 @@ void PlanetMeshNode::update_terrain_tiles(const godot::PackedFloat64Array& posit
             tiles_ = std::make_unique<TerrainTiles>(this, std::move(relief), drawing, material_, highest_m);
         }
         tiles_active_ = enabled;
-        if (enabled) {
+        tiles_weight_ = weight;
+        drawn_exaggeration_ = std::clamp(exaggeration, 0.0, relief_exaggeration_);
+        // The cell mesh draws until the tiles have fully taken over.
+        if (weight >= 1.0) {
             if (get_mesh().is_valid()) set_mesh(godot::Ref<godot::Mesh>());
         } else if (get_mesh().is_null() && rendered_mesh_.is_valid()) {
             set_mesh(rendered_mesh_);
         }
+        material_->set_shader_parameter("band_fade", weight);
+        if (tiles_) {
+            const auto& drawing = tiles_->drawing();
+            material_->set_shader_parameter("relief_baked", drawing.relief_exaggeration / drawing.radius_m);
+            material_->set_shader_parameter(
+                "relief_rescale", drawing.relief_exaggeration > 0.0 ? drawn_exaggeration_ / drawing.relief_exaggeration : 1.0);
+        }
         if (!tiles_) return;
         tiles_->set_visible(enabled);
         if (enabled) {
+            const double baked = tiles_->drawing().relief_exaggeration;
             tiles_->update({position[0], position[1], position[2], focal_px, forward[0], forward[1],
-                            forward[2], half_diagonal});
+                            forward[2], half_diagonal, baked > 0.0 ? drawn_exaggeration_ / baked : 1.0});
         }
     } catch (const std::exception& error) {
         godot::UtilityFunctions::push_error("PlanetMeshNode terrain tiles: ", error.what());
@@ -873,13 +886,14 @@ godot::Dictionary PlanetMeshNode::get_terrain_tile_stats() const {
 double PlanetMeshNode::get_surface_radius(const godot::Vector3& direction) const {
     if (!mesh_ || center_radius_.size() != mesh_->cell_count() || direction.length_squared() <= 0.0F)
         return 1.0;
-    if (tiles_active_ && tiles_) {
-        // The tiles draw the sub-cell relief: collide with it.
+    if (tiles_active_ && tiles_ && tiles_weight_ >= 0.5) {
+        // The tiles draw the sub-cell relief, at the drawn exaggeration:
+        // collide with it.
         const godot::Vector3 d = direction.normalized();
         const auto sample = tiles_->relief().sample(Vec3d{d.x, d.y, d.z}, CellId{surface_hint_});
         surface_hint_ = sample.cell.value();
         const auto& drawing = tiles_->drawing();
-        return 1.0 + drawing.relief_exaggeration / drawing.radius_m *
+        return 1.0 + drawn_exaggeration_ / drawing.radius_m *
                          std::max(0.0, sample.elevation_m - drawing.sea_level_m);
     }
     const godot::Vector3 unit_f = direction.normalized();

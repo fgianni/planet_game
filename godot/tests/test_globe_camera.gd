@@ -116,6 +116,21 @@ func _run() -> void:
 	var moved: Vector3 = globe.get_camera_position().normalized()
 	_expect(moved.x > start.x + 1e-3, "dragging left did not turn the globe eastwards: %s" % moved)
 
+	# Picking (R1-04 step 6): the cell under the screen's centre is the
+	# focus's cell, at planet, region and local altitude, on the ground as
+	# drawn.
+	for pick_altitude in [12_000_000.0, 300_000.0, 5_000.0]:
+		var at := Vector3(0.48, 0.62, 0.62).normalized()
+		globe.look_at_direction(at, globe.range_for_altitude(pick_altitude))
+		for frame in 30:
+			await process_frame
+		var under = globe.pick(root.get_visible_rect().size * 0.5)
+		var picked: int = planet.find_cell(under) if under != null else -1
+		_expect(picked == planet.find_cell(at), "picking at %.0f km found cell %d, not %d" % [
+			pick_altitude / 1000.0, picked, planet.find_cell(at)])
+		main._select_cell(root.get_visible_rect().size * 0.5)
+		_expect(main._selected_cell == picked, "right-click did not select the picked cell")
+
 	# Keys by position (main.gd): the two keys right of P change the relief
 	# on any layout; with AltGr (Alt) held the number row selects no view,
 	# since on AZERTY AltGr+5 types "[".

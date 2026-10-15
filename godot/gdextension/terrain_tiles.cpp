@@ -88,8 +88,15 @@ std::uint64_t TerrainTiles::id(const presentation::TileKey& key) noexcept {
            (static_cast<std::uint64_t>(key.x) << 28U) | static_cast<std::uint64_t>(key.y);
 }
 
+// A drawn radius at the drawn exaggeration: heights scale from sea level.
+static double drawn_radius(double baked, const TerrainTiles::View& view) {
+    return 1.0 + (baked - 1.0) * view.relief_scale;
+}
+
 // By the tile's own drawn surface, from its lowest to its highest point.
 bool TerrainTiles::culled(const presentation::TileKey& key, const Entry& entry, const View& view) const {
+    const double low = drawn_radius(entry.min_radius, view);
+    const double high = drawn_radius(entry.max_radius, view);
     const planetsim::Vec3d camera{view.camera_x, view.camera_y, view.camera_z};
     const planetsim::Vec3d direction = presentation::tile_center_direction(key);
     const double size = presentation::tile_angular_size(key);
@@ -100,12 +107,12 @@ bool TerrainTiles::culled(const presentation::TileKey& key, const Entry& entry, 
         const double angle = std::acos(std::clamp(
             planetsim::dot(camera / distance_from_centre, direction), -1.0, 1.0));
         const double reach = std::acos(1.0 / distance_from_centre) +
-                             std::acos(1.0 / std::max(entry.max_radius, 1.0));
+                             std::acos(1.0 / std::max(high, 1.0));
         if (angle - 0.75 * size > reach) return true;
     }
     // Outside the view cone, by the tile's bounding sphere.
-    const planetsim::Vec3d center = direction * (0.5 * (entry.min_radius + entry.max_radius));
-    const double radius = 0.75 * size * entry.max_radius + 0.5 * (entry.max_radius - entry.min_radius);
+    const planetsim::Vec3d center = direction * (0.5 * (low + high));
+    const double radius = 0.75 * size * high + 0.5 * (high - low);
     const planetsim::Vec3d to_tile = center - camera;
     const double distance = planetsim::length(to_tile);
     if (distance <= radius) return false;
@@ -125,10 +132,11 @@ bool TerrainTiles::wants_split(const presentation::TileKey& key, const Entry& en
     const double spacing = size / static_cast<double>(presentation::tile_grid);
     if (spacing > max_triangle_cells * relief_->cell_spacing_rad()) return true;
     const planetsim::Vec3d camera{view.camera_x, view.camera_y, view.camera_z};
-    const planetsim::Vec3d center = presentation::tile_center_direction(key) * entry.max_radius;
+    const double low = drawn_radius(entry.min_radius, view);
+    const double high = drawn_radius(entry.max_radius, view);
+    const planetsim::Vec3d center = presentation::tile_center_direction(key) * high;
     const double distance = std::max(planetsim::length(camera - center) - 0.75 * size, 1e-9);
-    const double error = std::max(spacing * spacing / 8.0,
-                                  std::min(spacing, entry.max_radius - entry.min_radius));
+    const double error = std::max(spacing * spacing / 8.0, std::min(spacing, high - low));
     return error / distance * view.focal_px > split_error_px;
 }
 
@@ -202,6 +210,10 @@ void TerrainTiles::add(const presentation::TileGeometry& tile) {
     entry.instance = memnew(godot::MeshInstance3D);
     entry.instance->set_mesh(entry.mesh);
     entry.instance->set_material_override(material_);
+    // The shaders lower a tile's land towards true scale as the camera
+    // descends; Godot culls by the baked mesh's bounds, so they reach down
+    // to sea level.
+    entry.instance->set_extra_cull_margin(static_cast<float>(std::max(tile.max_radius - 1.0, 0.0)));
     entry.instance->set_visible(false);
     root_->add_child(entry.instance);
     entry.last_used = frame_;
@@ -286,8 +298,8 @@ void TerrainTiles::update(const View& view) {
         entry.instance->set_position(sent);
         const planetsim::Vec3d rounding{static_cast<double>(sent.x) - offset.x, static_cast<double>(sent.y) - offset.y,
                                         static_cast<double>(sent.z) - offset.z};
-        const double nearest = std::max({planetsim::length(offset) - 0.75 * presentation::tile_angular_size(key) * entry.max_radius,
-                                         camera_radius - entry.max_radius, 1e-12});
+        const double nearest = std::max({planetsim::length(offset) - 0.75 * presentation::tile_angular_size(key) * drawn_radius(entry.max_radius, view),
+                                         camera_radius - drawn_radius(entry.max_radius, view), 1e-12});
         stats_.translation_error_px =
             std::max(stats_.translation_error_px, planetsim::length(rounding) / nearest * view.focal_px);
         entry.instance->set_visible(true);
