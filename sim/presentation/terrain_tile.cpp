@@ -119,9 +119,11 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
         double rank = 0.0;
     };
     std::vector<Point> points(static_cast<std::size_t>(ring * ring));
-    // Tiles coarser than half a cell draw the filtered surface (§4.9).
+    // Tiles too coarse to show sub-cell relief (fewer than five vertices
+    // across a cell) draw the filtered surface (§4.9), which needs none of
+    // the cells' rank tables.
     const bool filtered = tile_angular_size(key) / static_cast<double>(tile_grid) >
-                          0.5 * relief.cell_spacing_rad();
+                          tile_filtered_cells * relief.cell_spacing_rad();
     CellId hint = relief.nearest_cell(tile_center_direction(key), CellId{0});
     for (std::int64_t j = -1; j <= lines; ++j) {
         for (std::int64_t i = -1; i <= lines; ++i) {

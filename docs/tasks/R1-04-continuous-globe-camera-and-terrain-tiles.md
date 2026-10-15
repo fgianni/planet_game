@@ -199,3 +199,25 @@ Jitter at 100 m, RMS / maximum in pixels, NVIDIA RTX 2080 Ti:
   terrain was. The double-precision engine build lives outside the
   repository (`~/src/godot-double`) and is not needed further.
 
+
+### V9 and V11: the flight (2026-10-15)
+
+`godot/tests/test_tile_flight.gd` flies the main scene from 3 radii down
+to 100 m above the ground and back, turning as a player's pan would (in
+proportion to altitude), holding at the bottom until the tiles have
+settled, and checks every 15th frame for holes: pixels whose ray meets
+the planet well inside its silhouette but show the background. CI runs a
+short flight (`--subdivision=4 --frames=120`, 163 s on llvmpipe).
+
+- **V9:** no hole in any checked frame at L4 and L6, in Godot 4.2.2 and
+  4.7.2, on NVIDIA and llvmpipe; the deepest level reached is 18 (about
+  2 m vertex spacing), settled 142 frames after arriving at L6.
+- **V11** (wall time without vsync, frame captures excluded, `stylised`,
+  L6, NVIDIA RTX 2080 Ti; not §31.9's mid-range reference): p95 2.9 ms at
+  planet altitude, 7.2 ms at region, 11.9 ms at local, p99 at most
+  13.3 ms; inside 60 frames per second at every altitude. `--gate-fps`
+  fails the run when a band's p95 exceeds 16.7 ms, for the reference
+  machine. llvmpipe draws the local band at about 0.7 s a frame.
+- Tiles coarser than 0.2 cell per vertex draw the filtered surface: below
+  that density a tile cannot show sub-cell relief, and it would otherwise
+  build the rank tables of every cell it covers.

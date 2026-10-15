@@ -224,6 +224,9 @@ jobs:
           xvfb-run -a ./godot4 --display-driver x11 --rendering-driver opengl3 \
             --audio-driver Dummy --path godot \
             --script res://tests/test_globe_camera.gd -- --subdivision=4
+          xvfb-run -a ./godot4 --display-driver x11 --rendering-driver opengl3 \
+            --audio-driver Dummy --path godot \
+            --script res://tests/test_tile_flight.gd -- --subdivision=4 --frames=120
 
       - name: Render and measure style readability (V8)
         run: |

@@ -20,6 +20,7 @@ namespace planetsim::presentation {
 inline constexpr std::uint32_t tile_grid = 32;        // quads per tile edge
 inline constexpr std::uint32_t tile_max_level = 18;   // about 2 m vertex spacing on Earth
 inline constexpr double tile_skirt_depth = 0.04;      // of the tile's width
+inline constexpr double tile_filtered_cells = 0.2;    // vertex spacing, in cells, above which a tile is filtered
 
 struct TileKey {
     std::uint8_t face = 0;   // 0..5: +x, -x, +y, -y, +z, -z
