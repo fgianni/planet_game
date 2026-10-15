@@ -272,13 +272,24 @@ void TerrainTiles::update(const View& view) {
 
     // Camera-relative placement, in double.
     stats_.deepest_level = 0;
+    stats_.translation_error_px = 0.0;
     stats_.drawn_by_level.assign(presentation::tile_max_level + 1U, 0);
+    const double camera_radius = std::sqrt(view.camera_x * view.camera_x + view.camera_y * view.camera_y +
+                                           view.camera_z * view.camera_z);
     for (const auto& key : drawn_) {
         ++stats_.drawn_by_level[key.level];
         Entry& entry = tiles_.at(id(key));
         entry.last_used = frame_;
-        entry.instance->set_position(to_vector({entry.origin.x - view.camera_x, entry.origin.y - view.camera_y,
-                                                entry.origin.z - view.camera_z}));
+        const planetsim::Vec3d offset{entry.origin.x - view.camera_x, entry.origin.y - view.camera_y,
+                                      entry.origin.z - view.camera_z};
+        const godot::Vector3 sent = to_vector(offset);
+        entry.instance->set_position(sent);
+        const planetsim::Vec3d rounding{static_cast<double>(sent.x) - offset.x, static_cast<double>(sent.y) - offset.y,
+                                        static_cast<double>(sent.z) - offset.z};
+        const double nearest = std::max({planetsim::length(offset) - 0.75 * presentation::tile_angular_size(key) * entry.max_radius,
+                                         camera_radius - entry.max_radius, 1e-12});
+        stats_.translation_error_px =
+            std::max(stats_.translation_error_px, planetsim::length(rounding) / nearest * view.focal_px);
         entry.instance->set_visible(true);
         stats_.deepest_level = std::max<std::int64_t>(stats_.deepest_level, key.level);
     }

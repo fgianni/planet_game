@@ -221,3 +221,18 @@ short flight (`--subdivision=4 --frames=120`, 163 s on llvmpipe).
 - Tiles coarser than 0.2 cell per vertex draw the filtered surface: below
   that density a tile cannot show sub-cell relief, and it would otherwise
   build the rank tables of every cell it covers.
+
+### V13: precision in the flight (2026-10-15)
+
+With the camera at the scene origin and only rotating, and a tile's
+vertices fixed relative to its origin, the one thing that can make the
+terrain jitter is the rounding of each drawn tile's translation,
+origin - camera, to 32 bits every frame. The bridge measures it each frame
+(`translation_error_px` in the tile statistics: the rounding, in pixels,
+at the tile's nearest distance from the camera), and the flight test
+holds at 100 m, turns on the spot and creeps at walking pace with the
+tiles settled. Worst: 0.00006 px at L6 and 0.0002 px at L4, in Godot
+4.2.2 and 4.7.2, against the pass line of 0.5 px; rounding the camera's
+own position, as absolute coordinates would, gives 2.7 px at L6, as the
+spike measured. No z-fighting: a parent and its children are never drawn
+together, and the depth probe of step 0 holds.

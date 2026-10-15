@@ -11,6 +11,11 @@ extends SceneTree
 ## percentile misses 60 frames per second. Gate it on §31.9's reference
 ## machine at L6; a software renderer (CI) only reports.
 ##
+## V13: at 100 m the camera holds, then turns and creeps; every frame the
+## bridge reports the largest screen error that rounding a drawn tile's
+## translation to 32 bits makes (the cause of jitter, the camera staying at
+## the origin), which must stay under 0.5 px.
+##
 ## Pass --subdivision=N (the main scene's argument); --output=DIR keeps
 ## sample frames.
 
@@ -21,6 +26,8 @@ const STEP := 6 # pixels between samples, both ways
 const BACKGROUND := Color(0.02, 0.02, 0.04)
 const INSIDE := 0.995 # rays meeting a sphere this much smaller are well inside
 const FRAME_BUDGET_MS := 16.7
+const JITTER_PASS_PX := 0.5 # ADR-0022 V13
+const LOW_FRAMES := 240     # turning, then creeping, at 100 m (at most half of --frames)
 
 var _failures := 0
 
@@ -118,6 +125,37 @@ func _run() -> void:
 		elif not output.is_empty() and frame % (CAPTURE_EVERY * 20) == 0:
 			image.save_png(output.path_join("flight_%04d.png" % frame))
 
+	# V13: hold at 100 m, then turn on the spot and creep at walking pace,
+	# with the tiles already settled.
+	var worst_jitter := 0.0
+	var worst_absolute := 0.0
+	var low_focus: Vector3 = focus.rotated(Vector3.UP, turn)
+	var settle_start := Time.get_ticks_msec()
+	globe.look_at_direction(low_focus, low, 0.0)
+	while Time.get_ticks_msec() - settle_start < 60_000:
+		globe.look_at_direction(low_focus, low, 0.0)
+		await process_frame
+		if int(planet.get_terrain_tile_stats().get("pending", 0)) == 0:
+			break
+	var focal: float = root.get_visible_rect().size.y * 0.5 / tan(deg_to_rad(camera.fov) * 0.5)
+	var low_frames := mini(LOW_FRAMES, frames_down / 2)
+	for step in low_frames:
+		var heading := 0.0 if step < low_frames / 2 else 0.002 * (step - low_frames / 2)
+		var creep := 0.0 if step < low_frames / 2 else 1.4 / 6_371_000.0 * (step - low_frames / 2) / 60.0
+		globe.look_at_direction(low_focus.rotated(Vector3.UP, creep), low, heading + 0.001 * step)
+		await process_frame
+		worst_jitter = maxf(worst_jitter, float(planet.get_terrain_tile_stats().get("translation_error_px", 0.0)))
+		# For contrast: rounding the camera's own planet-centred position to
+		# 32 bits, as absolute coordinates would.
+		var exact: Array = globe._camera_position
+		var rounded := Vector3(exact[0], exact[1], exact[2])
+		var error := sqrt(pow(rounded.x - exact[0], 2) + pow(rounded.y - exact[1], 2) + pow(rounded.z - exact[2], 2))
+		worst_absolute = maxf(worst_absolute, error / (globe.get_altitude_m() / 6_371_000.0) * focal)
+	print("V13: worst translation rounding %.7f px at 100 m (pass under %.1f); absolute coordinates would round by %.2f px" % [
+		worst_jitter, JITTER_PASS_PX, worst_absolute])
+	if worst_jitter >= JITTER_PASS_PX:
+		push_error("V13: tile translation rounding reaches %.3f px" % worst_jitter)
+		_failures += 1
 	print("V9: %d frames checked, %d hole samples; deepest tile level %d; %d frames to settle at 100 m" % [
 		frames_checked, holes_total, deepest, settle])
 	if holes_total > 0:

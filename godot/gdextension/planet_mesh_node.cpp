@@ -865,6 +865,7 @@ godot::Dictionary PlanetMeshNode::get_terrain_tile_stats() const {
         godot::PackedInt64Array by_level;
         for (const auto count : stats.drawn_by_level) by_level.push_back(count);
         result["drawn_by_level"] = by_level;
+        result["translation_error_px"] = stats.translation_error_px;
     }
     return result;
 }

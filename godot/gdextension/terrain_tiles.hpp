@@ -50,6 +50,12 @@ public:
         std::int64_t deepest_level = 0;
         double mesh_ms = 0.0;
         std::vector<std::int64_t> drawn_by_level;
+        // V13: the largest screen error, in pixels, that rounding a drawn
+        // tile's translation (origin - camera) to 32 bits makes this frame,
+        // at the tile's nearest distance from the camera. With the camera at
+        // the origin and only rotating, and a tile's vertices fixed relative
+        // to it, this is what could make the terrain jitter.
+        double translation_error_px = 0.0;
     };
 
     TerrainTiles(godot::Node3D* parent, std::shared_ptr<const presentation::TerrainRelief> relief,
