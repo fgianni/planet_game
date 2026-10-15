@@ -72,9 +72,11 @@ func _run() -> void:
 		globe._process(1.0 / 60.0)
 	var target: Vector3 = planet.get_cell_direction(cell)
 	_expect(globe.get_camera_position().normalized().dot(target) > 0.99999 or
-		abs(globe.get_altitude_m() - 5000.0) < 500.0,
+		abs(globe.get_altitude_m() - 5000.0) < 1000.0,
 		"fly_to did not arrive: altitude %.0f m" % globe.get_altitude_m())
-	_expect(abs(globe.get_altitude_m() - 5000.0) < 500.0, "fly_to altitude %.0f m" % globe.get_altitude_m())
+	# Within 20 %: the altitude is measured above the ground under the
+	# camera, which under a tilted view is not the ground at the focus.
+	_expect(abs(globe.get_altitude_m() - 5000.0) < 1000.0, "fly_to altitude %.0f m" % globe.get_altitude_m())
 
 	# Zoom towards the cursor: at the screen's centre the focus stays put;
 	# off-centre it moves towards the ground under the cursor.

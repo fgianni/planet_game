@@ -2,6 +2,7 @@ add_library(planetsim_gdextension SHARED
     entry.cpp
     planet_mesh_node.cpp
     planet_style.cpp
+    terrain_tiles.cpp
 )
 
 target_link_libraries(planetsim_gdextension

@@ -76,6 +76,23 @@ TerrainRelief::TerrainRelief(std::shared_ptr<const PlanetMesh> mesh, const Terra
                         hypsometry_quantile_count, terrain.mean_elevation_m[cell]);
         }
     }
+    mean_m_.resize(cells);
+    for (std::size_t cell = 0; cell < cells; ++cell) {
+        HypsometryQuantiles q{};
+        std::copy_n(quantiles_m_.begin() + static_cast<std::ptrdiff_t>(cell * hypsometry_quantile_count),
+                    hypsometry_quantile_count, q.begin());
+        mean_m_[cell] = mean_elevation_m(q);
+    }
+    corner_mean_m_.assign(mesh_->corner_count(), 0.0);
+    std::vector<int> corner_cells(mesh_->corner_count(), 0);
+    for (const auto& cell : mesh_->cells()) {
+        for (const CornerIndex corner : mesh_->cell_corners(cell.id)) {
+            corner_mean_m_[corner] += mean_m_[cell.id.to_index()];
+            ++corner_cells[corner];
+        }
+    }
+    for (std::size_t corner = 0; corner < corner_mean_m_.size(); ++corner)
+        corner_mean_m_[corner] /= std::max(corner_cells[corner], 1);
     spacing_rad_ = std::sqrt(4.0 * std::numbers::pi / static_cast<double>(cells));
     frequency_ = relief_features_per_cell / spacing_rad_;
     offset_ = detail_noise_offset(world_seed, DetailKind::terrain);
@@ -189,6 +206,31 @@ double TerrainRelief::cell_elevation_m(CellId cell, double rank) const {
     const auto lower = std::min(static_cast<std::size_t>(position), hypsometry_quantile_count - 2U);
     const double t = position - static_cast<double>(lower);
     return static_cast<double>(quantiles[lower]) * (1.0 - t) + static_cast<double>(quantiles[lower + 1U]) * t;
+}
+
+ReliefSample TerrainRelief::smooth_sample(const Vec3d& direction_unit, CellId hint) const {
+    const CellId cell = nearest_cell(direction_unit, hint);
+    const Vec3d center = mesh_->cell(cell).center_unit;
+    const auto corners = mesh_->cell_corners(cell);
+    double best_margin = -1e300;
+    double elevation = mean_m_[cell.to_index()];
+    for (std::size_t k = 0; k < corners.size(); ++k) {
+        const CornerIndex first = corners[k];
+        const CornerIndex second = corners[(k + 1U) % corners.size()];
+        const Vec3d a = mesh_->corners_unit()[first];
+        const Vec3d b = mesh_->corners_unit()[second];
+        const double wc = dot(direction_unit, cross(a, b));
+        const double wa = dot(direction_unit, cross(b, center));
+        const double wb = dot(direction_unit, cross(center, a));
+        const double total = wc + wa + wb;
+        const double margin = std::min({wc, wa, wb}) / total;
+        if (margin > best_margin) {
+            best_margin = margin;
+            elevation = (wc * mean_m_[cell.to_index()] + wa * corner_mean_m_[first] +
+                         wb * corner_mean_m_[second]) / total;
+        }
+    }
+    return {elevation, 0.5, cell};
 }
 
 ReliefSample TerrainRelief::sample(const Vec3d& direction_unit, CellId hint) const {

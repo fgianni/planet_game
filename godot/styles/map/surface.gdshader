@@ -31,7 +31,7 @@ void vertex() {
 	cell_texel = UV;
 	first_corner_texel = UV2;
 	second_corner_and_weights = CUSTOM0;
-	model_position = VERTEX;
+	model_position = detail_planet_position(VERTEX, CUSTOM1);
 }
 
 void fragment() {

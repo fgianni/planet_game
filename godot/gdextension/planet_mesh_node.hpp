@@ -8,6 +8,7 @@
 #include "planet_style.hpp"
 
 #include <godot_cpp/classes/array_mesh.hpp>
+#include "terrain_tiles.hpp"
 #include <godot_cpp/classes/directional_light3d.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
@@ -115,6 +116,14 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     // (the displaced cell fans) along a direction: for camera collision.
     [[nodiscard]] double get_surface_radius(const godot::Vector3& direction) const;
     [[nodiscard]] godot::Vector3 get_cell_direction(std::int64_t cell) const;
+    // R1-04: the streamed terrain tiles. With `enabled` the tiles draw for a
+    // camera at `position` (x, y, z planet radii, double) looking along
+    // `forward` (x, y, z) within `half_diagonal` radians, and the cell mesh
+    // does not.
+    void update_terrain_tiles(const godot::PackedFloat64Array& position,
+                              const godot::PackedFloat64Array& forward, double focal_px,
+                              double half_diagonal, bool enabled);
+    [[nodiscard]] godot::Dictionary get_terrain_tile_stats() const;
     [[nodiscard]] bool has_channel(const godot::String& channel_name) const;
     [[nodiscard]] double get_channel_value(std::int64_t cell,
                                            const godot::String& channel_name) const;
@@ -165,6 +174,9 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     std::vector<double> center_radius_; // displaced radius of each cell centre, as drawn
     std::vector<double> corner_radius_; // and of each corner
     mutable std::uint32_t surface_hint_ = 0U; // last cell get_surface_radius found
+    void reset_terrain_tiles();
+    std::unique_ptr<TerrainTiles> tiles_;   // made on first use, remade when the planet changes
+    bool tiles_active_ = false;
     std::uint64_t seed_ = 1;
     godot::String preset_ = "earth_like";
 

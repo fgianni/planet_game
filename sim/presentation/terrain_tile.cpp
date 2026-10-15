@@ -119,6 +119,9 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
         double rank = 0.0;
     };
     std::vector<Point> points(static_cast<std::size_t>(ring * ring));
+    // Tiles coarser than half a cell draw the filtered surface (§4.9).
+    const bool filtered = tile_angular_size(key) / static_cast<double>(tile_grid) >
+                          0.5 * relief.cell_spacing_rad();
     CellId hint = relief.nearest_cell(tile_center_direction(key), CellId{0});
     for (std::int64_t j = -1; j <= lines; ++j) {
         for (std::int64_t i = -1; i <= lines; ++i) {
@@ -126,7 +129,8 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
             const double v = face_coordinate(key.y, key.level, j);
             Point& point = points[static_cast<std::size_t>((j + 1) * ring + (i + 1))];
             point.direction = tile_face_direction(key.face, u, v);
-            const ReliefSample sample = relief.sample(point.direction, hint);
+            const ReliefSample sample = filtered ? relief.smooth_sample(point.direction, hint)
+                                                 : relief.sample(point.direction, hint);
             hint = sample.cell;
             point.height_m = sample.elevation_m - drawing.sea_level_m;
             point.rank = sample.rank;
@@ -188,8 +192,10 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
             append(tile.corner_texel, t_first[0], t_first[1]);
             append(tile.custom0, t_second[0], t_second[1]);
             append(tile.custom0, wc / total, wa / total);
-            append(tile.custom1, vertex.height_m, vertex.rank);
-            append(tile.custom1, 0.0, 0.0);
+            // The styles' detail is a function of the planet-centred
+            // position (§4.9); a tile's VERTEX is relative to its origin.
+            append(tile.custom1, vertex.direction);
+            tile.custom1.push_back(static_cast<float>(vertex.height_m));
             const double radius = length(vertex.position);
             tile.min_radius = std::min(tile.min_radius, radius);
             tile.max_radius = std::max(tile.max_radius, radius);

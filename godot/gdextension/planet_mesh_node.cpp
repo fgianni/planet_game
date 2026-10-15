@@ -233,6 +233,12 @@ void PlanetMeshNode::_bind_methods() {
                                 &PlanetMeshNode::get_surface_radius);
     godot::ClassDB::bind_method(godot::D_METHOD("get_cell_direction", "cell"),
                                 &PlanetMeshNode::get_cell_direction);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("update_terrain_tiles", "position", "forward", "focal_px", "half_diagonal",
+                        "enabled"),
+        &PlanetMeshNode::update_terrain_tiles);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_terrain_tile_stats"),
+                                &PlanetMeshNode::get_terrain_tile_stats);
     godot::ClassDB::bind_method(godot::D_METHOD("has_channel", "channel_name"),
                                 &PlanetMeshNode::has_channel);
     godot::ClassDB::bind_method(godot::D_METHOD("get_channel_value", "cell", "channel_name"),
@@ -337,6 +343,7 @@ void PlanetMeshNode::rebuild(std::int64_t subdivision, double radius_m, std::int
         build_geometry();
         build_colors();
         upload_mesh();
+        reset_terrain_tiles();
         if (!presentation_frames_.empty()) {
             presentation_reference_ =
                 presentation::make_presentation_reference(presentation_frames_);
@@ -428,6 +435,7 @@ void PlanetMeshNode::set_relief_exaggeration(double exaggeration) {
     if (state_) {
         build_geometry();
         upload_mesh();
+        reset_terrain_tiles();
     }
 }
 
@@ -803,9 +811,76 @@ godot::Vector3 PlanetMeshNode::get_cell_direction(std::int64_t cell) const {
     return to_godot(mesh_->cell(CellId{static_cast<std::uint32_t>(cell)}).center_unit);
 }
 
+void PlanetMeshNode::reset_terrain_tiles() {
+    tiles_.reset();
+    if (tiles_active_ && rendered_mesh_.is_valid()) set_mesh(rendered_mesh_);
+    tiles_active_ = false;
+}
+
+void PlanetMeshNode::update_terrain_tiles(const godot::PackedFloat64Array& position,
+                                          const godot::PackedFloat64Array& forward, double focal_px,
+                                          double half_diagonal, bool enabled) {
+    try {
+        if (!mesh_ || material_.is_null() || position.size() != 3 || forward.size() != 3) return;
+        if (enabled && !tiles_) {
+            auto relief = std::make_shared<const presentation::TerrainRelief>(mesh_, terrain_, seed_);
+            presentation::TileDrawing drawing;
+            drawing.relief_exaggeration = relief_exaggeration_;
+            drawing.sea_level_m = terrain_.sea_level_m;
+            drawing.radius_m = mesh_->radius_m();
+            drawing.texture_width = static_cast<std::uint32_t>(channel_texture_width);
+            double highest_m = terrain_.sea_level_m;
+            for (const float value : terrain_.hypsometry_m) highest_m = std::max(highest_m, static_cast<double>(value));
+            for (const float value : terrain_.mean_elevation_m) highest_m = std::max(highest_m, static_cast<double>(value));
+            tiles_ = std::make_unique<TerrainTiles>(this, std::move(relief), drawing, material_, highest_m);
+        }
+        tiles_active_ = enabled;
+        if (enabled) {
+            if (get_mesh().is_valid()) set_mesh(godot::Ref<godot::Mesh>());
+        } else if (get_mesh().is_null() && rendered_mesh_.is_valid()) {
+            set_mesh(rendered_mesh_);
+        }
+        if (!tiles_) return;
+        tiles_->set_visible(enabled);
+        if (enabled) {
+            tiles_->update({position[0], position[1], position[2], focal_px, forward[0], forward[1],
+                            forward[2], half_diagonal});
+        }
+    } catch (const std::exception& error) {
+        godot::UtilityFunctions::push_error("PlanetMeshNode terrain tiles: ", error.what());
+    }
+}
+
+godot::Dictionary PlanetMeshNode::get_terrain_tile_stats() const {
+    godot::Dictionary result;
+    result["active"] = tiles_active_;
+    if (tiles_) {
+        const auto& stats = tiles_->stats();
+        result["drawn"] = stats.drawn;
+        result["cached"] = stats.cached;
+        result["meshed"] = stats.meshed;
+        result["pending"] = stats.pending;
+        result["deepest_level"] = stats.deepest_level;
+        result["mesh_ms"] = stats.mesh_ms;
+        godot::PackedInt64Array by_level;
+        for (const auto count : stats.drawn_by_level) by_level.push_back(count);
+        result["drawn_by_level"] = by_level;
+    }
+    return result;
+}
+
 double PlanetMeshNode::get_surface_radius(const godot::Vector3& direction) const {
     if (!mesh_ || center_radius_.size() != mesh_->cell_count() || direction.length_squared() <= 0.0F)
         return 1.0;
+    if (tiles_active_ && tiles_) {
+        // The tiles draw the sub-cell relief: collide with it.
+        const godot::Vector3 d = direction.normalized();
+        const auto sample = tiles_->relief().sample(Vec3d{d.x, d.y, d.z}, CellId{surface_hint_});
+        surface_hint_ = sample.cell.value();
+        const auto& drawing = tiles_->drawing();
+        return 1.0 + drawing.relief_exaggeration / drawing.radius_m *
+                         std::max(0.0, sample.elevation_m - drawing.sea_level_m);
+    }
     const godot::Vector3 unit_f = direction.normalized();
     const Vec3d unit{unit_f.x, unit_f.y, unit_f.z};
     // The nearest cell, by a greedy walk from the last one found.

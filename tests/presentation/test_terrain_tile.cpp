@@ -149,15 +149,30 @@ int main() {
         PLANETSIM_EXPECT(test, addresses);
     }
 
-    // Heights come from the relief: CUSTOM1.x is the height above sea.
+    // CUSTOM1 carries the planet-centred direction and the height above sea.
     {
         bool matches = true;
         for (std::size_t vertex = 0; vertex < surface_vertex_count(); vertex += 97) {
             const Vec3d direction = planetsim::normalized(absolute(tile, vertex));
             const double expected = relief.sample(direction).elevation_m - fixture.drawing.sea_level_m;
-            matches = matches && std::abs(tile.custom1[4 * vertex] - expected) < 0.05 + 1e-4 * std::abs(expected);
+            const Vec3d carried{tile.custom1[4 * vertex], tile.custom1[4 * vertex + 1], tile.custom1[4 * vertex + 2]};
+            matches = matches && planetsim::length(carried - direction) < 1e-6;
+            matches = matches && std::abs(tile.custom1[4 * vertex + 3] - expected) < 0.05 + 1e-4 * std::abs(expected);
         }
         PLANETSIM_EXPECT(test, matches);
+    }
+    // A coarse tile (vertex spacing over half a cell) draws the filtered
+    // surface: the cells' means interpolated as the cell mesh draws them.
+    {
+        const TileKey coarse{2U, 0U, 0U, 0U};
+        const TileGeometry root = planetsim::presentation::make_terrain_tile(coarse, relief, fixture.drawing);
+        bool smooth = true;
+        for (std::size_t vertex = 0; vertex < surface_vertex_count(); vertex += 101) {
+            const Vec3d direction = planetsim::normalized(absolute(root, vertex));
+            const double expected = relief.smooth_sample(direction).elevation_m - fixture.drawing.sea_level_m;
+            smooth = smooth && std::abs(root.custom1[4 * vertex + 3] - expected) < 0.05 + 1e-4 * std::abs(expected);
+        }
+        PLANETSIM_EXPECT(test, smooth);
     }
     return test.result();
 }

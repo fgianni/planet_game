@@ -47,6 +47,7 @@ func _ready() -> void:
 	var style := "stylised"
 	var presentation_record := ""
 	var live := false
+	var day_night := true
 	for argument in OS.get_cmdline_user_args():
 		var parts: PackedStringArray = argument.trim_prefix("--").split("=", true, 1)
 		if parts.size() != 2:
@@ -70,6 +71,7 @@ func _ready() -> void:
 				_pitch = parts[1].to_float()
 				_view_given = true
 			"distance": _distance = parts[1].to_float()
+			"day-night": day_night = parts[1].to_lower() in ["1", "true", "yes"]
 	_generate()
 	_planet.set_style(style)
 	if not presentation_record.is_empty():
@@ -77,6 +79,7 @@ func _ready() -> void:
 	elif live:
 		_planet.start_live_run(0, _live_water_cycle)
 	_planet.set_view_mode(view)
+	_planet.set_day_night_shading(day_night)
 	_globe.planet = _planet
 	_globe.camera = _camera
 	if not _view_given:
@@ -137,8 +140,9 @@ func _process(delta: float) -> void:
 	_planet.advance_presentation(delta, simulated_years_per_wall_second)
 	_update_hud()
 	if not _screenshot_path.is_empty() and not _screenshot_started:
-		var content_ready: bool = not _planet.has_live_run() \
-			or _planet.get_simulation_tick() > 0
+		var content_ready: bool = (not _planet.has_live_run() \
+			or _planet.get_simulation_tick() > 0) \
+			and int(_planet.get_terrain_tile_stats().get("pending", 0)) == 0
 		if content_ready and not _planet.is_live_run_busy():
 			_screenshot_started = true
 			_capture_screenshot.call_deferred(_screenshot_path, _quit_after_screenshot)

@@ -56,7 +56,7 @@ struct TileGeometry {
     std::vector<float> cell_texel;   // UV: xy
     std::vector<float> corner_texel; // UV2: xy
     std::vector<float> custom0;      // second corner texel xy, weights of cell and first corner
-    std::vector<float> custom1;      // height above sea (m), rank in the cell, 0, 0
+    std::vector<float> custom1;      // planet-centred unit direction xyz, height above sea (m)
     double min_radius = 0.0;         // of the drawn surface, for culling and collision
     double max_radius = 0.0;
 };

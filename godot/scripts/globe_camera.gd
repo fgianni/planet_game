@@ -160,6 +160,17 @@ func _apply() -> void:
 	camera.near = maxf(altitude_radii * 0.005, 1.0e-9)
 	camera.far = sqrt(maxf(length * length - 1.0, 0.0)) + 1.5
 	_update_bands()
+	# Below the planet band the streamed terrain tiles draw, from the
+	# camera's double-precision position (R1-04 steps 3-4).
+	if planet.has_method("update_terrain_tiles"):
+		var height := maxf(get_viewport().get_visible_rect().size.y, 1.0)
+		var focal := height * 0.5 / tan(deg_to_rad(camera.fov) * 0.5)
+		var size := get_viewport().get_visible_rect().size
+		var half_height := tan(deg_to_rad(camera.fov) * 0.5)
+		var aspect := size.x / maxf(size.y, 1.0)
+		var half_diagonal := atan(half_height * sqrt(1.0 + aspect * aspect))
+		planet.update_terrain_tiles(PackedFloat64Array(_camera_position), PackedFloat64Array(look),
+			focal, half_diagonal, _band_weights["planet"] < 0.5)
 
 
 ## 0 (straight down) above ORBIT_TILT_FROM_CELLS cell sizes, rising in

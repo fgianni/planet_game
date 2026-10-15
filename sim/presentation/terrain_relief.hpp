@@ -52,6 +52,12 @@ public:
     // the point (the previous sample's cell); it changes only the search time.
     [[nodiscard]] ReliefSample sample(const Vec3d& direction_unit, CellId hint = CellId{0}) const;
 
+    // The filtered terrain coarse tiles draw (ADR-0022 §4.9): each cell's
+    // mean elevation, interpolated across the cell mesh's fan triangles as
+    // the cell mesh draws it (corners average their three cells); rank 0.5.
+    // It needs no rank tables, so far, coarse tiles stay cheap.
+    [[nodiscard]] ReliefSample smooth_sample(const Vec3d& direction_unit, CellId hint = CellId{0}) const;
+
     // The parts, exposed for tests.
     [[nodiscard]] double noise(const Vec3d& direction_unit) const;
     [[nodiscard]] CellId nearest_cell(const Vec3d& direction_unit, CellId hint) const;
@@ -71,6 +77,8 @@ private:
 
     std::shared_ptr<const PlanetMesh> mesh_;
     std::vector<float> quantiles_m_; // cell-major, hypsometry_quantile_count per cell
+    std::vector<double> mean_m_;          // per cell, of the quantiles' curve
+    std::vector<double> corner_mean_m_;   // per corner, the mean of its cells' means
     double spacing_rad_ = 0.0;
     double frequency_ = 0.0; // lattice units per radian
     std::array<double, 3> offset_{};

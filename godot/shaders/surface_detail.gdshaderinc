@@ -111,6 +111,13 @@ vec4 detail_partition(vec4 weights, float noise, float amount) {
 	return vec4(first, second - first, third - second, 1.0 - third);
 }
 
+// The planet-centred position of a vertex: the cell mesh's VERTEX, or a
+// terrain tile's CUSTOM1.xyz (its VERTEX is relative to the tile's origin;
+// the cell mesh has no CUSTOM1, which reads as zero).
+vec3 detail_planet_position(vec3 vertex, vec4 custom1) {
+	return dot(custom1.xyz, custom1.xyz) > 0.25 ? custom1.xyz : vertex;
+}
+
 // Barycentric blend of the cell texel and its two corner texels, from the
 // planet mesh's UV, UV2 and CUSTOM0 (exact; see test_cell_texels.gd).
 vec4 detail_fetch(sampler2D channel, vec2 cell, vec2 first_corner, vec4 second_corner_and_weights) {
