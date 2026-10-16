@@ -1,7 +1,8 @@
 # ADR-0023 — Cloud water, moist convection, precipitation and cloud radiation
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-15
+- **Accepted:** 2026-10-16
 - **Milestone:** P0 / M8 (clouds and precipitation)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24, §31.2 (the cloud channels); Planetary Civilization Simulator — Design Record v1.4, §5, §15
 - **Related:** ADR-0001 (V1 water budget, V2 climate–reference parity), ADR-0003 (PSNAP migration), ADR-0006 (sub-steps), ADR-0008 (snow, rain and snow at the surface), ADR-0010 (layered atmosphere, grey longwave, Γ_c adjustment, §3.3 C deferring Betts–Miller to M8), ADR-0011 (winds, ascent), ADR-0018 (presentation channels `cloud_cover`, `cloud_thickness`), ADR-0021 (vapour, evaporation, saturation rainout; §13.7 V9 deferred to M8)

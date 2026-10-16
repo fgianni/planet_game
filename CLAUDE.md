@@ -37,11 +37,15 @@ Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI
 units; - deterministic and testable implementation; - physical
 state/fluxes rather than scripted climate modifiers; - production code
-and tests together; - do not proceed to M8 unless explicitly requested.
+and tests together; - do not proceed to M9 unless explicitly requested.
 
-Current milestone: none in progress. M8 (clouds and precipitation) is
-next but must not start unless explicitly requested; its first gates
-include ADR-0021's V9 parity and the 42 K equator-to-pole target.
+Current milestone: **P0 / M8 --- Clouds and precipitation**, started
+2026-10-16 at the user's request, under ADR-0023 (accepted 2026-10-16):
+tasks M8-01 to M8-06 (cloud water state, Betts--Miller moist convection,
+cloud water to precipitation, cloud radiation, refit and gates, clouds on
+screen). Its gates include ADR-0021's V9 parity (ADR-0023 V8) and the
+42 K equator-to-pole target, reported. Do not proceed to M9 unless
+explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is
