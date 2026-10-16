@@ -295,15 +295,17 @@ inline bool convective_adjustment(const ColumnRadiation& column, std::span<doubl
 // over the column so that Σ (c_p ΔT + L Δq) = 0; where that would moisten
 // the column (the shallow case), only temperature relaxes, Σ ΔT = 0. The
 // column relaxes by r towards it; the water it loses is the convective
-// precipitation. `weights`, if given, receives d T_ref,k / d T_0 (the
-// parcel's sensitivity), for the transport's linear response.
+// precipitation.
+// The parcel buoyancy over which a layer joins the convecting column.
+inline constexpr double betts_miller_onset_K = 1.0;
+
 struct BettsMillerResult {
     int top = -1;                    // highest convecting layer, −1: none
     double precipitation_kg_m2 = 0.0;
     bool shallow = false;
     LayerArray parcel_K{};           // the parcel's temperatures, layers 0..top
+    LayerArray weight{};             // each layer's share w_k of the relaxation
     double shift_K = 0.0;            // s: T_ref = parcel + s
-    LayerArray weights{};
 };
 
 inline BettsMillerResult betts_miller(const ColumnRadiation& column, const ColumnMoisture& moisture,
@@ -353,12 +355,23 @@ inline BettsMillerResult betts_miller(const ColumnRadiation& column, const Colum
         }
         return t;
     };
+    // Each layer joins by its parcel buoyancy b_k = T_p,k − T_k, as
+    // w_k = smoothstep(b_k / b_onset), no more than the layer below; the
+    // bottom layer joins as layer 1. A step-function trigger would switch a
+    // moist column's drying on at full strength, and the monthly implicit
+    // transport solve then has no root (task M8-02).
     LayerArray reference{};
+    LayerArray weight{};
     reference[0] = temperature_K[0];
     int top = 0;
+    double below = 1.0;
     for (std::size_t k = 1; k < n; ++k) {
         reference[k] = parcel(temperature_K[0], humidity_kg_kg[0], k);
-        if (!(reference[k] > temperature_K[k])) {
+        const double x =
+            std::clamp((reference[k] - temperature_K[k]) / betts_miller_onset_K, 0.0, 1.0);
+        weight[k] = std::min(below, x * x * (3.0 - 2.0 * x));
+        below = weight[k];
+        if (!(weight[k] > 0.0)) {
             break;
         }
         top = static_cast<int>(k);
@@ -366,17 +379,13 @@ inline BettsMillerResult betts_miller(const ColumnRadiation& column, const Colum
     if (top < 1) {
         return result;
     }
+    weight[0] = weight[1];
     result.top = top;
     result.parcel_K = reference;
+    result.weight = weight;
     const auto layers = static_cast<std::size_t>(top) + 1U;
-    // The parcel's sensitivity to its start, for the linear response.
-    constexpr double nudge_K = 0.01;
-    result.weights[0] = 1.0;
-    for (std::size_t k = 1; k < layers; ++k) {
-        result.weights[k] = (parcel(temperature_K[0] + nudge_K, humidity_kg_kg[0], k) - reference[k]) / nudge_K;
-    }
     const double rh = moisture.moist_convection_relative_humidity;
-    // The shift s with G(s) = Σ c_p (T_ref + s − T) + L min(0, q_ref(s) − q)
+    // The shift s with G(s) = Σ w (c_p (T_ref + s − T) + L min(0, q_ref(s) − q))
     // = 0: the column's moist enthalpy kept, no layer moistened. G increases
     // with s; Newton, safeguarded by bisection.
     const auto enthalpy = [&](double shift, double& slope) {
@@ -385,11 +394,12 @@ inline BettsMillerResult betts_miller(const ColumnRadiation& column, const Colum
         for (std::size_t k = 0; k < layers; ++k) {
             const double t = reference[k] + shift;
             const double q_ref = rh * saturation_specific_humidity(t, moisture.pressure_Pa[k]);
-            sum += cp * (t - temperature_K[k]);
-            slope += cp;
+            sum += weight[k] * cp * (t - temperature_K[k]);
+            slope += weight[k] * cp;
             if (q_ref < humidity_kg_kg[k]) {
-                sum += latent * (q_ref - humidity_kg_kg[k]);
-                slope += latent * rh * saturation_specific_humidity_slope(t, moisture.pressure_Pa[k]);
+                sum += weight[k] * latent * (q_ref - humidity_kg_kg[k]);
+                slope += weight[k] * latent * rh *
+                         saturation_specific_humidity_slope(t, moisture.pressure_Pa[k]);
             }
         }
         return sum;
@@ -417,9 +427,9 @@ inline BettsMillerResult betts_miller(const ColumnRadiation& column, const Colum
         const double t = reference[k] + shift;
         const double dq =
             std::min(0.0, rh * saturation_specific_humidity(t, moisture.pressure_Pa[k]) - humidity_kg_kg[k]);
-        temperature_K[k] += r * (t - temperature_K[k]);
-        humidity_kg_kg[k] += r * dq;
-        drying -= r * dq;
+        temperature_K[k] += r * weight[k] * (t - temperature_K[k]);
+        humidity_kg_kg[k] += r * weight[k] * dq;
+        drying -= r * weight[k] * dq;
     }
     // No layer dried: the shallow case, temperature alone relaxed.
     result.shallow = !(drying > 0.0);
@@ -812,6 +822,25 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
             before_t[k] = temperature_K[k];
             before_q[k] = result.humidity_kg_kg[k];
         }
+        // The response through convection by its finite difference along the
+        // pre-convection response, the layers that condensed in the solve
+        // keeping saturation (δq = q_sat′ δT): the relaxation removes less
+        // vapour from a warmer column, so it keeps only part of a warming
+        // (about c_p / (c_p + L RH q_sat′), a quarter in the tropics).
+        double largest = 0.0;
+        for (std::size_t k = 0; k < n; ++k) largest = std::max(largest, std::abs(response[k]));
+        const double epsilon = largest > 0.0 ? 1e-3 / largest : 0.0;
+        LayerArray perturbed_t{};
+        LayerArray perturbed_q{};
+        for (std::size_t k = 0; k < n; ++k) {
+            perturbed_t[k] = before_t[k] + epsilon * response[k];
+            perturbed_q[k] = before_q[k];
+            if (current.condensate[k] > 0.0) {
+                perturbed_q[k] += saturation_specific_humidity_slope(before_t[k],
+                                                                     moisture->pressure_Pa[k]) *
+                                  epsilon * response[k];
+            }
+        }
         const BettsMillerResult bm = betts_miller(
             column, *moisture, temperature_K, std::span<double>(result.humidity_kg_kg.data(), n));
         result.convection_top = bm.top;
@@ -828,18 +857,13 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
             result.convective_precipitation_kg_m2_s = bm.precipitation_kg_m2 / dt_s;
             result.precipitation_kg_m2_s += result.convective_precipitation_kg_m2_s;
             result.condensation_W_m2 += moisture->latent_J_kg * result.convective_precipitation_kg_m2_s;
-            // Linear response: the convecting layers relax by r towards a
-            // profile of the parcel's shape carrying their summed change.
-            const auto layers = static_cast<std::size_t>(bm.top) + 1U;
-            const double r = moisture->moist_convection_fraction;
-            double sum = 0.0;
-            double weight = 0.0;
-            for (std::size_t k = 0; k < layers; ++k) {
-                sum += response[k];
-                weight += bm.weights[k];
-            }
-            for (std::size_t k = 0; k < layers; ++k) {
-                response[k] = (1.0 - r) * response[k] + r * bm.weights[k] * sum / weight;
+            if (epsilon > 0.0) {
+                static_cast<void>(betts_miller(column, *moisture,
+                                               std::span<double>(perturbed_t.data(), n),
+                                               std::span<double>(perturbed_q.data(), n)));
+                for (std::size_t k = 0; k < n; ++k) {
+                    response[k] = (perturbed_t[k] - temperature_K[k]) / epsilon;
+                }
             }
         }
     }

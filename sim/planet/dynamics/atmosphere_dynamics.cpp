@@ -15,12 +15,16 @@
 namespace planetsim {
 namespace {
 
-[[nodiscard]] Field2D<double> dynamics_height(const PlanetMesh& mesh, const SlowState& slow,
-                                              const SurfaceFractions& fractions,
-                                              double max_step_m, std::size_t worker_count,
-                                              std::size_t& passes) {
+[[nodiscard]] Field2D<double> true_height(const PlanetMesh& mesh, const SlowState& slow,
+                                          const SurfaceFractions& fractions) {
     Field2D<double> height;
     compute_surface_height(mesh, slow, fractions, height);
+    return height;
+}
+
+[[nodiscard]] Field2D<double> dynamics_height(const PlanetMesh& mesh,
+                                              const Field2D<double>& height, double max_step_m,
+                                              std::size_t worker_count, std::size_t& passes) {
     auto limited = limit_dynamics_orography_steps(mesh, height, max_step_m,
                                                   dynamics_orography_max_passes, worker_count);
     passes = limited.passes;
@@ -55,7 +59,8 @@ AtmosphereDynamics::AtmosphereDynamics(const PlanetMesh& mesh, const SlowState& 
                                        std::size_t worker_count)
     : mesh_(&mesh), parameters_(parameters), worker_count_(worker_count),
       grid_(CGridGeometry::build(mesh)), lapse_rate_K_m_(atmosphere.critical_lapse_rate_K_m),
-      dynamics_height_m_(dynamics_height(mesh, slow, fractions, parameters_.orography_max_step_m,
+      true_height_m_(true_height(mesh, slow, fractions)),
+      dynamics_height_m_(dynamics_height(mesh, true_height_m_, parameters_.orography_max_step_m,
                                          worker_count, orography_passes_)),
       model_(mesh, grid_, model_parameters(mesh, planet, atmosphere, parameters_),
              dynamics_height_m_) {
@@ -95,7 +100,7 @@ void AtmosphereDynamics::step(PlanetState& state, double dt_s) {
                                      circulation.eastward_wind_m_s.cell_count() ==
                                          mesh_->cell_count();
         ++last_.starts;
-        if (last_.started_from_balance) {
+        {
             const auto& cells = mesh_->cells();
             const auto& p = model_.parameters();
             auto& ps = state.slow().atmosphere_surface_pressure_Pa;
@@ -106,16 +111,23 @@ void AtmosphereDynamics::step(PlanetState& state, double dt_s) {
                 const double air = surface_air_temperature(
                     state.slow().atmosphere_temperature_K.layer(0)[i], n, lapse_rate_K_m_,
                     p.gravity_m_s2, p.gas_constant_J_kg_K);
-                start_ps[i] = static_cast<double>(circulation.sea_level_pressure_Pa[i]) /
-                              reduced_to_sea_level(1.0, air, dynamics_height_m_[i],
-                                                   lapse_rate_K_m_, p.gravity_m_s2,
-                                                   p.gas_constant_J_kg_K);
+                const double sea_level =
+                    last_.started_from_balance
+                        ? static_cast<double>(circulation.sea_level_pressure_Pa[i])
+                        : reduced_to_sea_level(ps[i], air, true_height_m_[i], lapse_rate_K_m_,
+                                               p.gravity_m_s2, p.gas_constant_J_kg_K);
+                start_ps[i] = sea_level / reduced_to_sea_level(1.0, air, dynamics_height_m_[i],
+                                                               lapse_rate_K_m_, p.gravity_m_s2,
+                                                               p.gas_constant_J_kg_K);
                 mass += cells[i].area_m2 * ps[i];
                 start_mass += cells[i].area_m2 * start_ps[i];
             }
             for (std::size_t i = 0; i < start_ps.size(); ++i) {
                 ps[i] = start_ps[i] * (mass / start_mass);
             }
+        }
+        if (last_.started_from_balance) {
+            const auto& cells = mesh_->cells();
             for (std::size_t k = 0; k < n; ++k) {
                 const auto east = circulation.eastward_wind_m_s.layer(k);
                 const auto north = circulation.northward_wind_m_s.layer(k);

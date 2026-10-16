@@ -69,11 +69,13 @@ class AtmosphereDynamics {
 
     // Advances the atmosphere by dt. If the fast state is closed, opens it:
     // from the climate mode's balanced circulation when state.circulation()
-    // holds one, otherwise from rest (ADR-0011 §4.3). The balanced start
-    // takes the circulation's sea-level pressure up to the orography the
-    // winds see (the climate fields' p_s rests on the true terrain, which
-    // the core would shed within two days), with the atmosphere's mass held,
-    // and projects its cell winds on the edge normals.
+    // holds one, otherwise from rest (ADR-0011 §4.3). Either start puts p_s
+    // on the orography the winds see, with the atmosphere's mass held (the
+    // climate fields' p_s rests on the true terrain, which the core would
+    // shed in gravity waves of up to 10 kPa at L3, task M8-02): the balanced
+    // start from the circulation's sea-level pressure, the start from rest
+    // from p_s reduced from the true height. The balanced start also
+    // projects the circulation's cell winds on the edge normals.
     void step(PlanetState& state, double dt_s);
 
     [[nodiscard]] const AtmosphereDynamicsDiagnostics& last() const noexcept { return last_; }
@@ -92,7 +94,8 @@ class AtmosphereDynamics {
     std::size_t worker_count_;
     CGridGeometry grid_;
     std::size_t orography_passes_ = 0;
-    double lapse_rate_K_m_;              // Γ_c: the balanced start's p_s (ADR-0010)
+    double lapse_rate_K_m_;              // Γ_c: the start's p_s (ADR-0010)
+    Field2D<double> true_height_m_;      // the column physics' surface height
     Field2D<double> dynamics_height_m_;  // the orography the winds see (§13)
     PrimitiveEquationModel model_;
     AtmosphereDynamicsDiagnostics last_;

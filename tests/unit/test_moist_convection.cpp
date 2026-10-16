@@ -275,7 +275,56 @@ int main() {
         }
     }
 
-    // 6. Off, the column solve is M7's, bit for bit.
+    // 6. The onset is continuous (task M8-02): as layer 1 cools through the
+    // parcel's temperature the column joins smoothly, so the monthly
+    // transport solve has a root. Every layer's change and the rain move by
+    // little more than the 1 mK sweep step across the onset.
+    {
+        Column column(5U);
+        LayerArray base = buoyant_t;
+        LayerArray q{};
+        for (std::size_t k = 0; k < 5U; ++k) q[k] = 0.95 * column.saturation(base[k], k);
+        // The parcel's layer-1 temperature for this start.
+        LayerArray probe_t = base;
+        LayerArray probe_q = q;
+        const auto probe = planetsim::betts_miller(column.radiation, column.moisture,
+                                                   std::span<double>(probe_t.data(), 5U),
+                                                   std::span<double>(probe_q.data(), 5U));
+        const double onset = probe.parcel_K[1];
+        double worst_jump_K = 0.0;
+        double worst_rain_jump = 0.0;
+        LayerArray previous_t{};
+        double previous_rain = 0.0;
+        bool first = true;
+        int convecting = 0;
+        for (double offset = -2.0; offset <= 2.0; offset += 1e-3) {
+            LayerArray t = base;
+            t[1] = onset + offset;
+            LayerArray qq = q;
+            const LayerArray start = t;
+            const auto bm = planetsim::betts_miller(column.radiation, column.moisture,
+                                                    std::span<double>(t.data(), 5U),
+                                                    std::span<double>(qq.data(), 5U));
+            convecting += bm.top >= 1 ? 1 : 0;
+            LayerArray change{};
+            for (std::size_t k = 0; k < 5U; ++k) change[k] = t[k] - start[k];
+            if (!first) {
+                for (std::size_t k = 0; k < 5U; ++k)
+                    worst_jump_K = std::max(worst_jump_K, std::abs(change[k] - previous_t[k]));
+                worst_rain_jump = std::max(worst_rain_jump, std::abs(bm.precipitation_kg_m2 - previous_rain));
+            }
+            previous_t = change;
+            previous_rain = bm.precipitation_kg_m2;
+            first = false;
+        }
+        std::cout << "onset sweep: worst change jump " << worst_jump_K << " K, rain jump "
+                  << worst_rain_jump << " kg/m2 per mK\n";
+        PLANETSIM_EXPECT(test, convecting > 0 && convecting < 4001);
+        PLANETSIM_EXPECT(test, worst_jump_K < 0.05);
+        PLANETSIM_EXPECT(test, worst_rain_jump < 0.1);
+    }
+
+    // 7. Off, the column solve is M7's, bit for bit.
     {
         Column column(5U);
         LayerArray before = buoyant_t;

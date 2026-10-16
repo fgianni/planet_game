@@ -262,7 +262,8 @@ int main() {
     // 10. Reference mode starts from the balanced circulation (ADR-0011
     // §4.3): p_s from the balanced sea-level pressure on the winds' orography,
     // the winds from the cells' balanced winds; mass held, and the
-    // start is deterministic. Without the circulation it starts from rest.
+    // start is deterministic. Without the circulation it starts from rest,
+    // p_s also taken to the winds' orography (task M8-02).
     {
         const auto mass = [](const planetsim::PlanetRun& r) {
             double sum = 0.0;
@@ -297,8 +298,10 @@ int main() {
         PLANETSIM_EXPECT(test, without.dynamics()->last().starts == 1U &&
                                    !without.dynamics()->last().started_from_balance);
         PLANETSIM_EXPECT(test, last.max_wind_m_s > 10.0 && last.max_wind_m_s < 100.0);
-        // The balanced start sheds far less mass to the core's orography.
-        PLANETSIM_EXPECT(test, drift < 0.5 * drift_rest);
+        // Both starts are on the core's orography; the balanced one
+        // still adjusts less (task M8-02: 1 058 Pa against 1 360 Pa at L3).
+        PLANETSIM_EXPECT(test, drift < drift_rest);
+        PLANETSIM_EXPECT(test, drift_rest < 2'000.0);
         PLANETSIM_EXPECT_NEAR(test, mass(run) / initial_mass, 1.0, 1.0e-12);
         PLANETSIM_EXPECT(test, run.state_hash() == serial.state_hash());
         PLANETSIM_EXPECT(test, run.state_hash() != without.state_hash());
