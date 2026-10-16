@@ -1,9 +1,9 @@
 # Task M8-02 — Moist convection (Betts–Miller)
 
 - **Milestone:** P0 / M8 (second task)
-- **Status:** done, pending ADR-0023 §11 (proposed 2026-10-16): the
-  physics are tested, reference mode is stable over ten years, the climate
-  solve converges, and V7 as read in §11.3 passes
+- **Status:** complete (2026-10-17, ADR-0023 §11 accepted): the physics
+  are tested, reference mode is stable over ten years, the climate solve
+  converges, and V7 as read in §11.3 passes
 - **Governing decisions:** ADR-0023 §4.2, §4.3.1, §4.5, V2–V4, V7
 
 ## Done
@@ -87,7 +87,7 @@
      over 1 K of buoyancy. Newton then takes 4–7 iterations to 1–7e-5
      W/m², as in M7.
 
-The ADR needs an amendment for both.
+Both are recorded in ADR-0023 §11 (accepted 2026-10-17).
 
 ## Results
 
@@ -162,11 +162,8 @@ with that gate:
 - closure 0.040 of the energy gate, 2.5e-5 of the water gate; 1.20 m/yr
   over the run, 33 % convective.
 
-## Open
+## Carried forward
 
-- **ADR-0023 §11** (proposed): condensation in the solve, the continuous
-  onset, V7's reading, reference mode's start; the task closes when it is
-  accepted.
 - **The climatological latent heating** (408 W/m²): reported by V9 after
   the clouds and the refit cool the tropics (M8-04, M8-05).
 - **V8 parity** (+4.98 K) is M8-05's gate.
