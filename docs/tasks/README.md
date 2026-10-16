@@ -35,7 +35,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [M7-06](M7-06-reference-mode.md) | Reference mode: the vapour advected by the primitive-equation core, the resolved winds for evaporation (ADR-0021 §4.5, V6) | Complete |
 | [M7-07](M7-07-refit-and-close.md) | Refit and close: τ_d and κ_v fitted to 288 K, the water cycle on by default, τ_c, the gates; V9 recorded, deferred to M8 (ADR-0021 §13) | Complete |
 | [M8-01](M8-01-cloud-water-state.md) | Cloud water state: the layers' cloud water, PSNAP schema 7, the cloud diagnostics' fields (ADR-0023 §4.1) | Complete |
-| [M8-02](M8-02-moist-convection.md) | Moist convection: the dry adjustment and Betts–Miller (ADR-0023 §4.2); reference mode stable over ten years, V7 latent heating recorded failing | In progress |
+| [M8-02](M8-02-moist-convection.md) | Moist convection: the dry adjustment and Betts–Miller (ADR-0023 §4.2); reference mode stable over ten years, V7 as read in ADR-0023 §11.3 passes | Done, pending §11 |
 | [R1-01](R1-01-presentation-library-and-channels.md) | Presentation library and semantic channels (ADR-0018; rendering track, parallel to M6) | Complete |
 | [R1-02](R1-02-style-packs-and-switching.md) | Godot style packs, recorded playback and instant switching (ADR-0018) | Complete |
 | [R1-03](R1-03-readability-harness.md) | Offscreen style readability gate and colour-vision checks (ADR-0018) | Complete |

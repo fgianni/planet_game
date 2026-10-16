@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-15
 - **Accepted:** 2026-10-16
+- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; proposed)
 - **Milestone:** P0 / M8 (clouds and precipitation)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24, §31.2 (the cloud channels); Planetary Civilization Simulator — Design Record v1.4, §5, §15
 - **Related:** ADR-0001 (V1 water budget, V2 climate–reference parity), ADR-0003 (PSNAP migration), ADR-0006 (sub-steps), ADR-0008 (snow, rain and snow at the surface), ADR-0010 (layered atmosphere, grey longwave, Γ_c adjustment, §3.3 C deferring Betts–Miller to M8), ADR-0011 (winds, ascent), ADR-0018 (presentation channels `cloud_cover`, `cloud_thickness`), ADR-0021 (vapour, evaporation, saturation rainout; §13.7 V9 deferred to M8)
@@ -226,9 +227,9 @@ position (ADR-0022 §4.9). PSNAP is unchanged by the presentation part.
 | V4 | Betts–Miller: a buoyant column relaxes towards the moist adiabat by 1 − exp(−Δt/τ_bm); a climate month reaches the reference; a stable column is untouched | unit tests |
 | V5 | Autoconversion reaches q_l0 in a month; re-evaporation never supersaturates a layer | unit tests |
 | V6 | Clouds: reflection rises with water path and fraction; the shortwave cloud effect is negative and the longwave positive | unit and run tests |
-| V7 | Reference mode stays stable without τ_c: winds below 100 m/s and latent heating below 300 W/m² over a 10-year run | regression |
+| V7 | Reference mode stays stable without τ_c: winds below 100 m/s and latent heating below 300 W/m² over a 10-year run (read as §11.3) | regression |
 | V8 | ADR-0021 V9 (ADR-0001 V2): climate and reference mode within 0.3 K and ±10 % precipitation (L3, 10-year spin-up, a year each) | gate |
-| V9 | 288 K after the refit; cloud fraction 0.5–0.7; cloud radiative effects within 30 % of §4.6's targets; the equator-to-pole difference reported against 42 K | calibration gate |
+| V9 | 288 K after the refit; cloud fraction 0.5–0.7; cloud radiative effects within 30 % of §4.6's targets; the equator-to-pole difference reported against 42 K; each cell's climatological latent heating reported against 300 W/m² (§11.3) | calibration gate |
 | V10 | PSNAP 6 → 7 migration and golden saves; presentation schema 6 round trip | regression |
 | V11 | The performance gates hold (ADR-0021 §13.6): 250 years at L5 and L6 within 1.5 times M7's times | performance |
 | V12 | Cloud channels move the right way (a cloudy vs clear snapshot) and clouded vs clear terrain passes the readability gate in both styles | unit tests, readability harness |
@@ -294,3 +295,79 @@ position (ADR-0022 §4.9). PSNAP is unchanged by the presentation part.
 - Manabe, S., Smagorinsky, J., and Strickler, R. F. (1965). Simulated climatology of a general circulation model with a hydrologic cycle. *Mon. Wea. Rev.* 93, 769–798.
 - Stephens, G. L. (1978). Radiation profiles in extended water clouds. II. *J. Atmos. Sci.* 35, 2123–2132.
 - Sundqvist, H., Berge, E., and Kristjánsson, J. E. (1989). Condensation and cloud parameterization studies with a mesoscale numerical weather prediction model. *Mon. Wea. Rev.* 117, 1641–1657.
+
+## 11. Amendment: condensation in the solve, a continuous onset, V7's reading (proposed 2026-10-16, task M8-02)
+
+**11.1 Condensation inside the column solve (amends §4.2 and §4.3.1).**
+§4.2 orders each step as the column solve, then convection, then
+condensation. In climate mode that order fails:
+- the month's evaporation enters the implicit solve as vapour without its
+  latent heat;
+- the transport's Newton then drove one L3 column's bottom layer to 7 K,
+  under a −1 047 W/m² source, in the first spin-up month.
+
+The solve therefore condenses the whole excess at its new temperatures,
+inside the implicit balance, as M7 did with τ_c's fraction of one for a
+month. After it come the dry adjustment, Betts–Miller and the single
+condensation pass of §4.3.1, which takes what convection leaves
+supersaturated. There is still no τ_c: the solve's condensation is
+complete in both modes. From M8-03 that condensate becomes cloud water
+(§4.3), wherever it forms.
+
+**11.2 A continuous onset (amends §4.2.2 and §4.2.3).** §4.2.2's trigger
+admits a layer where the parcel is warmer than it, which switches a moist
+column's drying on at full strength. The monthly transport solve then has
+no root: its coupled Newton reached its 30-iteration limit in almost every
+month, ending at 0.01–7 W/m² against 1e-4.
+- Each layer k ≥ 1 joins with weight w_k = smoothstep(b_k / 1 K), b_k the
+  parcel's buoyancy against it, and no more than the layer below. The
+  bottom layer joins as layer 1. A column convects when some layer above
+  the bottom has w > 0.
+- The shift s of the reference solves
+  Σ w_k (c_p (T_ref,k − T_k) + L min(0, q_ref,k − q_k)) m_k = 0, so the
+  moist enthalpy is kept and no layer is moistened in one formula; where
+  nothing dries, only temperature relaxes (§4.2.5's shallow case).
+- Each layer relaxes by r w_k, r = 1 − exp(−Δt/τ_bm).
+
+Newton then converges in 4–7 iterations to 1–7e-5 W/m², as in M7.
+Sweeping a layer through the parcel's temperature in 1 mK steps moves
+every layer by at most 0.022 K, where the step trigger jumped by about
+19 kg/m² of rain.
+
+**11.3 V7 tests stability; the climatological latent heating is
+calibration (amends §5; decided with the user).** V7 guards against the
+grid-point runaway that τ_c held back: latent heating of 1.3–2.9 kW/m²
+sustained, winds above 150 m/s (ADR-0021 §13.4). It now reads:
+- winds below 100 m/s over the whole 10-year run;
+- after the first year's start-up, every cell's daily-mean latent heating
+  below 100 mm/day of rain (L_v × 100 kg/m² per day, 2.9 kW/m²), a
+  tropical-cyclone day at the cell's scale.
+
+A cell's climatological latent heating, against Earth's wettest ~800 km
+boxes at 300–350 W/m², measures the climate, not the scheme's stability.
+At M8-02 it is 408 W/m², because the climate state's tropics are about
+20 K too hot (sea at 307–309 K within 15°). V9 reports it against
+300 W/m² after the clouds and the refit (M8-04, M8-05).
+
+**11.4 Reference mode starts on the winds' orography (records a fix to
+ADR-0011's start).** The start from rest left p_s on the true terrain
+while the winds see the smoothed one; at L3 a 3 km plateau cell at
+77.8 kPa beside a 742 m smoothed surface shed the difference in gravity
+waves of about 10 kPa. The start from rest now puts p_s on the winds'
+orography with the column mass held, as the balanced start already did.
+Both starts adjust by less than 2 kPa in two days
+(`test_climate_circulation`).
+
+**11.5 Γ_c's remaining role.** Betts–Miller replaces Γ_c as the moist
+adiabat. Γ_c still sets the climate circulation's static stability
+(`zonal_coupling.cpp`) until the refit (M8-05) replaces it with the
+moist profile's or records why it stays.
+
+**11.6 Results at M8-02** (L3, `test_reference_moist_convection 10`, from
+rest; re-run 2026-10-16 with §11.3's gate): winds 94 m/s in year 1's
+transient, then 54–70 m/s; the highest daily-mean latent heating in any
+cell after year 1 is 1 288 W/m², against the 2 894 W/m² bound; V7 as read
+in §11.3 passes. The climatological maximum, now V9's, is 408 W/m². Parity (V8): +4.98 K and ×1.30 in precipitation (M7:
++5.45 K, ×1.29), M8-05's gate. A climate year at L3 costs ×1.41 M7's
+(V11 allows ×1.5).
+

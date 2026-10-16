@@ -1,9 +1,9 @@
 # Task M8-02 — Moist convection (Betts–Miller)
 
 - **Milestone:** P0 / M8 (second task)
-- **Status:** in progress: the physics are done and tested, reference mode
-  is stable over ten years, and the climate solve converges. V7's
-  latent-heating part fails (408 W/m² against 300; see Results)
+- **Status:** done, pending ADR-0023 §11 (proposed 2026-10-16): the
+  physics are tested, reference mode is stable over ten years, the climate
+  solve converges, and V7 as read in §11.3 passes
 - **Governing decisions:** ADR-0023 §4.2, §4.3.1, §4.5, V2–V4, V7
 
 ## Done
@@ -148,14 +148,27 @@ The ADR needs an amendment for both.
 - All 94 tests pass; the CI checks (fp flags, presentation includes,
   field registry) pass.
 
+## V7 as amended (ADR-0023 §11.3, decided with the user 2026-10-16)
+
+V7 tests stability: winds below 100 m/s, and every cell's daily-mean
+latent heating after the first year below 100 mm/day of rain (2 894 W/m²).
+The climatological figure moves to V9's calibration report.
+`test_reference_moist_convection 10` (L3, from rest, 16 threads), re-run
+with that gate:
+- winds: 94.0 m/s in year 1, then 54.2–69.6 m/s;
+- highest daily-mean latent heating after year 1: 1 288 W/m² (year 2),
+  then 876–1 057 W/m² a year; **passes**;
+- climatological maximum 408 W/m², reported for V9;
+- closure 0.040 of the energy gate, 2.5e-5 of the water gate; 1.20 m/yr
+  over the run, 33 % convective.
+
 ## Open
 
-- **V7's latent heating** (408 W/m² against 300): measure again after the
-  clouds and the refit cool the tropics (M8-04, M8-05). How to read the
-  300 W/m² gate (climatological, as gated here, or daily) is to be fixed
-  in the ADR amendment.
-- **The ADR-0023 amendment:** condensation in the solve, the continuous
-  onset, and V7's reading.
+- **ADR-0023 §11** (proposed): condensation in the solve, the continuous
+  onset, V7's reading, reference mode's start; the task closes when it is
+  accepted.
+- **The climatological latent heating** (408 W/m²): reported by V9 after
+  the clouds and the refit cool the tropics (M8-04, M8-05).
 - **V8 parity** (+4.98 K) is M8-05's gate.
 - Γ_c keeps its other role, the circulation's static stability
   (`zonal_coupling.cpp`), until the refit.

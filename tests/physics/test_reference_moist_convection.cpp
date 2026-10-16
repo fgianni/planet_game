@@ -15,11 +15,12 @@
 
 // Reference mode with moist convection and without τ_c (ADR-0023 §4.2, V7;
 // task M8-02) at L3. The energy and water budgets close every step and
-// convection rains. V7 (winds below 100 m/s; each cell's latent heating,
-// its climatological mean after the first year, below 300 W/m²) is gated
-// only on the measurement run, `test_reference_moist_convection <years>`
-// (all cores, ten years in about 45 minutes); the latent part fails today
-// (task M8-02 §Results). CTest runs 30 days and reports the V7 quantities.
+// convection rains. V7 (ADR-0023 §11.3: winds below 100 m/s; after the
+// first year, each cell's daily-mean latent heating below 100 mm/day of
+// rain) is gated only on the measurement run,
+// `test_reference_moist_convection <years>` (all cores, ten years in about
+// 45 minutes). The climatological mean it also prints belongs to V9's
+// calibration. CTest runs 30 days and reports the V7 quantities.
 // PLANETSIM_SPIN_UP_YEARS sets climate years before tick 0;
 // PLANETSIM_M7_CONVECTION runs M7's convection and τ_c for comparison;
 // PLANETSIM_TRACE prints each day's highest wind.
@@ -43,6 +44,7 @@ int main(int argc, char** argv) {
     double settled_s = 0.0;
     double day_seconds = 0.0;
     double max_daily_mean = 0.0;
+    double max_settled_daily_mean = 0.0;   // days after the first year
     std::size_t current_day = 0;
     double year_wind = 0.0;
     double year_latent = 0.0;
@@ -93,6 +95,8 @@ int main(int argc, char** argv) {
         if (day != current_day) {
             for (std::size_t i = 0; i < cells; ++i) {
                 max_daily_mean = std::max(max_daily_mean, day_sum[i] / day_seconds);
+                if (current_day >= 365U)
+                    max_settled_daily_mean = std::max(max_settled_daily_mean, day_sum[i] / day_seconds);
                 year_latent = std::max(year_latent, day_sum[i] / day_seconds);
                 day_sum[i] = 0.0;
             }
@@ -130,8 +134,9 @@ int main(int argc, char** argv) {
     for (std::size_t i = 0; i < cells && settled_s > 0.0; ++i)
         max_settled_mean = std::max(max_settled_mean, settled_sum[i] / settled_s);
     if (settled_s > 0.0)
-        std::cout << "latent heating per cell after the first year: climatological max "
-                  << max_settled_mean << " W/m2\n";
+        std::cout << "latent heating per cell after the first year: daily-mean max "
+                  << max_settled_daily_mean << ", climatological max " << max_settled_mean
+                  << " W/m2\n";
     std::cout << "latent heating per cell: step max " << max_latent << ", daily-mean max "
               << max_daily_mean << ", run-mean max " << max_run_mean << " W/m2\n";
     double area = 0.0;
@@ -147,10 +152,12 @@ int main(int argc, char** argv) {
     PLANETSIM_EXPECT(test, worst_cycle <= 1.0);
     if (argc > 1) {
         PLANETSIM_EXPECT(test, max_wind < 100.0);
-        // V7's latent heating as each cell's climatological mean after the
-        // first year (task M8-02): 408 W/m² today, against Earth's wettest
-        // ~800 km boxes at 300–350 W/m².
-        PLANETSIM_EXPECT(test, max_settled_mean < 300.0);
+        // V7's latent heating (ADR-0023 §11.3): no cell rains more than a
+        // tropical-cyclone day, 100 mm/day, as a daily mean after the first
+        // year's start-up. τ_c's runaway was 1.3–2.9 kW/m² sustained.
+        const double cyclone_day_W_m2 =
+            planetsim::latent_heat_vaporisation_J_kg * 100.0 / 86'400.0;
+        PLANETSIM_EXPECT(test, max_settled_daily_mean < cyclone_day_W_m2);
     }
     PLANETSIM_EXPECT(test, scenario.moist_convection == false || convective_kg > 0.0);
     return test.result();
