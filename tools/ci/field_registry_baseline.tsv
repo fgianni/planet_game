@@ -32,4 +32,9 @@
 458755	precipitation_kg_m2_s	derived	cell	float32	1	kg/m2/s
 458756	evaporation_kg_m2_s	derived	cell	float32	1	kg/m2/s
 458757	runoff_kg_m2_s	derived	cell	float32	1	kg/m2/s
+524289	atmosphere_cloud_water_kg_kg	slow	cell_layers	float64	scenario	kg/kg
+524290	cloud_fraction	derived	cell_layers	float32	scenario	1
+524291	convective_precipitation_kg_m2_s	derived	cell	float32	1	kg/m2/s
+524292	cloud_shortwave_effect_W_m2	derived	cell	float32	1	W/m2
+524293	cloud_longwave_effect_W_m2	derived	cell	float32	1	W/m2
 # retired_field_id	196611

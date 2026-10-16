@@ -248,6 +248,8 @@ void append_json_string(std::string& output, std::string_view value) {
     case FieldId::atmosphere_specific_humidity_kg_kg:
     case FieldId::land_surface_water_kg_m2:
         return 6U;
+    case FieldId::atmosphere_cloud_water_kg_kg:
+        return 7U;
     case FieldId::top_of_atmosphere_insolation_W_m2:
     case FieldId::substep_mean_insolation_W_m2:
     case FieldId::prescribed_precipitation_kg_m2_s:
@@ -270,6 +272,10 @@ void append_json_string(std::string& output, std::string_view value) {
     case FieldId::precipitation_kg_m2_s:
     case FieldId::evaporation_kg_m2_s:
     case FieldId::runoff_kg_m2_s:
+    case FieldId::cloud_fraction:
+    case FieldId::convective_precipitation_kg_m2_s:
+    case FieldId::cloud_shortwave_effect_W_m2:
+    case FieldId::cloud_longwave_effect_W_m2:
         return 0U;
     }
     return 0U;
@@ -367,6 +373,16 @@ void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& fi
     case FieldId::land_surface_water_kg_m2:
         append_cell_field(chunk.bytes, state.slow().land_surface_water_kg_m2);
         break;
+    case FieldId::atmosphere_cloud_water_kg_kg: {
+        const auto& cloud = state.slow().atmosphere_cloud_water_kg_kg;
+        chunk.layers = static_cast<std::uint32_t>(cloud.layer_count());
+        chunk.bytes.reserve(cloud.size() * sizeof(double));
+        for (std::size_t layer = 0; layer < cloud.layer_count(); ++layer) {
+            const auto values = cloud.layer(layer);
+            append_values<double>(chunk.bytes, {values.data(), values.size()});
+        }
+        break;
+    }
     case FieldId::top_of_atmosphere_insolation_W_m2:
     case FieldId::substep_mean_insolation_W_m2:
     case FieldId::prescribed_precipitation_kg_m2_s:
@@ -389,6 +405,10 @@ void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& fi
     case FieldId::precipitation_kg_m2_s:
     case FieldId::evaporation_kg_m2_s:
     case FieldId::runoff_kg_m2_s:
+    case FieldId::cloud_fraction:
+    case FieldId::convective_precipitation_kg_m2_s:
+    case FieldId::cloud_shortwave_effect_W_m2:
+    case FieldId::cloud_longwave_effect_W_m2:
         throw std::logic_error("derived forcing field cannot be persisted");
     }
 
@@ -1024,6 +1044,11 @@ void validate_slow_state(const PlanetState& state) {
         field_error(static_cast<std::uint32_t>(FieldId::atmosphere_specific_humidity_kg_kg),
                     "the humidity's layers do not match the atmosphere's");
     }
+    const auto& cloud = state.slow().atmosphere_cloud_water_kg_kg;
+    if (cloud.cell_count() != cells || cloud.layer_count() != atmosphere.layer_count()) {
+        field_error(static_cast<std::uint32_t>(FieldId::atmosphere_cloud_water_kg_kg),
+                    "the cloud water's layers do not match the atmosphere's");
+    }
 }
 
 [[nodiscard]] Field2D<float> decode_float_cells(std::span<const std::byte> bytes,
@@ -1126,6 +1151,21 @@ void decode_chunk(const FieldDescriptor& descriptor,
     case FieldId::land_surface_water_kg_m2:
         staged.land_surface_water_kg_m2 = decode_double_cells(bytes, cell_count);
         return;
+    case FieldId::atmosphere_cloud_water_kg_kg: {
+        const std::size_t layers =
+            cell_count == 0U ? 0U : bytes.size() / (cell_count * sizeof(double));
+        Field3D<double> values(layers, cell_count, 0.0);
+        std::size_t offset = 0;
+        for (std::size_t layer = 0; layer < layers; ++layer) {
+            for (double& value : values.layer(layer)) {
+                value = std::bit_cast<double>(
+                    read_little_endian<std::uint64_t>(bytes, offset, "cloud water value"));
+                offset += sizeof(std::uint64_t);
+            }
+        }
+        staged.atmosphere_cloud_water_kg_kg = std::move(values);
+        return;
+    }
     case FieldId::top_of_atmosphere_insolation_W_m2:
     case FieldId::substep_mean_insolation_W_m2:
     case FieldId::prescribed_precipitation_kg_m2_s:
@@ -1148,6 +1188,10 @@ void decode_chunk(const FieldDescriptor& descriptor,
     case FieldId::precipitation_kg_m2_s:
     case FieldId::evaporation_kg_m2_s:
     case FieldId::runoff_kg_m2_s:
+    case FieldId::cloud_fraction:
+    case FieldId::convective_precipitation_kg_m2_s:
+    case FieldId::cloud_shortwave_effect_W_m2:
+    case FieldId::cloud_longwave_effect_W_m2:
         break;
     }
     field_error(static_cast<std::uint32_t>(descriptor.id), "field has no persistent decoder");

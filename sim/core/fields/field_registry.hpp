@@ -43,6 +43,11 @@ enum class FieldId : std::uint32_t {
     precipitation_kg_m2_s = 0x0007'0003U,
     evaporation_kg_m2_s = 0x0007'0004U,
     runoff_kg_m2_s = 0x0007'0005U,
+    atmosphere_cloud_water_kg_kg = 0x0008'0001U,
+    cloud_fraction = 0x0008'0002U,
+    convective_precipitation_kg_m2_s = 0x0008'0003U,
+    cloud_shortwave_effect_W_m2 = 0x0008'0004U,
+    cloud_longwave_effect_W_m2 = 0x0008'0005U,
 };
 
 enum class FieldDataType : std::uint8_t {
@@ -134,7 +139,7 @@ struct FieldDescriptor {
     return {};
 }
 
-inline constexpr std::array<FieldDescriptor, 34> field_registry{{
+inline constexpr std::array<FieldDescriptor, 39> field_registry{{
     {FieldId::top_of_atmosphere_insolation_W_m2, "top_of_atmosphere_insolation_W_m2",
      FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
     {FieldId::substep_mean_insolation_W_m2, "substep_mean_insolation_W_m2",
@@ -241,6 +246,20 @@ inline constexpr std::array<FieldDescriptor, 34> field_registry{{
      FieldLayout::cell, FieldDataType::float32, 1U, "kg/m2/s"},
     {FieldId::runoff_kg_m2_s, "runoff_kg_m2_s", FieldPartition::derived, FieldLayout::cell,
      FieldDataType::float32, 1U, "kg/m2/s"},
+    // Clouds (ADR-0023 §4.1, §4.7): the layers' cloud water (N layers, as the
+    // atmosphere, a float64 reservoir as the humidity); the layers' cloud
+    // fraction, the step's convective precipitation and the cloud radiative
+    // effects at the top of the atmosphere, derived.
+    {FieldId::atmosphere_cloud_water_kg_kg, "atmosphere_cloud_water_kg_kg", FieldPartition::slow,
+     FieldLayout::cell_layers, FieldDataType::float64, scenario_layer_count, "kg/kg"},
+    {FieldId::cloud_fraction, "cloud_fraction", FieldPartition::derived, FieldLayout::cell_layers,
+     FieldDataType::float32, scenario_layer_count, "1"},
+    {FieldId::convective_precipitation_kg_m2_s, "convective_precipitation_kg_m2_s",
+     FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "kg/m2/s"},
+    {FieldId::cloud_shortwave_effect_W_m2, "cloud_shortwave_effect_W_m2", FieldPartition::derived,
+     FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
+    {FieldId::cloud_longwave_effect_W_m2, "cloud_longwave_effect_W_m2", FieldPartition::derived,
+     FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
 }};
 
 // Retired IDs are never registered again. Snapshots of the schemas that

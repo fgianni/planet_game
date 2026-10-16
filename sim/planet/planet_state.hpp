@@ -31,6 +31,8 @@ struct SlowState {
     field_container_t<FieldId::atmosphere_specific_humidity_kg_kg>
         atmosphere_specific_humidity_kg_kg;
     field_container_t<FieldId::land_surface_water_kg_m2> land_surface_water_kg_m2;
+    // Clouds (ADR-0023 §4.1): the layers' cloud water.
+    field_container_t<FieldId::atmosphere_cloud_water_kg_kg> atmosphere_cloud_water_kg_kg;
 
     [[nodiscard]] std::size_t atmosphere_layer_count() const noexcept {
         return atmosphere_temperature_K.layer_count();

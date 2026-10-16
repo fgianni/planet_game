@@ -146,6 +146,7 @@ int main() {
     const std::string step_3_4 = "3 -> 4 snow and sea-ice reservoirs (ADR-0008 §4.6)";
     const std::string step_4_5 = "4 -> 5 atmosphere at hydrostatic rest (ADR-0010 §4.3)";
     const std::string step_5_6 = "5 -> 6 water vapour and the land bucket (ADR-0021 §4.1)";
+    const std::string step_6_7 = "6 -> 7 no cloud water (ADR-0023 §4.1)";
 
     // The schema 4 -> 5 initialiser: the preset's three layers at rest, every
     // column reducing to the reference sea-level pressure.
@@ -177,7 +178,7 @@ int main() {
             golden_path, state, migration);
         PLANETSIM_EXPECT(test, manifest.schema_version == 1U);
         PLANETSIM_EXPECT(test, (manifest.applied_migrations ==
-                                std::vector<std::string>{step_1_2, step_2_3, step_3_4, step_4_5, step_5_6}));
+                                std::vector<std::string>{step_1_2, step_2_3, step_3_4, step_4_5, step_5_6, step_6_7}));
         PLANETSIM_EXPECT(test, manifest.tick == synthetic_tick);
         PLANETSIM_EXPECT(test, manifest.mesh_level == 0U);
         PLANETSIM_EXPECT(test, manifest.cell_count == 12U);
@@ -218,7 +219,7 @@ int main() {
             migration);
         PLANETSIM_EXPECT(test, manifest.schema_version == 2U);
         PLANETSIM_EXPECT(test, (manifest.applied_migrations ==
-                                std::vector<std::string>{step_2_3, step_3_4, step_4_5, step_5_6}));
+                                std::vector<std::string>{step_2_3, step_3_4, step_4_5, step_5_6, step_6_7}));
         PLANETSIM_EXPECT(test, manifest.fields.size() == 6U);
         PLANETSIM_EXPECT(test, manifest.fields.size() == 6U &&
                                    manifest.fields[4].field_id == 0x0003'0003U &&
@@ -253,7 +254,7 @@ int main() {
             migration);
         PLANETSIM_EXPECT(test, manifest.schema_version == 3U);
         PLANETSIM_EXPECT(test, (manifest.applied_migrations ==
-                                std::vector<std::string>{step_3_4, step_4_5, step_5_6}));
+                                std::vector<std::string>{step_3_4, step_4_5, step_5_6, step_6_7}));
         PLANETSIM_EXPECT(test, manifest.fields.size() == 6U);
         check_schema_1_fields(test, state);
         bool exact = true;
@@ -326,7 +327,7 @@ int main() {
             std::filesystem::path("tests/data/golden/psnap-v4-l0.psnap"), state, migration);
         PLANETSIM_EXPECT(test, manifest.schema_version == 4U);
         PLANETSIM_EXPECT(test, (manifest.applied_migrations ==
-                                std::vector<std::string>{step_4_5, step_5_6}));
+                                std::vector<std::string>{step_4_5, step_5_6, step_6_7}));
         PLANETSIM_EXPECT(test, atmosphere_at_rest(state));
         PLANETSIM_EXPECT(test, manifest.fields.size() == 8U);
         check_schema_1_fields(test, state);
@@ -366,7 +367,7 @@ int main() {
         planetsim::PlanetState state(mesh);
         const auto applied =
             planetsim::decode_snapshot_chunks(delta_manifest, chunks, state, migration);
-        PLANETSIM_EXPECT(test, (applied == std::vector<std::string>{step_4_5, step_5_6}));
+        PLANETSIM_EXPECT(test, (applied == std::vector<std::string>{step_4_5, step_5_6, step_6_7}));
         check_schema_1_fields(test, state);
         PLANETSIM_EXPECT(test, schema_4_exact(state, true));
     }
@@ -380,7 +381,7 @@ int main() {
             std::filesystem::path("tests/data/golden/psnap-v5-l0.psnap"), state, migration);
         PLANETSIM_EXPECT(test, manifest.schema_version == 5U);
         PLANETSIM_EXPECT(test, (manifest.applied_migrations ==
-                                std::vector<std::string>{step_5_6}));
+                                std::vector<std::string>{step_5_6, step_6_7}));
         bool watered = state.slow().atmosphere_specific_humidity_kg_kg.layer_count() == 3U;
         for (std::size_t cell = 0; watered && cell < mesh->cell_count(); ++cell) {
             watered = state.slow().land_surface_water_kg_m2[cell] ==
@@ -422,9 +423,9 @@ int main() {
     {
         planetsim::PlanetState state(mesh);
         const auto manifest = planetsim::read_snapshot(
-            std::filesystem::path("tests/data/golden/psnap-v6-l0.psnap"), state);
+            std::filesystem::path("tests/data/golden/psnap-v6-l0.psnap"), state, migration);
         PLANETSIM_EXPECT(test, manifest.schema_version == 6U);
-        PLANETSIM_EXPECT(test, manifest.applied_migrations.empty());
+        PLANETSIM_EXPECT(test, (manifest.applied_migrations == std::vector<std::string>{step_6_7}));
         PLANETSIM_EXPECT(test, manifest.fields.size() == 12U);
         check_schema_1_fields(test, state);
         bool exact = state.slow().atmosphere_specific_humidity_kg_kg.layer_count() == 3U;
@@ -440,7 +441,38 @@ int main() {
             }
         }
         PLANETSIM_EXPECT(test, exact);
+        // The schema 6 -> 7 initialiser: no cloud water (ADR-0023 §4.1).
+        bool clear = state.slow().atmosphere_cloud_water_kg_kg.layer_count() == 3U;
+        for (std::size_t layer = 0; clear && layer < 3U; ++layer) {
+            for (const double value : state.slow().atmosphere_cloud_water_kg_kg.layer(layer))
+                clear = clear && value == 0.0;
+        }
+        PLANETSIM_EXPECT(test, clear);
         step_ten_years(test, state, parameters, surface, "psnap-v6");
+    }
+
+    // Schema 7 (M8-01, ADR-0023 §4.1): the layers' cloud water, stored as
+    // written; no migration.
+    {
+        planetsim::PlanetState state(mesh);
+        const auto manifest = planetsim::read_snapshot(
+            std::filesystem::path("tests/data/golden/psnap-v7-l0.psnap"), state);
+        PLANETSIM_EXPECT(test, manifest.schema_version == 7U);
+        PLANETSIM_EXPECT(test, manifest.applied_migrations.empty());
+        PLANETSIM_EXPECT(test, manifest.fields.size() == 13U);
+        check_schema_1_fields(test, state);
+        bool exact = state.slow().atmosphere_cloud_water_kg_kg.layer_count() == 3U;
+        for (std::size_t cell = 0; exact && cell < mesh->cell_count(); ++cell) {
+            for (std::size_t layer = 0; layer < 3U; ++layer) {
+                exact = exact &&
+                        state.slow().atmosphere_cloud_water_kg_kg.layer(layer)[cell] ==
+                            1.0e-5 * (expected_temperature(
+                                          cell, 38U + static_cast<std::uint32_t>(layer)) -
+                                      220.0);
+            }
+        }
+        PLANETSIM_EXPECT(test, exact);
+        step_ten_years(test, state, parameters, surface, "psnap-v7");
     }
     return test.result();
 }

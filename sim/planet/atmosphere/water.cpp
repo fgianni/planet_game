@@ -27,6 +27,12 @@ void initialise_water(const PlanetMesh& mesh, SlowState& slow) {
                                  sigma * slow.atmosphere_surface_pressure_Pa[cell]);
         }
     }
+    initialise_cloud_water(mesh, slow);
+}
+
+void initialise_cloud_water(const PlanetMesh& mesh, SlowState& slow) {
+    slow.atmosphere_cloud_water_kg_kg =
+        Field3D<double>(slow.atmosphere_layer_count(), mesh.cell_count(), 0.0);
 }
 
 }  // namespace planetsim

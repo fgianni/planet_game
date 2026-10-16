@@ -825,6 +825,15 @@ void populate_snapshot_synthetic_state(planetsim::PlanetState& state) {
         }
         slow.land_surface_water_kg_m2[cell] = 1.5 * (temperature(cell, 37U) - 220.0);
     }
+    // Schema 7 clouds (ADR-0023 §4.1): cloud water 0-0.001 kg/kg in each layer.
+    slow.atmosphere_cloud_water_kg_kg =
+        planetsim::Field3D<double>(3U, state.mesh().cell_count(), 0.0);
+    for (std::size_t cell = 0; cell < state.mesh().cell_count(); ++cell) {
+        for (std::size_t layer = 0; layer < 3U; ++layer) {
+            slow.atmosphere_cloud_water_kg_kg.layer(layer)[cell] =
+                1.0e-5 * (temperature(cell, 38U + static_cast<std::uint32_t>(layer)) - 220.0);
+        }
+    }
 }
 
 struct LayoutBenchmarkResult {

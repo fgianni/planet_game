@@ -17,4 +17,9 @@ inline constexpr double initial_relative_humidity = 0.6;
 // 5 → 6 migration's initialiser and every new run's (initialise_climate).
 void initialise_water(const PlanetMesh& mesh, SlowState& slow);
 
+// No cloud water in any layer (ADR-0023 §4.1): the M7 world holds no
+// condensate. The schema 6 → 7 migration's initialiser; initialise_water
+// ends with it, so every new run starts without clouds.
+void initialise_cloud_water(const PlanetMesh& mesh, SlowState& slow);
+
 }  // namespace planetsim

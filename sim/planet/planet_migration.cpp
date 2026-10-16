@@ -25,6 +25,9 @@ SnapshotMigration planet_snapshot_migration(const PlanetParameters& planet,
     migration.set_initialiser(6U, [](const PlanetMesh& mesh, SlowState& staged) {
         initialise_water(mesh, staged);
     });
+    migration.set_initialiser(7U, [](const PlanetMesh& mesh, SlowState& staged) {
+        initialise_cloud_water(mesh, staged);
+    });
     return migration;
 }
 
