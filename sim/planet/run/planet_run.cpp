@@ -66,6 +66,7 @@ template <typename Integer>
     SurfaceEnergyParameters surface = surface_energy_parameters_for(scenario.preset);
     surface.atmosphere.layer_count = scenario.resolved_atmosphere_layers();
     surface.water_cycle = scenario.resolved_water_cycle();
+    surface.atmosphere.moist_convection = scenario.resolved_moist_convection();
     return surface;
 }
 
@@ -82,6 +83,9 @@ template <typename Integer>
     }
     if (scenario.water_cycle.value_or(false) && scenario.resolved_atmosphere_layers() == 0U) {
         throw std::invalid_argument("the water cycle needs an atmosphere");
+    }
+    if (scenario.moist_convection.value_or(false) && !scenario.resolved_water_cycle()) {
+        throw std::invalid_argument("moist convection needs the water cycle");
     }
     if (scenario.atmosphere_layers) {
         const std::uint32_t preset_layers = atmosphere_parameters_for(scenario.preset).layer_count;
@@ -108,9 +112,18 @@ bool Scenario::resolved_water_cycle() const noexcept {
     return water_cycle ? *water_cycle : surface_energy_parameters_for(preset).water_cycle;
 }
 
+bool Scenario::resolved_moist_convection() const noexcept {
+    if (!resolved_water_cycle()) {
+        return false;
+    }
+    return moist_convection ? *moist_convection
+                            : surface_energy_parameters_for(preset).atmosphere.moist_convection;
+}
+
 ScenarioEntries Scenario::entries() const {
     auto entries = base_entries();
     entries.push_back({"water_cycle", resolved_water_cycle() ? "1" : "0"});
+    entries.push_back({"moist_convection", resolved_moist_convection() ? "1" : "0"});
     return entries;
 }
 
@@ -130,8 +143,8 @@ ScenarioEntries Scenario::base_entries() const {
 Scenario Scenario::from_entries(const ScenarioEntries& entries) {
     Scenario scenario;
     auto defaults = scenario.entries();
-    // atmosphere_layers is optional (manifests before M5) and water_cycle
-    // (before M7, which then reads as off).
+    // atmosphere_layers is optional (manifests before M5), water_cycle
+    // (before M7) and moist_convection (before M8), which then read as off.
     defaults = scenario.base_entries();
     if (!scenario_value(entries, "atmosphere_layers")) {
         defaults.pop_back();
@@ -146,6 +159,17 @@ Scenario Scenario::from_entries(const ScenarioEntries& entries) {
         defaults.push_back({"water_cycle", std::string(*water)});
     } else {
         scenario.water_cycle = false;
+    }
+    const auto moist = scenario_value(entries, "moist_convection");
+    if (moist) {
+        if (*moist != "0" && *moist != "1") {
+            throw std::runtime_error("scenario moist_convection must be 0 or 1: '" +
+                                     std::string(*moist) + "'");
+        }
+        scenario.moist_convection = *moist == "1";
+        defaults.push_back({"moist_convection", std::string(*moist)});
+    } else {
+        scenario.moist_convection = false;
     }
     if (entries.size() != defaults.size()) {
         throw std::runtime_error("scenario has " + std::to_string(entries.size()) +

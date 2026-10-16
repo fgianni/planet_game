@@ -62,6 +62,13 @@ void validate_atmosphere_parameters(const AtmosphereParameters& parameters) {
         throw std::invalid_argument("dry optical depth and vapour absorption must be finite and "
                                     "non-negative");
     }
+    if (!(parameters.moist_convection_time_s > 0.0) ||
+        !std::isfinite(parameters.moist_convection_time_s) ||
+        !(parameters.moist_convection_relative_humidity > 0.0 &&
+          parameters.moist_convection_relative_humidity <= 1.0)) {
+        throw std::invalid_argument("moist convection needs a positive time and a reference "
+                                    "relative humidity in (0, 1]");
+    }
 }
 
 double surface_gravity_m_s2(const PlanetParameters& parameters) {

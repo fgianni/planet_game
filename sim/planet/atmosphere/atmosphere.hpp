@@ -36,6 +36,14 @@ struct AtmosphereParameters {
     // Convective adjustment to Γ_c (§3.3 B); off only in tests of pure
     // radiative equilibrium (V2, V3).
     bool convection = true;
+    // Moist convection (ADR-0023 §4.2): with the water cycle, a dry
+    // adjustment to the dry adiabat and a Betts–Miller relaxation towards
+    // the moist adiabat over τ_bm, the reference at RH_bm, in place of the
+    // adjustment to Γ_c and of the condensation time τ_c. Off until the
+    // refit (task M8-05) turns it on with the clouds.
+    bool moist_convection = false;
+    double moist_convection_time_s = 2.0 * 3600.0;     // τ_bm (Betts and Miller, 1986)
+    double moist_convection_relative_humidity = 0.8;   // RH_bm
 };
 
 inline constexpr std::uint32_t max_atmosphere_layer_count = 8U;

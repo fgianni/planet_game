@@ -97,6 +97,8 @@ struct ForcingState {
     field_container_t<FieldId::evaporation_kg_m2_s> evaporation_kg_m2_s;
     field_container_t<FieldId::runoff_kg_m2_s> runoff_kg_m2_s;
     field_container_t<FieldId::precipitation_kg_m2_s> precipitation_kg_m2_s;
+    // Its convective part (ADR-0023 §4.7), kg/m²/s of cell.
+    field_container_t<FieldId::convective_precipitation_kg_m2_s> convective_precipitation_kg_m2_s;
 };
 
 class PlanetState {

@@ -30,6 +30,7 @@ struct ColumnRadiation {
     double layer_heat_capacity_J_m2_K = 0.0;   // c_p p_s / (g N)
     LayerArray emissivity{};                   // ε_k = 1 − exp(−Δτ_k)
     LayerArray exner{};                        // π_k = (σ_k p_s / p₀)^κ_c: T_k = θ_k π_k
+    LayerArray exner_dry{};                    // (σ_k p_s / p₀)^(R_d/c_p): the dry adiabat (ADR-0023 §4.2)
     double air_factor = 1.0;                   // T_air = air_factor · T_0 = T_0 / σ_0^κ_c
 };
 
@@ -68,6 +69,10 @@ struct ColumnRadiation {
             layer_sigma(layer, column.layers) * surface_pressure_Pa /
                 parameters.reference_pressure_Pa,
             kappa);
+        column.exner_dry[layer] = std::pow(
+            layer_sigma(layer, column.layers) * surface_pressure_Pa /
+                parameters.reference_pressure_Pa,
+            dry_air_gas_constant_J_kg_K / dry_air_heat_capacity_J_kg_K);
     }
     column.air_factor = std::pow(1.0 / layer_sigma(0U, column.layers), kappa);
     return column;
@@ -166,6 +171,12 @@ struct ColumnMoisture {
     double latent_J_kg = 0.0;
     // The share of the excess a step condenses, 1 − exp(−Δt/τ_c) (1: all).
     double condensation_fraction = 1.0;
+    // Moist convection (ADR-0023 §4.2): with it the column's convection is a
+    // dry adjustment to the dry adiabat and a Betts–Miller relaxation by
+    // 1 − exp(−Δt/τ_bm) towards the moist adiabat at RH_bm.
+    bool moist_convection = false;
+    double moist_convection_fraction = 1.0;
+    double moist_convection_relative_humidity = 0.8;
 };
 
 struct ColumnSolveSettings {
@@ -208,6 +219,12 @@ struct ColumnSolveResult {
     double precipitation_kg_m2_s = 0.0;
     double condensation_W_m2 = 0.0;
     double evaporation_kg_m2_s = 0.0;
+    // With moist convection (ADR-0023 §4.2): its share of the precipitation,
+    // the highest convecting layer (−1: none), and the change it made to
+    // the column's moist enthalpy Σ m (c_p ΔT + L Δq) (zero to rounding).
+    double convective_precipitation_kg_m2_s = 0.0;
+    int convection_top = -1;
+    double convection_enthalpy_change_J_m2 = 0.0;
 };
 
 // Convective adjustment (ADR-0010 §3.3 B): adjacent layers whose θ_c
@@ -265,6 +282,149 @@ inline bool convective_adjustment(const ColumnRadiation& column, std::span<doubl
         }
     }
     return true;
+}
+
+// The Betts–Miller step (ADR-0023 §4.2; Betts 1986, Betts and Miller 1986)
+// on a column already dry-adjusted. A parcel lifted from the bottom layer
+// conserves its moist static energy h = c_p T + Φ + L q, saturating where
+// its humidity exceeds q_sat; Φ_k is hydrostatic in the environment,
+// Φ_k − Φ_{k−1} = R_d ½ (T_{k−1} + T_k) ln(p_{k−1} / p_k). Layers 1..top where
+// the parcel is warmer than its environment, contiguous from layer 1, with
+// the bottom layer form the convecting column. Its reference profile is the
+// parcel's temperatures and RH_bm q_sat of them, shifted by one constant s
+// over the column so that Σ (c_p ΔT + L Δq) = 0; where that would moisten
+// the column (the shallow case), only temperature relaxes, Σ ΔT = 0. The
+// column relaxes by r towards it; the water it loses is the convective
+// precipitation. `weights`, if given, receives d T_ref,k / d T_0 (the
+// parcel's sensitivity), for the transport's linear response.
+struct BettsMillerResult {
+    int top = -1;                    // highest convecting layer, −1: none
+    double precipitation_kg_m2 = 0.0;
+    bool shallow = false;
+    LayerArray parcel_K{};           // the parcel's temperatures, layers 0..top
+    double shift_K = 0.0;            // s: T_ref = parcel + s
+    LayerArray weights{};
+};
+
+inline BettsMillerResult betts_miller(const ColumnRadiation& column, const ColumnMoisture& moisture,
+                                      std::span<double> temperature_K,
+                                      std::span<double> humidity_kg_kg) {
+    BettsMillerResult result;
+    const std::size_t n = column.layers;
+    if (n < 2U) {
+        return result;
+    }
+    constexpr double cp = dry_air_heat_capacity_J_kg_K;
+    constexpr double rd = dry_air_gas_constant_J_kg_K;
+    const double latent = moisture.latent_J_kg;
+    // Environment geopotential, the bottom layer at Φ = 0.
+    LayerArray geopotential{};
+    for (std::size_t k = 1; k < n; ++k) {
+        geopotential[k] = geopotential[k - 1U] +
+                          rd * 0.5 * (temperature_K[k - 1U] + temperature_K[k]) *
+                              std::log(moisture.pressure_Pa[k - 1U] / moisture.pressure_Pa[k]);
+    }
+    // The parcel's temperature in layer k from a start (T, q).
+    const auto parcel = [&](double start_K, double start_q, std::size_t k) {
+        const double h = cp * start_K + latent * start_q;
+        const double dry = (h - latent * start_q - geopotential[k]) / cp;
+        if (start_q <= saturation_specific_humidity(dry, moisture.pressure_Pa[k])) {
+            return dry;
+        }
+        // f(T) = c_p T + L q_sat(T) − (h − Φ) increases; f(dry) < 0 and
+        // f(dry + L q/c_p) > 0 bracket the root. Newton, safeguarded by
+        // bisection (q_sat grows too fast for Newton alone from below).
+        double low = dry;
+        double high = dry + latent * start_q / cp;
+        double t = dry;
+        for (int iteration = 0; iteration < 100; ++iteration) {
+            const double f = cp * t + latent * saturation_specific_humidity(t, moisture.pressure_Pa[k]) -
+                             (h - geopotential[k]);
+            (f < 0.0 ? low : high) = t;
+            double next =
+                t - f / (cp + latent * saturation_specific_humidity_slope(t, moisture.pressure_Pa[k]));
+            if (!(next > low && next < high)) {
+                next = 0.5 * (low + high);
+            }
+            if (std::abs(next - t) <= 1e-12 * t) {
+                return next;
+            }
+            t = next;
+        }
+        return t;
+    };
+    LayerArray reference{};
+    reference[0] = temperature_K[0];
+    int top = 0;
+    for (std::size_t k = 1; k < n; ++k) {
+        reference[k] = parcel(temperature_K[0], humidity_kg_kg[0], k);
+        if (!(reference[k] > temperature_K[k])) {
+            break;
+        }
+        top = static_cast<int>(k);
+    }
+    if (top < 1) {
+        return result;
+    }
+    result.top = top;
+    result.parcel_K = reference;
+    const auto layers = static_cast<std::size_t>(top) + 1U;
+    // The parcel's sensitivity to its start, for the linear response.
+    constexpr double nudge_K = 0.01;
+    result.weights[0] = 1.0;
+    for (std::size_t k = 1; k < layers; ++k) {
+        result.weights[k] = (parcel(temperature_K[0] + nudge_K, humidity_kg_kg[0], k) - reference[k]) / nudge_K;
+    }
+    const double rh = moisture.moist_convection_relative_humidity;
+    // The shift s with G(s) = Σ c_p (T_ref + s − T) + L min(0, q_ref(s) − q)
+    // = 0: the column's moist enthalpy kept, no layer moistened. G increases
+    // with s; Newton, safeguarded by bisection.
+    const auto enthalpy = [&](double shift, double& slope) {
+        double sum = 0.0;
+        slope = 0.0;
+        for (std::size_t k = 0; k < layers; ++k) {
+            const double t = reference[k] + shift;
+            const double q_ref = rh * saturation_specific_humidity(t, moisture.pressure_Pa[k]);
+            sum += cp * (t - temperature_K[k]);
+            slope += cp;
+            if (q_ref < humidity_kg_kg[k]) {
+                sum += latent * (q_ref - humidity_kg_kg[k]);
+                slope += latent * rh * saturation_specific_humidity_slope(t, moisture.pressure_Pa[k]);
+            }
+        }
+        return sum;
+    };
+    double low = -100.0;
+    double high = 100.0;
+    double shift = 0.0;
+    for (int iteration = 0; iteration < 80; ++iteration) {
+        double slope = 0.0;
+        const double g = enthalpy(shift, slope);
+        if (g == 0.0) break;
+        (g < 0.0 ? low : high) = shift;
+        double next = shift - g / slope;
+        if (!(next > low && next < high)) next = 0.5 * (low + high);
+        if (std::abs(next - shift) <= 1e-13 * std::max(1.0, std::abs(shift))) {
+            shift = next;
+            break;
+        }
+        shift = next;
+    }
+    result.shift_K = shift;
+    const double r = moisture.moist_convection_fraction;
+    double drying = 0.0;
+    for (std::size_t k = 0; k < layers; ++k) {
+        const double t = reference[k] + shift;
+        const double dq =
+            std::min(0.0, rh * saturation_specific_humidity(t, moisture.pressure_Pa[k]) - humidity_kg_kg[k]);
+        temperature_K[k] += r * (t - temperature_K[k]);
+        humidity_kg_kg[k] += r * dq;
+        drying -= r * dq;
+    }
+    // No layer dried: the shallow case, temperature alone relaxed.
+    result.shallow = !(drying > 0.0);
+    result.precipitation_kg_m2 = drying * moisture.layer_mass_kg_m2;
+    return result;
 }
 
 namespace detail {
@@ -398,6 +558,13 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
     // L m / Δt: the heating of a unit of condensate.
     const double condensation_rate =
         moisture != nullptr ? moisture->latent_J_kg * moisture->layer_mass_kg_m2 / dt_s : 0.0;
+    // With moist convection there is no τ_c: the solve condenses the whole
+    // excess at the new temperatures (ADR-0023 §4.3), so that the step's
+    // latent heat is in the implicit balance the radiation and the transport
+    // see; convection and the pass after it follow (task M8-02).
+    const double in_solve_fraction =
+        moisture == nullptr ? 0.0
+                            : (moisture->moist_convection ? 1.0 : moisture->condensation_fraction);
     const auto evaluate = [&](const LayerArray& t) {
         Evaluation e;
         e.temperature = t;
@@ -415,7 +582,7 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
             }
             e.humidity[0] += e.exchange.vapour_kg_m2_s * dt_s / moisture->layer_mass_kg_m2;
             for (std::size_t k = 0; k < n; ++k) {
-                e.condensate[k] = moisture->condensation_fraction *
+                e.condensate[k] = in_solve_fraction *
                                   std::max(0.0, e.humidity[k] - saturation_specific_humidity(
                                                                     t[k], moisture->pressure_Pa[k]));
             }
@@ -470,7 +637,7 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
                         d_condensate -= saturation_specific_humidity_slope(
                             e.temperature[r], moisture->pressure_Pa[r]);
                     }
-                    value -= condensation_rate * moisture->condensation_fraction * d_condensate;
+                    value -= condensation_rate * in_solve_fraction * d_condensate;
                 }
                 j[r][c] = value;
             }
@@ -618,19 +785,61 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
         result.condensation_W_m2 = condensation_rate * condensate;
         result.evaporation_kg_m2_s = current.exchange.vapour_kg_m2_s;
     }
+    const bool moist = convection && moisture != nullptr && moisture->moist_convection;
     if (convection) {
         // The adjustment is linear for its pools: the θ_c response sees it.
+        // With moist convection it is to the dry adiabat (ADR-0023 §4.2).
+        ColumnRadiation adiabat = column;
+        if (moist) adiabat.exner = column.exner_dry;
         ConvectivePools pools;
-        result.adjusted = convective_adjustment(column, temperature_K, &pools);
+        result.adjusted = convective_adjustment(adiabat, temperature_K, &pools);
         for (std::size_t pool = 0; pool < pools.count; ++pool) {
             double sum = 0.0;
             double weight = 0.0;
             for (std::size_t k = pools.start[pool]; k < pools.start[pool + 1U]; ++k) {
                 sum += response[k];
-                weight += column.exner[k];
+                weight += adiabat.exner[k];
             }
             for (std::size_t k = pools.start[pool]; k < pools.start[pool + 1U]; ++k) {
-                response[k] = sum / weight * column.exner[k];
+                response[k] = sum / weight * adiabat.exner[k];
+            }
+        }
+    }
+    if (moist) {
+        LayerArray before_t{};
+        LayerArray before_q{};
+        for (std::size_t k = 0; k < n; ++k) {
+            before_t[k] = temperature_K[k];
+            before_q[k] = result.humidity_kg_kg[k];
+        }
+        const BettsMillerResult bm = betts_miller(
+            column, *moisture, temperature_K, std::span<double>(result.humidity_kg_kg.data(), n));
+        result.convection_top = bm.top;
+        if (bm.top >= 1) {
+            result.adjusted = true;
+            const double specific_heat = column.layer_heat_capacity_J_m2_K / moisture->layer_mass_kg_m2;
+            double change = 0.0;
+            for (std::size_t k = 0; k < n; ++k) {
+                change += moisture->layer_mass_kg_m2 *
+                          (specific_heat * (temperature_K[k] - before_t[k]) +
+                           moisture->latent_J_kg * (result.humidity_kg_kg[k] - before_q[k]));
+            }
+            result.convection_enthalpy_change_J_m2 = change;
+            result.convective_precipitation_kg_m2_s = bm.precipitation_kg_m2 / dt_s;
+            result.precipitation_kg_m2_s += result.convective_precipitation_kg_m2_s;
+            result.condensation_W_m2 += moisture->latent_J_kg * result.convective_precipitation_kg_m2_s;
+            // Linear response: the convecting layers relax by r towards a
+            // profile of the parcel's shape carrying their summed change.
+            const auto layers = static_cast<std::size_t>(bm.top) + 1U;
+            const double r = moisture->moist_convection_fraction;
+            double sum = 0.0;
+            double weight = 0.0;
+            for (std::size_t k = 0; k < layers; ++k) {
+                sum += response[k];
+                weight += bm.weights[k];
+            }
+            for (std::size_t k = 0; k < layers; ++k) {
+                response[k] = (1.0 - r) * response[k] + r * bm.weights[k] * sum / weight;
             }
         }
     }
@@ -656,7 +865,7 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
                 }
                 // Newton on g(T') = T' − T − f h (q − q_sat(T')), increasing
                 // (f the condensation fraction).
-                const double share = heating * moisture->condensation_fraction;
+                const double share = heating * (moist ? 1.0 : moisture->condensation_fraction);
                 double t = temperature_K[k];
                 for (int iteration = 0; iteration < 30; ++iteration) {
                     const double g =

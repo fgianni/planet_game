@@ -36,6 +36,8 @@ PlanetState::PlanetState(std::shared_ptr<const PlanetMesh> mesh) : mesh_(std::mo
     forcing_.evaporation_kg_m2_s = make_field<FieldId::evaporation_kg_m2_s>(*mesh_);
     forcing_.runoff_kg_m2_s = make_field<FieldId::runoff_kg_m2_s>(*mesh_);
     forcing_.precipitation_kg_m2_s = make_field<FieldId::precipitation_kg_m2_s>(*mesh_);
+    forcing_.convective_precipitation_kg_m2_s =
+        make_field<FieldId::convective_precipitation_kg_m2_s>(*mesh_);
     climatology_.surface_temperature_mean_K =
         make_field<FieldId::climatology_surface_temperature_mean_K>(*mesh_);
     climatology_.surface_temperature_variance_K2 =

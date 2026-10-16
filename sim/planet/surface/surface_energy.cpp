@@ -881,6 +881,12 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             }
             moisture.layer_mass_kg_m2 = bottom_mass[cell];
             moisture.condensation_fraction = -std::expm1(-dt_s / surface.condensation_time_s);
+            // ADR-0023 §4.2: Betts–Miller in place of τ_c, when on.
+            moisture.moist_convection = atmosphere.moist_convection;
+            moisture.moist_convection_fraction =
+                -std::expm1(-dt_s / atmosphere.moist_convection_time_s);
+            moisture.moist_convection_relative_humidity =
+                atmosphere.moist_convection_relative_humidity;
             moisture.latent_J_kg = latent_heat_vaporisation_J_kg +
                                    snow_share[cell] * latent_heat_of_fusion_J_kg;
             cell_surface.water = true;
@@ -1150,6 +1156,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 const bool to_space = layers == 0U;
                 CellTiles tiles;
                 double precipitation_kg_m2 = 0.0;
+                double convective_kg_m2_s = 0.0;
                 double condensation_W_m2 = 0.0;
                 double cell_evaporation_kg_m2_s = 0.0;
                 LayerArray humidity_after{};
@@ -1179,6 +1186,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                         // rain into the bucket; on the ocean it is the
                         // ocean's.
                         precipitation_kg_m2 = column.precipitation_kg_m2_s * dt_s;
+                        convective_kg_m2_s = column.convective_precipitation_kg_m2_s;
                         condensation_W_m2 = column.condensation_W_m2;
                         cell_evaporation_kg_m2_s = column.evaporation_kg_m2_s;
                         humidity_after = column.humidity_kg_kg;
@@ -1303,6 +1311,8 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                         static_cast<float>(cell_evaporation_kg_m2_s);
                     state.forcing().precipitation_kg_m2_s[cell] =
                         static_cast<float>(precipitation_kg_m2 / dt_s);
+                    state.forcing().convective_precipitation_kg_m2_s[cell] =
+                        static_cast<float>(convective_kg_m2_s);
                     state.forcing().runoff_kg_m2_s[cell] =
                         static_cast<float>(land_share * overflow / dt_s);
                     partial.precipitation_kg += area_m2 * precipitation_kg_m2;

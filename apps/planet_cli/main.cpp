@@ -1508,6 +1508,7 @@ struct ReferenceOptions {
     double average_days = 0.0;
     std::size_t workers = 0;
     std::string zonal_csv;
+    std::optional<bool> moist_convection;   // ADR-0023 §4.2; empty: the preset's
 };
 
 [[nodiscard]] ReferenceOptions parse_reference_options(int argument_count, char** arguments) {
@@ -1534,6 +1535,11 @@ struct ReferenceOptions {
             options.workers = static_cast<std::size_t>(parse_unsigned(value, "workers"));
         } else if (argument == "--zonal-csv") {
             options.zonal_csv = value;
+        } else if (argument == "--moist-convection") {
+            if (value != "0" && value != "1") {
+                throw std::invalid_argument("--moist-convection takes 0 or 1");
+            }
+            options.moist_convection = value == "1";
         } else {
             throw std::invalid_argument("unknown reference option: " + std::string(argument));
         }
@@ -1560,6 +1566,7 @@ int run_reference(const ReferenceOptions& options) {
     scenario.spin_up_years = options.spin_up_years;
     scenario.initial_mode = planetsim::SimulationMode::reference;
     scenario.atmosphere_layers = options.layers;
+    scenario.moist_convection = options.moist_convection;
     planetsim::PlanetRun run(scenario, workers);
     const auto& mesh = run.state().mesh();
     const auto& dynamics = *run.dynamics();
@@ -1655,6 +1662,7 @@ int run_parity(const ReferenceOptions& options) {
         scenario.spin_up_years = options.spin_up_years;
         scenario.initial_mode = mode;
         scenario.atmosphere_layers = options.layers;
+        scenario.moist_convection = options.moist_convection;
         planetsim::PlanetRun run(scenario, workers);
         Record record;
         const auto start = std::chrono::steady_clock::now();
