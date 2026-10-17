@@ -60,6 +60,64 @@ L3, from the initial state, W_c = 0.1 kg/m², the other constants §12's
   263.5 K by month 36, reference mode to 293.6 K by month 12, both still
   cooling. The refit starts here.
 
+## The refit so far (exploration, L3, climate mode, 25 years)
+
+A temporary override of the constants in the run (not committed) swept
+them. Final-year means:
+
+| τ_a (s) | W_c (kg/m²) | r_e (µm) | τ_d, κ_v scale | Surface (K) | Cover | SW (W/m²) | LW (W/m²) | Cloud water (g/m²) |
+|---|---|---|---|---|---|---|---|---|
+| 3600 | 0.3 | 10 | 1 | 265.5 | 0.33 | −83 | +24 | 99 |
+| 3600 | 0.8 | 10 | 1 | 294.4 | 0.19 | −56 | +51 | 154 |
+| 600 | 0.04 | 10 | 1 | 276.0 | 0.58 | −61 | +21 | 24 |
+| 600 | 0.04 | 14 | 1.15 | 284.2 | 0.63 | −52 | +20 | 26 |
+| 600 | 0.04 | 18 | 1.1 | 286.2 | 0.66 | −45 | +22 | 28 |
+| 600 | 0.04 | 18 | 1.25 | 290.7 | 0.68 | −46 | +20 | 28 |
+| 1000 | 0.06 | 18 | 1.2 | 283.6 | 0.66 | −61 | +21 | 42 |
+
+- At τ_a = 1 h the climate holds 100–160 g/m² of cloud water, and no W_c
+  gives both a cover near 0.6 and a shortwave effect near −47 W/m²
+  (covering 0.6 of the sky with −47 W/m² needs an in-cloud optical depth
+  near 5, about 30 g/m² in all). A shorter τ_a lowers the cloud water.
+- **Candidate:** τ_a = 600 s, W_c = 0.04 kg/m², r_e = 18 µm, τ_d and κ_v
+  scaled by about 1.15: near 288 K, cover 0.66, −45 and +21 W/m², all
+  inside V9's bands. r_e = 18 µm is large for liquid cloud; it also
+  stands for the absorption the two-stream limit leaves out.
+
+**Both modes with the candidate**, first year from the initial state:
+
+| | Climate | Reference |
+|---|---|---|
+| Surface (K) | 303.5 | 305.4 |
+| Cloud water (g/m²) | 34 | 22 |
+| Cover | 0.66 | 0.41 |
+| Shortwave effect (W/m²) | −50 | −30 |
+| Per gram (W/g) | −1.46 | −1.35 |
+| Convective share of rain | 0.10 | 0.42 |
+
+The shortwave effect per gram agrees within 8 % (§13 works), but
+reference mode holds a third less cloud water. Betts–Miller's condensate
+falls as rain at once (§4.2.4) and never becomes cloud water, and
+reference mode rains four times more convectively. Its large-scale rain
+is 0.66 of climate mode's, which is the cloud water's ratio.
+
+**Prototype: convective condensate through the cloud water** (Betts–Miller's
+drying joins the layer's condensate before autoconversion; the convective
+share of the rain follows its share of the source). First year:
+
+| | Climate | Reference |
+|---|---|---|
+| Surface (K) | 303.1 | 304.3 |
+| Cloud water (g/m²) | 38 | 42 |
+| Cover | 0.69 | 0.56 |
+| Shortwave effect (W/m²) | −54.6 | −54.2 |
+| Longwave effect (W/m²) | +26 | +40 |
+
+The shortwave effects agree. The longwave differs: reference mode's
+clouds sit higher (resolved ascent saturates the upper layers, which
+monthly-mean states seldom do). This changes ADR-0023 §4.2.4 and §4.3,
+so it waits for the user.
+
 ## Remaining
 
 - **The refit** (§4.6, V9): W_c, r_e, τ_a with τ_d and κ_v, against a
