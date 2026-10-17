@@ -44,6 +44,16 @@ struct AtmosphereParameters {
     bool moist_convection = false;
     double moist_convection_time_s = 2.0 * 3600.0;     // τ_bm (Betts and Miller, 1986)
     double moist_convection_relative_humidity = 0.8;   // RH_bm
+    // Cloud water and precipitation (ADR-0023 §4.3), with moist convection:
+    // condensate becomes cloud water; above q_l0 it converts to
+    // precipitation over τ_a (Kessler 1969); precipitation evaporates into
+    // the layers it falls through at ε (1 − RH) over τ_e, and cloud water
+    // in a subsaturated layer over τ_e, never beyond saturation.
+    // Calibration constants (§4.6).
+    double cloud_water_threshold_kg_kg = 0.3e-3;   // q_l0
+    double autoconversion_time_s = 3600.0;         // τ_a
+    double rain_evaporation_efficiency = 0.5;      // ε
+    double rain_evaporation_time_s = 3600.0;       // τ_e
 };
 
 inline constexpr std::uint32_t max_atmosphere_layer_count = 8U;

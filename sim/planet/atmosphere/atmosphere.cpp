@@ -69,6 +69,16 @@ void validate_atmosphere_parameters(const AtmosphereParameters& parameters) {
         throw std::invalid_argument("moist convection needs a positive time and a reference "
                                     "relative humidity in (0, 1]");
     }
+    if (!(parameters.cloud_water_threshold_kg_kg >= 0.0) ||
+        !std::isfinite(parameters.cloud_water_threshold_kg_kg) ||
+        !(parameters.autoconversion_time_s > 0.0) || !std::isfinite(parameters.autoconversion_time_s) ||
+        !(parameters.rain_evaporation_efficiency >= 0.0 &&
+          parameters.rain_evaporation_efficiency <= 1.0) ||
+        !(parameters.rain_evaporation_time_s > 0.0) ||
+        !std::isfinite(parameters.rain_evaporation_time_s)) {
+        throw std::invalid_argument("cloud water needs a non-negative threshold, positive times "
+                                    "and a rain evaporation efficiency in [0, 1]");
+    }
 }
 
 double surface_gravity_m_s2(const PlanetParameters& parameters) {

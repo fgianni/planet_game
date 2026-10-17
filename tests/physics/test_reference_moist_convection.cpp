@@ -58,6 +58,8 @@ int main(int argc, char** argv) {
     double precipitation_kg = 0.0;
     double convective_kg = 0.0;
     double duration_s = 0.0;
+    double rain_evaporation_kg = 0.0;   // rain and cloud water re-evaporated (ADR-0023 §4.3)
+    double cloud_water_kg = 0.0;        // held at the end
     const auto end = static_cast<planetsim::SimulationTick>(years * 365.25 * 1'440.0);
     const auto& mesh = run.state().mesh();
     while (run.tick() < end) {
@@ -126,6 +128,8 @@ int main(int argc, char** argv) {
                              step.duration_s;
         }
         precipitation_kg += step.precipitation_kg;
+        rain_evaporation_kg += step.rain_evaporation_kg + step.cloud_evaporation_kg;
+        cloud_water_kg = step.cloud_water_kg;
         duration_s += step.duration_s;
     }
     double max_run_mean = 0.0;
@@ -145,7 +149,9 @@ int main(int argc, char** argv) {
     std::cout << "reference moist convection, " << years << " years: closure " << worst_closure
               << " cycle " << worst_cycle << " | max wind " << max_wind << " m/s, max latent "
               << max_latent << " W/m2 | precipitation " << precipitation_kg * to_m_yr
-              << " m/yr, convective " << convective_kg / precipitation_kg << '\n';
+              << " m/yr, convective " << convective_kg / precipitation_kg << ", re-evaporated "
+              << rain_evaporation_kg * to_m_yr << " m/yr, cloud water "
+              << cloud_water_kg / area * 1000.0 << " g/m2\n";
     for (std::size_t day = 0; day < daily_latent.size(); day += std::max<std::size_t>(1U, daily_latent.size() / 30U))
         std::cout << "  day " << day << " max latent " << daily_latent[day] << " W/m2\n";
     PLANETSIM_EXPECT(test, worst_closure <= 1.0);

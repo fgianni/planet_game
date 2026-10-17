@@ -206,6 +206,15 @@ struct SurfaceEnergyDiagnostics {
     double precipitation_kg = 0.0;
     double ocean_precipitation_kg = 0.0;
     double condensation_latent_J = 0.0;
+    // Cloud water (ADR-0023 §4.3, §4.7), with moist convection: the layers'
+    // change and stock after the step, the precipitation's convective part,
+    // and what evaporated of cloud water and of the falling precipitation.
+    // condensation_latent_J is then the net, L (P + Δ cloud water).
+    double cloud_water_change_kg = 0.0;
+    double cloud_water_kg = 0.0;
+    double convective_precipitation_kg = 0.0;
+    double cloud_evaporation_kg = 0.0;
+    double rain_evaporation_kg = 0.0;
     HumidityTransportDiagnostics humidity_transport;
     // The atmosphere (ADR-0010 §4.4), zero without one. emitted_W is then the
     // outgoing longwave at the top, storage_change_J and stored_energy_J

@@ -177,6 +177,15 @@ struct ColumnMoisture {
     bool moist_convection = false;
     double moist_convection_fraction = 1.0;
     double moist_convection_relative_humidity = 0.8;
+    // Cloud water (ADR-0023 §4.3), with moist convection: each layer's at
+    // the start of the step, the autoconversion threshold q_l0 and the
+    // step's shares 1 − exp(−Δt/τ_a) and 1 − exp(−Δt/τ_e), and the rain's
+    // evaporation efficiency ε.
+    LayerArray cloud_water_kg_kg{};
+    double cloud_water_threshold_kg_kg = 0.3e-3;
+    double autoconversion_fraction = 1.0;
+    double evaporation_fraction = 1.0;
+    double rain_evaporation_efficiency = 0.5;
 };
 
 struct ColumnSolveSettings {
@@ -225,6 +234,13 @@ struct ColumnSolveResult {
     double convective_precipitation_kg_m2_s = 0.0;
     int convection_top = -1;
     double convection_enthalpy_change_J_m2 = 0.0;
+    // With moist convection, cloud water (ADR-0023 §4.3): each layer's after
+    // the step, and what evaporated of cloud water and of the falling
+    // precipitation. The precipitation is then what reaches the surface,
+    // and the condensation's heat the net, L (P + Δ cloud water) / Δt.
+    LayerArray cloud_water_kg_kg{};
+    double cloud_evaporation_kg_m2_s = 0.0;
+    double rain_evaporation_kg_m2_s = 0.0;
 };
 
 // Convective adjustment (ADR-0010 §3.3 B): adjacent layers whose θ_c
@@ -434,6 +450,130 @@ inline BettsMillerResult betts_miller(const ColumnRadiation& column, const Colum
     // No layer dried: the shallow case, temperature alone relaxed.
     result.shallow = !(drying > 0.0);
     result.precipitation_kg_m2 = drying * moisture.layer_mass_kg_m2;
+    return result;
+}
+
+// The isobaric evaporation x (kg/kg) that brings a layer at (T, q) to
+// saturation, q + x = q_sat(T − h x), h = L / c_p (K per kg/kg); zero where
+// it is saturated. g(x) = q + x − q_sat(T − h x) increases, with g(0) < 0 and
+// g(q_sat(T) − q) ≥ 0; Newton, safeguarded by bisection (q_sat's slope jumps
+// at 0 °C, where the ice branch begins), and the lower end of the bracket
+// returned, so that the layer never ends supersaturated.
+[[nodiscard]] inline double evaporation_to_saturation(double temperature_K, double humidity_kg_kg,
+                                                      double pressure_Pa, double heating_K) {
+    const auto g = [&](double x) {
+        return humidity_kg_kg + x - saturation_specific_humidity(temperature_K - heating_K * x,
+                                                                 pressure_Pa);
+    };
+    double low = 0.0;
+    double high = saturation_specific_humidity(temperature_K, pressure_Pa) - humidity_kg_kg;
+    if (!(high > 0.0)) {
+        return 0.0;
+    }
+    double x = 0.0;
+    for (int iteration = 0; iteration < 100; ++iteration) {
+        const double value = g(x);
+        if (value == 0.0) {
+            return x;
+        }
+        (value < 0.0 ? low : high) = x;
+        double next = x - value / (1.0 + heating_K * saturation_specific_humidity_slope(
+                                                         temperature_K - heating_K * x, pressure_Pa));
+        if (!(next > low && next < high)) {
+            next = 0.5 * (low + high);
+        }
+        if (high - low <= 1e-14 * high || next == x) {
+            break;
+        }
+        x = next;
+    }
+    return low;
+}
+
+// Cloud water to precipitation (ADR-0023 §4.3) on equal-mass layers, after
+// the column solve and convection. Each layer's condensate C_k joins its
+// cloud water; cloud water in a subsaturated layer evaporates by
+// 1 − exp(−Δt/τ_e) of it, never beyond saturation; above q_l0 the rest
+// converts to precipitation by 1 − exp(−Δt/τ_a) of the excess (Kessler).
+// Precipitation falls from the top: entering a layer it evaporates by
+// ε (1 − RH) (1 − exp(−Δt/τ_e)) of itself, never beyond saturation, and then
+// gains the layer's autoconversion and convective rain V_k. Every
+// evaporation cools its layer by L/c_p per kg/kg, so the layer's moist
+// enthalpy is exact. Amounts are kg/kg of a layer; the result's in kg/m².
+struct MicrophysicsResult {
+    double precipitation_kg_m2 = 0.0;   // reaching the surface
+    double convective_kg_m2 = 0.0;      // its convective part
+    double autoconversion_kg_m2 = 0.0;
+    double cloud_evaporation_kg_m2 = 0.0;
+    double rain_evaporation_kg_m2 = 0.0;
+};
+
+inline MicrophysicsResult cloud_microphysics(const ColumnRadiation& column,
+                                             const ColumnMoisture& moisture,
+                                             std::span<const double> condensate_kg_kg,
+                                             std::span<const double> convective_kg_kg,
+                                             std::span<double> temperature_K,
+                                             std::span<double> humidity_kg_kg,
+                                             std::span<double> cloud_water_kg_kg) {
+    MicrophysicsResult result;
+    const std::size_t n = column.layers;
+    const double mass = moisture.layer_mass_kg_m2;
+    const double specific_heat = column.layer_heat_capacity_J_m2_K / mass;
+    const double heating = moisture.latent_J_kg / specific_heat;
+    LayerArray autoconversion{};
+    double cloud_evaporation = 0.0;
+    double converted = 0.0;
+    for (std::size_t k = 0; k < n; ++k) {
+        double& cloud = cloud_water_kg_kg[k];
+        cloud += condensate_kg_kg[k];
+        if (cloud > 0.0) {
+            const double x = std::min(
+                moisture.evaporation_fraction * cloud,
+                evaporation_to_saturation(temperature_K[k], humidity_kg_kg[k],
+                                          moisture.pressure_Pa[k], heating));
+            temperature_K[k] -= heating * x;
+            humidity_kg_kg[k] += x;
+            cloud -= x;
+            cloud_evaporation += x;
+        }
+        autoconversion[k] = moisture.autoconversion_fraction *
+                            std::max(0.0, cloud - moisture.cloud_water_threshold_kg_kg);
+        cloud -= autoconversion[k];
+        converted += autoconversion[k];
+    }
+    double large_scale = 0.0;   // falling, kg/kg of a layer
+    double convective = 0.0;
+    double rain_evaporation = 0.0;
+    for (std::size_t k = n; k-- > 0U;) {
+        const double falling = large_scale + convective;
+        if (falling > 0.0) {
+            const double pressure = moisture.pressure_Pa[k];
+            const double relative = humidity_kg_kg[k] /
+                                    saturation_specific_humidity(temperature_K[k], pressure);
+            const double wanted = moisture.rain_evaporation_efficiency *
+                                  std::max(0.0, 1.0 - relative) * moisture.evaporation_fraction *
+                                  falling;
+            const double x =
+                wanted > 0.0
+                    ? std::min(wanted, evaporation_to_saturation(temperature_K[k],
+                                                                 humidity_kg_kg[k], pressure,
+                                                                 heating))
+                    : 0.0;
+            temperature_K[k] -= heating * x;
+            humidity_kg_kg[k] += x;
+            const double kept = 1.0 - x / falling;
+            large_scale *= kept;
+            convective *= kept;
+            rain_evaporation += x;
+        }
+        large_scale += autoconversion[k];
+        convective += convective_kg_kg[k];
+    }
+    result.precipitation_kg_m2 = (large_scale + convective) * mass;
+    result.convective_kg_m2 = convective * mass;
+    result.autoconversion_kg_m2 = converted * mass;
+    result.cloud_evaporation_kg_m2 = cloud_evaporation * mass;
+    result.rain_evaporation_kg_m2 = rain_evaporation * mass;
     return result;
 }
 
@@ -796,6 +936,7 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
         result.evaporation_kg_m2_s = current.exchange.vapour_kg_m2_s;
     }
     const bool moist = convection && moisture != nullptr && moisture->moist_convection;
+    LayerArray convective_kg_kg{};   // each layer's drying by Betts–Miller
     if (convection) {
         // The adjustment is linear for its pools: the θ_c response sees it.
         // With moist convection it is to the dry adiabat (ADR-0023 §4.2).
@@ -843,6 +984,9 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
         }
         const BettsMillerResult bm = betts_miller(
             column, *moisture, temperature_K, std::span<double>(result.humidity_kg_kg.data(), n));
+        for (std::size_t k = 0; k < n; ++k) {
+            convective_kg_kg[k] = before_q[k] - result.humidity_kg_kg[k];
+        }
         result.convection_top = bm.top;
         if (bm.top >= 1) {
             result.adjusted = true;
@@ -914,6 +1058,27 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
         }
         result.precipitation_kg_m2_s += extra * moisture->layer_mass_kg_m2 / dt_s;
         result.condensation_W_m2 += condensation_rate * extra;
+    }
+    if (moist) {
+        // The condensate becomes cloud water, which rains by autoconversion;
+        // the rain and the cloud water re-evaporate (ADR-0023 §4.3).
+        result.cloud_water_kg_kg = moisture->cloud_water_kg_kg;
+        const MicrophysicsResult rain = cloud_microphysics(
+            column, *moisture, std::span<const double>(result.condensate_kg_kg.data(), n),
+            std::span<const double>(convective_kg_kg.data(), n), temperature_K,
+            std::span<double>(result.humidity_kg_kg.data(), n),
+            std::span<double>(result.cloud_water_kg_kg.data(), n));
+        double condensed = 0.0;
+        for (std::size_t k = 0; k < n; ++k) {
+            condensed += result.condensate_kg_kg[k] + convective_kg_kg[k];
+        }
+        const double evaporated = rain.cloud_evaporation_kg_m2 + rain.rain_evaporation_kg_m2;
+        result.precipitation_kg_m2_s = rain.precipitation_kg_m2 / dt_s;
+        result.convective_precipitation_kg_m2_s = rain.convective_kg_m2 / dt_s;
+        result.cloud_evaporation_kg_m2_s = rain.cloud_evaporation_kg_m2 / dt_s;
+        result.rain_evaporation_kg_m2_s = rain.rain_evaporation_kg_m2 / dt_s;
+        result.condensation_W_m2 =
+            moisture->latent_J_kg * (condensed * moisture->layer_mass_kg_m2 - evaporated) / dt_s;
     }
     double slope = 0.0;
     for (std::size_t k = 0; k < n; ++k) {

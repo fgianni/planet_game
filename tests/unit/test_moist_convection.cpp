@@ -238,6 +238,8 @@ int main() {
         for (const double evaporation : {0.0, 3e-5}) {
             Column column(5U);
             column.moisture.moist_convection_fraction = -std::expm1(-dt_s / 7200.0);
+            column.moisture.autoconversion_fraction = -std::expm1(-dt_s / 3600.0);
+            column.moisture.evaporation_fraction = -std::expm1(-dt_s / 3600.0);
             LayerArray before = buoyant_t;
             for (std::size_t k = 0; k < 5U; ++k)
                 column.moisture.humidity_kg_kg[k] = 0.95 * column.saturation(before[k], k);
@@ -250,11 +252,14 @@ int main() {
             double worst_saturation = 0.0;
             double water_in = evaporation * dt_s;
             double water_out = result.precipitation_kg_m2_s * dt_s;
+            double cloud_kg_m2 = 0.0;   // the cloud water starts at zero
             for (std::size_t k = 0; k < 5U; ++k) {
                 worst_saturation = std::max(
                     worst_saturation, result.humidity_kg_kg[k] / column.saturation(after[k], k) - 1.0);
                 water_in += column.moisture.humidity_kg_kg[k] * column.moisture.layer_mass_kg_m2;
-                water_out += result.humidity_kg_kg[k] * column.moisture.layer_mass_kg_m2;
+                water_out += (result.humidity_kg_kg[k] + result.cloud_water_kg_kg[k]) *
+                             column.moisture.layer_mass_kg_m2;
+                cloud_kg_m2 += result.cloud_water_kg_kg[k] * column.moisture.layer_mass_kg_m2;
             }
             PLANETSIM_EXPECT(test, result.converged);
             PLANETSIM_EXPECT(test, result.convection_top >= 1);
@@ -262,8 +267,9 @@ int main() {
             PLANETSIM_EXPECT(test, std::abs(water_in - water_out) < 1e-12 * water_in);
             PLANETSIM_EXPECT(test, std::abs(result.convection_enthalpy_change_J_m2) <
                                        1e-9 * column.moisture.layer_mass_kg_m2 * cp * 300.0);
+            // The net latent heat: L (P + Δ cloud water) (ADR-0023 §4.3).
             PLANETSIM_EXPECT_NEAR(test, result.condensation_W_m2,
-                                  latent * result.precipitation_kg_m2_s,
+                                  latent * (result.precipitation_kg_m2_s + cloud_kg_m2 / dt_s),
                                   1e-9 * std::max(1.0, result.condensation_W_m2));
             PLANETSIM_EXPECT(test, result.convective_precipitation_kg_m2_s > 0.0 &&
                                        result.convective_precipitation_kg_m2_s <=
@@ -271,7 +277,7 @@ int main() {
             std::cout << "dt " << dt_s << " s, E " << evaporation << ": top "
                       << result.convection_top << ", P " << result.precipitation_kg_m2_s
                       << " (convective " << result.convective_precipitation_kg_m2_s
-                      << ") kg/m2/s, T0 " << after[0] << " K\n";
+                      << ") kg/m2/s, cloud " << cloud_kg_m2 << " kg/m2, T0 " << after[0] << " K\n";
         }
     }
 
@@ -336,6 +342,8 @@ int main() {
         ColumnMoisture plain = m7;
         plain.moist_convection_fraction = 1.0;
         plain.moist_convection_relative_humidity = 0.5;
+        plain.cloud_water_kg_kg[1] = 1e-3;   // cloud water is M8's too
+        plain.autoconversion_fraction = 0.2;
         LayerArray a = before;
         LayerArray b = before;
         const auto ra = planetsim::solve_atmosphere_column(
@@ -345,7 +353,7 @@ int main() {
             column.radiation, std::span<const double>(before.data(), 5U), 600.0, 0.0, true,
             HeldSurface{}, std::span<double>(b.data(), 5U), {}, nullptr, &plain);
         PLANETSIM_EXPECT(test, a == b && ra.precipitation_kg_m2_s == rb.precipitation_kg_m2_s &&
-                                   ra.convection_top == -1);
+                                   ra.convection_top == -1 && rb.cloud_water_kg_kg[1] == 0.0);
     }
 
     return test.result();

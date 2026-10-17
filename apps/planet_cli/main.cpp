@@ -1654,6 +1654,13 @@ int run_parity(const ReferenceOptions& options) {
         double evaporation_kg = 0.0;
         double seconds = 0.0;
         double wall_s = 0.0;
+        // ADR-0023 §4.7: the precipitation's convective part, the
+        // re-evaporation of rain and of cloud water, and the cloud water
+        // held at the end.
+        double convective_kg = 0.0;
+        double rain_evaporation_kg = 0.0;
+        double cloud_evaporation_kg = 0.0;
+        double cloud_water_kg = 0.0;
     };
     const auto measure = [&](planetsim::SimulationMode mode) {
         planetsim::Scenario scenario;
@@ -1683,6 +1690,10 @@ int run_parity(const ReferenceOptions& options) {
             record.evaporation_kg += step.water_evaporation_kg + step.bucket_evaporation_kg +
                                      step.snow_sublimation_kg + step.ice_sublimation_kg;
             record.seconds += step.duration_s;
+            record.convective_kg += step.convective_precipitation_kg;
+            record.rain_evaporation_kg += step.rain_evaporation_kg;
+            record.cloud_evaporation_kg += step.cloud_evaporation_kg;
+            record.cloud_water_kg = step.cloud_water_kg;
         }
         record.wall_s =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
@@ -1695,6 +1706,10 @@ int run_parity(const ReferenceOptions& options) {
                   << ": mean_K=" << record.temperature_K_s / record.seconds
                   << " precipitation_m_yr=" << record.precipitation_kg * to_m_yr
                   << " evaporation_m_yr=" << record.evaporation_kg * to_m_yr
+                  << " convective_share=" << record.convective_kg / record.precipitation_kg
+                  << " rain_evaporation_m_yr=" << record.rain_evaporation_kg * to_m_yr
+                  << " cloud_evaporation_m_yr=" << record.cloud_evaporation_kg * to_m_yr
+                  << " cloud_water_g_m2=" << record.cloud_water_kg / area * 1000.0
                   << " wall_s=" << record.wall_s << std::endl;
         return record;
     };

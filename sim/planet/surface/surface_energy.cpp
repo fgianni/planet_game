@@ -168,6 +168,11 @@ struct BudgetPartial {
     double precipitation_kg = 0.0;
     double ocean_precipitation_kg = 0.0;
     double condensation_latent_J = 0.0;
+    double cloud_water_change_kg = 0.0;
+    double cloud_water_kg = 0.0;
+    double convective_precipitation_kg = 0.0;
+    double cloud_evaporation_kg = 0.0;
+    double rain_evaporation_kg = 0.0;
     double ice_area_north_m2 = 0.0;
     double ice_area_south_m2 = 0.0;
     double ice_mass_north_kg = 0.0;
@@ -233,6 +238,11 @@ struct BudgetPartial {
     a.precipitation_kg += b.precipitation_kg;
     a.ocean_precipitation_kg += b.ocean_precipitation_kg;
     a.condensation_latent_J += b.condensation_latent_J;
+    a.cloud_water_change_kg += b.cloud_water_change_kg;
+    a.cloud_water_kg += b.cloud_water_kg;
+    a.convective_precipitation_kg += b.convective_precipitation_kg;
+    a.cloud_evaporation_kg += b.cloud_evaporation_kg;
+    a.rain_evaporation_kg += b.rain_evaporation_kg;
     a.ice_area_north_m2 += b.ice_area_north_m2;
     a.ice_area_south_m2 += b.ice_area_south_m2;
     a.ice_mass_north_kg += b.ice_mass_north_kg;
@@ -599,7 +609,7 @@ double SurfaceEnergyDiagnostics::closure_gate_J() const noexcept {
                                        surface_upward_longwave_W + downward_longwave_W +
                                        std::abs(sensible_heat_W)) +
                          std::abs(storage_change_J) + std::abs(latent_heat_J) +
-                         std::abs(evaporation_latent_J) + condensation_latent_J;
+                         std::abs(evaporation_latent_J) + std::abs(condensation_latent_J);
     return 1e-9 * scale + 4.0 * std::numeric_limits<double>::epsilon() * stored_energy_J;
 }
 
@@ -612,13 +622,14 @@ double SurfaceEnergyDiagnostics::water_residual_kg() const noexcept {
 double SurfaceEnergyDiagnostics::water_cycle_residual_kg() const noexcept {
     // The ocean is the reservoir: it gives its evaporation and takes the rain
     // on it, the bucket's overflow and the ice's melt.
-    return std::abs(vapour_change_kg + bucket_change_kg + snow_change_kg + ice_change_kg -
+    return std::abs(vapour_change_kg + cloud_water_change_kg + bucket_change_kg + snow_change_kg +
+                    ice_change_kg -
                     (water_evaporation_kg - ocean_precipitation_kg - bucket_runoff_kg +
                      ice_frozen_kg - ice_melted_kg));
 }
 
 double SurfaceEnergyDiagnostics::water_cycle_gate_kg() const noexcept {
-    const double stock = vapour_kg + bucket_kg + snow_kg + ice_kg;
+    const double stock = vapour_kg + cloud_water_kg + bucket_kg + snow_kg + ice_kg;
     return 1e-12 * (std::abs(water_evaporation_kg) + std::abs(bucket_evaporation_kg) +
                     std::abs(snow_sublimation_kg) + std::abs(ice_sublimation_kg) +
                     precipitation_kg + rain_kg +
@@ -887,6 +898,15 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 -std::expm1(-dt_s / atmosphere.moist_convection_time_s);
             moisture.moist_convection_relative_humidity =
                 atmosphere.moist_convection_relative_humidity;
+            // ADR-0023 §4.3: the cloud water and its time scales.
+            for (std::size_t layer = 0; layer < layers; ++layer) {
+                moisture.cloud_water_kg_kg[layer] =
+                    slow.atmosphere_cloud_water_kg_kg.layer(layer)[cell];
+            }
+            moisture.cloud_water_threshold_kg_kg = atmosphere.cloud_water_threshold_kg_kg;
+            moisture.autoconversion_fraction = -std::expm1(-dt_s / atmosphere.autoconversion_time_s);
+            moisture.evaporation_fraction = -std::expm1(-dt_s / atmosphere.rain_evaporation_time_s);
+            moisture.rain_evaporation_efficiency = atmosphere.rain_evaporation_efficiency;
             moisture.latent_J_kg = latent_heat_vaporisation_J_kg +
                                    snow_share[cell] * latent_heat_of_fusion_J_kg;
             cell_surface.water = true;
@@ -1160,6 +1180,9 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 double condensation_W_m2 = 0.0;
                 double cell_evaporation_kg_m2_s = 0.0;
                 LayerArray humidity_after{};
+                LayerArray cloud_after{};
+                double cloud_evaporation_kg_m2_s = 0.0;
+                double rain_evaporation_kg_m2_s = 0.0;
                 if (layers > 0U) {
                     CellSurface cell_surface;
                     const auto column = solve_column(cell, transport[cell], cell_surface);
@@ -1190,6 +1213,9 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                         condensation_W_m2 = column.condensation_W_m2;
                         cell_evaporation_kg_m2_s = column.evaporation_kg_m2_s;
                         humidity_after = column.humidity_kg_kg;
+                        cloud_after = column.cloud_water_kg_kg;
+                        cloud_evaporation_kg_m2_s = column.cloud_evaporation_kg_m2_s;
+                        rain_evaporation_kg_m2_s = column.rain_evaporation_kg_m2_s;
                         if (snow_share[cell] > 0.0) {
                             tiles.land.snowfall_kg_m2 += precipitation_kg_m2;
                             tiles.land.snow_kg_m2 += precipitation_kg_m2;
@@ -1307,6 +1333,18 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                         vapour_change += humidity_after[layer] - q;
                         q = humidity_after[layer];
                     }
+                    // The cloud water, where moist convection runs it
+                    // (ADR-0023 §4.3); otherwise it is left as it is.
+                    double cloud_change = 0.0;
+                    double cloud_stock = 0.0;
+                    for (std::size_t layer = 0; layer < layers; ++layer) {
+                        auto& c = slow.atmosphere_cloud_water_kg_kg.layer(layer)[cell];
+                        if (atmosphere.moist_convection && atmosphere.convection) {
+                            cloud_change += cloud_after[layer] - c;
+                            c = cloud_after[layer];
+                        }
+                        cloud_stock += c;
+                    }
                     state.forcing().evaporation_kg_m2_s[cell] =
                         static_cast<float>(cell_evaporation_kg_m2_s);
                     state.forcing().precipitation_kg_m2_s[cell] =
@@ -1318,6 +1356,11 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     partial.precipitation_kg += area_m2 * precipitation_kg_m2;
                     partial.ocean_precipitation_kg += (area_m2 - land_weight) * precipitation_kg_m2;
                     partial.condensation_latent_J += area_m2 * dt_s * condensation_W_m2;
+                    partial.cloud_water_change_kg += area_m2 * bottom_mass[cell] * cloud_change;
+                    partial.cloud_water_kg += area_m2 * bottom_mass[cell] * cloud_stock;
+                    partial.convective_precipitation_kg += area_m2 * dt_s * convective_kg_m2_s;
+                    partial.cloud_evaporation_kg += area_m2 * dt_s * cloud_evaporation_kg_m2_s;
+                    partial.rain_evaporation_kg += area_m2 * dt_s * rain_evaporation_kg_m2_s;
                     partial.water_evaporation_kg += ocean_weight * ocean_tile.evaporation_kg_m2;
                     partial.bucket_evaporation_kg +=
                         land_weight * land_tile.bucket_evaporation_kg_m2;
@@ -1421,6 +1464,11 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.humidity_transport = humidity_transport;
     diagnostics.ocean_precipitation_kg = total.ocean_precipitation_kg;
     diagnostics.condensation_latent_J = total.condensation_latent_J;
+    diagnostics.cloud_water_change_kg = total.cloud_water_change_kg;
+    diagnostics.cloud_water_kg = total.cloud_water_kg;
+    diagnostics.convective_precipitation_kg = total.convective_precipitation_kg;
+    diagnostics.cloud_evaporation_kg = total.cloud_evaporation_kg;
+    diagnostics.rain_evaporation_kg = total.rain_evaporation_kg;
     diagnostics.ice_change_kg = total.ice_change_kg;
     diagnostics.ice_kg = total.ice_kg;
     diagnostics.ice_area_north_m2 = total.ice_area_north_m2;
