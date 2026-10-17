@@ -118,7 +118,7 @@ of 154.8 m/s, over the sub-step rule's bound of 150 m/s.
 
 ## Open
 
-- **Superseded at M8-04:** ADR-0023 §12 (proposed 2026-10-17) integrates
+- **Superseded at M8-04:** ADR-0023 §12 (accepted 2026-10-17) integrates
   the autoconversion exactly with q_l0 = 0, after cloud radiation took the
   climate to collapse with this task's cloud water (task M8-04). The
   figures above are this task's.

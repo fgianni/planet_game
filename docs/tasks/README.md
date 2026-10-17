@@ -37,7 +37,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [M8-01](M8-01-cloud-water-state.md) | Cloud water state: the layers' cloud water, PSNAP schema 7, the cloud diagnostics' fields (ADR-0023 §4.1) | Complete |
 | [M8-02](M8-02-moist-convection.md) | Moist convection: the dry adjustment and Betts–Miller (ADR-0023 §4.2); reference mode stable over ten years, V7 as read in ADR-0023 §11.3 passes | Complete |
 | [M8-03](M8-03-cloud-water-to-precipitation.md) | Cloud water to precipitation: condensate as cloud water, autoconversion, falling and re-evaporation (ADR-0023 §4.3, V1, V2, V5) | Complete |
-| [M8-04](M8-04-cloud-radiation.md) | Cloud radiation: fraction, shortwave reflection, longwave absorption; autoconversion without a threshold (ADR-0023 §4.4, §12, V5, V6) | Done, pending §12 |
+| [M8-04](M8-04-cloud-radiation.md) | Cloud radiation: fraction, shortwave reflection, longwave absorption; autoconversion without a threshold (ADR-0023 §4.4, §12, V5, V6) | Complete |
 | [R1-01](R1-01-presentation-library-and-channels.md) | Presentation library and semantic channels (ADR-0018; rendering track, parallel to M6) | Complete |
 | [R1-02](R1-02-style-packs-and-switching.md) | Godot style packs, recorded playback and instant switching (ADR-0018) | Complete |
 | [R1-03](R1-03-readability-harness.md) | Offscreen style readability gate and colour-vision checks (ADR-0018) | Complete |

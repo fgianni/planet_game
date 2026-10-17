@@ -1,7 +1,7 @@
 # Task M8-04 — Cloud radiation
 
 - **Milestone:** P0 / M8 (fourth task)
-- **Status:** done, pending ADR-0023 §12 (proposed 2026-10-17)
+- **Status:** complete (2026-10-17, ADR-0023 §12 accepted)
 - **Governing decisions:** ADR-0023 §4.4, §4.7, §12, V5, V6
 
 ## Done
@@ -131,9 +131,8 @@ With §12, over the same span (`test_cloud_radiation_run 36`):
     run's surface temperature is not recorded.
 - All 97 tests pass; the CI checks pass.
 
-## Open
+## Carried forward
 
-- **ADR-0023 §12** (proposed): the task closes when it is accepted.
 - **The calibration (M8-05):** cover 0.88, a net cloud effect of
   −2 W/m² and 284.4 K, against §4.6's targets; RH_c, r_e, κ_l, τ_a with
   τ_d and κ_v.
