@@ -8,8 +8,9 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <utility>
 
-// Cloud radiation (ADR-0023 §4.4, V6; task M8-04) on single columns: the
+// Cloud radiation (ADR-0023 §4.4, §13, V6; tasks M8-04, M8-05) on single columns: the
 // fraction, the in-cloud optical depth, the shortwave reflection and the
 // longwave depth.
 namespace {
@@ -46,8 +47,7 @@ struct Column {
     }
 
     [[nodiscard]] planetsim::CloudOptics optics() const {
-        return planetsim::cloud_optics(parameters, radiation, moisture,
-                                       std::span<const double>(temperature.data(), n));
+        return planetsim::cloud_optics(parameters, radiation, moisture);
     }
 };
 
@@ -56,57 +56,75 @@ struct Column {
 int main() {
     planetsim::test::Context test;
 
-    // 1. The fraction (Sundqvist et al. 1989): zero up to RH_c, the formula
-    // above it, one at saturation, cloud water counted in RH. A stable
-    // column (an inversion over the bottom layer) has no convective floor.
+    // 1. The fraction (§13.3): f = min(1, q_l m / W_c), whatever the
+    // humidity. Saturated air without cloud water is clear; a convecting,
+    // dry column without cloud water is clear.
     {
         Column column;
-        column.temperature = {270.0, 275.0, 260.0, 240.0};
-        for (const double rh : {0.5, 0.8, 0.85, 0.95, 0.99, 1.0, 1.2}) {
+        const double w_c = column.parameters.cloud_in_cloud_water_path_kg_m2;
+        const double m = column.moisture.layer_mass_kg_m2;
+        for (const double path : {0.0, 0.01, 0.05, 0.1, 0.3}) {
             for (std::size_t k = 0; k < n; ++k) {
-                column.moisture.humidity_kg_kg[k] = std::min(rh, 1.0) * column.saturation(k);
-                column.moisture.cloud_water_kg_kg[k] = std::max(0.0, rh - 1.0) * column.saturation(k);
+                column.moisture.humidity_kg_kg[k] = column.saturation(k);
+                column.moisture.cloud_water_kg_kg[k] = path / m;
             }
             const auto optics = column.optics();
-            const double expected =
-                rh >= 1.0 ? 1.0 : rh > 0.8 ? 1.0 - std::sqrt((1.0 - rh) / 0.2) : 0.0;
+            const double expected = std::min(1.0, path / w_c);
             for (std::size_t k = 0; k < n; ++k) {
                 PLANETSIM_EXPECT_NEAR(test, optics.fraction[k], expected, 1e-12);
             }
             PLANETSIM_EXPECT_NEAR(test, optics.column_fraction,
                                   1.0 - std::pow(1.0 - expected, static_cast<double>(n)), 1e-12);
+            if (path == 0.0) {
+                PLANETSIM_EXPECT(test, optics.transmission == 1.0 && optics.longwave_depth[0] == 0.0);
+            }
         }
-        // Cloud water raises RH: 0.7 of vapour and 0.2 of cloud water is RH 0.9.
-        for (std::size_t k = 0; k < n; ++k) {
-            column.moisture.humidity_kg_kg[k] = 0.7 * column.saturation(k);
-            column.moisture.cloud_water_kg_kg[k] = 0.2 * column.saturation(k);
-        }
-        PLANETSIM_EXPECT_NEAR(test, column.optics().fraction[1], 1.0 - std::sqrt(0.5), 1e-12);
-    }
-
-    // 2. A convecting column carries at least f_conv in its convecting
-    // layers, by the trigger's weights, even where it is dry.
-    {
-        Column column;
         column.temperature = {300.0, 280.0, 258.0, 225.0};
         for (std::size_t k = 0; k < n; ++k) {
             column.moisture.humidity_kg_kg[k] = (k == 0U ? 0.8 : 0.3) * column.saturation(k);
+            column.moisture.cloud_water_kg_kg[k] = 0.0;
         }
         const auto optics = column.optics();
-        PLANETSIM_EXPECT_NEAR(test, optics.fraction[0], 0.2, 1e-12);
-        PLANETSIM_EXPECT(test, optics.fraction[1] > 0.0 && optics.fraction[1] <= 0.2);
-        // No cloud water: nothing to reflect or absorb.
-        PLANETSIM_EXPECT(test, optics.transmission == 1.0 && optics.longwave_depth[1] == 0.0);
-        std::cout << "convective floor: f = " << optics.fraction[0] << ' ' << optics.fraction[1]
-                  << ' ' << optics.fraction[2] << ' ' << optics.fraction[3] << '\n';
+        PLANETSIM_EXPECT(test, optics.column_fraction == 0.0 && optics.transmission == 1.0);
+    }
+
+    // 2. Below overcast a layer's reflection and longwave depth are
+    // proportional to its cloud water, so the mean of two states' optics is
+    // the optics of their mean (§13.3, §13.5).
+    {
+        Column column;
+        const double m = column.moisture.layer_mass_kg_m2;
+        const auto layer_optics = [&](double path_kg_m2) {
+            for (std::size_t k = 0; k < n; ++k) {
+                column.moisture.cloud_water_kg_kg[k] = 0.0;
+            }
+            column.moisture.cloud_water_kg_kg[1] = path_kg_m2 / m;
+            const auto o = column.optics();
+            return std::pair{o.reflectance[1], o.longwave_depth[1]};
+        };
+        const auto [r1, l1] = layer_optics(0.01);
+        const auto [r4, l4] = layer_optics(0.04);
+        const auto [r9, l9] = layer_optics(0.09);
+        PLANETSIM_EXPECT_NEAR(test, r4, 4.0 * r1, 1e-14);
+        PLANETSIM_EXPECT_NEAR(test, l4, 4.0 * l1, 1e-12);
+        const auto [rm, lm] = layer_optics(0.05);
+        PLANETSIM_EXPECT_NEAR(test, rm, 0.5 * (r1 + r9), 1e-14);
+        PLANETSIM_EXPECT_NEAR(test, lm, 0.5 * (l1 + l9), 1e-12);
+        // Above overcast the reflection saturates: less than proportional.
+        const auto [r3, l3] = layer_optics(0.3);
+        PLANETSIM_EXPECT(test, r3 < 3.0 * r9 / 0.9 && r3 > r9);
+        std::cout << "reflection at 10, 40, 90, 300 g/m2: " << r1 << ' ' << r4 << ' ' << r9 << ' '
+                  << r3 << '\n';
     }
 
     // 3. Optics (Stephens 1978): an overcast layer with 50 g/m² of cloud
     // water has τ = 3 · 0.05 / (2 · 1000 · 10 µm) = 7.5, reflects
     // 0.15 · 7.5 / (2 + 0.15 · 7.5) = 0.36, and its longwave depth
     // 0.13 m²/g · 50 g/m² = 6.5 makes it nearly black.
+    // With W_c = 50 g/m² the layer is just overcast.
     {
         Column column;
+        column.parameters.cloud_in_cloud_water_path_kg_m2 = 0.05;
         for (std::size_t k = 0; k < n; ++k) {
             column.moisture.humidity_kg_kg[k] = 0.5 * column.saturation(k);
         }
@@ -127,9 +145,9 @@ int main() {
                               (1.0 - column.radiation.emissivity[1]) * std::exp(-6.5), 1e-15);
     }
 
-    // 4. V6: reflection rises with the water path at a fixed fraction and
-    // with the fraction at a fixed in-cloud path; random overlap multiplies
-    // the layers' transmissions.
+    // 4. V6: reflection rises with the water path, and with the fraction at a
+    // fixed in-cloud path; random overlap multiplies the layers'
+    // transmissions.
     {
         Column column;
         double previous = 0.0;
@@ -151,19 +169,17 @@ int main() {
         PLANETSIM_EXPECT_NEAR(test, optics.transmission,
                               (1.0 - optics.reflectance[1]) * (1.0 - optics.reflectance[2]), 1e-15);
         // A larger fraction holding the same in-cloud path reflects more.
+        const double w_c = column.parameters.cloud_in_cloud_water_path_kg_m2;
         double last = 0.0;
         bool more = true;
-        for (const double rh : {0.82, 0.86, 0.9, 0.95, 0.99}) {
+        for (const double f : {0.1, 0.3, 0.5, 0.8, 1.0}) {
             for (std::size_t k = 0; k < n; ++k) {
-                column.moisture.humidity_kg_kg[k] = 0.0;
                 column.moisture.cloud_water_kg_kg[k] = 0.0;
             }
-            const double f = 1.0 - std::sqrt((1.0 - rh) / 0.2);
-            const double water = f * 50e-3 / column.moisture.layer_mass_kg_m2;
-            column.moisture.cloud_water_kg_kg[2] = water;
-            column.moisture.humidity_kg_kg[2] = rh * column.saturation(2) - water;
+            column.moisture.cloud_water_kg_kg[2] = f * w_c / column.moisture.layer_mass_kg_m2;
             const auto o = column.optics();
-            PLANETSIM_EXPECT_NEAR(test, o.optical_depth[2], 7.5, 1e-6);
+            PLANETSIM_EXPECT_NEAR(test, o.fraction[2], f, 1e-12);
+            PLANETSIM_EXPECT_NEAR(test, o.optical_depth[2], 15.0, 1e-9);
             more = more && o.reflectance[2] > last;
             last = o.reflectance[2];
         }

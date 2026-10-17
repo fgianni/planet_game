@@ -454,80 +454,50 @@ inline BettsMillerResult betts_miller(const ColumnRadiation& column, const Colum
     return result;
 }
 
-// Cloud radiation (ADR-0023 §4.4) from a column's state at the start of a
-// step, held through the step as the vapour path is:
-// - fraction f_k = 1 − sqrt((1 − RH_k) / (1 − RH_c)) above RH_c, RH_k =
-//   (q + q_l) / q_sat, 1 at saturation; at least f_conv w_k where the
-//   Betts–Miller trigger gives the layer the weight w_k (task M8-04: the
-//   step's convection is not known before the solve, so its trigger on the
-//   start-of-step column stands for it);
-// - in-cloud optical depth τ_k = 3 LWP_k / (2 ρ_w r_e), LWP_k = q_l m / f_k;
+// Cloud radiation (ADR-0023 §4.4 as amended by §13) from a column's cloud
+// water at the start of a step, held through the step as the vapour path is:
+// - fraction f_k = min(1, q_l m / W_c), W_c the in-cloud water path of a
+//   layer's cloud (§13.3);
+// - in-cloud optical depth τ_k = 3 LWP_k / (2 ρ_w r_e), LWP_k = q_l m / f_k,
+//   which is W_c below overcast;
 // - shortwave reflection R_k = f_k (1 − g) τ_k / (2 + (1 − g) τ_k), the
 //   layers by random overlap, transmission Π (1 − R_k);
 // - longwave depth κ_l f_k LWP_k = κ_l q_l m, added to the layer's.
-// Only layers with f_k > 0 radiate as cloud.
+// Below overcast each layer's reflection and longwave depth are
+// proportional to its cloud water, so a month of mean cloud water radiates
+// as the reference steps averaging to it do (§13.3).
 inline constexpr double liquid_water_density_kg_m3 = 1000.0;
 
 struct CloudOptics {
     LayerArray fraction{};
     LayerArray optical_depth{};    // in-cloud τ_k
     LayerArray reflectance{};      // R_k
-    LayerArray longwave_depth{};   // κ_l q_l m where f_k > 0
+    LayerArray longwave_depth{};   // κ_l q_l m
     double transmission = 1.0;     // Π (1 − R_k)
     double column_fraction = 0.0;  // 1 − Π (1 − f_k), random overlap
     double column_optical_depth = 0.0;   // Σ f_k τ_k
 };
 
 inline CloudOptics cloud_optics(const AtmosphereParameters& parameters,
-                                const ColumnRadiation& column, const ColumnMoisture& moisture,
-                                std::span<const double> temperature_K) {
+                                const ColumnRadiation& column, const ColumnMoisture& moisture) {
     CloudOptics optics;
-    const std::size_t n = column.layers;
-    LayerArray weight{};
-    if (n >= 2U && parameters.convective_cloud_fraction > 0.0) {
-        // The trigger alone: a relaxation of zero changes nothing.
-        ColumnMoisture trigger = moisture;
-        trigger.moist_convection_fraction = 0.0;
-        LayerArray t{};
-        LayerArray q{};
-        for (std::size_t k = 0; k < n; ++k) {
-            t[k] = temperature_K[k];
-            q[k] = moisture.humidity_kg_kg[k];
-        }
-        const BettsMillerResult bm = betts_miller(column, trigger, std::span<double>(t.data(), n),
-                                                  std::span<double>(q.data(), n));
-        if (bm.top >= 1) {
-            for (std::size_t k = 0; k <= static_cast<std::size_t>(bm.top); ++k) {
-                weight[k] = bm.weight[k];
-            }
-        }
-    }
-    const double critical = parameters.cloud_critical_relative_humidity;
     const double one_minus_g = 1.0 - parameters.cloud_asymmetry;
     double clear = 1.0;
-    for (std::size_t k = 0; k < n; ++k) {
-        const double q_l = std::max(0.0, moisture.cloud_water_kg_kg[k]);
-        const double relative =
-            (std::max(0.0, moisture.humidity_kg_kg[k]) + q_l) /
-            saturation_specific_humidity(temperature_K[k], moisture.pressure_Pa[k]);
-        double f = relative >= 1.0 ? 1.0
-                   : relative > critical
-                       ? 1.0 - std::sqrt((1.0 - relative) / (1.0 - critical))
-                       : 0.0;
-        f = std::max(f, parameters.convective_cloud_fraction * weight[k]);
-        optics.fraction[k] = f;
-        clear *= 1.0 - f;
-        if (!(f > 0.0) || !(q_l > 0.0)) {
+    for (std::size_t k = 0; k < column.layers; ++k) {
+        const double path_kg_m2 =
+            std::max(0.0, moisture.cloud_water_kg_kg[k]) * moisture.layer_mass_kg_m2;
+        if (!(path_kg_m2 > 0.0)) {
             continue;
         }
-        const double path_kg_m2 = q_l * moisture.layer_mass_kg_m2 / f;
-        const double tau = 3.0 * path_kg_m2 /
+        const double f = std::min(1.0, path_kg_m2 / parameters.cloud_in_cloud_water_path_kg_m2);
+        const double tau = 3.0 * (path_kg_m2 / f) /
                            (2.0 * liquid_water_density_kg_m3 * parameters.cloud_effective_radius_m);
+        optics.fraction[k] = f;
+        clear *= 1.0 - f;
         optics.optical_depth[k] = tau;
         optics.reflectance[k] = f * one_minus_g * tau / (2.0 + one_minus_g * tau);
         optics.transmission *= 1.0 - optics.reflectance[k];
-        optics.longwave_depth[k] =
-            parameters.cloud_longwave_absorption_m2_kg * q_l * moisture.layer_mass_kg_m2;
+        optics.longwave_depth[k] = parameters.cloud_longwave_absorption_m2_kg * path_kg_m2;
         optics.column_optical_depth += f * tau;
     }
     optics.column_fraction = 1.0 - clear;

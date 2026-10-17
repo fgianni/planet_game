@@ -57,14 +57,12 @@ struct AtmosphereParameters {
     double autoconversion_time_s = 3600.0;         // τ_a
     double rain_evaporation_efficiency = 0.5;      // ε
     double rain_evaporation_time_s = 3600.0;       // τ_e
-    // Cloud radiation (ADR-0023 §4.4), with moist convection: the fraction
-    // from relative humidity above RH_c counting cloud water (Sundqvist et
-    // al. 1989), at least f_conv where convection triggers; the in-cloud
-    // optical depth 3 LWP / (2 ρ_w r_e) (Stephens 1978); shortwave
-    // reflection by the non-absorbing two-stream limit with asymmetry g;
-    // longwave absorption κ_l per kilogram of cloud water.
-    double cloud_critical_relative_humidity = 0.8;    // RH_c (calibration)
-    double convective_cloud_fraction = 0.2;           // f_conv
+    // Cloud radiation (ADR-0023 §4.4, §13), with moist convection: each
+    // layer cloudy over its cloud water path divided by W_c, the in-cloud
+    // path; the in-cloud optical depth 3 LWP / (2 ρ_w r_e) (Stephens 1978);
+    // shortwave reflection by the non-absorbing two-stream limit with
+    // asymmetry g; longwave absorption κ_l per kilogram of cloud water.
+    double cloud_in_cloud_water_path_kg_m2 = 0.1;     // W_c (calibration)
     double cloud_effective_radius_m = 10e-6;          // r_e (calibration)
     double cloud_asymmetry = 0.85;                    // g
     double cloud_longwave_absorption_m2_kg = 130.0;   // κ_l = 0.13 m²/g

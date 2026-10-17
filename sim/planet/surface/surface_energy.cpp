@@ -543,26 +543,17 @@ struct CellSurface {
 // energy for the convective trigger).
 [[nodiscard]] CloudOptics cell_cloud_optics(const SlowState& slow,
                                             const AtmosphereParameters& atmosphere,
-                                            std::size_t cell, double gravity_m_s2,
-                                            double latent_J_kg) {
+                                            std::size_t cell, double gravity_m_s2) {
     const std::size_t layers = atmosphere.layer_count;
-    const double ps = slow.atmosphere_surface_pressure_Pa[cell];
     ColumnRadiation column;
     column.layers = layers;
     ColumnMoisture moisture;
-    moisture.layer_mass_kg_m2 = ps / (gravity_m_s2 * static_cast<double>(layers));
-    moisture.latent_J_kg = latent_J_kg;
-    moisture.moist_convection = true;
-    moisture.moist_convection_relative_humidity = atmosphere.moist_convection_relative_humidity;
-    LayerArray temperature{};
+    moisture.layer_mass_kg_m2 =
+        slow.atmosphere_surface_pressure_Pa[cell] / (gravity_m_s2 * static_cast<double>(layers));
     for (std::size_t layer = 0; layer < layers; ++layer) {
-        moisture.humidity_kg_kg[layer] = slow.atmosphere_specific_humidity_kg_kg.layer(layer)[cell];
         moisture.cloud_water_kg_kg[layer] = slow.atmosphere_cloud_water_kg_kg.layer(layer)[cell];
-        moisture.pressure_Pa[layer] = layer_sigma(layer, layers) * ps;
-        temperature[layer] = slow.atmosphere_temperature_K.layer(layer)[cell];
     }
-    return cloud_optics(atmosphere, column, moisture,
-                        std::span<const double>(temperature.data(), layers));
+    return cloud_optics(atmosphere, column, moisture);
 }
 
 // ADR-0021 §4.5: the humidity on the coarse graph's groups, mass-weighted
@@ -839,9 +830,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 }
                 double surface_insolation = insolation;
                 if (clouds) {
-                    cloud[cell] = cell_cloud_optics(
-                        slow, surface.atmosphere, cell, water_gravity,
-                        latent_heat_vaporisation_J_kg + snow_share[cell] * latent_heat_of_fusion_J_kg);
+                    cloud[cell] = cell_cloud_optics(slow, surface.atmosphere, cell, water_gravity);
                     surface_insolation *= cloud[cell].transmission;
                 }
                 land_tiles[cell] = prepare_land_tile(
@@ -1325,7 +1314,6 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                             -static_cast<double>(insolation_W_m2[cell]) * (1.0 - optics.transmission) *
                             absorbing;
                         LayerArray humidity{};
-                        LayerArray emission{};
                         for (std::size_t layer = 0; layer < layers; ++layer) {
                             // Still the start-of-step humidity the solve's
                             // radiation used: the cell's water is written below.
@@ -1336,14 +1324,19 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                             atmosphere, slow.atmosphere_surface_pressure_Pa[cell],
                             surface_gravity_m_s2(parameters),
                             std::span<const double>(humidity.data(), layers));
-                        for (std::size_t layer = 0; layer < layers; ++layer) {
-                            const double t = layers_guess[cell * layers + layer];
-                            emission[layer] =
-                                clear.emissivity[layer] * column_stefan_boltzmann_W_m2_K4 * t * t * t * t;
-                        }
-                        const double longwave =
-                            longwave_fluxes(clear, emission, column.upward_surface_W_m2).outgoing_W_m2 -
-                            column.outgoing_W_m2;
+                        // Both columns at the step's final temperatures, so
+                        // the difference is the clouds' alone.
+                        const auto outgoing = [&](const ColumnRadiation& radiating) {
+                            LayerArray emission{};
+                            for (std::size_t layer = 0; layer < layers; ++layer) {
+                                const double t = layers_guess[cell * layers + layer];
+                                emission[layer] = radiating.emissivity[layer] *
+                                                  column_stefan_boltzmann_W_m2_K4 * t * t * t * t;
+                            }
+                            return longwave_fluxes(radiating, emission, column.upward_surface_W_m2)
+                                .outgoing_W_m2;
+                        };
+                        const double longwave = outgoing(clear) - outgoing(columns[cell]);
                         for (std::size_t layer = 0; layer < layers; ++layer) {
                             state.forcing().cloud_fraction.layer(layer)[cell] =
                                 static_cast<float>(optics.fraction[layer]);
@@ -1824,9 +1817,7 @@ void compute_atmosphere_heating(const PlanetState& state, const PlanetParameters
         mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                 const CloudOptics optics =
-                    clouds ? cell_cloud_optics(slow, atmosphere, cell, gravity,
-                                               latent_heat_vaporisation_J_kg)
-                           : CloudOptics{};
+                    clouds ? cell_cloud_optics(slow, atmosphere, cell, gravity) : CloudOptics{};
                 const double insolation = insolation_W_m2[cell] * optics.transmission;
                 const LandSnowSystem land_tile = prepare_land_tile(
                     land,

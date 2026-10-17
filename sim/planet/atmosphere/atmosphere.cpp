@@ -79,18 +79,16 @@ void validate_atmosphere_parameters(const AtmosphereParameters& parameters) {
         throw std::invalid_argument("cloud water needs a non-negative threshold, positive times "
                                     "and a rain evaporation efficiency in [0, 1]");
     }
-    if (!(parameters.cloud_critical_relative_humidity >= 0.0 &&
-          parameters.cloud_critical_relative_humidity < 1.0) ||
-        !(parameters.convective_cloud_fraction >= 0.0 &&
-          parameters.convective_cloud_fraction <= 1.0) ||
+    if (!(parameters.cloud_in_cloud_water_path_kg_m2 > 0.0) ||
+        !std::isfinite(parameters.cloud_in_cloud_water_path_kg_m2) ||
         !(parameters.cloud_effective_radius_m > 0.0) ||
         !std::isfinite(parameters.cloud_effective_radius_m) ||
         !(parameters.cloud_asymmetry >= 0.0 && parameters.cloud_asymmetry < 1.0) ||
         !(parameters.cloud_longwave_absorption_m2_kg >= 0.0) ||
         !std::isfinite(parameters.cloud_longwave_absorption_m2_kg)) {
-        throw std::invalid_argument("cloud radiation needs RH_c and g in [0, 1), f_conv in "
-                                    "[0, 1], a positive effective radius and a non-negative "
-                                    "longwave absorption");
+        throw std::invalid_argument("cloud radiation needs a positive in-cloud water path and "
+                                    "effective radius, g in [0, 1) and a non-negative longwave "
+                                    "absorption");
     }
 }
 

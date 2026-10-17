@@ -36,10 +36,12 @@ int main(int argc, char** argv) {
                   << " K, cloud cover " << cover << ", effect SW " << shortwave << " LW "
                   << longwave << " W/m2, cloud water " << step.cloud_water_kg / area * 1000.0
                   << " g/m2\n";
-        PLANETSIM_EXPECT(test, cover > 0.0 && cover < 1.0);
-        PLANETSIM_EXPECT(test, longwave > 0.0);
-        // The first month starts without cloud water: nothing to reflect.
-        if (month > 0) {
+        // The first month starts without cloud water: clear (ADR-0023 §13).
+        if (month == 0) {
+            PLANETSIM_EXPECT(test, cover == 0.0 && shortwave == 0.0 && longwave == 0.0);
+        } else {
+            PLANETSIM_EXPECT(test, cover > 0.0 && cover < 1.0);
+            PLANETSIM_EXPECT(test, longwave > 0.0);
             PLANETSIM_EXPECT(test, shortwave < 0.0);
             PLANETSIM_EXPECT(test, step.cloud_water_kg > 0.0);
         }
