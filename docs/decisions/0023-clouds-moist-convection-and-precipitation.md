@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-15
 - **Accepted:** 2026-10-16
-- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17)
+- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17); 2026-10-17 — §4.3.2: autoconversion integrated exactly with the step's condensation, no threshold; §4.4.1: the convective floor from the start-of-step trigger (§12, tasks M8-03, M8-04; proposed)
 - **Milestone:** P0 / M8 (clouds and precipitation)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24, §31.2 (the cloud channels); Planetary Civilization Simulator — Design Record v1.4, §5, §15
 - **Related:** ADR-0001 (V1 water budget, V2 climate–reference parity), ADR-0003 (PSNAP migration), ADR-0006 (sub-steps), ADR-0008 (snow, rain and snow at the surface), ADR-0010 (layered atmosphere, grey longwave, Γ_c adjustment, §3.3 C deferring Betts–Miller to M8), ADR-0011 (winds, ascent), ADR-0018 (presentation channels `cloud_cover`, `cloud_thickness`), ADR-0021 (vapour, evaporation, saturation rainout; §13.7 V9 deferred to M8)
@@ -225,7 +225,7 @@ position (ADR-0022 §4.9). PSNAP is unchanged by the presentation part.
 | V2 | Energy closes: convection conserves the column's moist enthalpy; condensation, re-evaporation and their latent heat balance | unit tests |
 | V3 | The dry adjustment acts only on super-adiabatic layers | unit test |
 | V4 | Betts–Miller: a buoyant column relaxes towards the moist adiabat by 1 − exp(−Δt/τ_bm); a climate month reaches the reference; a stable column is untouched | unit tests |
-| V5 | Autoconversion reaches q_l0 in a month; re-evaporation never supersaturates a layer | unit tests |
+| V5 | Autoconversion reaches q_l0 in a month (read as §12: q_l0 + C τ_a/Δt, and one step of a span gives what reference steps over it give); re-evaporation never supersaturates a layer | unit tests |
 | V6 | Clouds: reflection rises with water path and fraction; the shortwave cloud effect is negative and the longwave positive | unit and run tests |
 | V7 | Reference mode stays stable without τ_c: winds below 100 m/s and latent heating below 300 W/m² over a 10-year run (read as §11.3) | regression |
 | V8 | ADR-0021 V9 (ADR-0001 V2): climate and reference mode within 0.3 K and ±10 % precipitation (L3, 10-year spin-up, a year each) | gate |
@@ -370,4 +370,61 @@ cell after year 1 is 1 288 W/m², against the 2 894 W/m² bound; V7 as read
 in §11.3 passes. The climatological maximum, now V9's, is 408 W/m². Parity (V8): +4.98 K and ×1.30 in precipitation (M7:
 +5.45 K, ×1.29), M8-05's gate. A climate year at L3 costs ×1.41 M7's
 (V11 allows ×1.5).
+
+## 12. Amendment: cloud water without a threshold, the convective floor's trigger (proposed 2026-10-17, tasks M8-03, M8-04)
+
+**12.1 What §4.3.2 gave.** With Kessler's threshold q_l0 = 0.3 g/kg, a
+climate month leaves every layer that condenses holding exactly q_l0
+(§4.3.2's own steady state). A layer is a third to a fifth of the
+atmosphere's mass: at L3 with three layers, about 3 400 kg/m². So q_l0 is
+about 1 kg/m² of cloud water in each cloudy layer.
+- At M8-03 (L3, ten-year spin-up, then a year): 2 589 g/m² of cloud water
+  in climate mode, against 204 g/m² over ten reference years and Earth's
+  ~100 g/m². Each mode holds water differently: in reference mode cloud
+  evaporates within hours where the layer dries.
+- With §4.4's radiation on (task M8-04), from the initial state: cloud
+  cover 0.96, a shortwave cloud effect of −260 W/m² and a longwave one of
+  +135 W/m² (§4.6's targets: −47 and +26). Absorbed sunlight fell to
+  15 W/m², and a column collapsed below 10 K in the 18th month.
+
+Kessler's threshold belongs to clouds a model resolves, where a grid box
+is mostly cloud. A layer of a few hundred hectopascals over hundreds of
+kilometres is not.
+
+**12.2 Autoconversion integrated exactly, without a threshold (amends
+§4.3.2; decided with the user).**
+- The excess x = q_l − q_l0 follows dx/dt = c − x/τ_a while positive. The
+  step's condensate C enters at the constant rate c = C/Δt. Integrated
+  exactly: x(Δt) = c τ_a + (x₀ − c τ_a) exp(−Δt/τ_a), from the moment x
+  reaches zero if it starts below. What leaves is precipitation.
+- q_l0 = 0. The cloud water then settles at the condensation rate times
+  τ_a in either mode. For Earth's 1 m/yr of rain and τ_a = 1 h that is
+  about 0.1 kg/m², whatever the layers' thickness.
+- One step over a span gives what reference steps over it give, when the
+  condensation is steady (a unit test checks this to 1e-12).
+- Cloud water left in a subsaturated layer evaporates first (§4.3.4), so
+  the order is evaporation, then conversion, then the fall.
+- q_l0 stays a parameter, kept exact, for the refit (§4.6) to use if it
+  must.
+
+**12.3 The convective floor from the start-of-step trigger (amends
+§4.4.1).** The radiation is fixed for the step from its starting state, as
+the vapour path is (ADR-0021 §4.6). The step's convection is known only
+after the solve. So f_conv applies where Betts–Miller's trigger, on the
+start-of-step column, gives a layer its weight w_k (f ≥ f_conv w_k).
+That keeps the floor a function of the state, which replay needs.
+
+**12.4 Results** (task M8-04, L3):
+- **Climate,** from the initial state, 25 years
+  (`test_cloud_radiation_run 300`): it settles at 284.4 K with 99 g/m² of
+  cloud water, cover 0.88, and cloud effects of −36 W/m² shortwave and
+  +34 W/m² longwave. No collapse.
+- **V7,** ten reference years from rest: passes, winds at most 99.6 m/s.
+  The cloud water is 43 g/m², against 105 g/m² in climate mode (§4.3.2
+  as written: 204 against 2 589).
+- **Reference mode drifts dry** (rain 1.76 m/yr in year 1, 0.45 in year
+  10).
+
+M8-05 refits RH_c, r_e, κ_l and τ_a against §4.6's targets and examines
+the drift.
 

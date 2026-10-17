@@ -168,6 +168,9 @@ struct BudgetPartial {
     double precipitation_kg = 0.0;
     double ocean_precipitation_kg = 0.0;
     double condensation_latent_J = 0.0;
+    double cloud_cover_m2 = 0.0;
+    double cloud_shortwave_effect_W = 0.0;
+    double cloud_longwave_effect_W = 0.0;
     double cloud_water_change_kg = 0.0;
     double cloud_water_kg = 0.0;
     double convective_precipitation_kg = 0.0;
@@ -238,6 +241,9 @@ struct BudgetPartial {
     a.precipitation_kg += b.precipitation_kg;
     a.ocean_precipitation_kg += b.ocean_precipitation_kg;
     a.condensation_latent_J += b.condensation_latent_J;
+    a.cloud_cover_m2 += b.cloud_cover_m2;
+    a.cloud_shortwave_effect_W += b.cloud_shortwave_effect_W;
+    a.cloud_longwave_effect_W += b.cloud_longwave_effect_W;
     a.cloud_water_change_kg += b.cloud_water_change_kg;
     a.cloud_water_kg += b.cloud_water_kg;
     a.convective_precipitation_kg += b.convective_precipitation_kg;
@@ -531,6 +537,34 @@ struct CellSurface {
     }
 };
 
+// ADR-0023 §4.4: a cell's clouds as the radiation sees them through the
+// step, from the start-of-step state (the humidity after the step's
+// transport). `latent_J_kg` is the column's (the parcel's moist static
+// energy for the convective trigger).
+[[nodiscard]] CloudOptics cell_cloud_optics(const SlowState& slow,
+                                            const AtmosphereParameters& atmosphere,
+                                            std::size_t cell, double gravity_m_s2,
+                                            double latent_J_kg) {
+    const std::size_t layers = atmosphere.layer_count;
+    const double ps = slow.atmosphere_surface_pressure_Pa[cell];
+    ColumnRadiation column;
+    column.layers = layers;
+    ColumnMoisture moisture;
+    moisture.layer_mass_kg_m2 = ps / (gravity_m_s2 * static_cast<double>(layers));
+    moisture.latent_J_kg = latent_J_kg;
+    moisture.moist_convection = true;
+    moisture.moist_convection_relative_humidity = atmosphere.moist_convection_relative_humidity;
+    LayerArray temperature{};
+    for (std::size_t layer = 0; layer < layers; ++layer) {
+        moisture.humidity_kg_kg[layer] = slow.atmosphere_specific_humidity_kg_kg.layer(layer)[cell];
+        moisture.cloud_water_kg_kg[layer] = slow.atmosphere_cloud_water_kg_kg.layer(layer)[cell];
+        moisture.pressure_Pa[layer] = layer_sigma(layer, layers) * ps;
+        temperature[layer] = slow.atmosphere_temperature_K.layer(layer)[cell];
+    }
+    return cloud_optics(atmosphere, column, moisture,
+                        std::span<const double>(temperature.data(), layers));
+}
+
 // ADR-0021 §4.5: the humidity on the coarse graph's groups, mass-weighted
 // (A p_s), carried by solve_implicit_tracer; each cell's humidity then
 // scales with its group's, which conserves the water and keeps it
@@ -729,6 +763,19 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     const double water_gravity = surface_gravity_m_s2(parameters);
     const double water_layers = static_cast<double>(surface.atmosphere.layer_count);
     const double water_lapse = critical_lapse_exponent(surface.atmosphere, water_gravity);
+    // Clouds (ADR-0023 §4.4) with moist convection: they reflect part of
+    // the insolation before it reaches the tiles and add to the layers'
+    // longwave depth.
+    const bool clouds = water && surface.atmosphere.moist_convection &&
+                        surface.atmosphere.convection;
+    std::vector<CloudOptics> cloud(clouds ? cells : 0U);
+    if (clouds && (slow.atmosphere_cloud_water_kg_kg.layer_count() !=
+                   surface.atmosphere.layer_count)) {
+        throw std::invalid_argument("clouds need the state's cloud water (initialise_water)");
+    }
+    if (clouds && state.forcing().cloud_fraction.layer_count() != surface.atmosphere.layer_count) {
+        state.forcing().cloud_fraction = Field3D<float>(surface.atmosphere.layer_count, cells, 0.0F);
+    }
     std::vector<double> bottom_mass(water ? cells : 0U, 0.0);   // m₀, kg/m²
     // The share of the cell's condensate that falls as snow: its land tile's
     // where that starts the step frozen (ADR-0008 §4.3).
@@ -790,17 +837,24 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                         density * land_transfer_coefficient * wind * response;
                     land_forcing.bucket_kg_m2 = slow.land_surface_water_kg_m2[cell];
                 }
+                double surface_insolation = insolation;
+                if (clouds) {
+                    cloud[cell] = cell_cloud_optics(
+                        slow, surface.atmosphere, cell, water_gravity,
+                        latent_heat_vaporisation_J_kg + snow_share[cell] * latent_heat_of_fusion_J_kg);
+                    surface_insolation *= cloud[cell].transmission;
+                }
                 land_tiles[cell] = prepare_land_tile(
                     land,
                     {slow.land_surface_temperature_K[cell], slow.land_ground_temperature_K[cell]},
-                    slow.land_snow_water_equivalent_kg_m2[cell], insolation,
+                    slow.land_snow_water_equivalent_kg_m2[cell], surface_insolation,
                     water ? 0.0 : static_cast<double>(precipitation[cell]),
                     surface.grey_emissivity, dt_s, land_forcing);
                 ocean_tiles[cell] = prepare_ocean_tile(
                     ocean,
                     {slow.ocean_mixed_layer_temperature_K[cell],
                      slow.ocean_deep_temperature_K[cell]},
-                    slow.sea_ice_mass_kg_m2[cell], insolation, surface.grey_emissivity, dt_s,
+                    slow.sea_ice_mass_kg_m2[cell], surface_insolation, surface.grey_emissivity, dt_s,
                     ocean_forcing);
                 tile_share[cell] = static_cast<double>(fractions.land_fraction[cell]) +
                                    static_cast<double>(fractions.ocean_fraction[cell]);
@@ -857,6 +911,9 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                         columns[cell] = column_radiation(
                             atmosphere, slow.atmosphere_surface_pressure_Pa[cell], gravity,
                             std::span<const double>(humidity.data(), layers));
+                        if (clouds) {
+                            add_cloud_longwave(columns[cell], cloud[cell]);
+                        }
                     } else {
                         columns[cell] = column_radiation(
                             atmosphere, slow.atmosphere_surface_pressure_Pa[cell], gravity);
@@ -905,6 +962,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             }
             moisture.cloud_water_threshold_kg_kg = atmosphere.cloud_water_threshold_kg_kg;
             moisture.autoconversion_fraction = -std::expm1(-dt_s / atmosphere.autoconversion_time_s);
+            moisture.autoconversion_time_ratio = atmosphere.autoconversion_time_s / dt_s;
             moisture.evaporation_fraction = -std::expm1(-dt_s / atmosphere.rain_evaporation_time_s);
             moisture.rain_evaporation_efficiency = atmosphere.rain_evaporation_efficiency;
             moisture.latent_J_kg = latent_heat_vaporisation_J_kg +
@@ -1252,6 +1310,50 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     if (column.adjusted) {
                         partial.convective_area_m2 += area_m2;
                     }
+                    if (clouds) {
+                        // The cloud radiative effects at the top (ADR-0023
+                        // §4.7): the shortwave the clouds keep from the
+                        // tiles, −S (1 − T) Σ f_t (1 − α_t), and the
+                        // longwave, the clear column's outgoing at the same
+                        // temperatures and surface emission minus the cloudy
+                        // one's.
+                        const CloudOptics& optics = cloud[cell];
+                        const double absorbing =
+                            fractions.land_fraction[cell] * (1.0 - land_tiles[cell].column.albedo) +
+                            fractions.ocean_fraction[cell] * (1.0 - ocean_tiles[cell].column.albedo);
+                        const double shortwave =
+                            -static_cast<double>(insolation_W_m2[cell]) * (1.0 - optics.transmission) *
+                            absorbing;
+                        LayerArray humidity{};
+                        LayerArray emission{};
+                        for (std::size_t layer = 0; layer < layers; ++layer) {
+                            // Still the start-of-step humidity the solve's
+                            // radiation used: the cell's water is written below.
+                            humidity[layer] =
+                                slow.atmosphere_specific_humidity_kg_kg.layer(layer)[cell];
+                        }
+                        const ColumnRadiation clear = column_radiation(
+                            atmosphere, slow.atmosphere_surface_pressure_Pa[cell],
+                            surface_gravity_m_s2(parameters),
+                            std::span<const double>(humidity.data(), layers));
+                        for (std::size_t layer = 0; layer < layers; ++layer) {
+                            const double t = layers_guess[cell * layers + layer];
+                            emission[layer] =
+                                clear.emissivity[layer] * column_stefan_boltzmann_W_m2_K4 * t * t * t * t;
+                        }
+                        const double longwave =
+                            longwave_fluxes(clear, emission, column.upward_surface_W_m2).outgoing_W_m2 -
+                            column.outgoing_W_m2;
+                        for (std::size_t layer = 0; layer < layers; ++layer) {
+                            state.forcing().cloud_fraction.layer(layer)[cell] =
+                                static_cast<float>(optics.fraction[layer]);
+                        }
+                        state.forcing().cloud_shortwave_effect_W_m2[cell] = static_cast<float>(shortwave);
+                        state.forcing().cloud_longwave_effect_W_m2[cell] = static_cast<float>(longwave);
+                        partial.cloud_cover_m2 += area_m2 * optics.column_fraction;
+                        partial.cloud_shortwave_effect_W += area_m2 * shortwave;
+                        partial.cloud_longwave_effect_W += area_m2 * longwave;
+                    }
                 } else {
                     tiles = solve_cell(land_tiles[cell], ocean_tiles[cell],
                                        fractions.land_fraction[cell],
@@ -1464,6 +1566,9 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.humidity_transport = humidity_transport;
     diagnostics.ocean_precipitation_kg = total.ocean_precipitation_kg;
     diagnostics.condensation_latent_J = total.condensation_latent_J;
+    diagnostics.cloud_cover_m2 = total.cloud_cover_m2;
+    diagnostics.cloud_shortwave_effect_W = total.cloud_shortwave_effect_W;
+    diagnostics.cloud_longwave_effect_W = total.cloud_longwave_effect_W;
     diagnostics.cloud_water_change_kg = total.cloud_water_change_kg;
     diagnostics.cloud_water_kg = total.cloud_water_kg;
     diagnostics.convective_precipitation_kg = total.convective_precipitation_kg;
@@ -1696,6 +1801,10 @@ void compute_atmosphere_heating(const PlanetState& state, const PlanetParameters
     const bool water = surface.water_cycle &&
                        slow.atmosphere_specific_humidity_kg_kg.layer_count() == layers;
     validate_atmosphere_parameters(atmosphere);
+    // The clouds' shortwave and longwave, as the step sees them (ADR-0023
+    // §4.4).
+    const bool clouds = water && atmosphere.moist_convection && atmosphere.convection &&
+                        slow.atmosphere_cloud_water_kg_kg.layer_count() == layers;
     const Field2D<float>& precipitation = state.forcing().prescribed_precipitation_kg_m2_s;
     if (insolation_W_m2.size() != cells || fractions.land_fraction.size() != cells ||
         precipitation.size() != cells) {
@@ -1714,7 +1823,11 @@ void compute_atmosphere_heating(const PlanetState& state, const PlanetParameters
     for_each_deterministic_block(
         mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
-                const double insolation = insolation_W_m2[cell];
+                const CloudOptics optics =
+                    clouds ? cell_cloud_optics(slow, atmosphere, cell, gravity,
+                                               latent_heat_vaporisation_J_kg)
+                           : CloudOptics{};
+                const double insolation = insolation_W_m2[cell] * optics.transmission;
                 const LandSnowSystem land_tile = prepare_land_tile(
                     land,
                     {slow.land_surface_temperature_K[cell], slow.land_ground_temperature_K[cell]},
@@ -1738,12 +1851,13 @@ void compute_atmosphere_heating(const PlanetState& state, const PlanetParameters
                         humidity[k] = slow.atmosphere_specific_humidity_kg_kg.layer(k)[cell];
                     }
                 }
-                const ColumnRadiation column =
+                ColumnRadiation column =
                     water ? column_radiation(atmosphere, slow.atmosphere_surface_pressure_Pa[cell],
                                              gravity,
                                              std::span<const double>(humidity.data(), layers))
                           : column_radiation(atmosphere, slow.atmosphere_surface_pressure_Pa[cell],
                                              gravity);
+                add_cloud_longwave(column, optics);
                 LayerArray temperature{};
                 LayerArray emission{};
                 for (std::size_t k = 0; k < layers; ++k) {

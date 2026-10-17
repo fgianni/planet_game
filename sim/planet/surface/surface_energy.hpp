@@ -215,6 +215,12 @@ struct SurfaceEnergyDiagnostics {
     double convective_precipitation_kg = 0.0;
     double cloud_evaporation_kg = 0.0;
     double rain_evaporation_kg = 0.0;
+    // Cloud radiation (ADR-0023 §4.4, §4.7): Σ A × column cloud fraction
+    // (random overlap), and Σ A × the shortwave and longwave cloud
+    // radiative effects at the top of the atmosphere.
+    double cloud_cover_m2 = 0.0;
+    double cloud_shortwave_effect_W = 0.0;
+    double cloud_longwave_effect_W = 0.0;
     HumidityTransportDiagnostics humidity_transport;
     // The atmosphere (ADR-0010 §4.4), zero without one. emitted_W is then the
     // outgoing longwave at the top, storage_change_J and stored_energy_J

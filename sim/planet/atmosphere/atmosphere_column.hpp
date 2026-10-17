@@ -177,13 +177,14 @@ struct ColumnMoisture {
     bool moist_convection = false;
     double moist_convection_fraction = 1.0;
     double moist_convection_relative_humidity = 0.8;
-    // Cloud water (ADR-0023 §4.3), with moist convection: each layer's at
-    // the start of the step, the autoconversion threshold q_l0 and the
-    // step's shares 1 − exp(−Δt/τ_a) and 1 − exp(−Δt/τ_e), and the rain's
-    // evaporation efficiency ε.
+    // Cloud water (ADR-0023 §4.3, §12), with moist convection: each layer's
+    // at the start of the step, the autoconversion threshold q_l0, the
+    // step's shares 1 − exp(−Δt/τ_a) and 1 − exp(−Δt/τ_e), τ_a / Δt, and the
+    // rain's evaporation efficiency ε.
     LayerArray cloud_water_kg_kg{};
-    double cloud_water_threshold_kg_kg = 0.3e-3;
+    double cloud_water_threshold_kg_kg = 0.0;
     double autoconversion_fraction = 1.0;
+    double autoconversion_time_ratio = 0.0;
     double evaporation_fraction = 1.0;
     double rain_evaporation_efficiency = 0.5;
 };
@@ -453,6 +454,97 @@ inline BettsMillerResult betts_miller(const ColumnRadiation& column, const Colum
     return result;
 }
 
+// Cloud radiation (ADR-0023 §4.4) from a column's state at the start of a
+// step, held through the step as the vapour path is:
+// - fraction f_k = 1 − sqrt((1 − RH_k) / (1 − RH_c)) above RH_c, RH_k =
+//   (q + q_l) / q_sat, 1 at saturation; at least f_conv w_k where the
+//   Betts–Miller trigger gives the layer the weight w_k (task M8-04: the
+//   step's convection is not known before the solve, so its trigger on the
+//   start-of-step column stands for it);
+// - in-cloud optical depth τ_k = 3 LWP_k / (2 ρ_w r_e), LWP_k = q_l m / f_k;
+// - shortwave reflection R_k = f_k (1 − g) τ_k / (2 + (1 − g) τ_k), the
+//   layers by random overlap, transmission Π (1 − R_k);
+// - longwave depth κ_l f_k LWP_k = κ_l q_l m, added to the layer's.
+// Only layers with f_k > 0 radiate as cloud.
+inline constexpr double liquid_water_density_kg_m3 = 1000.0;
+
+struct CloudOptics {
+    LayerArray fraction{};
+    LayerArray optical_depth{};    // in-cloud τ_k
+    LayerArray reflectance{};      // R_k
+    LayerArray longwave_depth{};   // κ_l q_l m where f_k > 0
+    double transmission = 1.0;     // Π (1 − R_k)
+    double column_fraction = 0.0;  // 1 − Π (1 − f_k), random overlap
+    double column_optical_depth = 0.0;   // Σ f_k τ_k
+};
+
+inline CloudOptics cloud_optics(const AtmosphereParameters& parameters,
+                                const ColumnRadiation& column, const ColumnMoisture& moisture,
+                                std::span<const double> temperature_K) {
+    CloudOptics optics;
+    const std::size_t n = column.layers;
+    LayerArray weight{};
+    if (n >= 2U && parameters.convective_cloud_fraction > 0.0) {
+        // The trigger alone: a relaxation of zero changes nothing.
+        ColumnMoisture trigger = moisture;
+        trigger.moist_convection_fraction = 0.0;
+        LayerArray t{};
+        LayerArray q{};
+        for (std::size_t k = 0; k < n; ++k) {
+            t[k] = temperature_K[k];
+            q[k] = moisture.humidity_kg_kg[k];
+        }
+        const BettsMillerResult bm = betts_miller(column, trigger, std::span<double>(t.data(), n),
+                                                  std::span<double>(q.data(), n));
+        if (bm.top >= 1) {
+            for (std::size_t k = 0; k <= static_cast<std::size_t>(bm.top); ++k) {
+                weight[k] = bm.weight[k];
+            }
+        }
+    }
+    const double critical = parameters.cloud_critical_relative_humidity;
+    const double one_minus_g = 1.0 - parameters.cloud_asymmetry;
+    double clear = 1.0;
+    for (std::size_t k = 0; k < n; ++k) {
+        const double q_l = std::max(0.0, moisture.cloud_water_kg_kg[k]);
+        const double relative =
+            (std::max(0.0, moisture.humidity_kg_kg[k]) + q_l) /
+            saturation_specific_humidity(temperature_K[k], moisture.pressure_Pa[k]);
+        double f = relative >= 1.0 ? 1.0
+                   : relative > critical
+                       ? 1.0 - std::sqrt((1.0 - relative) / (1.0 - critical))
+                       : 0.0;
+        f = std::max(f, parameters.convective_cloud_fraction * weight[k]);
+        optics.fraction[k] = f;
+        clear *= 1.0 - f;
+        if (!(f > 0.0) || !(q_l > 0.0)) {
+            continue;
+        }
+        const double path_kg_m2 = q_l * moisture.layer_mass_kg_m2 / f;
+        const double tau = 3.0 * path_kg_m2 /
+                           (2.0 * liquid_water_density_kg_m3 * parameters.cloud_effective_radius_m);
+        optics.optical_depth[k] = tau;
+        optics.reflectance[k] = f * one_minus_g * tau / (2.0 + one_minus_g * tau);
+        optics.transmission *= 1.0 - optics.reflectance[k];
+        optics.longwave_depth[k] =
+            parameters.cloud_longwave_absorption_m2_kg * q_l * moisture.layer_mass_kg_m2;
+        optics.column_optical_depth += f * tau;
+    }
+    optics.column_fraction = 1.0 - clear;
+    return optics;
+}
+
+// The column's longwave with its clouds' depth added to each layer's:
+// ε' = 1 − (1 − ε) exp(−Δτ_cloud).
+inline void add_cloud_longwave(ColumnRadiation& column, const CloudOptics& optics) noexcept {
+    for (std::size_t k = 0; k < column.layers; ++k) {
+        if (optics.longwave_depth[k] > 0.0) {
+            column.emissivity[k] =
+                -std::expm1(std::log1p(-column.emissivity[k]) - optics.longwave_depth[k]);
+        }
+    }
+}
+
 // The isobaric evaporation x (kg/kg) that brings a layer at (T, q) to
 // saturation, q + x = q_sat(T − h x), h = L / c_p (K per kg/kg); zero where
 // it is saturated. g(x) = q + x − q_sat(T − h x) increases, with g(0) < 0 and
@@ -490,12 +582,15 @@ inline BettsMillerResult betts_miller(const ColumnRadiation& column, const Colum
     return low;
 }
 
-// Cloud water to precipitation (ADR-0023 §4.3) on equal-mass layers, after
-// the column solve and convection. Each layer's condensate C_k joins its
-// cloud water; cloud water in a subsaturated layer evaporates by
-// 1 − exp(−Δt/τ_e) of it, never beyond saturation; above q_l0 the rest
-// converts to precipitation by 1 − exp(−Δt/τ_a) of the excess (Kessler).
-// Precipitation falls from the top: entering a layer it evaporates by
+// Cloud water to precipitation (ADR-0023 §4.3, §12) on equal-mass layers,
+// after the column solve and convection. Cloud water in a subsaturated
+// layer evaporates by 1 − exp(−Δt/τ_e) of it, never beyond saturation. The
+// excess x = q_l − q_l0 then follows dx/dt = c − x/τ_a while positive, with
+// the step's condensate C_k entering at the constant rate c = C_k/Δt,
+// integrated exactly: x(Δt) = c τ_a + (x₀ − c τ_a) exp(−Δt/τ_a) (from the
+// moment it reaches q_l0 if it starts below); what leaves is precipitation.
+// The cloud water so settles at q_l0 + c τ_a, and a month in one step
+// gives what the same month gives in reference steps. Precipitation falls from the top: entering a layer it evaporates by
 // ε (1 − RH) (1 − exp(−Δt/τ_e)) of itself, never beyond saturation, and then
 // gains the layer's autoconversion and convective rain V_k. Every
 // evaporation cools its layer by L/c_p per kg/kg, so the layer's moist
@@ -525,7 +620,6 @@ inline MicrophysicsResult cloud_microphysics(const ColumnRadiation& column,
     double converted = 0.0;
     for (std::size_t k = 0; k < n; ++k) {
         double& cloud = cloud_water_kg_kg[k];
-        cloud += condensate_kg_kg[k];
         if (cloud > 0.0) {
             const double x = std::min(
                 moisture.evaporation_fraction * cloud,
@@ -536,9 +630,28 @@ inline MicrophysicsResult cloud_microphysics(const ColumnRadiation& column,
             cloud -= x;
             cloud_evaporation += x;
         }
-        autoconversion[k] = moisture.autoconversion_fraction *
-                            std::max(0.0, cloud - moisture.cloud_water_threshold_kg_kg);
-        cloud -= autoconversion[k];
+        {
+            const double source = condensate_kg_kg[k];
+            const double equilibrium = source * moisture.autoconversion_time_ratio;   // c τ_a
+            const double decay = 1.0 - moisture.autoconversion_fraction;
+            const double x0 = cloud - moisture.cloud_water_threshold_kg_kg;
+            double x = 0.0;
+            if (x0 >= 0.0) {
+                x = equilibrium + (x0 - equilibrium) * decay;
+            } else if (source > -x0) {
+                const double reach = -x0 / source;   // share of the step to the threshold
+                const double ratio = moisture.autoconversion_time_ratio;
+                const double late = ratio > 0.0 ? std::exp(-(1.0 - reach) / ratio) : 0.0;
+                x = equilibrium * (1.0 - late);
+            } else {
+                // Still below the threshold at the end: nothing converts.
+                cloud += source;
+                continue;
+            }
+            const double after = moisture.cloud_water_threshold_kg_kg + x;
+            autoconversion[k] = std::max(0.0, cloud + source - after);
+            cloud = cloud + source - autoconversion[k];
+        }
         converted += autoconversion[k];
     }
     double large_scale = 0.0;   // falling, kg/kg of a layer

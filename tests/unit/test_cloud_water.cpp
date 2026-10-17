@@ -9,8 +9,10 @@
 #include <cstdint>
 #include <iostream>
 #include <random>
+#include <utility>
 
-// Cloud water to precipitation (ADR-0023 §4.3, V1, V2, V5; task M8-03):
+// Cloud water to precipitation (ADR-0023 §4.3, §12, V1, V2, V5; tasks M8-03,
+// M8-04):
 // autoconversion, the evaporation of cloud water and of falling
 // precipitation, on single columns and in the column solve.
 namespace {
@@ -41,6 +43,7 @@ struct Column {
         moisture.moist_convection_fraction = -std::expm1(-dt_s / parameters.moist_convection_time_s);
         moisture.cloud_water_threshold_kg_kg = parameters.cloud_water_threshold_kg_kg;
         moisture.autoconversion_fraction = -std::expm1(-dt_s / parameters.autoconversion_time_s);
+        moisture.autoconversion_time_ratio = parameters.autoconversion_time_s / dt_s;
         moisture.evaporation_fraction = -std::expm1(-dt_s / parameters.rain_evaporation_time_s);
         moisture.rain_evaporation_efficiency = parameters.rain_evaporation_efficiency;
         for (std::size_t k = 0; k < layers; ++k) {
@@ -112,46 +115,91 @@ int main() {
         PLANETSIM_EXPECT(test, worst < 1e-12);
     }
 
-    // 2. V5: autoconversion. A climate month brings each saturated layer's
-    // cloud water to q_l0 exactly; a reference step converts
-    // 1 − exp(−Δt/τ_a) of the excess; below q_l0 nothing rains. Saturated
-    // layers evaporate nothing, so all the converted water reaches the
-    // surface (the rain falls through saturated air).
-    for (const double dt_s : {600.0, month_s}) {
-        Column column(n, dt_s);
-        LayerArray t = profile;
-        LayerArray q{};
-        LayerArray cloud{0.2e-3, 1.0e-3, 2.0e-3, 0.5e-3, 0.0};
-        LayerArray condensate{0.0, 0.5e-3, 0.0, 0.0, 0.0};
-        for (std::size_t k = 0; k < n; ++k) q[k] = column.saturation(t[k], k);
-        const LayerArray start = cloud;
-        const auto result = planetsim::cloud_microphysics(
-            column.radiation, column.moisture, std::span<const double>(condensate.data(), n),
-            std::span<const double>(none.data(), n), std::span<double>(t.data(), n),
-            std::span<double>(q.data(), n), std::span<double>(cloud.data(), n));
-        const double q0 = column.moisture.cloud_water_threshold_kg_kg;
-        const double r = column.moisture.autoconversion_fraction;
-        double expected = 0.0;
-        for (std::size_t k = 0; k < n; ++k) {
-            const double with = start[k] + condensate[k];
-            const double excess = std::max(0.0, with - q0);
-            PLANETSIM_EXPECT_NEAR(test, cloud[k], with - r * excess, 1e-15);
-            expected += r * excess;
-            PLANETSIM_EXPECT(test, t[k] == profile[k]);
+    // 2. V5 and §12: autoconversion integrated exactly. In saturated layers
+    // (nothing evaporates) each layer's cloud water ends at
+    // q_l0 + c τ_a + (q_l − q_l0 − c τ_a) exp(−Δt/τ_a), c = C/Δt, from the
+    // moment it reaches q_l0; a climate month leaves q_l0 + C τ_a/Δt; all
+    // the converted water reaches the surface (the rain falls through
+    // saturated air). Both thresholds: §12's 0 and Kessler's 0.3 g/kg.
+    for (const double threshold : {0.0, 0.3e-3}) {
+        for (const double dt_s : {600.0, month_s}) {
+            Column column(n, dt_s);
+            column.moisture.cloud_water_threshold_kg_kg = threshold;
+            LayerArray t = profile;
+            LayerArray q{};
+            LayerArray cloud{0.2e-3, 1.0e-3, 2.0e-3, 0.5e-3, 0.0};
+            LayerArray condensate{0.0, 0.5e-3, 0.0, 0.05e-3, 1e-4};
+            for (std::size_t k = 0; k < n; ++k) q[k] = column.saturation(t[k], k);
+            const LayerArray start = cloud;
+            const auto result = planetsim::cloud_microphysics(
+                column.radiation, column.moisture, std::span<const double>(condensate.data(), n),
+                std::span<const double>(none.data(), n), std::span<double>(t.data(), n),
+                std::span<double>(q.data(), n), std::span<double>(cloud.data(), n));
+            const double tau = 3600.0;
+            double converted = 0.0;
+            for (std::size_t k = 0; k < n; ++k) {
+                const double c = condensate[k] / dt_s;
+                double x = start[k] - threshold;
+                double span = dt_s;
+                if (x < 0.0) {
+                    // Below the threshold it fills at c until it reaches it.
+                    const double fill = c > 0.0 ? -x / c : 2.0 * dt_s;
+                    span = std::max(0.0, dt_s - fill);
+                    x = span > 0.0 ? 0.0 : x + c * dt_s;
+                }
+                if (span > 0.0) x = c * tau + (x - c * tau) * std::exp(-span / tau);
+                PLANETSIM_EXPECT_NEAR(test, cloud[k], threshold + x, 1e-12 * (threshold + 1e-3));
+                converted += start[k] + condensate[k] - cloud[k];
+                PLANETSIM_EXPECT(test, t[k] == profile[k]);
+            }
+            PLANETSIM_EXPECT_NEAR(test, result.precipitation_kg_m2,
+                                  converted * column.moisture.layer_mass_kg_m2, 1e-10);
+            PLANETSIM_EXPECT(test, result.rain_evaporation_kg_m2 == 0.0 &&
+                                       result.cloud_evaporation_kg_m2 == 0.0);
+            if (dt_s == month_s) {
+                PLANETSIM_EXPECT_NEAR(test, cloud[1], threshold + condensate[1] * tau / dt_s, 1e-15);
+            }
+            std::cout << "autoconversion, q_l0 " << threshold << ", dt " << dt_s << " s: rain "
+                      << result.precipitation_kg_m2 << " kg/m2, cloud water left "
+                      << cloud[1] * 1e3 << " g/kg in layer 1\n";
         }
-        PLANETSIM_EXPECT_NEAR(test, result.precipitation_kg_m2,
-                              expected * column.moisture.layer_mass_kg_m2, 1e-12);
-        PLANETSIM_EXPECT(test, result.rain_evaporation_kg_m2 == 0.0 &&
-                                   result.cloud_evaporation_kg_m2 == 0.0);
-        if (dt_s == month_s) {
-            for (const std::size_t k : {1U, 2U, 3U}) PLANETSIM_EXPECT_NEAR(test, cloud[k], q0, 1e-18);
-            PLANETSIM_EXPECT(test, cloud[0] == start[0]);
-        }
-        std::cout << "autoconversion, dt " << dt_s << " s: rain " << result.precipitation_kg_m2
-                  << " kg/m2, cloud water left " << cloud[1] * 1e3 << " g/kg in layer 1\n";
     }
 
-    // 3. V5 and V2: cloud water in subsaturated air evaporates towards
+    // 3. §12: one physics in both modes. A constant condensation over six
+    // hours gives the same cloud water and rain in one step as in 36
+    // ten-minute steps, from a cloudy start and from a clear one, with
+    // either threshold.
+    for (const double threshold : {0.0, 0.3e-3}) {
+        for (const double initial : {0.0, 1.5e-3}) {
+            const double hours_s = 6.0 * 3600.0;
+            const double rate = 2e-4 / 3600.0;   // kg/kg per second
+            const auto run = [&](double dt_s, int steps) {
+                Column column(1U, dt_s);
+                column.moisture.cloud_water_threshold_kg_kg = threshold;
+                LayerArray t{profile[0]};
+                LayerArray q{column.saturation(profile[0], 0)};
+                LayerArray cloud{initial};
+                const LayerArray condensate{rate * dt_s};
+                double rain = 0.0;
+                for (int step = 0; step < steps; ++step) {
+                    rain += planetsim::cloud_microphysics(
+                                column.radiation, column.moisture,
+                                std::span<const double>(condensate.data(), 1U),
+                                std::span<const double>(none.data(), 1U),
+                                std::span<double>(t.data(), 1U), std::span<double>(q.data(), 1U),
+                                std::span<double>(cloud.data(), 1U))
+                                .precipitation_kg_m2;
+                }
+                return std::pair{cloud[0], rain};
+            };
+            const auto [one_cloud, one_rain] = run(hours_s, 1);
+            const auto [many_cloud, many_rain] = run(600.0, 36);
+            PLANETSIM_EXPECT_NEAR(test, one_cloud, many_cloud, 1e-12 * std::max(1e-6, one_cloud));
+            PLANETSIM_EXPECT_NEAR(test, one_rain, many_rain, 1e-10 * std::max(1e-6, one_rain));
+        }
+    }
+
+    // 4. V5 and V2: cloud water in subsaturated air evaporates towards
     // saturation and never beyond. A month with plenty of cloud water ends
     // the layer exactly saturated; with little it all evaporates; a
     // reference step evaporates 1 − exp(−Δt/τ_e) of it unless saturation
@@ -200,7 +248,7 @@ int main() {
         }
     }
 
-    // 4. V5, V1 and V2: falling precipitation re-evaporates by
+    // 5. V5, V1 and V2: falling precipitation re-evaporates by
     // ε (1 − RH) (1 − exp(−Δt/τ_e)) in each layer below its source and never
     // supersaturates one, over random columns; the water and the moist
     // enthalpy are kept, and the convective part evaporates in proportion.
@@ -260,7 +308,7 @@ int main() {
         PLANETSIM_EXPECT(test, evaporated > 0.0 && evaporated < formed);
     }
 
-    // 5. The rule in one layer: rain P falling into a dry-enough layer loses
+    // 6. The rule in one layer: rain P falling into a dry-enough layer loses
     // ε (1 − RH) r P exactly, and none in the layer where it forms.
     {
         Column column(2U, 600.0);
@@ -280,11 +328,11 @@ int main() {
                               formed - result.rain_evaporation_kg_m2, 1e-15);
     }
 
-    // 6. V1 in the column solve: from a cloudy start, at a reference step
+    // 7. V1 in the column solve: from a cloudy start, at a reference step
     // and over a climate month, with evaporation: vapour + cloud water +
     // precipitation close to round-off, no layer ends supersaturated, the
-    // net latent heat is L (P + Δ cloud water), and a month leaves the
-    // condensing layers at q_l0.
+    // net latent heat is L (P + Δ cloud water), and a month leaves each
+    // condensing layer at q_l0 + C τ_a / Δt.
     for (const double dt_s : {600.0, month_s}) {
         Column column(n, dt_s);
         LayerArray before{300.0, 284.0, 266.0, 243.0, 196.0};
@@ -317,12 +365,10 @@ int main() {
                               1e-9 * std::max(1.0, std::abs(result.condensation_W_m2)));
         if (dt_s == month_s) {
             for (std::size_t k = 0; k < n; ++k) {
-                PLANETSIM_EXPECT(test, result.cloud_water_kg_kg[k] <=
-                                           column.moisture.cloud_water_threshold_kg_kg * (1.0 + 1e-12));
-                if (result.condensate_kg_kg[k] > 0.0) {
-                    PLANETSIM_EXPECT_NEAR(test, result.cloud_water_kg_kg[k],
-                                          column.moisture.cloud_water_threshold_kg_kg, 1e-15);
-                }
+                PLANETSIM_EXPECT_NEAR(test, result.cloud_water_kg_kg[k],
+                                      column.moisture.cloud_water_threshold_kg_kg +
+                                          result.condensate_kg_kg[k] * 3600.0 / dt_s,
+                                      1e-15);
             }
         }
         std::cout << "column solve, dt " << dt_s << " s: P " << result.precipitation_kg_m2_s * 86'400.0

@@ -118,6 +118,10 @@ of 154.8 m/s, over the sub-step rule's bound of 150 m/s.
 
 ## Open
 
+- **Superseded at M8-04:** ADR-0023 §12 (proposed 2026-10-17) integrates
+  the autoconversion exactly with q_l0 = 0, after cloud radiation took the
+  climate to collapse with this task's cloud water (task M8-04). The
+  figures above are this task's.
 - **The cloud water's amount (M8-04, M8-05):**
   - a month leaves every condensing layer at q_l0, which is 13 times the
     cloud water the reference run keeps (2 589 against 204 g/m²), and

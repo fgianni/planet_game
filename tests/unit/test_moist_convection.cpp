@@ -239,6 +239,7 @@ int main() {
             Column column(5U);
             column.moisture.moist_convection_fraction = -std::expm1(-dt_s / 7200.0);
             column.moisture.autoconversion_fraction = -std::expm1(-dt_s / 3600.0);
+            column.moisture.autoconversion_time_ratio = 3600.0 / dt_s;
             column.moisture.evaporation_fraction = -std::expm1(-dt_s / 3600.0);
             LayerArray before = buoyant_t;
             for (std::size_t k = 0; k < 5U; ++k)

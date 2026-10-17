@@ -44,16 +44,30 @@ struct AtmosphereParameters {
     bool moist_convection = false;
     double moist_convection_time_s = 2.0 * 3600.0;     // τ_bm (Betts and Miller, 1986)
     double moist_convection_relative_humidity = 0.8;   // RH_bm
-    // Cloud water and precipitation (ADR-0023 §4.3), with moist convection:
-    // condensate becomes cloud water; above q_l0 it converts to
-    // precipitation over τ_a (Kessler 1969); precipitation evaporates into
-    // the layers it falls through at ε (1 − RH) over τ_e, and cloud water
-    // in a subsaturated layer over τ_e, never beyond saturation.
-    // Calibration constants (§4.6).
-    double cloud_water_threshold_kg_kg = 0.3e-3;   // q_l0
+    // Cloud water and precipitation (ADR-0023 §4.3, §12), with moist
+    // convection: condensate becomes cloud water, whose excess over q_l0
+    // converts to precipitation over τ_a, integrated exactly with the
+    // step's condensation as a constant source; precipitation evaporates
+    // into the layers it falls through at ε (1 − RH) over τ_e, and cloud
+    // water in a subsaturated layer over τ_e, never beyond saturation.
+    // q_l0 is 0 (§12: Kessler's 0.3 g/kg, a threshold for resolved clouds,
+    // held 1 kg/m² in every cloudy L3 layer); the cloud water then settles
+    // at the condensation rate times τ_a. Calibration constants (§4.6).
+    double cloud_water_threshold_kg_kg = 0.0;      // q_l0
     double autoconversion_time_s = 3600.0;         // τ_a
     double rain_evaporation_efficiency = 0.5;      // ε
     double rain_evaporation_time_s = 3600.0;       // τ_e
+    // Cloud radiation (ADR-0023 §4.4), with moist convection: the fraction
+    // from relative humidity above RH_c counting cloud water (Sundqvist et
+    // al. 1989), at least f_conv where convection triggers; the in-cloud
+    // optical depth 3 LWP / (2 ρ_w r_e) (Stephens 1978); shortwave
+    // reflection by the non-absorbing two-stream limit with asymmetry g;
+    // longwave absorption κ_l per kilogram of cloud water.
+    double cloud_critical_relative_humidity = 0.8;    // RH_c (calibration)
+    double convective_cloud_fraction = 0.2;           // f_conv
+    double cloud_effective_radius_m = 10e-6;          // r_e (calibration)
+    double cloud_asymmetry = 0.85;                    // g
+    double cloud_longwave_absorption_m2_kg = 130.0;   // κ_l = 0.13 m²/g
 };
 
 inline constexpr std::uint32_t max_atmosphere_layer_count = 8U;

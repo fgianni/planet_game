@@ -99,6 +99,12 @@ struct ForcingState {
     field_container_t<FieldId::precipitation_kg_m2_s> precipitation_kg_m2_s;
     // Its convective part (ADR-0023 §4.7), kg/m²/s of cell.
     field_container_t<FieldId::convective_precipitation_kg_m2_s> convective_precipitation_kg_m2_s;
+    // The clouds as the step's radiation saw them (ADR-0023 §4.4, §4.7):
+    // each layer's fraction (sized by the first step with clouds) and the
+    // cloud radiative effects at the top, W/m² of cell.
+    field_container_t<FieldId::cloud_fraction> cloud_fraction;
+    field_container_t<FieldId::cloud_shortwave_effect_W_m2> cloud_shortwave_effect_W_m2;
+    field_container_t<FieldId::cloud_longwave_effect_W_m2> cloud_longwave_effect_W_m2;
 };
 
 class PlanetState {
