@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-15
 - **Accepted:** 2026-10-16
-- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17); 2026-10-17 — §4.3.2: autoconversion integrated exactly with the step's condensation, no threshold; §4.4.1: the convective floor from the start-of-step trigger (§12, tasks M8-03, M8-04; accepted 2026-10-17)
+- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17); 2026-10-17 — §4.3.2: autoconversion integrated exactly with the step's condensation, no threshold; §4.4.1: the convective floor from the start-of-step trigger (§12, tasks M8-03, M8-04; accepted 2026-10-17); proposed 2026-10-17 — §4.4.1: the cloud fraction from the cloud water at a fixed in-cloud path, the same in both modes (§13, task M8-05)
 - **Milestone:** P0 / M8 (clouds and precipitation)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24, §31.2 (the cloud channels); Planetary Civilization Simulator — Design Record v1.4, §5, §15
 - **Related:** ADR-0001 (V1 water budget, V2 climate–reference parity), ADR-0003 (PSNAP migration), ADR-0006 (sub-steps), ADR-0008 (snow, rain and snow at the surface), ADR-0010 (layered atmosphere, grey longwave, Γ_c adjustment, §3.3 C deferring Betts–Miller to M8), ADR-0011 (winds, ascent), ADR-0018 (presentation channels `cloud_cover`, `cloud_thickness`), ADR-0021 (vapour, evaporation, saturation rainout; §13.7 V9 deferred to M8)
@@ -428,3 +428,102 @@ That keeps the floor a function of the state, which replay needs.
 M8-05 refits RH_c, r_e, κ_l and τ_a against §4.6's targets and examines
 the drift.
 
+
+## 13. Amendment: cloud fraction from the cloud water (proposed 2026-10-17, task M8-05)
+
+**13.1 What §4.4 gives.** Both modes hold about the same cloud water
+(§12.2: the condensation rate times τ_a), but reference mode's clouds
+reflect about three times as much per gram. L3, three years of each mode
+from the initial state, §12's physics:
+
+| | Climate | Reference |
+|---|---|---|
+| Cloud water (g/m²) | 130–155 | 95–190 |
+| Cover | 0.6–0.87 | 0.79–0.95 |
+| Shortwave cloud effect (W/m²) | about −40 | about −120 |
+| Absorbed sunlight (W/m²) | about 240 | about 164 |
+| Surface after three years (K) | 292.5 | 280.2, still cooling |
+
+That is reference mode's dry drift (task M8-04): its rain falls with its
+temperature.
+- **Reference mode** keeps 97 % of its cloud water in overcast layers,
+  spread thin, a third of it in the upper layers where resolved ascent
+  saturates them. Per layer it reflects 0.26, 0.08 and 0.17.
+- **Climate mode** keeps 95 % of its cloud water in the bottom layer, at a
+  fraction near 0.2. A month's solve condenses there, then Betts–Miller
+  dries the layer to RH 0.8, so the Sundqvist fraction is the convective
+  floor and the cloud is thick. Monthly-mean states seldom saturate the
+  upper layers. Per layer it reflects 0.13, 0.005 and 0.01.
+- **Ruled out:** clouds do not follow the diurnal cycle (the
+  insolation-weighted reflection equals the plain mean). Evaporating the
+  step's new condensate in the dried layer empties climate mode's clouds
+  instead (6–9 g/m², −8 W/m²).
+
+The cause is the fraction. Sundqvist's f(RH) is nonlinear, and a month's
+mean humidity is not the mean of ten-minute humidities. The reflection,
+f (1 − g) τ / (2 + (1 − g) τ) with τ ∝ q_l m / f, depends on how the
+water is spread, and the modes spread it differently. No shared constant
+removes a factor of three.
+
+**13.2 Tried: diagnostic radiation from humidity.** The option chosen with
+the user, radiation independent of the cloud water: the Sundqvist fraction
+from the vapour alone, the convective floor kept, a fixed in-cloud water
+path W_c = 0.1 kg/m². The modes diverge further, because the fraction is
+the nonlinear part:
+
+| Month | Climate cover | Climate SW (W/m²) | Reference cover | Reference SW (W/m²) |
+|---|---|---|---|---|
+| 0 | 0.69 | −125 | 0.82 | −160 |
+| 6 | 0.66 | −125 | 0.94 | −184 |
+| 10 (ref) / 12 (clim) | 0.69 | −128 | 0.97 | −207 |
+
+**13.3 Decision: the fraction from the cloud water at a fixed in-cloud path
+(amends §4.4.1, §4.6; supersedes §12.3).**
+- Each layer is cloudy over f_k = min(1, q_l,k m_k / W_c), with W_c the
+  in-cloud water path of a layer's cloud. A layer's cloud is a few hundred
+  metres to a kilometre or two thick whatever the layer's depth, so the
+  path, not the content, is held.
+- The in-cloud path is q_l m / f_k, which is W_c below overcast and grows
+  above it. §4.4.2–§4.4.4's optics are unchanged: τ_k, R_k, random
+  overlap, the longwave depth κ_l q_l m.
+- **Below overcast each layer's reflection and longwave depth are
+  proportional to its cloud water.** The mean of a linear function is the
+  function of the mean, so a month of mean cloud water radiates as
+  reference steps averaging to it do, wherever in the layer the steps put
+  it. Random overlap is linear to first order in the R_k.
+- The Sundqvist fraction, RH_c and f_conv leave the radiation. §12.3's
+  start-of-step trigger is no longer needed: the fraction is a function of
+  the state.
+- The presentation's `cloud_cover` and `cloud_thickness` (§4.8) read the
+  same fractions and optical depths.
+- **Calibration** (§4.6): the constants are τ_d, κ_v, W_c, r_e and τ_a.
+  q_l0 stays 0 (§12).
+- **Parameters:** `cloud_in_cloud_water_path_kg_m2` (W_c) replaces
+  `cloud_critical_relative_humidity` and `convective_cloud_fraction`.
+
+**13.4 Results of the prototype** (L3, W_c = 0.1 kg/m², the other constants
+§12's, from the initial state):
+
+| | Climate, month 6 | Climate, month 12 | Reference, month 6 | Reference, month 12 |
+|---|---|---|---|---|
+| Cloud water (g/m²) | 156 | 153 | 130 | 118 |
+| Cover | 0.88 | 0.84 | 0.61 | 0.59 |
+| Shortwave effect (W/m²) | −171 | −175 | −117 | −120 |
+| Per gram (W/g) | −1.10 | −1.14 | −0.90 | −1.01 |
+| Longwave effect (W/m²) | +84 | +53 | +55 | +58 |
+
+- The shortwave effect per gram of cloud water agrees within 10–20 %,
+  against a factor of three under §4.4.
+- W_c = 0.1 kg/m² makes the clouds far too bright in both modes, so both
+  cool. That is the refit's job (§4.6, V9), now one fit for both modes.
+- The covers differ (0.6 against 0.85): climate mode spreads its cloud
+  water over more cells. Cover is not a radiative quantity under §13.3,
+  but V9 reports it.
+
+**13.5 Validation** (amends V6):
+- reflection and longwave depth are proportional to a layer's cloud water
+  below overcast, and the mean of two cloudy states' reflection equals the
+  reflection of their mean (to round-off, below overcast);
+- a layer without cloud water is clear;
+- V8 and V9 as written, after the refit (task M8-05). V8 still needs a
+  reference start the dynamics can take (task M8-03).
