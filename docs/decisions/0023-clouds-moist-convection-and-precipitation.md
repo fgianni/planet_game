@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-15
 - **Accepted:** 2026-10-16
-- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17); 2026-10-17 — §4.3.2: autoconversion integrated exactly with the step's condensation, no threshold; §4.4.1: the convective floor from the start-of-step trigger (§12, tasks M8-03, M8-04; accepted 2026-10-17); 2026-10-17 — §4.4.1: the cloud fraction from the cloud water at a fixed in-cloud path, the same in both modes (§13, task M8-05; accepted 2026-10-17); 2026-10-18 — §4.2.4, §4.3.2: convective condensate through the cloud water (§14, task M8-05; accepted 2026-10-18); proposed 2026-10-18 — §5 V8: each mode's own spin-up (§15, task M8-05)
+- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17); 2026-10-17 — §4.3.2: autoconversion integrated exactly with the step's condensation, no threshold; §4.4.1: the convective floor from the start-of-step trigger (§12, tasks M8-03, M8-04; accepted 2026-10-17); 2026-10-17 — §4.4.1: the cloud fraction from the cloud water at a fixed in-cloud path, the same in both modes (§13, task M8-05; accepted 2026-10-17); 2026-10-18 — §4.2.4, §4.3.2: convective condensate through the cloud water (§14, task M8-05; accepted 2026-10-18); 2026-10-18 — §5 V8: each mode's own spin-up (§15, task M8-05; accepted 2026-10-18)
 - **Milestone:** P0 / M8 (clouds and precipitation)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24, §31.2 (the cloud channels); Planetary Civilization Simulator — Design Record v1.4, §5, §15
 - **Related:** ADR-0001 (V1 water budget, V2 climate–reference parity), ADR-0003 (PSNAP migration), ADR-0006 (sub-steps), ADR-0008 (snow, rain and snow at the surface), ADR-0010 (layered atmosphere, grey longwave, Γ_c adjustment, §3.3 C deferring Betts–Miller to M8), ADR-0011 (winds, ascent), ADR-0018 (presentation channels `cloud_cover`, `cloud_thickness`), ADR-0021 (vapour, evaporation, saturation rainout; §13.7 V9 deferred to M8)
@@ -228,7 +228,7 @@ position (ADR-0022 §4.9). PSNAP is unchanged by the presentation part.
 | V5 | Autoconversion reaches q_l0 in a month (read as §12: q_l0 + C τ_a/Δt, and one step of a span gives what reference steps over it give); re-evaporation never supersaturates a layer | unit tests |
 | V6 | Clouds (read as §13.5): reflection rises with water path and fraction; the shortwave cloud effect is negative and the longwave positive | unit and run tests |
 | V7 | Reference mode stays stable without τ_c: winds below 100 m/s and latent heating below 300 W/m² over a 10-year run (read as §11.3) | regression |
-| V8 | ADR-0021 V9 (ADR-0001 V2): climate and reference mode within 0.3 K and ±10 % precipitation (L3, 10-year spin-up, a year each) | gate |
+| V8 | ADR-0021 V9 (ADR-0001 V2): climate and reference mode within 0.3 K and ±10 % precipitation (L3, 10-year spin-up, a year each; read as §15: each mode's own spin-up) | gate |
 | V9 | 288 K after the refit; cloud fraction 0.5–0.7; cloud radiative effects within 30 % of §4.6's targets; the equator-to-pole difference reported against 42 K; each cell's climatological latent heating reported against 300 W/m² (§11.3) | calibration gate |
 | V10 | PSNAP 6 → 7 migration and golden saves; presentation schema 6 round trip | regression |
 | V11 | The performance gates hold (ADR-0021 §13.6): 250 years at L5 and L6 within 1.5 times M7's times | performance |
@@ -589,7 +589,7 @@ the time step.
   what reference steps over it give;
 - V4 as before for the relaxation itself.
 
-## 15. Amendment: V8 from each mode's own spin-up (proposed 2026-10-18, task M8-05)
+## 15. Amendment: V8 from each mode's own spin-up (proposed and accepted 2026-10-18, task M8-05)
 
 **15.1 Why V8 cannot start reference mode from the climate state.** V8 as
 written (ADR-0021 V9's reading, `planet_cli parity`) starts reference
