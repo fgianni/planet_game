@@ -1,8 +1,8 @@
 # Task M8-05 — Refit and gates
 
 - **Milestone:** P0 / M8 (fifth task)
-- **Status:** in progress (started 2026-10-17)
-- **Governing decisions:** ADR-0023 §4.4, §4.6, §13, V6, V8, V9, V11
+- **Status:** complete (2026-10-18; started 2026-10-17)
+- **Governing decisions:** ADR-0023 §4.4, §4.6, §13, V6, V8, V9, V11; ADR-0024
 
 ## Done
 
@@ -326,13 +326,43 @@ off their heat.
     4 iterations (consistency 3e-7 and 3e-5 W/m²), closure ratio 3e-6 and
     6e-6.
 
-## Remaining
+## ADR-0024 V5: V9 and V8 on the final preset
 
-- **V9** on the fitted preset: the cover and cloud effects at L4, the
-  zonal cover, each cell's climatological latent heating against
-  300 W/m².
-- **ADR-0024 V5:** with V4 passed, whether moist convection goes back on
-  in the preset is the user's decision. Then the refit of τ_d and κ_v
-  with T_m driving the eddies (288 K at L4), V9's reports, and V8
-  measured again (`planet_cli parity --subdivision 3 --spin-up-years 10
-  --days 365 --moist-convection 1`).
+- **V9** (L4, seed 1, climate mode, the year after a 150-year spin-up; a
+  probe over `PlanetRun`, not committed):
+
+  | | Result | Target (ADR-0023 §4.6, V9) |
+  |---|---|---|
+  | Surface (K) | 288.01 | 288 |
+  | Cloud cover | 0.570 | 0.5–0.7 |
+  | Shortwave cloud effect (W/m²) | −45.3 | −47 ± 30 % |
+  | Longwave cloud effect (W/m²) | +20.3 | +26 ± 30 % |
+  | P2 equator-to-pole (K) | 48.1 | 42, reported |
+  | Largest climatological latent heating (W/m²) | 212 (6.8° S) | 300, reported: no cell over |
+
+  **V9 passes.** Precipitation 1.52 m/yr, 5.6 % convective. Zonal cover
+  from the South Pole in 10° bands: 0.07 0.10 0.20 0.37 0.49 0.56 0.62
+  0.67 0.79 0.77 0.77 0.73 0.66 0.58 0.33 0.14 0.09 0.11; zonal
+  precipitation (mm/day): 0.5 0.7 1.4 2.7 3.6 4.0 4.5 4.9 5.8 5.7 5.6 5.3
+  4.8 4.2 2.4 1.0 0.7 0.8.
+- **V8 again** (`planet_cli parity --subdivision 3 --spin-up-years 10
+  --days 365`, the preset now moist):
+
+  | | Climate | Reference |
+  |---|---|---|
+  | Surface (K) | 289.07 | 295.54 |
+  | Precipitation (m/yr) | 1.554 | 1.544 |
+  | Convective share | 0.06 | 0.38 |
+  | Cloud water (g/m²) | 29.0 | 30.9 |
+
+  **Precipitation passes** (ratio 0.994). **Temperature fails: +6.47 K**
+  (before ADR-0024 +6.62 K), recorded failing as decided with the user
+  (ADR-0023 §15.4); ADR-0024 leaves the modes' gap where it was.
+
+## Outcome
+
+M8-05 is complete: the refit (288 K at L4), V9 passing, V11 passing at L5
+and L6 (with ADR-0024), V8's precipitation passing and its temperature
+recorded failing (+6.47 K) and carried forward. The first two climate
+months of a cold start at L6 still end their Newton unconverged (above),
+conservatively.
