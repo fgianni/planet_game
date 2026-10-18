@@ -87,17 +87,32 @@ inline constexpr double gravitational_constant_m3_kg_s2 = 6.67430e-11;
 inline constexpr double earth_like_longwave_optical_depth = 1.442;
 
 // The vapour path's constants (ADR-0021 §4.6, §4.8, §12): calibration
-// constants. Refit (2026-10-18, task M8-05; ADR-0023 §4.6) with moist
-// convection, cloud water and cloud radiation on (τ_a = 600 s, W_c =
-// 0.05 kg/m², r_e = 18 µm), the coupled circulation, L4, seed 1, three
-// layers, 150 years (`planet_cli thermal --subdivision 4 --years 150
-// --layers 3 --coupled --water --dry-depth 1.19576 --vapour-absorption
-// 0.0059788 --calibrate 288`): M7's split, scaled together by bisection to
+// constants. Fit (2026-10-09, task M7-07): with the water cycle, the coupled
+// circulation, L4, seed 1, three layers, 150 years
+// (`planet_cli thermal --subdivision 4 --years 150 --layers 3 --coupled
+// --water --dry-depth 1.1536 --vapour-absorption 0.005768 --calibrate 288`):
+// the split 0.8 / 0.2 of τ₀ (κ_v's at 50 kg/m²; decided with the user) scaled
+// together by bisection to 287.98 K (scale 0.8859). The P2 equator-to-pole
+// difference is 53.3 K and the peak poleward transport 3.60 PW: the 42 K
+// target waits for M8's clouds and M11's ocean (even inert vapour gives
+// about 46 K).
+inline constexpr double earth_like_dry_optical_depth = 1.0220175;
+inline constexpr double earth_like_vapour_absorption_m2_kg = 0.0051100875;
+
+// With moist convection (ADR-0023; the run applies them when it turns moist
+// convection on for the earth_like preset). Refit (2026-10-18, task M8-05;
+// ADR-0023 §4.6) with moist convection, cloud water and cloud radiation on
+// (τ_a = 600 s, W_c = 0.05 kg/m², r_e = 18 µm), the coupled circulation,
+// L4, seed 1, three layers, 150 years (`planet_cli thermal --subdivision 4
+// --years 150 --layers 3 --coupled --water --dry-depth 1.19576
+// --vapour-absorption 0.0059788 --calibrate 288`, with moist convection on
+// in the preset at the time): M7's split, scaled together by bisection to
 // 287.98 K (scale 1.0277 of the given pair). The P2 equator-to-pole
-// difference is 45.1 K and the peak poleward transport 2.75 PW. M7's fit
-// (task M7-07) was 1.0220175 and 0.0051100875, with P2 53.3 K.
-inline constexpr double earth_like_dry_optical_depth = 1.2289237;
-inline constexpr double earth_like_vapour_absorption_m2_kg = 0.0061446183;
+// difference is 45.1 K and the peak poleward transport 2.75 PW. Moist
+// convection stays off in the preset until the coupled transport takes it
+// at L6 (task M8-05).
+inline constexpr double earth_like_moist_dry_optical_depth = 1.2289237;
+inline constexpr double earth_like_moist_vapour_absorption_m2_kg = 0.0061446183;
 
 // dead_rock and aqua_planet: no atmosphere (experiments A and B,
 // specification §13.1). earth_like: three layers (design record §15.1) of

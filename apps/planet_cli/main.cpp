@@ -139,6 +139,9 @@ struct ThermalOptions {
     std::optional<bool> water;
     std::optional<double> dry_depth;
     std::optional<double> vapour_absorption;
+    // ADR-0023: moist convection, clouds and their radiation; on, the
+    // vapour path starts from its moist fit (task M8-05).
+    std::optional<bool> moist_convection;
     std::size_t worker_count = 0;        // 0: hardware concurrency
 };
 
@@ -185,7 +188,7 @@ void print_usage(std::ostream& output) {
               " [--calibrate KELVIN] [--coupled [--eddy-generation C_E]]"
               " [--transport D | --calibrate-gradient KELVIN | --calibrate-transport PW]"
               " [--precipitation KG_M2_S] [--water | --dry]"
-              " [--dry-depth TAU_D] [--vapour-absorption KAPPA_V]"
+              " [--dry-depth TAU_D] [--vapour-absorption KAPPA_V] [--moist-convection 0|1]"
               " [--workers W]\n"
            << "  planet_cli run [--subdivision LEVEL] [--seed N] [--preset NAME] [--years N]"
               " [--spin-up-years N] [--initial-mode climate|reference]"
@@ -433,6 +436,11 @@ void print_usage(std::ostream& output) {
             options.dry_depth = parse_double(value, "dry optical depth");
         } else if (argument == "--vapour-absorption") {
             options.vapour_absorption = parse_double(value, "vapour absorption");
+        } else if (argument == "--moist-convection") {
+            if (value != "0" && value != "1") {
+                throw std::invalid_argument("--moist-convection takes 0 or 1");
+            }
+            options.moist_convection = value == "1";
         } else if (argument == "--preset") {
             const auto preset = planetsim::parse_planet_preset(value);
             if (!preset) {
@@ -2662,6 +2670,14 @@ int run_thermal(const ThermalOptions& options) {
     }
     if (options.water) {
         surface.water_cycle = *options.water;
+    }
+    if (options.moist_convection) {
+        surface.atmosphere.moist_convection = *options.moist_convection;
+        if (*options.moist_convection && options.preset == planetsim::PlanetPreset::earth_like) {
+            surface.atmosphere.dry_optical_depth = planetsim::earth_like_moist_dry_optical_depth;
+            surface.atmosphere.vapour_absorption_m2_kg =
+                planetsim::earth_like_moist_vapour_absorption_m2_kg;
+        }
     }
     if (options.dry_depth) {
         surface.atmosphere.dry_optical_depth = *options.dry_depth;

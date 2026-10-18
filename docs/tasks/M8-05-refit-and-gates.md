@@ -140,11 +140,15 @@ so it waits for the user.
   ~0.6, −47 and +26). r_e = 18 µm is large for liquid cloud; it also
   stands for the absorption the non-absorbing two-stream limit leaves out.
 - **Moist convection on in the earth_like preset** (decided with the user,
-  as M7-07 did for the water cycle). Manifests written before M8 still
-  read as off.
-- **τ_d and κ_v** (`earth_like_dry_optical_depth`,
-  `earth_like_vapour_absorption_m2_kg`), refitted with the preset's
-  physics: `planet_cli thermal --subdivision 4 --years 150 --layers 3
+  as M7-07 did for the water cycle; `d3ac031`), **then off again**
+  (decided with the user, 2026-10-18) until the coupled transport takes
+  moist columns at L6 (V11 below). The refitted τ_d and κ_v are kept as
+  `earth_like_moist_dry_optical_depth` and
+  `earth_like_moist_vapour_absorption_m2_kg`: a run that turns moist
+  convection on for the earth_like preset applies them
+  (`scenario_surface_parameters`), as does `planet_cli thermal
+  --moist-convection 1`. Off, the preset is M7's, with M7's fit.
+- **τ_d and κ_v**, refitted with moist convection on: `planet_cli thermal --subdivision 4 --years 150 --layers 3
   --coupled --water --dry-depth 1.19576 --vapour-absorption 0.0059788
   --calibrate 288` (seed 1, 16 min): scale 1.0277, so **τ_d = 1.2289237,
   κ_v = 0.0061446183 m²/kg** (M7: 1.0220175, 0.0051100875).
@@ -263,4 +267,6 @@ so it waits for the user.
   zonal cover, each cell's climatological latent heating against
   300 W/m².
 - **V11 at L6:** the coupled transport with moist columns whose θ_c falls
-  as h rises (above). Decided with the user.
+  as h rises (above), investigated next with moist convection off in the
+  preset (decided with the user). V8 is reproduced with `planet_cli parity
+  --subdivision 3 --spin-up-years 10 --days 365 --moist-convection 1`.
