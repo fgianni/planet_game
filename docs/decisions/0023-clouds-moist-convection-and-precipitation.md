@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-15
 - **Accepted:** 2026-10-16
-- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17); 2026-10-17 — §4.3.2: autoconversion integrated exactly with the step's condensation, no threshold; §4.4.1: the convective floor from the start-of-step trigger (§12, tasks M8-03, M8-04; accepted 2026-10-17); 2026-10-17 — §4.4.1: the cloud fraction from the cloud water at a fixed in-cloud path, the same in both modes (§13, task M8-05; accepted 2026-10-17)
+- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17); 2026-10-17 — §4.3.2: autoconversion integrated exactly with the step's condensation, no threshold; §4.4.1: the convective floor from the start-of-step trigger (§12, tasks M8-03, M8-04; accepted 2026-10-17); 2026-10-17 — §4.4.1: the cloud fraction from the cloud water at a fixed in-cloud path, the same in both modes (§13, task M8-05; accepted 2026-10-17); proposed 2026-10-18 — §4.2.4, §4.3.2: convective condensate through the cloud water (§14, task M8-05)
 - **Milestone:** P0 / M8 (clouds and precipitation)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24, §31.2 (the cloud channels); Planetary Civilization Simulator — Design Record v1.4, §5, §15
 - **Related:** ADR-0001 (V1 water budget, V2 climate–reference parity), ADR-0003 (PSNAP migration), ADR-0006 (sub-steps), ADR-0008 (snow, rain and snow at the surface), ADR-0010 (layered atmosphere, grey longwave, Γ_c adjustment, §3.3 C deferring Betts–Miller to M8), ADR-0011 (winds, ascent), ADR-0018 (presentation channels `cloud_cover`, `cloud_thickness`), ADR-0021 (vapour, evaporation, saturation rainout; §13.7 V9 deferred to M8)
@@ -527,3 +527,64 @@ the nonlinear part:
 - a layer without cloud water is clear;
 - V8 and V9 as written, after the refit (task M8-05). V8 still needs a
   reference start the dynamics can take (task M8-03).
+
+## 14. Amendment: convective condensate through the cloud water (proposed 2026-10-18, task M8-05)
+
+**14.1 What §4.2.4 gives.** Betts–Miller's drying is convective
+precipitation at once. It never becomes cloud water, so only the
+large-scale condensate feeds the clouds §13 radiates. The modes split
+their rain differently: climate mode rains 10 % convectively, reference
+mode 42 %. With the refit's candidate constants (τ_a = 600 s, W_c =
+0.04 kg/m², r_e = 18 µm, τ_d and κ_v scaled by 1.15; task M8-05), L3,
+the first year from the initial state:
+
+| | Climate | Reference |
+|---|---|---|
+| Large-scale rain (m/yr) | 1.80 | 1.19 |
+| Cloud water (g/m²) | 34 | 22 |
+| Cover | 0.66 | 0.41 |
+| Shortwave effect (W/m²) | −50 | −30 |
+| Shortwave effect per gram (W/g) | −1.46 | −1.35 |
+
+The effect per gram agrees (§13); the cloud water does not, in the ratio
+of the large-scale rain. Every column's precipitation balances its
+evaporation in both modes, but how much of it is convective depends on
+the time step.
+
+**14.2 Decision (amends §4.2.4 and §4.3.2; decided with the user).**
+- A layer's Betts–Miller drying is condensate like the large-scale kind:
+  it joins the layer's source c = C/Δt in §12.2's exact autoconversion,
+  and leaves as precipitation through it. Convective clouds detrain their
+  condensate, which then rains out over τ_a.
+- The latent heat is unchanged: the relaxation already applied it, and
+  the net latent heat stays L (P + Δ cloud water) (§4.3, task M8-03).
+- **Convective precipitation** (§4.7) is the convective share of each
+  layer's source applied to its autoconversion. Falling and
+  re-evaporation treat both kinds alike, as before.
+- The cloud water then settles at the total condensation rate times τ_a,
+  which a column's water balance fixes in either mode.
+
+**14.3 Prototype** (the candidate constants, L3, first year):
+
+| | Climate | Reference |
+|---|---|---|
+| Cloud water (g/m²) | 38 | 42 |
+| Cover | 0.69 | 0.56 |
+| Shortwave effect (W/m²) | −54.6 | −54.2 |
+| Longwave effect (W/m²) | +26 | +40 |
+| Surface (K) | 303.1 | 304.3 |
+
+- The shortwave effects agree to 1 %.
+- **The longwave effect still differs.** Reference mode's clouds sit
+  higher: resolved ascent saturates the upper layers, which monthly-mean
+  states seldom do. This is the remaining known difference in the cloud
+  radiation between the modes. V8 measures what it does to the
+  temperature and precipitation.
+
+**14.4 Validation:**
+- V1 and V2 as before: water and each layer's moist enthalpy close with
+  convective condensate held as cloud water;
+- V5: a climate month with steady convection leaves each convecting layer
+  at its total condensation rate times τ_a, and one step over a span gives
+  what reference steps over it give;
+- V4 as before for the relaxation itself.
