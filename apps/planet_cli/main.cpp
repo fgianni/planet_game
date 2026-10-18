@@ -1666,18 +1666,29 @@ int run_parity(const ReferenceOptions& options) {
         planetsim::Scenario scenario;
         scenario.seed = options.seed;
         scenario.subdivision = options.subdivision;
-        scenario.spin_up_years = options.spin_up_years;
+        // ADR-0023 §15: each mode spins up in its own physics from the
+        // initial state, climate mode before tick 0 (ADR-0006 §4.2) and
+        // reference mode in its own steps, then measures.
+        const bool reference = mode == planetsim::SimulationMode::reference;
+        scenario.spin_up_years = reference ? 0 : options.spin_up_years;
         scenario.initial_mode = mode;
         scenario.atmosphere_layers = options.layers;
         scenario.moist_convection = options.moist_convection;
         planetsim::PlanetRun run(scenario, workers);
+        if (reference) {
+            const auto spun = static_cast<planetsim::SimulationTick>(
+                std::llround(options.spin_up_years * 365.25 * 1'440.0));
+            while (run.tick() < spun) {
+                run.run_until(std::min<planetsim::SimulationTick>(run.tick() + 10, spun));
+            }
+        }
         Record record;
         const auto start = std::chrono::steady_clock::now();
         const planetsim::SimulationTick end =
-            static_cast<planetsim::SimulationTick>(std::llround(options.days * 1'440.0));
+            run.tick() + static_cast<planetsim::SimulationTick>(std::llround(options.days * 1'440.0));
         while (run.tick() < end) {
             const planetsim::SimulationTick before = run.tick();
-            run.run_until(mode == planetsim::SimulationMode::reference
+            run.run_until(reference
                               ? std::min<planetsim::SimulationTick>(before + 10, end)
                               : planetsim::climate_substep_containing(before, run.parameters())
                                     .end_tick);

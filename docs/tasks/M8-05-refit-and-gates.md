@@ -173,12 +173,42 @@ so it waits for the user.
     checks write out (τ_a = 1 h; r_e = 10 µm, W_c = 0.1 kg/m²).
 - All 97 tests pass; the CI checks pass.
 
+## V8 (ADR-0023 §15, accepted 2026-10-18)
+
+- **The reference start:** the ten-year climate state holds single land
+  cells 70–85 K colder than their ocean neighbours (L3, January: cell 423
+  at 38° N, 84° W, surface 226 K, layers 218/189/179 K, beside an ocean
+  cell at 300 K; 63 edge-layer pairs over 60 K). M7's physics gives the
+  same, stronger (85 K, the ocean cell at 311 K). The reference winds pass
+  150 m/s within hours (150.8 m/s with the refitted preset). It is climate
+  mode's: its columns exchange little heat with their neighbours.
+- **§15:** V8 compares each mode's eleventh year from the initial state,
+  each spun up in its own physics. `planet_cli parity` now spins the
+  reference half up in reference mode (the climate half before tick 0, as
+  before).
+- **Result** (`planet_cli parity --subdivision 3 --spin-up-years 10 --days
+  365 --workers 12`, seed 1; the reference half 26 min):
+
+  | | Climate | Reference |
+  |---|---|---|
+  | Surface (K) | 289.30 | 295.92 |
+  | Precipitation (m/yr) | 1.580 | 1.560 |
+  | Convective share | 0.06 | 0.40 |
+  | Cloud water (g/m²) | 29.6 | 30.6 |
+  | Re-evaporated cloud water (m/yr) | 0.0004 | 0.11 |
+
+  **Precipitation passes** (ratio 0.987; M8-02: ×1.30). **Temperature
+  fails: +6.62 K** against 0.3 K (M8-02: +4.98 K; M7: +5.45 K). Recorded
+  failing, decided with the user; the gap is carried forward (ADR-0023
+  §15.4).
+- From the probe's monthly means, year 11: cover 0.59 and 0.47, shortwave
+  effect −46.8 and −46.1 W/m², longwave +20.6 and +38.9 W/m² (reference
+  mode's clouds sit higher). Reference mode holds 296 K from year 8 (no
+  dry drift); its strongest wind over the eleven years is 95 m/s.
+
 ## Remaining
 
 - **V9** on the fitted preset: the cover and cloud effects at L4, the
   zonal cover, each cell's climatological latent heating against
   300 W/m².
-- **The reference start** for V8 (task M8-03): the ten-year climate state
-  holds a 64–74 K contrast across one edge near 52° N that the reference
-  dynamics cannot take.
-- **V8** parity, **V9** calibration and **V11** performance.
+- **V11** performance (250 years at L5 and L6, CI's 25-year caps).
