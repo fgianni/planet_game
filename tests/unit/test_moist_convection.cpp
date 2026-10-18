@@ -357,5 +357,74 @@ int main() {
                                    ra.convection_top == -1 && rb.cloud_water_kg_kg[1] == 0.0);
     }
 
+    // 8. ADR-0024 V2: over a climate month, a column swept in h through
+    // Betts–Miller's onset (no convective rain at one end, rain at the
+    // other). Its θ_c falls somewhere, while its moist enthalpy temperature
+    // T_m rises with h throughout, and the reported dT_m/dh follows T_m.
+    {
+        const double dt_s = 2.63e6;
+        Column column(3U);
+        column.moisture.moist_convection_fraction = -std::expm1(-dt_s / 7200.0);
+        column.moisture.autoconversion_fraction = -std::expm1(-dt_s / 600.0);
+        column.moisture.autoconversion_time_ratio = 600.0 / dt_s;
+        column.moisture.evaporation_fraction = -std::expm1(-dt_s / 3600.0);
+        const LayerArray before{300.0, 270.0, 235.0};
+        for (std::size_t k = 0; k < 3U; ++k)
+            column.moisture.humidity_kg_kg[k] = 0.9 * column.saturation(before[k], k);
+        HeldSurface surface;
+        surface.surface_K = 300.0;
+        surface.evaporation_kg_m2_s = 4e-5;
+        double previous_tm = 0.0;
+        double previous_theta = 0.0;
+        double previous_h = 0.0;
+        double worst_tm_step = 1.0;      // the least ΔT_m / Δh
+        double worst_theta_step = 1.0;   // the least Δθ_c / Δh
+        double worst_slope_error = 0.0;  // where neither end is at a kink
+        double first_rain = -1.0;
+        double last_rain = 0.0;
+        int steps = 0;
+        for (double h = -400.0; h <= 400.0; h += 5.0) {
+            LayerArray after = before;
+            const auto result = planetsim::solve_atmosphere_column(
+                column.radiation, std::span<const double>(before.data(), 3U), dt_s, h, true,
+                surface, std::span<double>(after.data(), 3U), {}, nullptr, &column.moisture);
+            PLANETSIM_EXPECT(test, result.moist_enthalpy_slope_K_m2_W > 0.0);
+            // T_m from the state: the layers and the vapour after the step.
+            double tm = 0.0;
+            for (std::size_t k = 0; k < 3U; ++k) tm += after[k] + latent / cp * result.humidity_kg_kg[k];
+            PLANETSIM_EXPECT_NEAR(test, result.moist_enthalpy_K, tm / 3.0, 1e-9);
+            if (first_rain < 0.0) first_rain = result.convective_precipitation_kg_m2_s;
+            last_rain = result.convective_precipitation_kg_m2_s;
+            if (steps > 0) {
+                const double dh = h - previous_h;
+                worst_tm_step = std::min(worst_tm_step, (result.moist_enthalpy_K - previous_tm) / dh);
+                worst_theta_step = std::min(worst_theta_step, (result.theta_K - previous_theta) / dh);
+            }
+            {
+                LayerArray nudged = before;
+                const auto plus = planetsim::solve_atmosphere_column(
+                    column.radiation, std::span<const double>(before.data(), 3U), dt_s, h + 1e-3,
+                    true, surface, std::span<double>(nudged.data(), 3U), {}, nullptr,
+                    &column.moisture);
+                const double fd = (plus.moist_enthalpy_K - result.moist_enthalpy_K) / 1e-3;
+                worst_slope_error = std::max(
+                    worst_slope_error, std::abs(fd - result.moist_enthalpy_slope_K_m2_W) / fd);
+            }
+            previous_tm = result.moist_enthalpy_K;
+            previous_theta = result.theta_K;
+            previous_h = h;
+            ++steps;
+        }
+        std::cout << "T_m sweep: least dT_m/dh " << worst_tm_step << ", least dθ_c/dh "
+                  << worst_theta_step << " K m2/W, convective rain " << first_rain << " -> "
+                  << last_rain << " kg/m2/s, worst slope error " << worst_slope_error << "\n";
+        PLANETSIM_EXPECT(test, std::max(first_rain, last_rain) > 1e-5 &&
+                                   std::min(first_rain, last_rain) <
+                                       0.1 * std::max(first_rain, last_rain));
+        PLANETSIM_EXPECT(test, worst_theta_step < 0.0);
+        PLANETSIM_EXPECT(test, worst_tm_step > 0.0);
+        PLANETSIM_EXPECT(test, worst_slope_error < 0.05);
+    }
+
     return test.result();
 }

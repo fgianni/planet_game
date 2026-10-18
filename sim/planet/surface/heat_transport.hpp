@@ -136,7 +136,7 @@ void diffusion_source(const TransportGraph& graph, double conductance_W_K,
 //   conductance_W_K[k]        G: a gains G (θ_b − θ_a); symmetric;
 //   outflow_kg_s[l · E + k]   F: the mass of layer l leaving a across the
 //                             face (kg/s); antisymmetric.
-// The source at a, H_a = (1/A_a) [Σ_k G (θ_b − θ_a) − Σ_l Σ_k F s_l,up],
+// The source at a, H_a = (1/A_a) [Σ_k G (θ_b − θ_a) − Σ_l Σ_k F s_l,up] − E_a,
 // conserves energy exactly (Σ A H = 0) and vanishes for a uniform s when the
 // column's fluxes have no divergence.
 struct AdvectionDiffusion {
@@ -146,6 +146,11 @@ struct AdvectionDiffusion {
     // c_p of the conductances, G = c_p μ̄ D̄_e w: the eddies' column mass
     // exchange is G / c_p (kg/s), for tracers.
     double heat_capacity_J_kg_K = 1004.64;
+    // Per node (empty: none): the latent heat E (W/m²) the humidity
+    // transport's eddies brought as water this step, taken from the eddies'
+    // heat (ADR-0024 §4.4: the eddies carry moist enthalpy, the latent part
+    // travels as water). Σ A E = 0, so the source still conserves energy.
+    std::vector<double> eddy_latent_W_m2;
 };
 
 // The columns' response to a source h (W/m²) per node: θ_c and dθ_c/dh, and

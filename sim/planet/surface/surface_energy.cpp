@@ -28,6 +28,7 @@
 #include <numbers>
 #include <optional>
 #include <span>
+#include <utility>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -560,10 +561,13 @@ struct CellSurface {
 // ADR-0021 §4.5: the humidity on the coarse graph's groups, mass-weighted
 // (A p_s), carried by solve_implicit_tracer; each cell's humidity then
 // scales with its group's, which conserves the water and keeps it
-// non-negative.
+// non-negative. `eddy_latent_W_m2`, if given, receives each group's E
+// (ADR-0024 §4.3): L_v times the water its eddies brought, per unit area,
+// from the solution; antisymmetric per face, so Σ A E = 0 to rounding.
 [[nodiscard]] HumidityTransportDiagnostics transport_humidity(
     const PlanetMesh& mesh, SlowState& slow, const AdvectionDiffusion& transport,
-    double gravity_m_s2, double dt_s, std::size_t worker_count) {
+    double gravity_m_s2, double dt_s, std::size_t worker_count,
+    std::vector<double>* eddy_latent_W_m2 = nullptr) {
     const std::vector<std::size_t>* group_map = nullptr;
     const TransportGraph& graph = agglomerated_transport_graph(mesh, group_map);
     const std::vector<std::size_t>& group_of_cell = *group_map;
@@ -598,6 +602,23 @@ struct CellSurface {
     }
     const TracerTransportResult moved =
         solve_implicit_tracer(graph, transport, layer_mass, mean, dt_s, 1e-12, 2'000, worker_count);
+    if (eddy_latent_W_m2 != nullptr) {
+        // The tracer's eddy exchange, G / (c_p N) per layer (kg/s).
+        const double exchange_scale = 1.0 / (transport.heat_capacity_J_kg_K * n);
+        eddy_latent_W_m2->assign(groups, 0.0);
+        for (std::size_t a = 0; a < groups; ++a) {
+            double water = 0.0;
+            for (std::size_t k = graph.offset[a]; k < graph.offset[a + 1U]; ++k) {
+                const std::size_t b = graph.neighbour[k];
+                double difference = 0.0;
+                for (std::size_t layer = 0; layer < layers; ++layer) {
+                    difference += moved.tracer[layer * groups + b] - moved.tracer[layer * groups + a];
+                }
+                water += transport.conductance_W_K[k] * exchange_scale * difference;
+            }
+            (*eddy_latent_W_m2)[a] = latent_heat_vaporisation_J_kg * water / graph.area_m2[a];
+        }
+    }
     double after = 0.0;
     for (std::size_t cell = 0; cell < cells; ++cell) {
         const std::size_t group = group_of_cell[cell];
@@ -735,11 +756,18 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     // circulation's fixed fluxes on the coarse graph (split B: the columns
     // then evaporate and rain out). A month whose circulation failed moves
     // none (ADR-0011 §17.4's fallback has no mass fluxes).
+    // With moist convection the eddies carry moist enthalpy (ADR-0024): the
+    // transport takes the latent heat its eddies' water brought from their
+    // heat, E, fixed for the step.
+    const bool moist_eddies = water && surface.atmosphere.moist_convection &&
+                              surface.atmosphere.convection;
     HumidityTransportDiagnostics humidity_transport;
+    std::vector<double> eddy_latent;
     if (water && circulation != nullptr && circulation->active) {
         humidity_transport = transport_humidity(mesh, slow, circulation->transport,
                                                 surface_gravity_m_s2(parameters), dt_s,
-                                                worker_count);
+                                                worker_count,
+                                                moist_eddies ? &eddy_latent : nullptr);
     }
     const auto& circulation_fields = state.circulation();
     // The coupled climate circulation's balanced winds, or in reference mode
@@ -758,8 +786,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     // Clouds (ADR-0023 §4.4) with moist convection: they reflect part of
     // the insolation before it reaches the tiles and add to the layers'
     // longwave depth.
-    const bool clouds = water && surface.atmosphere.moist_convection &&
-                        surface.atmosphere.convection;
+    const bool clouds = moist_eddies;
     std::vector<CloudOptics> cloud(clouds ? cells : 0U);
     if (clouds && (slow.atmosphere_cloud_water_kg_kg.layer_count() !=
                    surface.atmosphere.layer_count)) {
@@ -1046,11 +1073,21 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                         const double h = source[group_of_cell[cell]];
                         if (layers > 0U) {
                             // The diffused temperature is the column's mean
-                            // θ_c (ADR-0010 §3.4 C).
+                            // θ_c (ADR-0010 §3.4 C), or with moist
+                            // convection its moist enthalpy temperature
+                            // T_m (ADR-0024 §4.6).
                             CellSurface cell_surface;
                             const auto column = solve_trial_column(cell, h, cell_surface);
-                            cell_air[cell] = column ? column->theta_K : missing;
-                            cell_slope[cell] = column ? column->theta_slope_K_m2_W : missing;
+                            if (!column) {
+                                cell_air[cell] = missing;
+                                cell_slope[cell] = missing;
+                            } else if (moist_eddies) {
+                                cell_air[cell] = column->moist_enthalpy_K;
+                                cell_slope[cell] = column->moist_enthalpy_slope_K_m2_W;
+                            } else {
+                                cell_air[cell] = column->theta_K;
+                                cell_slope[cell] = column->theta_slope_K_m2_W;
+                            }
                             continue;
                         }
                         const auto tiles = solve_cell(
@@ -1161,8 +1198,11 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                                     continue;
                                 }
                                 const ColumnSolveResult& column = *solved;
-                                cell_air[cell] = column.theta_K;
-                                cell_slope[cell] = column.theta_slope_K_m2_W;
+                                cell_air[cell] =
+                                    moist_eddies ? column.moist_enthalpy_K : column.theta_K;
+                                cell_slope[cell] = moist_eddies
+                                                       ? column.moist_enthalpy_slope_K_m2_W
+                                                       : column.theta_slope_K_m2_W;
                                 layer_dry_static_energy(
                                     phi_s[cell],
                                     std::span<const double>(layers_guess.data() + cell * layers,
@@ -1224,9 +1264,17 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             coupled_settings.newton_tolerance_W_m2 = coupled_newton_tolerance_W_m2;
             // An inexact Newton: each linear solve to 1e-3 of its residual.
             coupled_settings.cg_relative_tolerance = 1e-3;
-            coupled_solve = solve_implicit_advection_diffusion(
-                graph, circulation->transport, floor, coupled_response, coupled_settings,
-                worker_count);
+            if (eddy_latent.empty()) {
+                coupled_solve = solve_implicit_advection_diffusion(
+                    graph, circulation->transport, floor, coupled_response, coupled_settings,
+                    worker_count);
+            } else {
+                AdvectionDiffusion moist_transport = circulation->transport;
+                moist_transport.eddy_latent_W_m2 = std::move(eddy_latent);
+                coupled_solve = solve_implicit_advection_diffusion(
+                    graph, moist_transport, floor, coupled_response, coupled_settings,
+                    worker_count);
+            }
             transport_seconds = std::chrono::duration<double>(
                                     std::chrono::steady_clock::now() - solve_start)
                                     .count();

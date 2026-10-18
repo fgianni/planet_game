@@ -246,6 +246,16 @@ struct ColumnSolveResult {
     LayerArray cloud_water_kg_kg{};
     double cloud_evaporation_kg_m2_s = 0.0;
     double rain_evaporation_kg_m2_s = 0.0;
+    // With moisture (ADR-0024 §4.1, §4.5): the moist enthalpy temperature
+    // T_m = (1/N) Σ (T_k + L q_k / c_p) after the step (L the condensate's,
+    // as the convection's), and dT_m/dh from the implicit solve's response
+    // r, (1/N) Σ r_k (1 + f L q_sat′(T_k) / c_p where layer k condensed in
+    // the solve, f its in-solve share), and the change of the surface's
+    // evaporation where the bottom layer did not condense.
+    // Convection, condensation and the microphysics conserve T_m, so it
+    // rises with h where θ_c need not.
+    double moist_enthalpy_K = 0.0;
+    double moist_enthalpy_slope_K_m2_W = 0.0;
 };
 
 // Convective adjustment (ADR-0010 §3.3 B): adjacent layers whose θ_c
@@ -983,6 +993,35 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
             response = LayerArray{};
         }
     }
+    if (moisture != nullptr) {
+        const double specific_heat = column.layer_heat_capacity_J_m2_K / moisture->layer_mass_kg_m2;
+        double slope = 0.0;
+        for (std::size_t k = 0; k < n; ++k) {
+            double gain = 1.0;
+            if (current.condensate[k] > 0.0) {
+                gain += in_solve_fraction * moisture->latent_J_kg / specific_heat *
+                        saturation_specific_humidity_slope(current.temperature[k],
+                                                           moisture->pressure_Pa[k]);
+            }
+            slope += gain * response[k];
+        }
+        if (!(current.condensate[0] > 0.0)) {
+            // The surface's evaporation stays in the bottom layer's vapour.
+            double d_vapour = 0.0;
+            for (std::size_t c = 0; c < n; ++c) {
+                LayerArray d_emission{};
+                d_emission[c] = 4.0 * current.emission[c] / current.temperature[c];
+                const double d_down = downward_surface_longwave(column, d_emission);
+                const double d_air = c == 0U ? column.air_factor : 0.0;
+                d_vapour += (current.exchange.d_vapour_d_downward * d_down +
+                             current.exchange.d_vapour_d_air * d_air) *
+                            response[c];
+            }
+            slope += moisture->latent_J_kg / specific_heat * d_vapour * dt_s /
+                     moisture->layer_mass_kg_m2;
+        }
+        result.moist_enthalpy_slope_K_m2_W = slope / static_cast<double>(n);
+    }
     if (warm != nullptr) {
         warm->implicit_K = current.temperature;
         warm->response = response;
@@ -1187,6 +1226,15 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
         theta += temperature_K[k] / column.exner[k];
     }
     result.theta_K = theta / static_cast<double>(n);
+    if (moisture != nullptr) {
+        const double specific_heat = column.layer_heat_capacity_J_m2_K / moisture->layer_mass_kg_m2;
+        double enthalpy = 0.0;
+        for (std::size_t k = 0; k < n; ++k) {
+            enthalpy += temperature_K[k] +
+                        moisture->latent_J_kg / specific_heat * result.humidity_kg_kg[k];
+        }
+        result.moist_enthalpy_K = enthalpy / static_cast<double>(n);
+    }
     return result;
 }
 

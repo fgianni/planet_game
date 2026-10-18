@@ -769,9 +769,11 @@ void advection_diffusion_source(const TransportGraph& graph, const AdvectionDiff
     const std::size_t layers = transport.layers;
     if (transport.conductance_W_K.size() != entries ||
         transport.outflow_kg_s.size() != layers * entries || mean_K.size() != nodes ||
-        energy_J_kg.size() != layers * nodes) {
+        energy_J_kg.size() != layers * nodes ||
+        (!transport.eddy_latent_W_m2.empty() && transport.eddy_latent_W_m2.size() != nodes)) {
         throw std::invalid_argument("advection-diffusion inputs do not match the graph");
     }
+    const bool latent = !transport.eddy_latent_W_m2.empty();
     if (eddy_W_m2.size() != nodes) {
         eddy_W_m2 = Field2D<double>(nodes, 0.0);
     }
@@ -793,6 +795,9 @@ void advection_diffusion_source(const TransportGraph& graph, const AdvectionDiff
                     }
                 }
                 eddy_W_m2[a] = eddy / graph.area_m2[a];
+                if (latent) {
+                    eddy_W_m2[a] -= transport.eddy_latent_W_m2[a];
+                }
                 advective_W_m2[a] = advective / graph.area_m2[a];
             }
         });

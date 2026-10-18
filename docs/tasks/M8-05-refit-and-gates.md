@@ -261,12 +261,68 @@ so it waits for the user.
   - Finite-difference slopes in place of the linear response do not help
     (tried).
 
+## ADR-0024: the eddies on moist enthalpy (accepted 2026-10-18)
+
+The fix for L6, decided with the user and accepted as ADR-0024: with moist
+convection on, the climate transport's eddies are driven by each column's
+moist enthalpy temperature T_m = (1/N) Σ (T_k + L q_k / c_p), and the
+latent heat E the humidity transport's eddies already moved as water comes
+off their heat.
+
+- **The column** (`ColumnSolveResult::moist_enthalpy_K`, `…_slope_K_m2_W`):
+  T_m after the step, and dT_m/dh from the implicit solve's response,
+  (1/N) Σ r_k (1 + f L q_sat′ / c_p where layer k condensed in the solve).
+  The ADR neglected the surface's evaporation in the slope. Measured at L6,
+  that left the coupled Newton at its 30-iteration cap in most months
+  (residuals 1e-2 to 1e-4 W/m²). With the evaporation's change added
+  where the bottom layer does not condense (it then stays as vapour), the
+  months from the third on converge in 5 to 9 iterations.
+- **E** (`transport_humidity`): L_v times each group's eddy water
+  convergence from the tracer's solution, G / (c_p N) Σ_l (q′_b − q′_a)
+  per face; antisymmetric, so Σ A E = 0 to rounding. It enters as
+  `AdvectionDiffusion::eddy_latent_W_m2`, subtracted from the eddies' heat.
+  T_m uses the condensate's L (L_v, plus L_f for the share falling as
+  snow), as the convection's moist enthalpy does; E uses L_v, so that it
+  sums to zero.
+- **Groups:** a group's T_m is its cells' area-weighted mean, as θ_c's is
+  (the ADR's "area- and mass-weighted" read as θ_c's weighting).
+- **The fallback month** (ADR-0009's diffusion) diffuses T_m the same way;
+  no humidity moves in it, so E is zero.
+- **Tests:** `test_moist_convection` §8 (V2): a 3-layer column swept over
+  h ∈ [−400, 400] W/m² across Betts–Miller's onset: θ_c falls somewhere
+  (least dθ_c/dh −0.011 K m²/W), T_m rises throughout (least 0.029), and
+  the reported slope matches the finite difference to 1e-6.
+  `test_advection_diffusion` §5 (V1): E comes off the eddies' heat
+  exactly, sums to zero, and the solve converges to h = H − E,
+  conserving energy. V3 holds by construction (off, no T_m and an empty
+  E), and the golden runs are unchanged.
+- **What T_m does not fix:** a land column whose bottom layer has
+  stopped condensing while its surface's evaporation is still on
+  ADR-0021's raining branch (R (q_sat(T_s) − q_sat(A)), R ≈ 15). There,
+  warming the surface air cuts evaporation by more than the heat added,
+  and T_m falls (cell 2925 at L6, month 0: −1.2 K between 118 and
+  130 W/m²). The slope reports it; about 150 of L6's 40 962 columns sit
+  in such a band in the first month, whose Newton ends at 1 900 W/m² of
+  residual (the second month's at 74 W/m²), the source applied still
+  conservative.
+- **V4 (ADR-0024; ADR-0023 V11) passes** with moist convection on
+  (`planet_cli run --subdivision L --years 250 --workers 16
+  --moist-convection 1`, the run's new flag):
+  - L5: **269 s** (55.9 years per minute), against M7's 405 s (limit
+    608 s); before ADR-0024, 345 s;
+  - L6: **950 s** (15.8 years per minute), against M7's 1 350 s (limit
+    2 025 s);
+  - no failed circulation month in either; the last month's Newton took
+    4 iterations (consistency 3e-7 and 3e-5 W/m²), closure ratio 3e-6 and
+    6e-6.
+
 ## Remaining
 
 - **V9** on the fitted preset: the cover and cloud effects at L4, the
   zonal cover, each cell's climatological latent heating against
   300 W/m².
-- **V11 at L6:** the coupled transport with moist columns whose θ_c falls
-  as h rises (above), investigated next with moist convection off in the
-  preset (decided with the user). V8 is reproduced with `planet_cli parity
-  --subdivision 3 --spin-up-years 10 --days 365 --moist-convection 1`.
+- **ADR-0024 V5:** with V4 passed, whether moist convection goes back on
+  in the preset is the user's decision. Then the refit of τ_d and κ_v
+  with T_m driving the eddies (288 K at L4), V9's reports, and V8
+  measured again (`planet_cli parity --subdivision 3 --spin-up-years 10
+  --days 365 --moist-convection 1`).

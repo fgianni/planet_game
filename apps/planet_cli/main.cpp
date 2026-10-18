@@ -195,6 +195,7 @@ void print_usage(std::ostream& output) {
               " [--command TICK,TYPE,PAYLOAD]... [--workers W] [--manifest FILE.prun]"
               " [--snapshot FILE.psnap] [--min-years-per-minute R] [--max-seconds S]\n"
               " [--presentation-record FILE.pframe] [--circulation-report YEARS]"
+              " [--moist-convection 0|1]"
               " [--circulation none|diagnostic|coupled]\n"
            << "    commands: set_mode,climate|reference; set_solar_luminosity_factor,F\n"
            << "  planet_cli replay FILE.prun [--workers W]\n"
@@ -405,6 +406,11 @@ void print_usage(std::ostream& output) {
         } else if (argument == "--circulation-report") {
             options.circulation_report_years =
                 static_cast<int>(parse_unsigned(value, "circulation report years"));
+        } else if (argument == "--moist-convection") {
+            if (value != "0" && value != "1") {
+                throw std::invalid_argument("--moist-convection takes 0 or 1");
+            }
+            options.scenario.moist_convection = value == "1";
         } else {
             throw std::invalid_argument("unknown run option: " + std::string(argument));
         }

@@ -1,4 +1,5 @@
 #include "sim/core/random/counter_rng.hpp"
+#include "sim/planet/atmosphere/saturation.hpp"
 #include "sim/planet/mesh/icosphere.hpp"
 #include "sim/planet/surface/column_step.hpp"
 #include "sim/planet/surface/heat_transport.hpp"
@@ -9,6 +10,7 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <numbers>
 #include <stdexcept>
 #include <vector>
 
@@ -272,13 +274,78 @@ int main() {
         PLANETSIM_EXPECT(test, std::abs(result.sum_W) <= 1.0e-12 * result.absolute_sum_W);
     }
 
-    // 5. Invalid inputs are refused.
+    // 5. ADR-0024 §4.4: the latent heat E the eddies' water brought comes
+    // off the eddies' heat. E from a water exchange along the conductances
+    // (antisymmetric per face, as the humidity transport's) sums to zero, so
+    // the solve still conserves energy, and its solution is h = H − E.
+    {
+        auto transport = transport_on(graph, 5.0e9, conductance);
+        transport.eddy_latent_W_m2.assign(nodes, 0.0);
+        for (std::size_t a = 0; a < nodes; ++a) {
+            double water = 0.0;
+            for (std::size_t k = graph.offset[a]; k < graph.offset[a + 1U]; ++k) {
+                const std::size_t b = graph.neighbour[k];
+                water += transport.conductance_W_K[k] /
+                         (heat_capacity * static_cast<double>(layers)) * 1e-3 *
+                         (unit_random(b, 5U) - unit_random(a, 5U));
+            }
+            transport.eddy_latent_W_m2[a] = planetsim::latent_heat_vaporisation_J_kg * water /
+                                            graph.area_m2[a];
+        }
+        planetsim::Field2D<double> mean;
+        planetsim::Field2D<double> slope;
+        std::vector<double> energy;
+        std::vector<double> energy_slope;
+        column(planetsim::Field2D<double>(nodes, 10.0), mean, slope, energy, energy_slope);
+        auto dry = transport;
+        dry.eddy_latent_W_m2.clear();
+        planetsim::Field2D<double> eddy;
+        planetsim::Field2D<double> advective;
+        planetsim::Field2D<double> dry_eddy;
+        planetsim::Field2D<double> dry_advective;
+        planetsim::advection_diffusion_source(graph, transport, mean, energy, eddy, advective);
+        planetsim::advection_diffusion_source(graph, dry, mean, energy, dry_eddy, dry_advective);
+        bool offset = true;
+        double latent_sum = 0.0;
+        double latent_absolute = 0.0;
+        for (std::size_t i = 0; i < nodes; ++i) {
+            offset = offset && eddy[i] == dry_eddy[i] - transport.eddy_latent_W_m2[i] &&
+                     advective[i] == dry_advective[i];
+            latent_sum += graph.area_m2[i] * transport.eddy_latent_W_m2[i];
+            latent_absolute += graph.area_m2[i] * std::abs(transport.eddy_latent_W_m2[i]);
+        }
+        PLANETSIM_EXPECT(test, offset);
+        PLANETSIM_EXPECT(test, latent_absolute > 0.0 && std::abs(latent_sum) <= 1e-12 * latent_absolute);
+        const auto result =
+            planetsim::solve_implicit_advection_diffusion(graph, transport, floor, column, {}, 4U);
+        std::cout << "with E: newton=" << result.newton_iterations
+                  << " consistency=" << result.consistency_residual_W_m2
+                  << " mean |E|=" << latent_absolute / (4.0 * std::numbers::pi * radius_m * radius_m)
+                  << " W/m2\n";
+        PLANETSIM_EXPECT(test, result.consistency_residual_W_m2 <= 1.0e-6);
+        PLANETSIM_EXPECT(test, std::abs(result.sum_W) <= 1.0e-12 * result.absolute_sum_W);
+        column(result.source_W_m2, mean, slope, energy, energy_slope);
+        planetsim::advection_diffusion_source(graph, dry, mean, energy, dry_eddy, dry_advective);
+        double largest = 0.0;
+        for (std::size_t i = 0; i < nodes; ++i) {
+            largest = std::max(largest, std::abs(result.source_W_m2[i] - dry_eddy[i] -
+                                                 dry_advective[i] + transport.eddy_latent_W_m2[i]));
+        }
+        PLANETSIM_EXPECT(test, largest <= 1.0e-6);
+    }
+
+    // 6. Invalid inputs are refused.
     {
         auto transport = transport_on(graph, 0.0, conductance);
         transport.conductance_W_K[0] = -1.0;
         PLANETSIM_EXPECT_THROWS(
             test, std::invalid_argument,
             planetsim::solve_implicit_advection_diffusion(graph, transport, floor, column));
+        auto latent = transport_on(graph, 0.0, conductance);
+        latent.eddy_latent_W_m2.assign(nodes + 1U, 0.0);
+        PLANETSIM_EXPECT_THROWS(
+            test, std::invalid_argument,
+            planetsim::solve_implicit_advection_diffusion(graph, latent, floor, column));
     }
     return test.result();
 }
