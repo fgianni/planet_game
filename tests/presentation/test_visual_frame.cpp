@@ -47,6 +47,9 @@ void check_channels(planetsim::test::Context& test) {
         0.0F, 0.5F * planetsim::presentation::precipitation_display_maximum_kg_m2_s,
         2.0F * planetsim::presentation::precipitation_display_maximum_kg_m2_s};
     frames[0].sun_direction_body_unit = {0.0, 0.6, 0.8};
+    // ADR-0023 V12: clear, half-covered and overcast (beyond 1: clamped).
+    frames[0].cloud_cover = {0.0F, 0.5F, 1.2F};
+    frames[0].cloud_optical_depth = {0.0F, 10.0F, 60.0F};
     const auto reference = planetsim::presentation::make_presentation_reference(frames);
     const auto cold = planetsim::presentation::make_visual_frame(frames[0], terrain, reference);
     const auto warm = planetsim::presentation::make_visual_frame(frames[1], terrain, reference);
@@ -72,10 +75,20 @@ void check_channels(planetsim::test::Context& test) {
     const auto& precipitation = cold.channels[channel(ChannelId::precipitation)].values;
     PLANETSIM_EXPECT(test, precipitation.size() == 3U && precipitation[0] == 0.0F &&
                                precipitation[1] == 0.5F && precipitation[2] == 1.0F);
+    // The cloud channels rise with the cover and the optical depth.
+    const auto& cover = cold.channels[channel(ChannelId::cloud_cover)].values;
+    const auto& thickness = cold.channels[channel(ChannelId::cloud_thickness)].values;
+    PLANETSIM_EXPECT(test, cover.size() == 3U && cover[0] == 0.0F && cover[1] == 0.5F &&
+                               cover[2] == 1.0F);
+    PLANETSIM_EXPECT(test, thickness.size() == 3U && thickness[0] == 0.0F);
+    PLANETSIM_EXPECT_NEAR(test, thickness[1], 1.0F - std::exp(-1.0F), 1e-6F);
+    PLANETSIM_EXPECT(test, thickness[2] > thickness[1] && thickness[2] <= 1.0F);
     PLANETSIM_EXPECT(test,
                      warm.channels[channel(ChannelId::atmosphere_density)].values.empty() &&
                          warm.channels[channel(ChannelId::wind)].values.empty() &&
-                         warm.channels[channel(ChannelId::precipitation)].values.empty());
+                         warm.channels[channel(ChannelId::precipitation)].values.empty() &&
+                         warm.channels[channel(ChannelId::cloud_cover)].values.empty() &&
+                         warm.channels[channel(ChannelId::cloud_thickness)].values.empty());
     for (std::size_t cell = 0; cell < terrain.mean_elevation_m.size(); ++cell) {
         float sum = 0.0F;
         for (std::size_t weight = 0; weight < planetsim::presentation::surface_class_weight_count;
@@ -147,12 +160,16 @@ void check_recording_is_non_authoritative(planetsim::test::Context& test) {
     PLANETSIM_EXPECT(test, !loaded.frames.empty() &&
                                loaded.frames.back().top_of_atmosphere_insolation_W_m2 ==
                                    frames.back().top_of_atmosphere_insolation_W_m2);
-    // Schema 5 carries precipitation, schema 4 carries the circulation
-    // (ADR-0011 §8), and an older schema 3 frame still round-trips.
-    // (L1 resolves no circulation, so the fields here are set by hand.)
-    PLANETSIM_EXPECT(test, !loaded.frames.empty() && loaded.frames.back().schema_version == 5U &&
+    // Schema 6 carries the clouds, schema 5 precipitation, schema 4 the
+    // circulation (ADR-0011 §8), and an older schema 3 frame still
+    // round-trips. (L1 resolves no circulation, so those fields are set by
+    // hand.)
+    PLANETSIM_EXPECT(test, !loaded.frames.empty() && loaded.frames.back().schema_version == 6U &&
                                loaded.frames.back().sea_level_pressure_Pa.empty() &&
-                               !loaded.frames.back().precipitation_kg_m2_s.empty());
+                               !loaded.frames.back().precipitation_kg_m2_s.empty() &&
+                               loaded.frames.back().cloud_cover == frames.back().cloud_cover &&
+                               loaded.frames.back().cloud_optical_depth ==
+                                   frames.back().cloud_optical_depth);
     if (!frames.empty()) {
         StateSnapshot current = frames.back();
         const std::size_t cells = current.surface_temperature_K.size();
@@ -160,6 +177,8 @@ void check_recording_is_non_authoritative(planetsim::test::Context& test) {
         current.surface_eastward_wind_m_s.assign(cells, 5.0F);
         current.surface_northward_wind_m_s.assign(cells, -1.0F);
         current.precipitation_kg_m2_s.assign(cells, 0.0001F);
+        current.cloud_cover.assign(cells, 0.6F);
+        current.cloud_optical_depth.assign(cells, 4.0F);
         planetsim::presentation::write_presentation_record(path, {current});
         const auto loaded_current = planetsim::presentation::read_presentation_record(path);
         std::filesystem::remove(path);
@@ -171,11 +190,29 @@ void check_recording_is_non_authoritative(planetsim::test::Context& test) {
                                    loaded_current.frames[0].surface_northward_wind_m_s ==
                                        current.surface_northward_wind_m_s &&
                                    loaded_current.frames[0].precipitation_kg_m2_s ==
-                                       current.precipitation_kg_m2_s);
+                                       current.precipitation_kg_m2_s &&
+                                   loaded_current.frames[0].cloud_cover == current.cloud_cover &&
+                                   loaded_current.frames[0].cloud_optical_depth ==
+                                       current.cloud_optical_depth);
+
+        StateSnapshot without_clouds = current;
+        without_clouds.schema_version = 5U;
+        without_clouds.cloud_cover.clear();
+        without_clouds.cloud_optical_depth.clear();
+        planetsim::presentation::write_presentation_record(path, {without_clouds});
+        const auto loaded_without_clouds = planetsim::presentation::read_presentation_record(path);
+        std::filesystem::remove(path);
+        PLANETSIM_EXPECT(test, loaded_without_clouds.frames.size() == 1U &&
+                                   loaded_without_clouds.frames[0].schema_version == 5U &&
+                                   loaded_without_clouds.frames[0].precipitation_kg_m2_s ==
+                                       current.precipitation_kg_m2_s &&
+                                   loaded_without_clouds.frames[0].cloud_cover.empty());
 
         StateSnapshot circulation_only = current;
         circulation_only.schema_version = 4U;
         circulation_only.precipitation_kg_m2_s.clear();
+        circulation_only.cloud_cover.clear();
+        circulation_only.cloud_optical_depth.clear();
         planetsim::presentation::write_presentation_record(path, {circulation_only});
         const auto loaded_circulation_only =
             planetsim::presentation::read_presentation_record(path);

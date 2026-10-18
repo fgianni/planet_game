@@ -37,4 +37,5 @@
 524291	convective_precipitation_kg_m2_s	derived	cell	float32	1	kg/m2/s
 524292	cloud_shortwave_effect_W_m2	derived	cell	float32	1	W/m2
 524293	cloud_longwave_effect_W_m2	derived	cell	float32	1	W/m2
+524294	cloud_optical_depth	derived	cell	float32	1	1
 # retired_field_id	196611

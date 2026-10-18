@@ -10,7 +10,7 @@
 namespace planetsim {
 
 class PlanetState;
-inline constexpr std::uint32_t state_snapshot_schema_version = 5;
+inline constexpr std::uint32_t state_snapshot_schema_version = 6;
 
 struct StateSnapshot {
     std::uint32_t schema_version = state_snapshot_schema_version;
@@ -45,6 +45,11 @@ struct StateSnapshot {
     // Schema 5: the last completed step's model precipitation. This remains
     // a read-only presentation copy; the registered field owns its meaning.
     std::vector<float> precipitation_kg_m2_s;
+    // Schema 6 (ADR-0023 §4.8): the clouds the last step's radiation saw, the
+    // column cloud fraction 1 − Π (1 − f_k) (random overlap) and the column
+    // optical depth Σ f_k τ_k; empty without clouds.
+    std::vector<float> cloud_cover;
+    std::vector<float> cloud_optical_depth;
 };
 
 [[nodiscard]] StateSnapshot make_state_snapshot(const PlanetState& state,

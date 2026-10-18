@@ -1,8 +1,11 @@
+#include "sim/core/scheduler/simulation_clock.hpp"
+#include "sim/core/serialization/state_snapshot.hpp"
 #include "sim/planet/orbit/climate_calendar.hpp"
 #include "sim/planet/run/planet_run.hpp"
 #include "tests/test_support.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 
@@ -58,5 +61,26 @@ int main(int argc, char** argv) {
         }
     }
     PLANETSIM_EXPECT(test, shortwave_signs && fractions);
+    // The presentation snapshot (schema 6, ADR-0023 §4.8, task M8-06): the
+    // column cover by random overlap of the layers' fractions, and the
+    // column optical depth, whose global mean follows the cloud water.
+    planetsim::SimulationClock clock;
+    clock.set_tick(run.tick());
+    const auto frame = planetsim::make_state_snapshot(run.state(), clock);
+    bool covers = frame.cloud_cover.size() == mesh.cell_count() &&
+                  frame.cloud_optical_depth.size() == mesh.cell_count();
+    double cover_area = 0.0;
+    for (std::size_t cell = 0; covers && cell < mesh.cell_count(); ++cell) {
+        double clear = 1.0;
+        for (std::size_t layer = 0; layer < forcing.cloud_fraction.layer_count(); ++layer) {
+            clear *= 1.0 - static_cast<double>(forcing.cloud_fraction.layer(layer)[cell]);
+        }
+        covers = std::abs(frame.cloud_cover[cell] - static_cast<float>(1.0 - clear)) <= 1e-6F &&
+                 frame.cloud_optical_depth[cell] >= 0.0F &&
+                 (frame.cloud_cover[cell] > 0.0F) == (frame.cloud_optical_depth[cell] > 0.0F);
+        cover_area += mesh.cells()[cell].area_m2 * frame.cloud_cover[cell];
+    }
+    PLANETSIM_EXPECT(test, covers);
+    PLANETSIM_EXPECT_NEAR(test, cover_area / area, run.last_step().cloud_cover_m2 / area, 1e-6);
     return test.result();
 }

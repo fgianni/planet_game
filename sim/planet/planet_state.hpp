@@ -105,6 +105,8 @@ struct ForcingState {
     field_container_t<FieldId::cloud_fraction> cloud_fraction;
     field_container_t<FieldId::cloud_shortwave_effect_W_m2> cloud_shortwave_effect_W_m2;
     field_container_t<FieldId::cloud_longwave_effect_W_m2> cloud_longwave_effect_W_m2;
+    // The column's cloud optical depth Σ f_k τ_k (task M8-06).
+    field_container_t<FieldId::cloud_optical_depth> cloud_optical_depth;
 };
 
 class PlanetState {

@@ -41,6 +41,7 @@ PlanetState::PlanetState(std::shared_ptr<const PlanetMesh> mesh) : mesh_(std::mo
     forcing_.cloud_fraction = make_field<FieldId::cloud_fraction>(*mesh_);
     forcing_.cloud_shortwave_effect_W_m2 = make_field<FieldId::cloud_shortwave_effect_W_m2>(*mesh_);
     forcing_.cloud_longwave_effect_W_m2 = make_field<FieldId::cloud_longwave_effect_W_m2>(*mesh_);
+    forcing_.cloud_optical_depth = make_field<FieldId::cloud_optical_depth>(*mesh_);
     climatology_.surface_temperature_mean_K =
         make_field<FieldId::climatology_surface_temperature_mean_K>(*mesh_);
     climatology_.surface_temperature_variance_K2 =

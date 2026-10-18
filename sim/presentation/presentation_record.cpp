@@ -52,6 +52,10 @@ void write_frame(std::ostream& stream, const StateSnapshot& frame) {
                  &frame.surface_northward_wind_m_s}) write_vector(stream, *values);
     }
     if (frame.schema_version >= 5U) write_vector(stream, frame.precipitation_kg_m2_s);
+    if (frame.schema_version >= 6U) {
+        write_vector(stream, frame.cloud_cover);
+        write_vector(stream, frame.cloud_optical_depth);
+    }
 }
 [[nodiscard]] StateSnapshot read_frame(std::istream& stream) {
     StateSnapshot frame;
@@ -77,6 +81,10 @@ void write_frame(std::ostream& stream, const StateSnapshot& frame) {
                  &frame.surface_northward_wind_m_s}) read_vector(stream, *values);
     }
     if (frame.schema_version >= 5U) read_vector(stream, frame.precipitation_kg_m2_s);
+    if (frame.schema_version >= 6U) {
+        read_vector(stream, frame.cloud_cover);
+        read_vector(stream, frame.cloud_optical_depth);
+    }
     return frame;
 }
 

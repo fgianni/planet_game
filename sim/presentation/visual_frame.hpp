@@ -21,6 +21,9 @@ inline constexpr float atmosphere_density_reference_pressure_Pa = 101'325.0F;
 // The fixed upper end of the R4 precipitation display scale. Since
 // 1 kg/m² of water is 1 mm, this is 50 mm/day in SI rate units.
 inline constexpr float precipitation_display_maximum_kg_m2_s = 50.0F / 86'400.0F;
+// ADR-0023 §4.8: cloud_thickness = 1 − exp(−τ / τ_display), the column's
+// cloud optical depth normalised.
+inline constexpr float cloud_thickness_optical_depth = 10.0F;
 
 struct ChannelData {
     std::vector<float> values;

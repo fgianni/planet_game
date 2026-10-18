@@ -48,6 +48,7 @@ enum class FieldId : std::uint32_t {
     convective_precipitation_kg_m2_s = 0x0008'0003U,
     cloud_shortwave_effect_W_m2 = 0x0008'0004U,
     cloud_longwave_effect_W_m2 = 0x0008'0005U,
+    cloud_optical_depth = 0x0008'0006U,
 };
 
 enum class FieldDataType : std::uint8_t {
@@ -139,7 +140,7 @@ struct FieldDescriptor {
     return {};
 }
 
-inline constexpr std::array<FieldDescriptor, 39> field_registry{{
+inline constexpr std::array<FieldDescriptor, 40> field_registry{{
     {FieldId::top_of_atmosphere_insolation_W_m2, "top_of_atmosphere_insolation_W_m2",
      FieldPartition::derived, FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
     {FieldId::substep_mean_insolation_W_m2, "substep_mean_insolation_W_m2",
@@ -260,6 +261,10 @@ inline constexpr std::array<FieldDescriptor, 39> field_registry{{
      FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
     {FieldId::cloud_longwave_effect_W_m2, "cloud_longwave_effect_W_m2", FieldPartition::derived,
      FieldLayout::cell, FieldDataType::float32, 1U, "W/m2"},
+    // The column's cloud optical depth Σ f_k τ_k as the step's radiation saw
+    // it (ADR-0023 §4.8, task M8-06), for the presentation; derived.
+    {FieldId::cloud_optical_depth, "cloud_optical_depth", FieldPartition::derived,
+     FieldLayout::cell, FieldDataType::float32, 1U, "1"},
 }};
 
 // Retired IDs are never registered again. Snapshots of the schemas that

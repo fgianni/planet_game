@@ -276,6 +276,7 @@ void append_json_string(std::string& output, std::string_view value) {
     case FieldId::convective_precipitation_kg_m2_s:
     case FieldId::cloud_shortwave_effect_W_m2:
     case FieldId::cloud_longwave_effect_W_m2:
+    case FieldId::cloud_optical_depth:
         return 0U;
     }
     return 0U;
@@ -409,6 +410,7 @@ void append_cell_field(std::vector<std::byte>& output, const Field2D<double>& fi
     case FieldId::convective_precipitation_kg_m2_s:
     case FieldId::cloud_shortwave_effect_W_m2:
     case FieldId::cloud_longwave_effect_W_m2:
+    case FieldId::cloud_optical_depth:
         throw std::logic_error("derived forcing field cannot be persisted");
     }
 
@@ -1192,6 +1194,7 @@ void decode_chunk(const FieldDescriptor& descriptor,
     case FieldId::convective_precipitation_kg_m2_s:
     case FieldId::cloud_shortwave_effect_W_m2:
     case FieldId::cloud_longwave_effect_W_m2:
+    case FieldId::cloud_optical_depth:
         break;
     }
     field_error(static_cast<std::uint32_t>(descriptor.id), "field has no persistent decoder");

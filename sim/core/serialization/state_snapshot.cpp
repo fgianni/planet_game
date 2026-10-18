@@ -42,6 +42,19 @@ StateSnapshot make_state_snapshot(const PlanetState& state, const SimulationCloc
                snapshot.land_snow_water_equivalent_kg_m2);
     copy_float(state.slow().sea_ice_mass_kg_m2, snapshot.sea_ice_mass_kg_m2);
     copy_float(forcing.precipitation_kg_m2_s, snapshot.precipitation_kg_m2_s);
+    // The clouds, once a step with clouds has sized the layers' fractions.
+    if (const auto& fraction = forcing.cloud_fraction;
+        fraction.layer_count() > 0U && fraction.cell_count() == cells) {
+        snapshot.cloud_cover.resize(cells);
+        for (std::size_t cell = 0; cell < cells; ++cell) {
+            double clear = 1.0;
+            for (std::size_t layer = 0; layer < fraction.layer_count(); ++layer) {
+                clear *= 1.0 - static_cast<double>(fraction.layer(layer)[cell]);
+            }
+            snapshot.cloud_cover[cell] = static_cast<float>(1.0 - clear);
+        }
+        copy_float(forcing.cloud_optical_depth, snapshot.cloud_optical_depth);
+    }
 
     if (const auto& circulation = state.circulation();
         circulation.available() && circulation.eastward_wind_m_s.cell_count() == cells) {

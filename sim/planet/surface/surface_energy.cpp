@@ -1424,6 +1424,8 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                         }
                         state.forcing().cloud_shortwave_effect_W_m2[cell] = static_cast<float>(shortwave);
                         state.forcing().cloud_longwave_effect_W_m2[cell] = static_cast<float>(longwave);
+                        state.forcing().cloud_optical_depth[cell] =
+                            static_cast<float>(optics.column_optical_depth);
                         partial.cloud_cover_m2 += area_m2 * optics.column_fraction;
                         partial.cloud_shortwave_effect_W += area_m2 * shortwave;
                         partial.cloud_longwave_effect_W += area_m2 * longwave;

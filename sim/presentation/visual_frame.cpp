@@ -75,6 +75,8 @@ VisualFrame make_visual_frame(const StateSnapshot& snapshot, const TerrainSnapsh
     const bool wind = snapshot.surface_eastward_wind_m_s.size() == cells &&
                       snapshot.surface_northward_wind_m_s.size() == cells;
     const bool precipitation = snapshot.precipitation_kg_m2_s.size() == cells;
+    const bool clouds = snapshot.cloud_cover.size() == cells &&
+                        snapshot.cloud_optical_depth.size() == cells;
     if (snow) {
         frame.channels[index(ChannelId::snow_cover)].values.resize(cells);
     }
@@ -89,6 +91,10 @@ VisualFrame make_visual_frame(const StateSnapshot& snapshot, const TerrainSnapsh
     }
     if (precipitation) {
         frame.channels[index(ChannelId::precipitation)].values.resize(cells);
+    }
+    if (clouds) {
+        frame.channels[index(ChannelId::cloud_cover)].values.resize(cells);
+        frame.channels[index(ChannelId::cloud_thickness)].values.resize(cells);
     }
     for (std::size_t cell = 0; cell < cells; ++cell) {
         const float height = terrain.mean_elevation_m[cell] - static_cast<float>(terrain.sea_level_m);
@@ -121,6 +127,14 @@ VisualFrame make_visual_frame(const StateSnapshot& snapshot, const TerrainSnapsh
             frame.channels[index(ChannelId::precipitation)].values[cell] = std::clamp(
                 snapshot.precipitation_kg_m2_s[cell] /
                     precipitation_display_maximum_kg_m2_s,
+                0.0F, 1.0F);
+        }
+        if (clouds) {
+            frame.channels[index(ChannelId::cloud_cover)].values[cell] =
+                std::clamp(snapshot.cloud_cover[cell], 0.0F, 1.0F);
+            frame.channels[index(ChannelId::cloud_thickness)].values[cell] = std::clamp(
+                -std::expm1(-std::max(0.0F, snapshot.cloud_optical_depth[cell]) /
+                            cloud_thickness_optical_depth),
                 0.0F, 1.0F);
         }
         const float bare_land = land * (1.0F - snow_cover);
