@@ -24,6 +24,7 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0021 | [Water vapour, evaporation, the land bucket and saturation rainout](0021-water-vapour-evaporation-and-rainout.md) | Accepted | 2026-10-09 |
 | 0022 | [Player placement, zoning and a continuous Earth-viewer camera](0022-player-placement-zoning-and-continuous-zoom.md) | Accepted (amended 2026-10-14: camera-relative rendering; 2026-10-15: terrain hands over at cell edges, V4) | 2026-10-13 |
 | 0023 | [Cloud water, moist convection, precipitation and cloud radiation](0023-clouds-moist-convection-and-precipitation.md) | Accepted | 2026-10-16 |
+| 0024 | [The climate transport's eddies driven by moist enthalpy](0024-moist-enthalpy-eddies.md) | Proposed | 2026-10-18 |
 
 Records cite the design record by version and section (for example "Design
 Record v0.4, §28"). The current design record is
