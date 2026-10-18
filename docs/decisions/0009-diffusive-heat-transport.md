@@ -5,6 +5,7 @@
 - **Accepted:** 2026-09-30
 - **Amended:** 2026-09-30 — §4.1 tiles exchange heat with their cell's air, and tiles without area take no transport; §4.4 the calibration target is the equator-to-pole temperature difference, not the peak transport (both in §10); §4.1 the diffused temperature is the cells' air (§11); §4.3 the transport is solved on the mesh one level coarser (§12)
 - **Amended:** 2026-10-08 — §13: the coupled transport stops its Newton at 1e-4 W/m² (task M6-05)
+- **Amended:** 2026-10-18 — §4.1, §11: with moist convection on, the diffused temperature is the columns' moist enthalpy temperature (ADR-0024)
 - **Milestone:** P0 / M4 (needed for ADR-0008's seasonal experiment)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §13 M3 ("optional explicitly documented reduced horizontal transport"), §13 M4, §23 (calibration lessons), §24; Planetary Civilization Simulator — Design Record v0.9, §24.2
 - **Related:** ADR-0001 (modes, budget), ADR-0002 (finite-volume operators, determinism), ADR-0006 (sub-steps), ADR-0007 (surface columns), ADR-0008 (snow and sea ice, §9 finding)

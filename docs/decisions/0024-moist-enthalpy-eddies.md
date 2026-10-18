@@ -1,11 +1,12 @@
 # ADR-0024 — The climate transport's eddies driven by moist enthalpy
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-18
+- **Accepted:** 2026-10-18
 - **Milestone:** P0 / M8 (task M8-05)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24; ADR-0023 §5 V11
 - **Related:** ADR-0009 (the implicit transport's Newton, its floors and line search, §12's coarse groups), ADR-0010 §11 (the source enters the bottom layer), ADR-0011 §17 (the coupled climate transport: eddies on θ_c, advection of s_k), ADR-0021 §4.5 (humidity carried by the same fluxes and eddies), ADR-0023 (moist convection, cloud water, precipitation)
-- **Amends on acceptance:** ADR-0011 §17.1 (what drives the eddies' heat, with moist convection on); ADR-0009 §4.1 and §11 (the diffused temperature, in the fallback month, with moist convection on)
+- **Amends:** ADR-0011 §17.1 (what drives the eddies' heat, with moist convection on); ADR-0009 §4.1 and §11 (the diffused temperature, in the fallback month, with moist convection on)
 
 ## 1. Context
 
@@ -69,7 +70,7 @@ so the moist enthalpy rises with h.
    than the heat added. Changes the convection to suit a solver, and
    monotonicity is not guaranteed elsewhere. *Rejected.*
 4. **The eddies carry moist enthalpy; water carries its own latent part.**
-   *Chosen* (decided with the user).
+   *Chosen* (decided with the user; accepted 2026-10-18).
 5. **The eddies carry moist enthalpy as heat, and no water.** Removes the
    eddies' moisture transport, most of the poleward latent flux, from the
    water cycle. *Rejected.*

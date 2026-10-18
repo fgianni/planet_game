@@ -9,6 +9,7 @@
 - **Amended:** 2026-10-04 — §15: the eddy scale L = 2,000 km and c_E fitted in the model's form
 - **Amended:** 2026-10-04 — §16: the azonal balance's damping and zonal means
 - **Amended:** 2026-10-06 — §17: the coupled climate transport, the balanced p_s in the slow state and its energy, the fallback
+- **Amended:** 2026-10-18 — §17.1, §17.4: with moist convection on, the eddies are driven by the columns' moist enthalpy temperature (ADR-0024)
 - **Milestone:** P0 / M6 (wind and Coriolis)
 - **Context document:** `docs/DEVELOPMENT_SPEC_v0_4.md` §6 (`AtmosphereState`), §8 (multi-rate), §9.2, §13 M6, §15.5 (zero-rotation experiment), §23, §24; Planetary Civilization Simulator — Design Record v0.9, §5.4, §15.2–15.5, §25 (M5 row: "planetary circulation direction and latitude dependence"), §28
 - **Related:** ADR-0001 (modes, partition, budget, §8 milestone mapping), ADR-0002 (mesh, operators, §4.2 advection, field layout), ADR-0003 (determinism, replay), ADR-0006 (sub-steps), ADR-0009 (implicit transport, coarse graph), ADR-0010 (layered atmosphere; its §7 M6 row)
