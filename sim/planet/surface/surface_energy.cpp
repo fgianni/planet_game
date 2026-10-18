@@ -26,6 +26,7 @@
 #include <cstdint>
 #include <limits>
 #include <numbers>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -968,6 +969,28 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             std::span<double>(layers_guess.data() + cell * layers, layers), ColumnSolveSettings{},
             &warm_starts[cell], water ? &moisture : nullptr);
     };
+    // A column solved for one of the transport solve's trial sources. A trial
+    // far from the solution can ask a column for a source it cannot balance
+    // at any positive temperature (with a nearly black cloudy bottom layer,
+    // task M8-05); the column is then restored to its start and reported
+    // missing, and the transport solve rejects the trial. Per cell, so the
+    // same for any worker count.
+    const auto solve_trial_column =
+        [&](std::size_t cell, double h,
+            CellSurface& cell_surface) -> std::optional<ColumnSolveResult> {
+        try {
+            return solve_column(cell, h, cell_surface);
+        } catch (const std::runtime_error&) {
+            for (std::size_t layer = 0; layer < layers; ++layer) {
+                layers_guess[cell * layers + layer] = layers_before[cell * layers + layer];
+            }
+            warm_starts[cell].valid = false;
+            return std::nullopt;
+        }
+    };
+    // A missing column's θ and s: NaN, so its group's residual and the trial's
+    // merit are NaN and the line search rejects the trial.
+    constexpr double missing = std::numeric_limits<double>::quiet_NaN();
     // The start-of-step cell temperature: the first guess of each cell solve.
     std::vector<double> first_guess(cells, 0.0);
     for_each_deterministic_block(
@@ -1025,9 +1048,9 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                             // The diffused temperature is the column's mean
                             // θ_c (ADR-0010 §3.4 C).
                             CellSurface cell_surface;
-                            const auto column = solve_column(cell, h, cell_surface);
-                            cell_air[cell] = column.theta_K;
-                            cell_slope[cell] = column.theta_slope_K_m2_W;
+                            const auto column = solve_trial_column(cell, h, cell_surface);
+                            cell_air[cell] = column ? column->theta_K : missing;
+                            cell_slope[cell] = column ? column->theta_slope_K_m2_W : missing;
                             continue;
                         }
                         const auto tiles = solve_cell(
@@ -1126,8 +1149,18 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                             LayerArray ds{};
                             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                                 CellSurface cell_surface;
-                                const auto column =
-                                    solve_column(cell, source[group_of_cell[cell]], cell_surface);
+                                const auto solved = solve_trial_column(
+                                    cell, source[group_of_cell[cell]], cell_surface);
+                                if (!solved) {
+                                    cell_air[cell] = missing;
+                                    cell_slope[cell] = missing;
+                                    for (std::size_t l = 0; l < layers; ++l) {
+                                        cell_energy[l * cells + cell] = missing;
+                                        cell_energy_slope[l * cells + cell] = missing;
+                                    }
+                                    continue;
+                                }
+                                const ColumnSolveResult& column = *solved;
                                 cell_air[cell] = column.theta_K;
                                 cell_slope[cell] = column.theta_slope_K_m2_W;
                                 layer_dry_static_energy(

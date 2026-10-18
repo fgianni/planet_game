@@ -700,7 +700,15 @@ ImplicitTransportResult solve_implicit_transport(const TransportGraph& graph,
                             }
                         });
                     trial_merit = evaluate(trial, trial_mean, trial_slope, trial_residual);
-                    residual = std::move(trial_residual);
+                    // A column that cannot balance the full step's source
+                    // makes the merit NaN (surface_energy.cpp): no step. Nor
+                    // a full step that only throws the iterate away.
+                    if (std::isfinite(trial_merit) &&
+                        trial_merit <= settings.max_non_monotone_growth * merit) {
+                        residual = std::move(trial_residual);
+                    } else {
+                        step = 0.0;
+                    }
                 }
                 break;
             }
@@ -1242,7 +1250,12 @@ AdvectionDiffusionResult solve_implicit_advection_diffusion(
                             std::max(current.source[a] + delta[a], source_floor_W_m2[a]);
                     }
                     evaluate(trial);
-                    accepted = true;
+                    // A column that cannot balance the full step's source
+                    // makes the merit NaN (surface_energy.cpp): no step. Nor
+                    // a full step that only throws the iterate away: a kink
+                    // raises the merit a little, a wild step by orders.
+                    accepted = std::isfinite(trial.merit) &&
+                               trial.merit <= settings.max_non_monotone_growth * current.merit;
                 }
                 break;
             }

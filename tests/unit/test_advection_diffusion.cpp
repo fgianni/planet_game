@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -225,7 +226,53 @@ int main() {
         PLANETSIM_EXPECT(test, largest <= 1.0e-6);
     }
 
-    // 4. Invalid inputs are refused.
+    // 4. A column missing for some trial sources (task M8-05: a column that
+    // cannot balance its source reports NaN): the line search rejects those
+    // trials and the solve ends finite and conservative. The columns here
+    // report a tenth of their slope, so Newton's full steps overshoot, and
+    // are missing beyond 1.5 times the solution's largest source.
+    {
+        const auto transport = transport_on(graph, 5.0e9, conductance);
+        const auto reference =
+            planetsim::solve_implicit_advection_diffusion(graph, transport, floor, column, {}, 1U);
+        double limit = 0.0;
+        for (std::size_t i = 0; i < nodes; ++i) {
+            limit = std::max(limit, 1.5 * std::abs(reference.source_W_m2[i]));
+        }
+        int missing_calls = 0;
+        const planetsim::AdvectionResponse fragile =
+            [&](const planetsim::Field2D<double>& source, planetsim::Field2D<double>& mean,
+                planetsim::Field2D<double>& slope, std::vector<double>& energy,
+                std::vector<double>& energy_slope) {
+                column(source, mean, slope, energy, energy_slope);
+                bool any = false;
+                for (std::size_t i = 0; i < nodes; ++i) {
+                    slope[i] *= 0.1;
+                    for (std::size_t l = 0; l < layers; ++l) {
+                        energy_slope[l * nodes + i] *= 0.1;
+                    }
+                    if (std::abs(source[i]) > limit) {
+                        mean[i] = std::numeric_limits<double>::quiet_NaN();
+                        any = true;
+                    }
+                }
+                missing_calls += any ? 1 : 0;
+            };
+        const auto result =
+            planetsim::solve_implicit_advection_diffusion(graph, transport, floor, fragile, {}, 1U);
+        bool finite = true;
+        for (std::size_t i = 0; i < nodes; ++i) {
+            finite = finite && std::isfinite(result.source_W_m2[i]);
+        }
+        std::cout << "fragile columns: newton=" << result.newton_iterations
+                  << " missing trials=" << missing_calls
+                  << " consistency=" << result.consistency_residual_W_m2 << '\n';
+        PLANETSIM_EXPECT(test, missing_calls > 0);
+        PLANETSIM_EXPECT(test, finite && std::isfinite(result.consistency_residual_W_m2));
+        PLANETSIM_EXPECT(test, std::abs(result.sum_W) <= 1.0e-12 * result.absolute_sum_W);
+    }
+
+    // 5. Invalid inputs are refused.
     {
         auto transport = transport_on(graph, 0.0, conductance);
         transport.conductance_W_K[0] = -1.0;

@@ -87,6 +87,10 @@ struct ImplicitTransportSettings {
     // taken across kinks of the tiles' response.
     double rounding_floor_W_m2 = 1e-3;
     int max_non_monotone_steps = 4;
+    // A full step across a kink is taken only if it raises the merit by at
+    // most this factor (task M8-05: at L5 a cloudy column's response sent a
+    // full step's sources to 10⁵ W/m² and the merit up a million-fold).
+    double max_non_monotone_growth = 100.0;
     // Stop once max |h − K ∇² T̄(h)| is below: ADR-0009 V7's gate. The cell
     // solves converge T̄ to about 1e-12 relative, so the residual cannot fall
     // much below 1e-7 W/m² at Earth-like conductance.

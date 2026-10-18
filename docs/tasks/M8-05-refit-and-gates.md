@@ -206,9 +206,61 @@ so it waits for the user.
   mode's clouds sit higher). Reference mode holds 296 K from year 8 (no
   dry drift); its strongest wind over the eleven years is 95 m/s.
 
+## V11 (performance) and the transport solve at L5 and L6
+
+- **First attempt:** with the preset's physics, L5 and L6 stopped within
+  seconds: a column's bottom layer fell to a few kelvin under a transport
+  source of −840 to −1 220 W/m². L5 in its second month, the first with
+  clouds; without the clouds' longwave it ran.
+- **L5, cause:** the coupled transport's Newton (ADR-0011 §17.1) evaluates
+  each trial step at full length first. With a nearly black cloudy bottom
+  layer some full steps asked columns for sources they cannot balance at
+  any positive temperature (the column Newton walked the bottom layer to
+  7 K with its residual still positive), and the column threw before the
+  line search could reject the step. Once that was caught, the line
+  search's non-monotone rule (ADR-0009 §9: a full step across a kink, up
+  to four times) accepted a full step that raised the merit a
+  million-fold, sending sources to 10⁵ W/m².
+- **The fix:**
+  - `solve_trial_column` (`surface_energy.cpp`): a column that throws
+    during one of the transport's trial evaluations is restored to its
+    start (its guess, its warm start invalidated) and reported as NaN, per
+    cell, so the same for any worker count; the trial's merit is then NaN
+    and the line search rejects it. The final application still throws.
+  - Both transport solves (`heat_transport.cpp`): the non-monotone full
+    step is taken only if its merit is finite and at most
+    `max_non_monotone_growth` (100) times the current one.
+  - `test_advection_diffusion` §4: columns that report a tenth of their
+    slope (so full steps overshoot) and are missing beyond 1.5 times the
+    solution's largest source: 5 trials are missing, and the solve ends
+    finite and conservative.
+  - A more exact source floor (solving the layers above with the bottom
+    held at 100 K) was tried and is not needed; the floor is unchanged.
+- **V11, L5** (`planet_cli run --subdivision 5 --years 250 --workers 16`):
+  **345 s** (43.5 years per minute), against M7's 405 s; ×1.5 allows
+  608 s. CI's run (25 years, 4 workers): 54 s against the 180 s cap
+  (M7: 58 s).
+- **V11, L6 fails:** the run stops in its first month, before any cloud
+  forms. The transport Newton does not converge in 30 iterations (its
+  residual stays near 7 000 W/m²), and the source it then applies breaks
+  a column (−1 216 W/m²). M7's physics runs at L6.
+  - **Cause:** in hot convecting columns the column mean θ_c *falls* as
+    the transport source rises: dθ_c/dh is negative both in the solve's
+    linear response (about −0.02 K per W/m²) and by finite difference (to
+    −0.27). More than half of the columns logged convect to the top
+    layer. Heating such a column mostly evaporates its in-solve condensate
+    and shifts Betts–Miller's adjustment. The coupled transport carries
+    θ_c and assumes it rises with h: its Newton matrix and its
+    preconditioner (ADR-0009's) take θ' > 0, so a negative response makes
+    the transport anti-diffusive there. At L3–L5 the coarse groups average
+    it out; at L6 they do not.
+  - Finite-difference slopes in place of the linear response do not help
+    (tried).
+
 ## Remaining
 
 - **V9** on the fitted preset: the cover and cloud effects at L4, the
   zonal cover, each cell's climatological latent heating against
   300 W/m².
-- **V11** performance (250 years at L5 and L6, CI's 25-year caps).
+- **V11 at L6:** the coupled transport with moist columns whose θ_c falls
+  as h rises (above). Decided with the user.
