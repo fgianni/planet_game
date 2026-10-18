@@ -34,6 +34,11 @@
 ## Remaining
 
 - The cloud layer in both styles, in every altitude band, procedural
-  detail keyed by position (ADR-0023 §4.8).
+  detail keyed by position (ADR-0023 §4.8). Decided with the user
+  (2026-10-18): a **separate shell**, a second instance of the cell mesh
+  lifted to cloud height with a transparent cloud shader per style
+  (opacity from `cloud_cover`, brightness and density from
+  `cloud_thickness`), drawn over the terrain tiles and seen from below at
+  ground level; the readability harness composites it over the surface.
 - V12's readability: clouded against clear terrain through the
   readability harness, in both styles.
