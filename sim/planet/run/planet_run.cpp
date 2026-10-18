@@ -67,13 +67,6 @@ template <typename Integer>
     surface.atmosphere.layer_count = scenario.resolved_atmosphere_layers();
     surface.water_cycle = scenario.resolved_water_cycle();
     surface.atmosphere.moist_convection = scenario.resolved_moist_convection();
-    // ADR-0023 §4.6: the vapour path refitted with moist convection (task
-    // M8-05), where the preset's own fit (M7's) assumed it off.
-    if (surface.atmosphere.moist_convection && scenario.preset == PlanetPreset::earth_like &&
-        !surface_energy_parameters_for(scenario.preset).atmosphere.moist_convection) {
-        surface.atmosphere.dry_optical_depth = earth_like_moist_dry_optical_depth;
-        surface.atmosphere.vapour_absorption_m2_kg = earth_like_moist_vapour_absorption_m2_kg;
-    }
     return surface;
 }
 

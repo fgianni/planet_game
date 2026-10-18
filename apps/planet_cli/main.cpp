@@ -139,8 +139,8 @@ struct ThermalOptions {
     std::optional<bool> water;
     std::optional<double> dry_depth;
     std::optional<double> vapour_absorption;
-    // ADR-0023: moist convection, clouds and their radiation; on, the
-    // vapour path starts from its moist fit (task M8-05).
+    // ADR-0023: moist convection, clouds and their radiation (empty: the
+    // preset's).
     std::optional<bool> moist_convection;
     std::size_t worker_count = 0;        // 0: hardware concurrency
 };
@@ -2679,11 +2679,6 @@ int run_thermal(const ThermalOptions& options) {
     }
     if (options.moist_convection) {
         surface.atmosphere.moist_convection = *options.moist_convection;
-        if (*options.moist_convection && options.preset == planetsim::PlanetPreset::earth_like) {
-            surface.atmosphere.dry_optical_depth = planetsim::earth_like_moist_dry_optical_depth;
-            surface.atmosphere.vapour_absorption_m2_kg =
-                planetsim::earth_like_moist_vapour_absorption_m2_kg;
-        }
     }
     if (options.dry_depth) {
         surface.atmosphere.dry_optical_depth = *options.dry_depth;

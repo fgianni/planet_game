@@ -144,10 +144,9 @@ so it waits for the user.
   (decided with the user, 2026-10-18) until the coupled transport takes
   moist columns at L6 (V11 below). The refitted τ_d and κ_v are kept as
   `earth_like_moist_dry_optical_depth` and
-  `earth_like_moist_vapour_absorption_m2_kg`: a run that turns moist
-  convection on for the earth_like preset applies them
-  (`scenario_surface_parameters`), as does `planet_cli thermal
-  --moist-convection 1`. Off, the preset is M7's, with M7's fit.
+  `earth_like_moist_vapour_absorption_m2_kg` while it is off. **On again**
+  after ADR-0024's V4 (decided with the user, 2026-10-18), with its own
+  refit below; the separate moist constants are gone.
 - **τ_d and κ_v**, refitted with moist convection on: `planet_cli thermal --subdivision 4 --years 150 --layers 3
   --coupled --water --dry-depth 1.19576 --vapour-absorption 0.0059788
   --calibrate 288` (seed 1, 16 min): scale 1.0277, so **τ_d = 1.2289237,
@@ -156,6 +155,17 @@ so it waits for the user.
   - **P2 equator-to-pole difference 45.1 K** (M7: 53.3 K; target 42 K),
     peak poleward transport 2.75 PW (M7: 3.60);
   - closure 8.4e-6 of its gate.
+- **τ_d and κ_v refitted with ADR-0024** (the eddies on T_m):
+  `planet_cli thermal --subdivision 4 --years 150 --layers 3 --coupled
+  --water --moist-convection 1 --dry-depth 1.2289237 --vapour-absorption
+  0.0061446183 --calibrate 288` (seed 1, 14 min): scale 0.97383, so
+  **τ_d = 1.19676046, κ_v = 0.00598380212 m²/kg**, the preset's.
+  - **288.00 K**; land 277.5 K, ocean 292.3 K;
+  - **P2 equator-to-pole difference 48.1 K** (45.1 K with the eddies on
+    θ_c; M7 53.3 K; target 42 K), peak poleward transport 2.75 PW: the
+    eddies see the layers' mean temperature, a smaller contrast than θ_c's
+    (ADR-0024 §4);
+  - no failed months; closure 7.2e-6 of its gate.
 - **Tests that read the preset:**
   - `test_atmosphere_plateau` pins M7's column: its bounds are Γ_c's lapse
     rate (4–9.8 K/km). With moist convection the plateau's is 3.6 K/km
