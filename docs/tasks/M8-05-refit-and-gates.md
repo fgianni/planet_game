@@ -131,11 +131,53 @@ clouds sit higher (resolved ascent saturates the upper layers, which
 monthly-mean states seldom do). This changes ADR-0023 §4.2.4 and §4.3,
 so it waits for the user.
 
+## The refit (2026-10-18)
+
+- **Cloud constants** (`AtmosphereParameters`), from 25-year L3 climate
+  sweeps with §14 (a temporary override, not committed): τ_a = 600 s,
+  W_c = 0.05 kg/m², r_e = 18 µm. With the vapour path's scale near 1.17,
+  the sweep gave 288.6 K, cover 0.59, −46 and +20 W/m² (§4.6's targets:
+  ~0.6, −47 and +26). r_e = 18 µm is large for liquid cloud; it also
+  stands for the absorption the non-absorbing two-stream limit leaves out.
+- **Moist convection on in the earth_like preset** (decided with the user,
+  as M7-07 did for the water cycle). Manifests written before M8 still
+  read as off.
+- **τ_d and κ_v** (`earth_like_dry_optical_depth`,
+  `earth_like_vapour_absorption_m2_kg`), refitted with the preset's
+  physics: `planet_cli thermal --subdivision 4 --years 150 --layers 3
+  --coupled --water --dry-depth 1.19576 --vapour-absorption 0.0059788
+  --calibrate 288` (seed 1, 16 min): scale 1.0277, so **τ_d = 1.2289237,
+  κ_v = 0.0061446183 m²/kg** (M7: 1.0220175, 0.0051100875).
+  - **287.98 K**; land 275.9 K, ocean 292.9 K;
+  - **P2 equator-to-pole difference 45.1 K** (M7: 53.3 K; target 42 K),
+    peak poleward transport 2.75 PW (M7: 3.60);
+  - closure 8.4e-6 of its gate.
+- **Tests that read the preset:**
+  - `test_atmosphere_plateau` pins M7's column: its bounds are Γ_c's lapse
+    rate (4–9.8 K/km). With moist convection the plateau's is 3.6 K/km
+    (before the τ_d refit).
+  - `test_zonal_coupling` now finds the eddy-driven jet as the top
+    layer's strongest wind between 37.5° and 67.5°, a local maximum. It
+    took the hemisphere's strongest wind, and the southern January profile
+    has two maxima of similar size, so the check flipped with small
+    changes. Its own comment recorded the flip in M7's first year.
+
+    | Southern January (L4, 3 years) | Subtropical max | Eddy-driven max |
+    |---|---|---|
+    | M8's physics, refitted | 32.4 m/s at 27.5° | 25.7 m/s at 67.5° |
+    | M7's physics, new τ_d | 35.7 m/s at 32.5° | 29.6 m/s at 57.5° |
+    | M8's state, clouds left out of the heating | 32.4 m/s at 27.5° | 30.4 m/s at 67.5° |
+
+    The northern jet stays at 52.5° (36 m/s).
+  - `test_cloud_water` and `test_cloud_radiation` pin the constants their
+    checks write out (τ_a = 1 h; r_e = 10 µm, W_c = 0.1 kg/m²).
+- All 97 tests pass; the CI checks pass.
+
 ## Remaining
 
-- **The refit** (§4.6, V9): W_c, r_e, τ_a with τ_d and κ_v, against a
-  288 K mean, cover 0.5–0.7 and cloud effects within 30 % of −47 and
-  +26 W/m², one fit for both modes.
+- **V9** on the fitted preset: the cover and cloud effects at L4, the
+  zonal cover, each cell's climatological latent heating against
+  300 W/m².
 - **The reference start** for V8 (task M8-03): the ten-year climate state
   holds a 64–74 K contrast across one edge near 52° N that the reference
   dynamics cannot take.

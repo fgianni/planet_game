@@ -31,6 +31,9 @@ struct Column {
 
     Column() {
         parameters.layer_count = static_cast<std::uint32_t>(n);
+        // The optics the checks below write out (Stephens 1978's 10 µm).
+        parameters.cloud_effective_radius_m = 10e-6;
+        parameters.cloud_in_cloud_water_path_kg_m2 = 0.1;
         const double gravity =
             planetsim::surface_gravity_m_s2(planetsim::PlanetParameters::earth_development());
         radiation = planetsim::column_radiation(parameters, surface_pressure_Pa, gravity);

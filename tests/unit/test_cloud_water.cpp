@@ -34,6 +34,7 @@ struct Column {
     explicit Column(std::size_t layers, double dt_s) {
         planetsim::AtmosphereParameters parameters;
         parameters.layer_count = static_cast<std::uint32_t>(layers);
+        parameters.autoconversion_time_s = 3600.0;   // the τ_a the checks below write out
         const double gravity =
             planetsim::surface_gravity_m_s2(planetsim::PlanetParameters::earth_development());
         radiation = planetsim::column_radiation(parameters, surface_pressure_Pa, gravity);

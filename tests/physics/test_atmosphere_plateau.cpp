@@ -36,8 +36,10 @@ void check_plateau(planetsim::test::Context& test) {
     const auto mesh = std::make_shared<const planetsim::PlanetMesh>(
         planetsim::make_icosphere(4U, 6'371'000.0));
     const auto parameters = planetsim::PlanetParameters::earth_development();
-    const auto surface =
-        planetsim::surface_energy_parameters_for(planetsim::PlanetPreset::earth_like);
+    // M7's column (Γ_c): the bounds below are its lapse rate. With moist
+    // convection the plateau's is 3.6 K/km (task M8-05).
+    auto surface = planetsim::surface_energy_parameters_for(planetsim::PlanetPreset::earth_like);
+    surface.atmosphere.moist_convection = false;
     planetsim::PlanetState state(mesh);
     const std::size_t cells = mesh->cell_count();
     std::vector<double> height(cells, -4'000.0);

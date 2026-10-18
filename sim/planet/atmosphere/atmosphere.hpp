@@ -54,7 +54,7 @@ struct AtmosphereParameters {
     // held 1 kg/m² in every cloudy L3 layer); the cloud water then settles
     // at the condensation rate times τ_a. Calibration constants (§4.6).
     double cloud_water_threshold_kg_kg = 0.0;      // q_l0
-    double autoconversion_time_s = 3600.0;         // τ_a
+    double autoconversion_time_s = 600.0;          // τ_a (calibration)
     double rain_evaporation_efficiency = 0.5;      // ε
     double rain_evaporation_time_s = 3600.0;       // τ_e
     // Cloud radiation (ADR-0023 §4.4, §13), with moist convection: each
@@ -62,8 +62,8 @@ struct AtmosphereParameters {
     // path; the in-cloud optical depth 3 LWP / (2 ρ_w r_e) (Stephens 1978);
     // shortwave reflection by the non-absorbing two-stream limit with
     // asymmetry g; longwave absorption κ_l per kilogram of cloud water.
-    double cloud_in_cloud_water_path_kg_m2 = 0.1;     // W_c (calibration)
-    double cloud_effective_radius_m = 10e-6;          // r_e (calibration)
+    double cloud_in_cloud_water_path_kg_m2 = 0.05;    // W_c (calibration)
+    double cloud_effective_radius_m = 18e-6;          // r_e (calibration)
     double cloud_asymmetry = 0.85;                    // g
     double cloud_longwave_absorption_m2_kg = 130.0;   // κ_l = 0.13 m²/g
 };
@@ -87,17 +87,17 @@ inline constexpr double gravitational_constant_m3_kg_s2 = 6.67430e-11;
 inline constexpr double earth_like_longwave_optical_depth = 1.442;
 
 // The vapour path's constants (ADR-0021 §4.6, §4.8, §12): calibration
-// constants. Fit (2026-10-09, task M7-07): with the water cycle, the coupled
-// circulation, L4, seed 1, three layers, 150 years
-// (`planet_cli thermal --subdivision 4 --years 150 --layers 3 --coupled
-// --water --dry-depth 1.1536 --vapour-absorption 0.005768 --calibrate 288`):
-// the split 0.8 / 0.2 of τ₀ (κ_v's at 50 kg/m²; decided with the user) scaled
-// together by bisection to 287.98 K (scale 0.8859). The P2 equator-to-pole
-// difference is 53.3 K and the peak poleward transport 3.60 PW: the 42 K
-// target waits for M8's clouds and M11's ocean (even inert vapour gives
-// about 46 K).
-inline constexpr double earth_like_dry_optical_depth = 1.0220175;
-inline constexpr double earth_like_vapour_absorption_m2_kg = 0.0051100875;
+// constants. Refit (2026-10-18, task M8-05; ADR-0023 §4.6) with moist
+// convection, cloud water and cloud radiation on (τ_a = 600 s, W_c =
+// 0.05 kg/m², r_e = 18 µm), the coupled circulation, L4, seed 1, three
+// layers, 150 years (`planet_cli thermal --subdivision 4 --years 150
+// --layers 3 --coupled --water --dry-depth 1.19576 --vapour-absorption
+// 0.0059788 --calibrate 288`): M7's split, scaled together by bisection to
+// 287.98 K (scale 1.0277 of the given pair). The P2 equator-to-pole
+// difference is 45.1 K and the peak poleward transport 2.75 PW. M7's fit
+// (task M7-07) was 1.0220175 and 0.0051100875, with P2 53.3 K.
+inline constexpr double earth_like_dry_optical_depth = 1.2289237;
+inline constexpr double earth_like_vapour_absorption_m2_kg = 0.0061446183;
 
 // dead_rock and aqua_planet: no atmosphere (experiments A and B,
 // specification §13.1). earth_like: three layers (design record §15.1) of
