@@ -226,6 +226,10 @@ struct ColumnSolveResult {
     // L Σ C_k m / Δt, and the surface's evaporation.
     LayerArray humidity_kg_kg{};
     LayerArray condensate_kg_kg{};
+    // With moist convection, each layer's drying by Betts–Miller (kg/kg),
+    // condensate that joins the cloud water as the large-scale kind does
+    // (ADR-0023 §14).
+    LayerArray convective_condensate_kg_kg{};
     double precipitation_kg_m2_s = 0.0;
     double condensation_W_m2 = 0.0;
     double evaporation_kg_m2_s = 0.0;
@@ -552,17 +556,19 @@ inline void add_cloud_longwave(ColumnRadiation& column, const CloudOptics& optic
     return low;
 }
 
-// Cloud water to precipitation (ADR-0023 §4.3, §12) on equal-mass layers,
-// after the column solve and convection. Cloud water in a subsaturated
-// layer evaporates by 1 − exp(−Δt/τ_e) of it, never beyond saturation. The
-// excess x = q_l − q_l0 then follows dx/dt = c − x/τ_a while positive, with
-// the step's condensate C_k entering at the constant rate c = C_k/Δt,
-// integrated exactly: x(Δt) = c τ_a + (x₀ − c τ_a) exp(−Δt/τ_a) (from the
-// moment it reaches q_l0 if it starts below); what leaves is precipitation.
-// The cloud water so settles at q_l0 + c τ_a, and a month in one step
-// gives what the same month gives in reference steps. Precipitation falls from the top: entering a layer it evaporates by
-// ε (1 − RH) (1 − exp(−Δt/τ_e)) of itself, never beyond saturation, and then
-// gains the layer's autoconversion and convective rain V_k. Every
+// Cloud water to precipitation (ADR-0023 §4.3, §12, §14) on equal-mass
+// layers, after the column solve and convection. Cloud water in a
+// subsaturated layer evaporates by 1 − exp(−Δt/τ_e) of it, never beyond
+// saturation. The excess x = q_l − q_l0 then follows dx/dt = c − x/τ_a
+// while positive, with the step's condensate C_k, large-scale and
+// convective (§14: Betts–Miller's drying V_k), entering at the constant rate
+// c = C_k/Δt, integrated exactly: x(Δt) = c τ_a + (x₀ − c τ_a) exp(−Δt/τ_a)
+// (from the moment it reaches q_l0 if it starts below); what leaves is
+// precipitation, convective in the share V_k / C_k (at most V_k). The cloud water so
+// settles at q_l0 + c τ_a, and a month in one step gives what the same month
+// gives in reference steps. Precipitation falls from the top: entering a
+// layer it evaporates by ε (1 − RH) (1 − exp(−Δt/τ_e)) of itself, never
+// beyond saturation, and then gains the layer's autoconversion. Every
 // evaporation cools its layer by L/c_p per kg/kg, so the layer's moist
 // enthalpy is exact. Amounts are kg/kg of a layer; the result's in kg/m².
 struct MicrophysicsResult {
@@ -586,6 +592,7 @@ inline MicrophysicsResult cloud_microphysics(const ColumnRadiation& column,
     const double specific_heat = column.layer_heat_capacity_J_m2_K / mass;
     const double heating = moisture.latent_J_kg / specific_heat;
     LayerArray autoconversion{};
+    LayerArray convective_share{};
     double cloud_evaporation = 0.0;
     double converted = 0.0;
     for (std::size_t k = 0; k < n; ++k) {
@@ -601,7 +608,8 @@ inline MicrophysicsResult cloud_microphysics(const ColumnRadiation& column,
             cloud_evaporation += x;
         }
         {
-            const double source = condensate_kg_kg[k];
+            const double source = condensate_kg_kg[k] + convective_kg_kg[k];
+            convective_share[k] = source > 0.0 ? convective_kg_kg[k] / source : 0.0;
             const double equilibrium = source * moisture.autoconversion_time_ratio;   // c τ_a
             const double decay = 1.0 - moisture.autoconversion_fraction;
             const double x0 = cloud - moisture.cloud_water_threshold_kg_kg;
@@ -649,8 +657,12 @@ inline MicrophysicsResult cloud_microphysics(const ColumnRadiation& column,
             convective *= kept;
             rain_evaporation += x;
         }
-        large_scale += autoconversion[k];
-        convective += convective_kg_kg[k];
+        // At most the layer's convective condensate is convective rain: the
+        // autoconversion also drains cloud water from earlier steps.
+        const double from_convection =
+            std::min(autoconversion[k] * convective_share[k], convective_kg_kg[k]);
+        large_scale += autoconversion[k] - from_convection;
+        convective += from_convection;
     }
     result.precipitation_kg_m2 = (large_scale + convective) * mass;
     result.convective_kg_m2 = convective * mass;
@@ -1151,6 +1163,7 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
             std::span<const double>(convective_kg_kg.data(), n), temperature_K,
             std::span<double>(result.humidity_kg_kg.data(), n),
             std::span<double>(result.cloud_water_kg_kg.data(), n));
+        result.convective_condensate_kg_kg = convective_kg_kg;
         double condensed = 0.0;
         for (std::size_t k = 0; k < n; ++k) {
             condensed += result.condensate_kg_kg[k] + convective_kg_kg[k];

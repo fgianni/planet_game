@@ -168,34 +168,41 @@ int main() {
     // 3. §12: one physics in both modes. A constant condensation over six
     // hours gives the same cloud water and rain in one step as in 36
     // ten-minute steps, from a cloudy start and from a clear one, with
-    // either threshold.
+    // either threshold, and with half of it convective (§14: Betts–Miller's
+    // condensate joins the cloud water).
     for (const double threshold : {0.0, 0.3e-3}) {
         for (const double initial : {0.0, 1.5e-3}) {
-            const double hours_s = 6.0 * 3600.0;
-            const double rate = 2e-4 / 3600.0;   // kg/kg per second
-            const auto run = [&](double dt_s, int steps) {
-                Column column(1U, dt_s);
-                column.moisture.cloud_water_threshold_kg_kg = threshold;
-                LayerArray t{profile[0]};
-                LayerArray q{column.saturation(profile[0], 0)};
-                LayerArray cloud{initial};
-                const LayerArray condensate{rate * dt_s};
-                double rain = 0.0;
-                for (int step = 0; step < steps; ++step) {
-                    rain += planetsim::cloud_microphysics(
-                                column.radiation, column.moisture,
-                                std::span<const double>(condensate.data(), 1U),
-                                std::span<const double>(none.data(), 1U),
-                                std::span<double>(t.data(), 1U), std::span<double>(q.data(), 1U),
-                                std::span<double>(cloud.data(), 1U))
-                                .precipitation_kg_m2;
-                }
-                return std::pair{cloud[0], rain};
-            };
-            const auto [one_cloud, one_rain] = run(hours_s, 1);
-            const auto [many_cloud, many_rain] = run(600.0, 36);
-            PLANETSIM_EXPECT_NEAR(test, one_cloud, many_cloud, 1e-12 * std::max(1e-6, one_cloud));
-            PLANETSIM_EXPECT_NEAR(test, one_rain, many_rain, 1e-10 * std::max(1e-6, one_rain));
+            for (const double convective_part : {0.0, 0.5}) {
+                const double hours_s = 6.0 * 3600.0;
+                const double rate = 2e-4 / 3600.0;   // kg/kg per second
+                const auto run = [&](double dt_s, int steps) {
+                    Column column(1U, dt_s);
+                    column.moisture.cloud_water_threshold_kg_kg = threshold;
+                    LayerArray t{profile[0]};
+                    LayerArray q{column.saturation(profile[0], 0)};
+                    LayerArray cloud{initial};
+                    const LayerArray condensate{rate * dt_s * (1.0 - convective_part)};
+                    const LayerArray convective{rate * dt_s * convective_part};
+                    double rain = 0.0;
+                    for (int step = 0; step < steps; ++step) {
+                        const auto result = planetsim::cloud_microphysics(
+                            column.radiation, column.moisture,
+                            std::span<const double>(condensate.data(), 1U),
+                            std::span<const double>(convective.data(), 1U),
+                            std::span<double>(t.data(), 1U), std::span<double>(q.data(), 1U),
+                            std::span<double>(cloud.data(), 1U));
+                        PLANETSIM_EXPECT(test, result.convective_kg_m2 <=
+                                                   convective[0] * column.moisture.layer_mass_kg_m2 *
+                                                       (1.0 + 1e-14));
+                        rain += result.precipitation_kg_m2;
+                    }
+                    return std::pair{cloud[0], rain};
+                };
+                const auto [one_cloud, one_rain] = run(hours_s, 1);
+                const auto [many_cloud, many_rain] = run(600.0, 36);
+                PLANETSIM_EXPECT_NEAR(test, one_cloud, many_cloud, 1e-12 * std::max(1e-6, one_cloud));
+                PLANETSIM_EXPECT_NEAR(test, one_rain, many_rain, 1e-10 * std::max(1e-6, one_rain));
+            }
         }
     }
 
@@ -297,7 +304,7 @@ int main() {
                                        result.convective_kg_m2 <=
                                            result.precipitation_kg_m2 * (1.0 + 1e-14));
             evaporated += result.rain_evaporation_kg_m2;
-            formed += result.autoconversion_kg_m2 + total(convective, n) * m;
+            formed += result.autoconversion_kg_m2;
         }
         std::cout << "falling precipitation: worst RH " << worst_rh << ", water " << worst_water
                   << ", enthalpy " << worst_enthalpy << "; " << evaporated / formed
@@ -367,7 +374,9 @@ int main() {
             for (std::size_t k = 0; k < n; ++k) {
                 PLANETSIM_EXPECT_NEAR(test, result.cloud_water_kg_kg[k],
                                       column.moisture.cloud_water_threshold_kg_kg +
-                                          result.condensate_kg_kg[k] * 3600.0 / dt_s,
+                                          (result.condensate_kg_kg[k] +
+                                           result.convective_condensate_kg_kg[k]) *
+                                              3600.0 / dt_s,
                                       1e-15);
             }
         }

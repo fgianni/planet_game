@@ -41,6 +41,19 @@
     signs as before.
 - All 97 tests pass; the CI checks pass.
 
+- **ADR-0023 §14** (accepted 2026-10-18), implemented: Betts–Miller's
+  drying joins each layer's condensate in the exact autoconversion
+  (`cloud_microphysics`). Convective precipitation is the convective share
+  of the layer's source applied to its autoconversion, at most the layer's
+  convective condensate (the autoconversion also drains cloud water from
+  earlier steps). `ColumnSolveResult::convective_condensate_kg_kg` carries
+  each layer's.
+  - `test_cloud_water`: six hours of steady condensation, half of it
+    convective, give the same cloud water and rain in one step as in 36
+    ten-minute steps; a month leaves each layer at its total condensation
+    rate times τ_a; the convective rain never exceeds the convective
+    condensate.
+
 ## Results before the refit
 
 L3, from the initial state, W_c = 0.1 kg/m², the other constants §12's
