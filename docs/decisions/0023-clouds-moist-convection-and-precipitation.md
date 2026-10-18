@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-15
 - **Accepted:** 2026-10-16
-- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17); 2026-10-17 — §4.3.2: autoconversion integrated exactly with the step's condensation, no threshold; §4.4.1: the convective floor from the start-of-step trigger (§12, tasks M8-03, M8-04; accepted 2026-10-17); 2026-10-17 — §4.4.1: the cloud fraction from the cloud water at a fixed in-cloud path, the same in both modes (§13, task M8-05; accepted 2026-10-17); 2026-10-18 — §4.2.4, §4.3.2: convective condensate through the cloud water (§14, task M8-05; accepted 2026-10-18)
+- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17); 2026-10-17 — §4.3.2: autoconversion integrated exactly with the step's condensation, no threshold; §4.4.1: the convective floor from the start-of-step trigger (§12, tasks M8-03, M8-04; accepted 2026-10-17); 2026-10-17 — §4.4.1: the cloud fraction from the cloud water at a fixed in-cloud path, the same in both modes (§13, task M8-05; accepted 2026-10-17); 2026-10-18 — §4.2.4, §4.3.2: convective condensate through the cloud water (§14, task M8-05; accepted 2026-10-18); proposed 2026-10-18 — §5 V8: each mode's own spin-up (§15, task M8-05)
 - **Milestone:** P0 / M8 (clouds and precipitation)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24, §31.2 (the cloud channels); Planetary Civilization Simulator — Design Record v1.4, §5, §15
 - **Related:** ADR-0001 (V1 water budget, V2 climate–reference parity), ADR-0003 (PSNAP migration), ADR-0006 (sub-steps), ADR-0008 (snow, rain and snow at the surface), ADR-0010 (layered atmosphere, grey longwave, Γ_c adjustment, §3.3 C deferring Betts–Miller to M8), ADR-0011 (winds, ascent), ADR-0018 (presentation channels `cloud_cover`, `cloud_thickness`), ADR-0021 (vapour, evaporation, saturation rainout; §13.7 V9 deferred to M8)
@@ -588,3 +588,51 @@ the time step.
   at its total condensation rate times τ_a, and one step over a span gives
   what reference steps over it give;
 - V4 as before for the relaxation itself.
+
+## 15. Amendment: V8 from each mode's own spin-up (proposed 2026-10-18, task M8-05)
+
+**15.1 Why V8 cannot start reference mode from the climate state.** V8 as
+written (ADR-0021 V9's reading, `planet_cli parity`) starts reference
+mode from the ten-year climate state. That state holds single land cells
+70–85 K colder than their ocean neighbours: at L3, in January, cell 423
+(38° N, 84° W) has its surface at 226 K and its layers at 218, 189 and
+179 K, beside an ocean cell at 300 K (45° N). 63 edge-layer pairs differ by
+more than 60 K. M7's physics gives the same, stronger (85 K, the ocean
+cell at 311 K). The reference dynamics cannot take it: winds pass the
+sub-step rule's 150 m/s within hours (task M8-03: 155 m/s; the refitted
+preset: 150.8 m/s). The contrast is climate mode's: its columns exchange
+little heat with their neighbours. It predates M8 and is recorded, not
+fixed, here.
+
+**15.2 Decision (amends V8's reading; decided with the user).** V8
+compares each mode spun up from the initial state in its own physics:
+ten years of climate mode and ten years of reference mode (stable, as V7
+shows), then the eleventh year of each, at L3. The gate is unchanged
+(0.3 K and ±10 % precipitation). It measures each mode's own climate,
+not the reference dynamics' response to climate mode's state.
+
+**15.3 Result** (the refitted preset, task M8-05; L3, seed 1; the
+reference run took 26 min at 16 threads):
+
+| Year | Climate (K) | Reference (K) | Climate P (m/yr) | Reference P (m/yr) |
+|---|---|---|---|---|
+| 1 | 303.57 | 304.47 | 1.98 | 2.11 |
+| 5 | 291.08 | 296.55 | 1.64 | 1.59 |
+| 10 | 289.38 | 295.97 | 1.58 | 1.56 |
+| **11** | **289.29** | **295.92** | **1.580** | **1.560** |
+
+- **Precipitation passes:** −1.3 % (M8-02: ×1.30; M7: ×1.29).
+- **Temperature fails:** +6.6 K against 0.3 K (M8-02: +4.98 K; M7:
+  +5.45 K, both from the climate state).
+- In year 11 the shortwave cloud effects agree (−46.8 and −46.1 W/m²), as
+  does the cloud water (30 g/m² each). The longwave effects do not (+20.6
+  and +38.9 W/m²), and the covers differ (0.59 and 0.47): reference mode's
+  clouds sit higher (§14.3). The convective share is 0.06 against 0.40.
+- Reference mode no longer drifts (task M8-04's dry drift): 296 K from
+  year 8 on. Its strongest wind over the eleven years is 95 m/s (V7).
+
+**15.4 What V8's temperature gap holds.** About 5 K predates the clouds
+(M7, M8-02). The clouds' longwave difference, about 18 W/m², adds to it.
+Climate mode's land–sea contrast (§15.1) and its evaporation from monthly
+means (§4.5) are the other known differences. Closing the gap is not
+part of this amendment.
