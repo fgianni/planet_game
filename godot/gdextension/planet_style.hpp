@@ -32,6 +32,10 @@ class PlanetStyle : public godot::Resource {
     [[nodiscard]] godot::PackedStringArray get_required_channels() const;
     void set_surface_shader(const godot::Ref<godot::Shader>& value);
     [[nodiscard]] godot::Ref<godot::Shader> get_surface_shader() const;
+    // Optional (ADR-0023 §4.8): the style's cloud layer, drawn on a shell over
+    // the surface from the cloud_cover and cloud_thickness channels.
+    void set_cloud_shader(const godot::Ref<godot::Shader>& value);
+    [[nodiscard]] godot::Ref<godot::Shader> get_cloud_shader() const;
     void set_cost_tier(const godot::String& value);
     [[nodiscard]] godot::String get_cost_tier() const;
 
@@ -43,6 +47,7 @@ class PlanetStyle : public godot::Resource {
     std::int64_t channel_set_version_ = 0;
     godot::PackedStringArray required_channels_;
     godot::Ref<godot::Shader> surface_shader_;
+    godot::Ref<godot::Shader> cloud_shader_;
     godot::String cost_tier_ = "medium";
 };
 

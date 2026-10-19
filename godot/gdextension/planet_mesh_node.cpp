@@ -178,6 +178,16 @@ void PlanetMeshNode::_bind_methods() {
                                 &PlanetMeshNode::get_relief_exaggeration);
     godot::ClassDB::bind_method(godot::D_METHOD("set_day_night_shading", "enabled"),
                                 &PlanetMeshNode::set_day_night_shading);
+    godot::ClassDB::bind_method(godot::D_METHOD("set_clouds_visible", "visible"),
+                                &PlanetMeshNode::set_clouds_visible);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_clouds_visible"),
+                                &PlanetMeshNode::get_clouds_visible);
+    godot::ClassDB::bind_method(godot::D_METHOD("is_cloud_layer_drawn"),
+                                &PlanetMeshNode::is_cloud_layer_drawn);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_cloud_radius"),
+                                &PlanetMeshNode::get_cloud_radius);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_channel_values", "name"),
+                                &PlanetMeshNode::get_channel_values);
     godot::ClassDB::bind_method(godot::D_METHOD("get_day_night_shading"),
                                 &PlanetMeshNode::get_day_night_shading);
     godot::ClassDB::bind_method(godot::D_METHOD("get_sun_direction"),
@@ -444,9 +454,88 @@ double PlanetMeshNode::get_relief_exaggeration() const noexcept { return relief_
 void PlanetMeshNode::set_day_night_shading(bool enabled) {
     day_night_shading_ = enabled;
     update_shader_flags();
+    update_cloud_layer();
 }
 
 bool PlanetMeshNode::get_day_night_shading() const noexcept { return day_night_shading_; }
+
+void PlanetMeshNode::set_clouds_visible(bool visible) {
+    clouds_visible_ = visible;
+    update_cloud_layer();
+}
+
+bool PlanetMeshNode::get_clouds_visible() const noexcept { return clouds_visible_; }
+
+bool PlanetMeshNode::is_cloud_layer_drawn() const {
+    return cloud_node_ != nullptr && cloud_node_->is_visible();
+}
+
+// The shell's radius on the unit sphere: a cloud height at the drawn relief
+// exaggeration, so the exaggerated mountains rise through it as they do
+// through clouds, and at ground level, at true scale, it sits a cloud's
+// height overhead.
+double PlanetMeshNode::get_cloud_radius() const noexcept {
+    constexpr double cloud_height_m = 3'000.0;
+    const double radius_m = mesh_ ? mesh_->radius_m() : 6'371'000.0;
+    return 1.0 + std::min(drawn_exaggeration_, relief_exaggeration_) * cloud_height_m / radius_m;
+}
+
+godot::PackedFloat32Array PlanetMeshNode::get_channel_values(const godot::String& name) const {
+    godot::PackedFloat32Array result;
+    const std::string wanted = name.utf8().get_data();
+    for (const auto& descriptor : presentation::channel_registry) {
+        if (descriptor.name != wanted || descriptor.kind != presentation::ChannelKind::scalar) continue;
+        const auto& values = displayed_frame_.channels[channel_index(descriptor.id)].values;
+        result.resize(static_cast<std::int64_t>(values.size()));
+        for (std::size_t i = 0; i < values.size(); ++i) result.set(static_cast<std::int64_t>(i), values[i]);
+    }
+    return result;
+}
+
+void PlanetMeshNode::update_cloud_layer() {
+    const auto& cover =
+        displayed_frame_.channels[channel_index(presentation::ChannelId::cloud_cover)].values;
+    godot::Ref<godot::Shader> shader;
+    if (view_mode_ == view_style && active_style_ < styles_.size()) {
+        shader = styles_[active_style_]->get_cloud_shader();
+    }
+    const bool draw = clouds_visible_ && shader.is_valid() && !cover.empty() &&
+                      rendered_mesh_.is_valid() && mesh_ != nullptr;
+    if (!draw) {
+        if (cloud_node_ != nullptr) cloud_node_->set_visible(false);
+        return;
+    }
+    if (cloud_node_ == nullptr) {
+        cloud_node_ = memnew(godot::MeshInstance3D);
+        cloud_node_->set_name("CloudLayer");
+        add_child(cloud_node_);
+        cloud_material_.instantiate();
+        cloud_node_->set_material_override(cloud_material_);
+        cloud_node_->set_cast_shadows_setting(godot::GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+        // The shell is drawn above the cell mesh's bounds.
+        cloud_node_->set_extra_cull_margin(1.0F);
+    }
+    // The cell mesh's own geometry: the shader lifts it to the shell.
+    if (cloud_node_->get_mesh() != rendered_mesh_) cloud_node_->set_mesh(rendered_mesh_);
+    if (cloud_material_->get_shader() != shader) cloud_material_->set_shader(shader);
+    const auto bind = [&](const char* parameter, presentation::ChannelId id) {
+        const auto& texture = channel_textures_[channel_index(id)];
+        if (texture.is_valid()) cloud_material_->set_shader_parameter(parameter, texture);
+    };
+    bind("cloud_cover_map", presentation::ChannelId::cloud_cover);
+    bind("cloud_thickness_map", presentation::ChannelId::cloud_thickness);
+    bind("daylight_map", presentation::ChannelId::daylight);
+    cloud_material_->set_shader_parameter("cloud_radius", get_cloud_radius());
+    cloud_material_->set_shader_parameter("day_night", day_night_shading_);
+    cloud_material_->set_shader_parameter(
+        "cell_angular_size", std::sqrt(4.0 * std::numbers::pi / static_cast<double>(mesh_->cell_count())));
+    const auto offset = presentation::detail_noise_offset(seed_, presentation::DetailKind::cloud);
+    cloud_material_->set_shader_parameter(
+        "detail_seed_cloud", godot::Vector3(static_cast<godot::real_t>(offset[0]),
+                                            static_cast<godot::real_t>(offset[1]),
+                                            static_cast<godot::real_t>(offset[2])));
+    cloud_node_->set_visible(true);
+}
 
 godot::Vector3 PlanetMeshNode::get_sun_direction() const {
     return to_godot(target_frame_.sun_direction_body_unit).normalized();
@@ -846,6 +935,7 @@ void PlanetMeshNode::update_terrain_tiles(const godot::PackedFloat64Array& posit
             set_mesh(rendered_mesh_);
         }
         material_->set_shader_parameter("band_fade", weight);
+        if (cloud_material_.is_valid()) cloud_material_->set_shader_parameter("cloud_radius", get_cloud_radius());
         if (tiles_) {
             const auto& drawing = tiles_->drawing();
             material_->set_shader_parameter("relief_baked", drawing.relief_exaggeration / drawing.radius_m);
@@ -1433,6 +1523,7 @@ void PlanetMeshNode::apply_render_material() {
     }
     bind_channel_textures();
     update_shader_flags();
+    update_cloud_layer();
 }
 
 void PlanetMeshNode::set_visual_frame(presentation::VisualFrame frame, bool reset_smoothing) {
@@ -1471,12 +1562,15 @@ void PlanetMeshNode::upload_changed_channels() {
     upload_scalar_channel(presentation::ChannelId::temperature_anomaly);
     upload_scalar_channel(presentation::ChannelId::atmosphere_density);
     upload_scalar_channel(presentation::ChannelId::precipitation);
+    upload_scalar_channel(presentation::ChannelId::cloud_cover);
+    upload_scalar_channel(presentation::ChannelId::cloud_thickness);
     update_wind_overlay();
     update_precipitation_overlay();
     upload_scalar_channel(presentation::ChannelId::known, 1.0F);
     upload_scalar_channel(presentation::ChannelId::guessed);
     upload_scalar_channel(presentation::ChannelId::knowledge_age);
     bind_channel_textures();
+    update_cloud_layer();
 }
 
 void PlanetMeshNode::upload_scalar_channel(presentation::ChannelId id, float absent_value) {

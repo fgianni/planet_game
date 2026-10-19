@@ -181,6 +181,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_N:
 				_planet.set_day_night_shading(not _planet.get_day_night_shading())
 				_update_lighting()
+			KEY_C:
+				_planet.set_clouds_visible(not _planet.get_clouds_visible())
 			KEY_L:
 				if _planet.has_live_run():
 					_planet.stop_live_run()
@@ -317,6 +319,14 @@ func _precipitation_reading() -> String:
 	return "precipitation %.1f mm/day" % (50.0 * normalized)
 
 
+## Clouds on, off, or on with none drawn (no clouds in the frame yet, or a
+## climate-lab view).
+func _clouds_state() -> String:
+	if not _planet.get_clouds_visible():
+		return "off"
+	return "on" if _planet.is_cloud_layer_drawn() else "on (none drawn)"
+
+
 func _update_hud() -> void:
 	var days: float = _planet.get_simulation_time() / 86400.0
 	var legend := ""
@@ -345,10 +355,11 @@ func _update_hud() -> void:
 		]
 	_hud.text = "\n".join([
 		"PlanetSim  L%d  seed %d  preset %s" % [_planet.get_subdivision(), _planet.get_seed(), _planet.get_preset()],
-		"view: %s   style: %s   day/night: %s   relief x%.0f" % [
+		"view: %s   style: %s   day/night: %s   clouds: %s   relief x%.0f" % [
 			_planet.get_view_mode_name(),
 			_planet.get_style(),
 			"on" if _planet.get_day_night_shading() else "off",
+			_clouds_state(),
 			_planet.get_relief_exaggeration()],
 		"plates %d   land %.1f %%   sea level %.0f m" % [
 			_planet.get_plate_count(), 100.0 * _planet.get_land_fraction(), _planet.get_sea_level()],
@@ -360,6 +371,6 @@ func _update_hud() -> void:
 			_planet.get_drainage_depression_count()],
 		legend,
 		"drag: turn  Shift+drag: heading/tilt  wheel: zoom  right-click: select  1-9: style/overlays  S: style",
-		"N: day/night  L: live climate  %s: relief -/+" % _relief_keys(),
+		"N: day/night  C: clouds  L: live climate  %s: relief -/+" % _relief_keys(),
 		"R: new seed  P: preset  PgUp/PgDn: resolution  Space: pause  +/-: speed  F12: screenshot",
 	])

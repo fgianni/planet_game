@@ -21,17 +21,17 @@ The specification defines the architecture, physical design, P0 roadmap,
 validation strategy, and current implementation task for the Planetary
 Civilization Simulator.
 
-Most recently completed milestone: **P0 / M7 --- Humidity and evaporation**
-(ADR-0021, amended §10--§13): M7-01 (water state, saturation, PSNAP schema
-6), M7-02 (evaporation and the bucket), M7-03 (saturation rainout, the
-surface air's humidity), M7-04 (humidity transport in climate mode), M7-05
-(the vapour path), M7-06 (reference mode) and M7-07
-(`docs/tasks/M7-07-refit-and-close.md`: the refit, the water cycle on in
-the preset, τ_c, the gates; V9 parity recorded failing, deferred to M8).
-M0--M6 (mesh, orbit, terrain, drainage, scheduler and calendar, surface
-energy columns, replay, snow and sea ice, diffusive transport, snapshot
-history, the layered atmosphere, winds and the climate circulation) are
-complete.
+Most recently completed milestone: **P0 / M8 --- Clouds and precipitation**
+(ADR-0023, amended §11--§15; ADR-0024): M8-01 (cloud water state, PSNAP
+schema 7), M8-02 (Betts--Miller moist convection), M8-03 (cloud water to
+precipitation), M8-04 (cloud radiation), M8-05
+(`docs/tasks/M8-05-refit-and-gates.md`: the refit, V9 passing, V11
+passing at L5 and L6, V8's temperature recorded failing at +6.47 K and
+carried forward) and M8-06 (clouds on screen, V12). M0--M7 (mesh, orbit,
+terrain, drainage, scheduler and calendar, surface energy columns,
+replay, snow and sea ice, diffusive transport, snapshot history, the
+layered atmosphere, winds and the climate circulation, humidity and
+evaporation) are complete.
 
 Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI
@@ -39,13 +39,9 @@ units; - deterministic and testable implementation; - physical
 state/fluxes rather than scripted climate modifiers; - production code
 and tests together; - do not proceed to M9 unless explicitly requested.
 
-Current milestone: **P0 / M8 --- Clouds and precipitation**, started
-2026-10-16 at the user's request, under ADR-0023 (accepted 2026-10-16):
-tasks M8-01 to M8-06 (cloud water state, Betts--Miller moist convection,
-cloud water to precipitation, cloud radiation, refit and gates, clouds on
-screen). Its gates include ADR-0021's V9 parity (ADR-0023 V8) and the
-42 K equator-to-pole target, reported. Do not proceed to M9 unless
-explicitly requested.
+Current milestone: none in progress. M9 is next but must not start
+unless explicitly requested; V8's +6.47 K climate-reference temperature
+gap (ADR-0023 §15, carried forward from M8) is to be investigated first.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is

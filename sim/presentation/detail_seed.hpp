@@ -15,11 +15,12 @@ enum class DetailKind : std::uint32_t {
     sea_ice = 4,
     texture = 5,
     terrain = 6, // sub-cell relief of the terrain tiles (ADR-0022 §4.9)
+    cloud = 7,   // the cloud layer's patches (ADR-0023 §4.8)
 };
 
-inline constexpr std::array<DetailKind, 6> detail_kinds{
+inline constexpr std::array<DetailKind, 7> detail_kinds{
     DetailKind::coast, DetailKind::land_mix, DetailKind::snow, DetailKind::sea_ice,
-    DetailKind::texture, DetailKind::terrain};
+    DetailKind::texture, DetailKind::terrain, DetailKind::cloud};
 
 // Offsets in noise-lattice units: a style samples its noise at
 // position * frequency + offset, so the field differs between worlds and

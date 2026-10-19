@@ -1,6 +1,7 @@
-[gd_resource type="PlanetStyle" load_steps=2 format=3]
+[gd_resource type="PlanetStyle" load_steps=3 format=3]
 
 [ext_resource type="Shader" path="res://styles/map/surface.gdshader" id="1_surface"]
+[ext_resource type="Shader" path="res://styles/map/clouds.gdshader" id="2_clouds"]
 
 [resource]
 style_name = "map"
@@ -10,4 +11,5 @@ license = "Project licence"
 channel_set_version = 28
 required_channels = PackedStringArray("relief", "surface_class", "daylight", "snow_cover", "sea_ice", "known", "guessed", "knowledge_age")
 surface_shader = ExtResource("1_surface")
+cloud_shader = ExtResource("2_clouds")
 cost_tier = "low"

@@ -26,6 +26,10 @@ void PlanetStyle::_bind_methods() {
                                 &PlanetStyle::set_surface_shader);
     godot::ClassDB::bind_method(godot::D_METHOD("get_surface_shader"),
                                 &PlanetStyle::get_surface_shader);
+    godot::ClassDB::bind_method(godot::D_METHOD("set_cloud_shader", "value"),
+                                &PlanetStyle::set_cloud_shader);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_cloud_shader"),
+                                &PlanetStyle::get_cloud_shader);
     godot::ClassDB::bind_method(godot::D_METHOD("set_cost_tier", "value"),
                                 &PlanetStyle::set_cost_tier);
     godot::ClassDB::bind_method(godot::D_METHOD("get_cost_tier"), &PlanetStyle::get_cost_tier);
@@ -43,6 +47,9 @@ void PlanetStyle::_bind_methods() {
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::OBJECT, "surface_shader",
                                      godot::PROPERTY_HINT_RESOURCE_TYPE, "Shader"),
                  "set_surface_shader", "get_surface_shader");
+    ADD_PROPERTY(godot::PropertyInfo(godot::Variant::OBJECT, "cloud_shader",
+                                     godot::PROPERTY_HINT_RESOURCE_TYPE, "Shader"),
+                 "set_cloud_shader", "get_cloud_shader");
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::STRING, "cost_tier"), "set_cost_tier",
                  "get_cost_tier");
 }
@@ -65,6 +72,11 @@ void PlanetStyle::set_surface_shader(const godot::Ref<godot::Shader>& value) {
     surface_shader_ = value;
 }
 godot::Ref<godot::Shader> PlanetStyle::get_surface_shader() const { return surface_shader_; }
+
+void PlanetStyle::set_cloud_shader(const godot::Ref<godot::Shader>& value) {
+    cloud_shader_ = value;
+}
+godot::Ref<godot::Shader> PlanetStyle::get_cloud_shader() const { return cloud_shader_; }
 void PlanetStyle::set_cost_tier(const godot::String& value) { cost_tier_ = value; }
 godot::String PlanetStyle::get_cost_tier() const { return cost_tier_; }
 

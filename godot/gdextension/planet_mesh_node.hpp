@@ -85,6 +85,15 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     void set_relief_exaggeration(double exaggeration);
     [[nodiscard]] double get_relief_exaggeration() const noexcept;
     void set_day_night_shading(bool enabled);
+    // The cloud layer (ADR-0023 §4.8, task M8-06): a shell over the surface,
+    // drawn by the style's cloud shader where the frame has clouds.
+    void set_clouds_visible(bool visible);
+    [[nodiscard]] bool get_clouds_visible() const noexcept;
+    [[nodiscard]] bool is_cloud_layer_drawn() const;
+    [[nodiscard]] double get_cloud_radius() const noexcept;
+    // The displayed frame's values of a scalar channel, by registry name
+    // (empty when absent); for tests and tools.
+    [[nodiscard]] godot::PackedFloat32Array get_channel_values(const godot::String& name) const;
     [[nodiscard]] bool get_day_night_shading() const noexcept;
     [[nodiscard]] godot::Vector3 get_sun_direction() const;
     void set_style(const godot::String& style_name);
@@ -161,6 +170,7 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     void update_wind_overlay();
     void ensure_wind_overlay();
     void update_precipitation_overlay();
+    void update_cloud_layer();
     void ensure_precipitation_overlay();
     void bind_channel_textures();
     void update_shader_flags();
@@ -187,6 +197,9 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     std::int64_t view_mode_ = view_style;
     double relief_exaggeration_ = 25.0;
     bool day_night_shading_ = true;
+    bool clouds_visible_ = true;
+    godot::MeshInstance3D* cloud_node_ = nullptr;
+    godot::Ref<godot::ShaderMaterial> cloud_material_;
 
     godot::PackedVector3Array vertices_;
     godot::PackedVector3Array normals_;
