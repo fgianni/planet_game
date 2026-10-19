@@ -1,7 +1,10 @@
 # ADR-0025 — Where the clouds are: sub-grid condensation, the eddies' variance and convective anvils
 
-- **Status:** Proposed
+- **Status:** Accepted, staged (2026-10-19, with the user): §4.1, §4.3,
+  §4.4 and §4.5 accepted; §4.2's b_eddy accepted only after task M8-08's
+  measurement (V3), within the V8 investigation
 - **Date:** 2026-10-19
+- **Accepted:** 2026-10-19 (staged, §9)
 - **Milestone:** P0 / M8, reopened for its cloud distribution (tasks below);
   before M9
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24;
@@ -175,7 +178,7 @@ b_k = sqrt(b_sub,k² + b_eddy,k²) per layer:
   modes, in the deficit's units. β is a calibration constant. Cloud then
   starts where the mean deficit reaches −b_sub, at a mean relative
   humidity of 1 − β (β = 0.2: 0.8, as RH_c did).
-- **b_eddy, climate mode only:** a (σ_q² + (q_sat′ σ_T)²)^½, with
+- **b_eddy, climate mode only** (provisional until M8-08's V3): a (σ_q² + (q_sat′ σ_T)²)^½, with
   σ_q = l |∂q/∂y| and σ_T = l |∂T/∂y| along the meridian, at the layer.
   l = D_k / √E from the zonal circulation's solution, at the cell's band.
   Zero where the circulation has not solved (the fallback month) and in
@@ -266,15 +269,21 @@ decided with the user (2026-10-19).
 4. Should detrained cloud water be advected (ADR-0023 §8.1)? Anvils spread
    hundreds of kilometres from their convection.
 
-## 9. Proposed tasks
+## 9. Tasks, in order (staging decided with the user, 2026-10-19)
 
-1. **M8-07 — Sub-grid condensation:** §4.1 and b_sub; V1, V2. Prototype
-   measurements of the zonal cover at L3 and L4 before the refit.
-2. **M8-08 — The eddies' variance:** b_eddy from the zonal circulation in
-   climate mode; V3; the modes' clouds measured against each other.
-3. **M8-09 — Convective condensate and anvils:** §4.3; V4; the high
-   cloud and the convective share measured in both modes.
-4. **M8-10 — Refit and gates:** §4.4; V5–V9, including V8 measured again.
+1. **M8-07 — Sub-grid condensation:** §4.1 and b_sub; V1, V2. The coupled
+   Newton checked at L6 first; prototype measurements of the zonal cover
+   at L3 and L4.
+2. **M8-09 — Convective condensate and anvils:** §4.3; V4; the high
+   cloud and the convective share measured in both modes. Then a look at
+   the cloud field and its pattern.
+3. **The V8 investigation**, with **M8-08 — The eddies' variance**:
+   b_eddy from the zonal circulation in climate mode; V3; the modes'
+   clouds measured against each other. §4.2's b_eddy is accepted only if
+   V3 supports it. About 5 K of V8's gap predates the clouds (ADR-0023
+   §15.4), so the investigation looks beyond them too.
+4. **M8-10 — Refit and gates:** one refit against the final physics,
+   §4.4; V5–V9, including V8 measured again.
 
 ## 10. References
 
