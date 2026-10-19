@@ -87,6 +87,34 @@
   mode's top layer is saturated most of the time. A cloud scheme driven
   by humidity cannot place the clouds until the humidity is right.
 
+- **The vapour budget** (`SurfaceEnergyDiagnostics::vapour_budget`, by
+  30° band and layer; `AtmosphereDynamicsDiagnostics::advection_by_band_kg`;
+  per-layer evaporation in `ColumnSolveResult`), diagnostics only: the
+  state hash is unchanged. L3, tropics 0–30° N, mm/day:
+
+  | | Climate (year 11) | Reference (days 730–790) |
+  |---|---|---|
+  | Lifted into the middle layer | 0.12 | 1.83 |
+  | Lifted into the top layer | 0.01 | 0.37 |
+  | Condensed in the bottom layer / its convective drying | 5.39 / 0.38 | 1.07 / 2.91 |
+  | Rain re-evaporation (all layers) | 0.01 | 0.03 |
+  | Cloud-water evaporation (all layers) | 0.00 | 0.68 |
+  | Vapour column (kg/m²) | 38 | 80 (Earth about 45) |
+
+  - Re-evaporation does not moisten the layers in either mode.
+  - Climate mode's water hardly leaves the bottom layer. The month's
+    evaporation condenses there in the solve (ADR-0023 §11.1), and
+    Betts–Miller never moistens a layer (§4.2.5), so convection carries
+    no water up. Reference mode lifts it by resolved ascent.
+  - Both modes' upper layers saturate because condensation is their only
+    sink.
+- **Five layers** (climate mode, L3, year 11): relative humidity by layer,
+  bottom to top, tropics 0.82, 0.39, 0.47, 0.86, 0.64 (the fourth layer
+  saturated 36–49 % of the time); mid-latitudes 0.85, 0.44, 0.64, 0.93,
+  0.78; poles 0.93, 0.62–0.65, 0.79–0.86, 0.83–0.91, 0.79–0.85. The lower
+  and middle troposphere is dry, as Earth's is. Most of three layers'
+  near-saturation is their vertical resolution.
+
 ## Open (for the decision)
 
 - ADR-0025 needs revising before more work. With the cloud water at

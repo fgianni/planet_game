@@ -226,6 +226,22 @@ struct SurfaceEnergyDiagnostics {
     double high_cloud_cover_m2 = 0.0;
     std::array<double, 18> zonal_cloud_cover{};
     double cloud_optical_depth_m2 = 0.0;   // Σ A × the column's optical depth
+    // The vapour budget by 30° band (south to north) and layer, kg over
+    // the step (task M8-07): what the humidity transport moved (climate
+    // mode), the surface's evaporation, the condensation and Betts–Miller's
+    // drying (taken out), the evaporation of cloud water and of falling
+    // rain (put in), and the column step's net change.
+    struct VapourBudget {
+        std::array<double, max_atmosphere_layer_count> transport_kg{};
+        std::array<double, max_atmosphere_layer_count> evaporation_kg{};
+        std::array<double, max_atmosphere_layer_count> condensation_kg{};
+        std::array<double, max_atmosphere_layer_count> convective_kg{};
+        std::array<double, max_atmosphere_layer_count> cloud_evaporation_kg{};
+        std::array<double, max_atmosphere_layer_count> rain_evaporation_kg{};
+        std::array<double, max_atmosphere_layer_count> column_change_kg{};
+        std::array<double, max_atmosphere_layer_count> vapour_kg{};   // after the step
+    };
+    std::array<VapourBudget, 6> vapour_budget{};
     HumidityTransportDiagnostics humidity_transport;
     // The atmosphere (ADR-0010 §4.4), zero without one. emitted_W is then the
     // outgoing longwave at the top, storage_change_J and stored_energy_J

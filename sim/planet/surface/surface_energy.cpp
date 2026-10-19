@@ -173,6 +173,7 @@ struct BudgetPartial {
     double cloud_cover_m2 = 0.0;
     double high_cloud_cover_m2 = 0.0;
     double cloud_optical_depth_m2 = 0.0;
+    std::array<SurfaceEnergyDiagnostics::VapourBudget, 6> vapour_budget{};
     std::array<double, 18> band_cloud_m2{};
     std::array<double, 18> band_cell_area_m2{};
     double cloud_shortwave_effect_W = 0.0;
@@ -249,6 +250,20 @@ struct BudgetPartial {
     a.condensation_latent_J += b.condensation_latent_J;
     a.cloud_cover_m2 += b.cloud_cover_m2;
     a.high_cloud_cover_m2 += b.high_cloud_cover_m2;
+    for (std::size_t band = 0; band < a.vapour_budget.size(); ++band) {
+        auto& x = a.vapour_budget[band];
+        const auto& y = b.vapour_budget[band];
+        for (std::size_t k = 0; k < x.transport_kg.size(); ++k) {
+            x.transport_kg[k] += y.transport_kg[k];
+            x.evaporation_kg[k] += y.evaporation_kg[k];
+            x.condensation_kg[k] += y.condensation_kg[k];
+            x.convective_kg[k] += y.convective_kg[k];
+            x.cloud_evaporation_kg[k] += y.cloud_evaporation_kg[k];
+            x.rain_evaporation_kg[k] += y.rain_evaporation_kg[k];
+            x.column_change_kg[k] += y.column_change_kg[k];
+            x.vapour_kg[k] += y.vapour_kg[k];
+        }
+    }
     a.cloud_optical_depth_m2 += b.cloud_optical_depth_m2;
     for (std::size_t band = 0; band < a.band_cloud_m2.size(); ++band) {
         a.band_cloud_m2[band] += b.band_cloud_m2[band];
@@ -773,11 +788,34 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                               surface.atmosphere.convection;
     HumidityTransportDiagnostics humidity_transport;
     std::vector<double> eddy_latent;
+    // The vapour budget's 30° bands (task M8-07).
+    const auto band_of = [&](std::size_t cell) {
+        const double latitude = std::asin(std::clamp(mesh.cells()[cell].center_unit.z, -1.0, 1.0));
+        return static_cast<std::size_t>(
+            std::clamp(std::floor((latitude * 180.0 / std::numbers::pi + 90.0) / 30.0), 0.0, 5.0));
+    };
+    std::array<std::array<double, max_atmosphere_layer_count>, 6> transport_by_band{};
     if (water && circulation != nullptr && circulation->active) {
+        const std::size_t n = slow.atmosphere_layer_count();
+        std::vector<double> before(n * cells);
+        for (std::size_t k = 0; k < n; ++k) {
+            const auto q = slow.atmosphere_specific_humidity_kg_kg.layer(k);
+            std::copy(q.begin(), q.end(), before.begin() + static_cast<std::ptrdiff_t>(k * cells));
+        }
         humidity_transport = transport_humidity(mesh, slow, circulation->transport,
                                                 surface_gravity_m_s2(parameters), dt_s,
                                                 worker_count,
                                                 moist_eddies ? &eddy_latent : nullptr);
+        const double g = surface_gravity_m_s2(parameters);
+        for (std::size_t cell = 0; cell < cells; ++cell) {
+            const double mass = mesh.cells()[cell].area_m2 *
+                                slow.atmosphere_surface_pressure_Pa[cell] / (g * static_cast<double>(n));
+            for (std::size_t k = 0; k < n; ++k) {
+                transport_by_band[band_of(cell)][k] +=
+                    mass * (slow.atmosphere_specific_humidity_kg_kg.layer(k)[cell] -
+                            before[k * cells + cell]);
+            }
+        }
     }
     const auto& circulation_fields = state.circulation();
     // The coupled climate circulation's balanced winds, or in reference mode
@@ -1354,6 +1392,23 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                         cell_evaporation_kg_m2_s = column.evaporation_kg_m2_s;
                         humidity_after = column.humidity_kg_kg;
                         cloud_after = column.cloud_water_kg_kg;
+                        {
+                            auto& budget = partial.vapour_budget[band_of(cell)];
+                            const double mass = area_m2 * bottom_mass[cell];
+                            budget.evaporation_kg[0] += area_m2 * column.evaporation_kg_m2_s * dt_s;
+                            for (std::size_t k = 0; k < layers; ++k) {
+                                budget.condensation_kg[k] += mass * column.condensate_kg_kg[k];
+                                budget.convective_kg[k] += mass * column.convective_condensate_kg_kg[k];
+                                budget.cloud_evaporation_kg[k] +=
+                                    mass * column.cloud_evaporation_by_layer_kg_kg[k];
+                                budget.rain_evaporation_kg[k] +=
+                                    mass * column.rain_evaporation_by_layer_kg_kg[k];
+                                budget.column_change_kg[k] +=
+                                    mass * (column.humidity_kg_kg[k] -
+                                            slow.atmosphere_specific_humidity_kg_kg.layer(k)[cell]);
+                                budget.vapour_kg[k] += mass * column.humidity_kg_kg[k];
+                            }
+                        }
                         cloud_evaporation_kg_m2_s = column.cloud_evaporation_kg_m2_s;
                         rain_evaporation_kg_m2_s = column.rain_evaporation_kg_m2_s;
                         if (snow_share[cell] > 0.0) {
@@ -1664,6 +1719,10 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.condensation_latent_J = total.condensation_latent_J;
     diagnostics.cloud_cover_m2 = total.cloud_cover_m2;
     diagnostics.high_cloud_cover_m2 = total.high_cloud_cover_m2;
+    diagnostics.vapour_budget = total.vapour_budget;
+    for (std::size_t band = 0; band < diagnostics.vapour_budget.size(); ++band) {
+        diagnostics.vapour_budget[band].transport_kg = transport_by_band[band];
+    }
     diagnostics.cloud_optical_depth_m2 = total.cloud_optical_depth_m2;
     for (std::size_t band = 0; band < total.band_cloud_m2.size(); ++band) {
         diagnostics.zonal_cloud_cover[band] =

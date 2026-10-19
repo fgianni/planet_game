@@ -10,6 +10,7 @@
 #include "sim/planet/planet_state.hpp"
 #include "sim/planet/terrain/surface_fractions.hpp"
 
+#include <array>
 #include <cstddef>
 
 namespace planetsim {
@@ -51,6 +52,9 @@ struct AtmosphereDynamicsDiagnostics {
     double vapour_kg = 0.0;
     double vapour_change_kg = 0.0;
     double clipped_kg = 0.0;
+    // The advection's change of vapour by 30° band (south to north) and
+    // layer, kg over the step (the vapour budget, task M8-07).
+    std::array<std::array<double, max_atmosphere_layer_count>, 6> advection_by_band_kg{};
 };
 
 class AtmosphereDynamics {

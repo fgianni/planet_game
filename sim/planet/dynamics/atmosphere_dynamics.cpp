@@ -156,13 +156,16 @@ void AtmosphereDynamics::step(PlanetState& state, double dt_s) {
     const double n_d = static_cast<double>(n);
     auto& humidity = state.slow().atmosphere_specific_humidity_kg_kg;
     const bool water = parameters_.advect_humidity && humidity.layer_count() == n;
+    std::vector<double> vapour_before;   // μ q per layer and cell, kg/m²
     if (water) {
         pe.mass_humidity = Field3D<double>(n, mesh_->cell_count());
         last_.vapour_kg = 0.0;
+        vapour_before.assign(n * mesh_->cell_count(), 0.0);
         for (std::size_t k = 0; k < n; ++k) {
             for (std::size_t i = 0; i < mesh_->cell_count(); ++i) {
                 const double mass = pe.surface_pressure_Pa[i] / (g * n_d);
                 pe.mass_humidity.layer(k)[i] = mass * humidity.layer(k)[i];
+                vapour_before[k * mesh_->cell_count() + i] = pe.mass_humidity.layer(k)[i];
                 last_.vapour_kg += cells[i].area_m2 * pe.mass_humidity.layer(k)[i];
             }
         }
@@ -184,6 +187,18 @@ void AtmosphereDynamics::step(PlanetState& state, double dt_s) {
             }
         }
         last_.vapour_change_kg = after - last_.vapour_kg;
+        last_.advection_by_band_kg = {};
+        for (std::size_t i = 0; i < mesh_->cell_count(); ++i) {
+            const double latitude =
+                std::asin(std::clamp(cells[i].center_unit.z, -1.0, 1.0)) * 180.0 / std::numbers::pi;
+            const auto band = static_cast<std::size_t>(
+                std::clamp(std::floor((latitude + 90.0) / 30.0), 0.0, 5.0));
+            for (std::size_t k = 0; k < n; ++k) {
+                last_.advection_by_band_kg[band][k] +=
+                    cells[i].area_m2 *
+                    (std::max(0.0, pe.mass_humidity.layer(k)[i]) - vapour_before[k * mesh_->cell_count() + i]);
+            }
+        }
         // The derived cell winds are the resolved ones in reference mode:
         // the evaporation's bulk wind (ADR-0021 §4.3) and the outputs.
         auto& circulation = state.circulation();

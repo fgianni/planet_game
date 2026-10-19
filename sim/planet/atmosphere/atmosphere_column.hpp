@@ -279,6 +279,8 @@ struct ColumnSolveResult {
     LayerArray cloud_water_kg_kg{};
     double cloud_evaporation_kg_m2_s = 0.0;
     double rain_evaporation_kg_m2_s = 0.0;
+    LayerArray cloud_evaporation_by_layer_kg_kg{};   // per layer, kg/kg
+    LayerArray rain_evaporation_by_layer_kg_kg{};
     // With moisture (ADR-0024 §4.1, §4.5): the moist enthalpy temperature
     // T_m = (1/N) Σ (T_k + L q_k / c_p) after the step (L the condensate's,
     // as the convection's), and dT_m/dh from the implicit solve's response
@@ -669,6 +671,9 @@ struct MicrophysicsResult {
     double autoconversion_kg_m2 = 0.0;
     double cloud_evaporation_kg_m2 = 0.0;
     double rain_evaporation_kg_m2 = 0.0;
+    // Per layer, kg/kg of the layer (the vapour budget, task M8-07).
+    LayerArray cloud_evaporation_kg_kg{};
+    LayerArray rain_evaporation_kg_kg{};
 };
 
 inline MicrophysicsResult cloud_microphysics(const ColumnRadiation& column,
@@ -706,6 +711,7 @@ inline MicrophysicsResult cloud_microphysics(const ColumnRadiation& column,
             humidity_kg_kg[k] += x;
             cloud -= x;
             cloud_evaporation += x;
+            result.cloud_evaporation_kg_kg[k] = x;
         }
         {
             const double source = condensate_kg_kg[k] + convective_kg_kg[k];
@@ -768,6 +774,7 @@ inline MicrophysicsResult cloud_microphysics(const ColumnRadiation& column,
             large_scale *= kept;
             convective *= kept;
             rain_evaporation += x;
+            result.rain_evaporation_kg_kg[k] = x;
         }
         // At most the layer's convective condensate is convective rain: the
         // autoconversion also drains cloud water from earlier steps.
@@ -1392,6 +1399,8 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
         result.precipitation_kg_m2_s = rain.precipitation_kg_m2 / dt_s;
         result.convective_precipitation_kg_m2_s = rain.convective_kg_m2 / dt_s;
         result.cloud_evaporation_kg_m2_s = rain.cloud_evaporation_kg_m2 / dt_s;
+        result.cloud_evaporation_by_layer_kg_kg = rain.cloud_evaporation_kg_kg;
+        result.rain_evaporation_by_layer_kg_kg = rain.rain_evaporation_kg_kg;
         result.rain_evaporation_kg_m2_s = rain.rain_evaporation_kg_m2 / dt_s;
         result.condensation_W_m2 =
             moisture->latent_J_kg * (condensed * moisture->layer_mass_kg_m2 - evaporated) / dt_s;
