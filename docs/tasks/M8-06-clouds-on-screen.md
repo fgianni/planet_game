@@ -52,8 +52,16 @@
   - both draw the cover as patches over exactly its area at region scale
     (`detail_cover`, keyed by position), and as a smooth fraction at
     planet scale;
-  - **stylised:** soft white cloud, denser and greyer where it is thick,
-    with billows at region scale;
+  - **stylised** (revised 2026-10-19 after the user found the clouds
+    thick, grey and uniform):
+    - opacity is the cloud's reflectance as the radiation computes it,
+      R = (1 − g) τ / (2 + (1 − g) τ), τ recovered from `cloud_thickness`:
+      thin cloud is a veil, thick cloud nearly opaque;
+    - from above, white, brightest where thick; from below, greyer where
+      thick (the shell knows which side the camera is on);
+    - soft-edged shapes about two cells across, with the fBm's finer
+      octaves inside, switching on from 1.5 px per cell, so the field has
+      structure from orbit;
   - **map:** hatching, as a map shades cloud: two-tone diagonal lines,
     white edged in dark slate, whose width carries the cover, over a
     faint veil stronger where the cloud is thick, at a fixed 6 px period
@@ -70,9 +78,9 @@
   - hiding it, or a climate-lab view, removes it;
   - the shell is above the surface;
   - from orbit the clouds brighten the planet (mean luminance 0.074 →
-    0.090);
+    0.086);
   - from just above the ground under the cloudiest cell, looking up, they
-    fill the sky (0.021 → 0.478; 4.2.2: 0.524).
+    fill the sky (0.021 → 0.422).
 - **V12** (`render_readability.gd`, `check_readability.py`; the same on
   4.7.2 and 4.2.2): the surface drawn on a unit sphere with the style's
   cloud shell over it, the view inside the disc. Mean CIEDE2000 at the
@@ -81,8 +89,8 @@
 
   | pair | stylised | map |
   |---|---|---|
-  | clear vs overcast | 23.0 | 16.0 |
-  | clear vs half cloud | 10.9 | 10.0 |
+  | clear vs overcast | 32.7 | 16.0 |
+  | clear vs half cloud | 10.5 | 10.0 |
   | land vs ocean under overcast | | 11.2 |
 
   The surface pairs are unchanged. Half cloud passes with thin margins,
@@ -93,7 +101,19 @@
 
 ## Open
 
-- Half cover's readability margins are thin (10.0 map, 10.9 stylised):
+- Half cover's readability margins are thin (10.0 map, 10.5 stylised):
   any change to either cloud shader should re-run V12.
 - The cloud shell is a single height: no cloud-top structure by layer
   and no shadows on the ground.
+- **The simulated cloud field is unlike Earth's** (L4, one year after a
+  5-year spin-up; zonal annual cover against Earth's, roughly):
+  - 0.71–0.83 from 20° S to 20° N (Earth ~0.7 at the ITCZ), with no
+    subtropical minimum: 0.70–0.78 at 20–35° (Earth 0.4–0.5);
+  - 0.36–0.41 in the storm tracks at 50–60° (Earth ~0.8, its cloudiest)
+    and 0.07–0.16 at the poles (Earth 0.5–0.7);
+  - almost all in the bottom layer (the layers above ~0.01): no high
+    cloud;
+  - mean optical depth about 3 (Earth's clouds about 5–15), so the drawn
+    clouds are thin.
+  That is the physics (ADR-0023's cloud fraction from the cloud water and
+  M8-05's calibration to the global targets), not the rendering.
