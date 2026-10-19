@@ -221,6 +221,11 @@ struct SurfaceEnergyDiagnostics {
     double cloud_cover_m2 = 0.0;
     double cloud_shortwave_effect_W = 0.0;
     double cloud_longwave_effect_W = 0.0;
+    // ADR-0025 §4.4's targets: Σ A × the cover above the bottom layer, and
+    // the cover by 10° band (south to north, a fraction of the band's area).
+    double high_cloud_cover_m2 = 0.0;
+    std::array<double, 18> zonal_cloud_cover{};
+    double cloud_optical_depth_m2 = 0.0;   // Σ A × the column's optical depth
     HumidityTransportDiagnostics humidity_transport;
     // The atmosphere (ADR-0010 §4.4), zero without one. emitted_W is then the
     // outgoing longwave at the top, storage_change_J and stored_energy_J
@@ -330,6 +335,13 @@ struct AnnualSurfaceSummary {
     // Time means over the year (ADR-0009 §4.5).
     std::array<double, 17> northward_transport_W{};
     std::array<double, 18> zonal_mean_surface_temperature_K{};
+    double high_cloud_cover_m2 = 0.0;             // ADR-0025 §4.4, the year's mean
+    double cloud_cover_m2 = 0.0;                  // and the global cloud statistics'
+    double cloud_shortwave_effect_W = 0.0;
+    double cloud_longwave_effect_W = 0.0;
+    double cloud_water_kg = 0.0;
+    double cloud_optical_depth_m2 = 0.0;
+    std::array<double, 18> zonal_cloud_cover{};   // ADR-0025 §4.4, the year's mean
     double p2_surface_temperature_K = 0.0;
 
     // The equator-to-pole difference of the P2 fit, −1.5 T₂ (ADR-0009 §10:

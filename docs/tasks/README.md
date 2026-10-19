@@ -40,6 +40,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [M8-04](M8-04-cloud-radiation.md) | Cloud radiation: fraction, shortwave reflection, longwave absorption; autoconversion without a threshold (ADR-0023 §4.4, §12, V5, V6) | Complete |
 | [M8-05](M8-05-refit-and-gates.md) | Refit and gates: the cloud fraction from the cloud water (ADR-0023 §13), the refit, the reference start, V8 parity, V9 calibration, V11 performance; the eddies on moist enthalpy (ADR-0024) | Complete |
 | [M8-06](M8-06-clouds-on-screen.md) | Clouds on screen: presentation snapshot schema 6, the `cloud_cover` and `cloud_thickness` channels, the cloud layer in both styles (ADR-0023 §4.8, V12) | Complete |
+| [M8-07](M8-07-subgrid-condensation.md) | Sub-grid condensation (ADR-0025 §4.1): implemented, bit-identical at β = 0; no effect in climate mode and L6 breaks at β > 0, for a decision | In progress |
 | [R1-01](R1-01-presentation-library-and-channels.md) | Presentation library and semantic channels (ADR-0018; rendering track, parallel to M6) | Complete |
 | [R1-02](R1-02-style-packs-and-switching.md) | Godot style packs, recorded playback and instant switching (ADR-0018) | Complete |
 | [R1-03](R1-03-readability-harness.md) | Offscreen style readability gate and colour-vision checks (ADR-0018) | Complete |

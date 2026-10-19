@@ -142,6 +142,7 @@ struct ThermalOptions {
     // ADR-0023: moist convection, clouds and their radiation (empty: the
     // preset's).
     std::optional<bool> moist_convection;
+    std::optional<double> cloud_subgrid_width;   // ADR-0025 §4.2's β
     std::size_t worker_count = 0;        // 0: hardware concurrency
 };
 
@@ -447,6 +448,8 @@ void print_usage(std::ostream& output) {
                 throw std::invalid_argument("--moist-convection takes 0 or 1");
             }
             options.moist_convection = value == "1";
+        } else if (argument == "--cloud-subgrid-width") {
+            options.cloud_subgrid_width = parse_double(value, "sub-grid condensation width");
         } else if (argument == "--preset") {
             const auto preset = planetsim::parse_planet_preset(value);
             if (!preset) {
@@ -2677,6 +2680,10 @@ int run_thermal(const ThermalOptions& options) {
     if (options.water) {
         surface.water_cycle = *options.water;
     }
+    if (options.cloud_subgrid_width) {
+        surface.atmosphere.cloud_subgrid_width = *options.cloud_subgrid_width;
+        planetsim::validate_atmosphere_parameters(surface.atmosphere);
+    }
     if (options.moist_convection) {
         surface.atmosphere.moist_convection = *options.moist_convection;
     }
@@ -2869,6 +2876,19 @@ int run_thermal(const ThermalOptions& options) {
               << " tau_d=" << surface.atmosphere.dry_optical_depth
               << " kappa_v=" << surface.atmosphere.vapour_absorption_m2_kg
               << std::setprecision(9) << '\n'
+              << "clouds" << std::setprecision(4)
+              << " beta=" << surface.atmosphere.cloud_subgrid_width
+              << " cover=" << year.cloud_cover_m2 / (4.0 * std::numbers::pi * mesh->radius_m() * mesh->radius_m())
+              << " high_cover=" << year.high_cloud_cover_m2 / (4.0 * std::numbers::pi * mesh->radius_m() * mesh->radius_m())
+              << " optical_depth=" << (year.cloud_cover_m2 > 0.0 ? year.cloud_optical_depth_m2 / year.cloud_cover_m2 : 0.0)
+              << " cre_sw_W_m2=" << year.cloud_shortwave_effect_W / (4.0 * std::numbers::pi * mesh->radius_m() * mesh->radius_m())
+              << " cre_lw_W_m2=" << year.cloud_longwave_effect_W / (4.0 * std::numbers::pi * mesh->radius_m() * mesh->radius_m())
+              << " cloud_water_g_m2=" << 1e3 * year.cloud_water_kg / (4.0 * std::numbers::pi * mesh->radius_m() * mesh->radius_m())
+              << '\n' << "zonal_cloud_cover";
+    for (const double value : year.zonal_cloud_cover) {
+        std::cout << ' ' << std::setprecision(2) << value;
+    }
+    std::cout << std::setprecision(9) << '\n'
               << "transport peak_poleward_PW=" << peak_PW(year)
               << " equator_to_pole_K=" << year.equator_to_pole_difference_K()
               << " p2_equator_to_pole_K=" << year.p2_equator_to_pole_K() << " northward_PW";

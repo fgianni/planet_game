@@ -80,6 +80,9 @@ void validate_atmosphere_parameters(const AtmosphereParameters& parameters) {
         throw std::invalid_argument("cloud water needs a non-negative threshold, positive times "
                                     "and a rain evaporation efficiency in [0, 1]");
     }
+    if (!(parameters.cloud_subgrid_width >= 0.0 && parameters.cloud_subgrid_width < 1.0)) {
+        throw std::invalid_argument("the sub-grid condensation width must lie in [0, 1)");
+    }
     if (!(parameters.cloud_in_cloud_water_path_kg_m2 > 0.0) ||
         !std::isfinite(parameters.cloud_in_cloud_water_path_kg_m2) ||
         !(parameters.cloud_effective_radius_m > 0.0) ||

@@ -56,6 +56,10 @@ struct AtmosphereParameters {
     double cloud_water_threshold_kg_kg = 0.0;      // q_l0
     double autoconversion_time_s = 600.0;          // τ_a (calibration)
     double rain_evaporation_efficiency = 0.5;      // ε
+    // Sub-grid condensation (ADR-0025 §4.1, §4.2): β, the deficit's
+    // half-width as a share of q_sat; 0 is saturation adjustment. Set by
+    // the refit (task M8-10).
+    double cloud_subgrid_width = 0.0;
     double rain_evaporation_time_s = 3600.0;       // τ_e
     // Cloud radiation (ADR-0023 §4.4, §13), with moist convection: each
     // layer cloudy over its cloud water path divided by W_c, the in-cloud

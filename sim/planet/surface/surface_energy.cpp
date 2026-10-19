@@ -171,6 +171,10 @@ struct BudgetPartial {
     double ocean_precipitation_kg = 0.0;
     double condensation_latent_J = 0.0;
     double cloud_cover_m2 = 0.0;
+    double high_cloud_cover_m2 = 0.0;
+    double cloud_optical_depth_m2 = 0.0;
+    std::array<double, 18> band_cloud_m2{};
+    std::array<double, 18> band_cell_area_m2{};
     double cloud_shortwave_effect_W = 0.0;
     double cloud_longwave_effect_W = 0.0;
     double cloud_water_change_kg = 0.0;
@@ -244,6 +248,12 @@ struct BudgetPartial {
     a.ocean_precipitation_kg += b.ocean_precipitation_kg;
     a.condensation_latent_J += b.condensation_latent_J;
     a.cloud_cover_m2 += b.cloud_cover_m2;
+    a.high_cloud_cover_m2 += b.high_cloud_cover_m2;
+    a.cloud_optical_depth_m2 += b.cloud_optical_depth_m2;
+    for (std::size_t band = 0; band < a.band_cloud_m2.size(); ++band) {
+        a.band_cloud_m2[band] += b.band_cloud_m2[band];
+        a.band_cell_area_m2[band] += b.band_cell_area_m2[band];
+    }
     a.cloud_shortwave_effect_W += b.cloud_shortwave_effect_W;
     a.cloud_longwave_effect_W += b.cloud_longwave_effect_W;
     a.cloud_water_change_kg += b.cloud_water_change_kg;
@@ -982,6 +992,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             moisture.autoconversion_time_ratio = atmosphere.autoconversion_time_s / dt_s;
             moisture.evaporation_fraction = -std::expm1(-dt_s / atmosphere.rain_evaporation_time_s);
             moisture.rain_evaporation_efficiency = atmosphere.rain_evaporation_efficiency;
+            moisture.subgrid_width_fraction = atmosphere.cloud_subgrid_width;
             moisture.latent_J_kg = latent_heat_vaporisation_J_kg +
                                    snow_share[cell] * latent_heat_of_fusion_J_kg;
             cell_surface.water = true;
@@ -1427,6 +1438,14 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                         state.forcing().cloud_optical_depth[cell] =
                             static_cast<float>(optics.column_optical_depth);
                         partial.cloud_cover_m2 += area_m2 * optics.column_fraction;
+                        double clear_above = 1.0;
+                        for (std::size_t layer = 1; layer < layers; ++layer) {
+                            clear_above *= 1.0 - optics.fraction[layer];
+                        }
+                        partial.high_cloud_cover_m2 += area_m2 * (1.0 - clear_above);
+                        partial.cloud_optical_depth_m2 += area_m2 * optics.column_optical_depth;
+                        partial.band_cloud_m2[band_of_cell[cell]] += area_m2 * optics.column_fraction;
+                        partial.band_cell_area_m2[band_of_cell[cell]] += area_m2;
                         partial.cloud_shortwave_effect_W += area_m2 * shortwave;
                         partial.cloud_longwave_effect_W += area_m2 * longwave;
                     }
@@ -1643,6 +1662,13 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.ocean_precipitation_kg = total.ocean_precipitation_kg;
     diagnostics.condensation_latent_J = total.condensation_latent_J;
     diagnostics.cloud_cover_m2 = total.cloud_cover_m2;
+    diagnostics.high_cloud_cover_m2 = total.high_cloud_cover_m2;
+    diagnostics.cloud_optical_depth_m2 = total.cloud_optical_depth_m2;
+    for (std::size_t band = 0; band < total.band_cloud_m2.size(); ++band) {
+        diagnostics.zonal_cloud_cover[band] =
+            total.band_cell_area_m2[band] > 0.0 ? total.band_cloud_m2[band] / total.band_cell_area_m2[band]
+                                                : 0.0;
+    }
     diagnostics.cloud_shortwave_effect_W = total.cloud_shortwave_effect_W;
     diagnostics.cloud_longwave_effect_W = total.cloud_longwave_effect_W;
     diagnostics.cloud_water_change_kg = total.cloud_water_change_kg;
@@ -1827,6 +1853,15 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
             for (std::size_t band = 0; band < summary.northward_transport_W.size(); ++band) {
                 summary.northward_transport_W[band] += dt_s * step.northward_transport_W[band];
             }
+            summary.high_cloud_cover_m2 += dt_s * step.high_cloud_cover_m2;
+            summary.cloud_cover_m2 += dt_s * step.cloud_cover_m2;
+            summary.cloud_shortwave_effect_W += dt_s * step.cloud_shortwave_effect_W;
+            summary.cloud_longwave_effect_W += dt_s * step.cloud_longwave_effect_W;
+            summary.cloud_water_kg += dt_s * step.cloud_water_kg;
+            summary.cloud_optical_depth_m2 += dt_s * step.cloud_optical_depth_m2;
+            for (std::size_t band = 0; band < summary.zonal_cloud_cover.size(); ++band) {
+                summary.zonal_cloud_cover[band] += dt_s * step.zonal_cloud_cover[band];
+            }
             for (std::size_t band = 0; band < summary.zonal_mean_surface_temperature_K.size();
                  ++band) {
                 summary.zonal_mean_surface_temperature_K[band] +=
@@ -1849,6 +1884,15 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
         summary.sensible_heat_W /= total_s;
         summary.convective_area_fraction /= total_s;
         for (auto& value : summary.northward_transport_W) {
+            value /= total_s;
+        }
+        summary.high_cloud_cover_m2 /= total_s;
+        summary.cloud_cover_m2 /= total_s;
+        summary.cloud_shortwave_effect_W /= total_s;
+        summary.cloud_longwave_effect_W /= total_s;
+        summary.cloud_water_kg /= total_s;
+        summary.cloud_optical_depth_m2 /= total_s;
+        for (auto& value : summary.zonal_cloud_cover) {
             value /= total_s;
         }
         for (auto& value : summary.zonal_mean_surface_temperature_K) {

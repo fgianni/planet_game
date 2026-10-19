@@ -2,6 +2,7 @@
 
 #include "sim/planet/atmosphere/atmosphere.hpp"
 #include "sim/planet/atmosphere/saturation.hpp"
+#include "sim/planet/atmosphere/subgrid_cloud.hpp"
 
 #include <algorithm>
 #include <array>
@@ -187,7 +188,35 @@ struct ColumnMoisture {
     double autoconversion_time_ratio = 0.0;
     double evaporation_fraction = 1.0;
     double rain_evaporation_efficiency = 0.5;
+    // Sub-grid condensation (ADR-0025 §4.1, §4.2), with moist convection: a
+    // layer's deficit varies with half-width b = β q_sat, and it condenses
+    // and evaporates towards the distribution's equilibrium cloud water.
+    // β = 0 is saturation adjustment, ADR-0023 §11.1's.
+    double subgrid_width_fraction = 0.0;
 };
+
+// A layer's equilibrium cloud water under the sub-grid distribution
+// (ADR-0025 §4.1) at temperature T with total water q_t = q + q_l, and its
+// derivative in T at fixed q_t (through q_sat in the deficit and the width).
+struct LayerEquilibrium {
+    SubgridCloud cloud;
+    double d_water_d_temperature = 0.0;
+};
+
+[[nodiscard]] inline LayerEquilibrium layer_equilibrium(const ColumnMoisture& moisture,
+                                                        std::size_t layer, double total_kg_kg,
+                                                        double temperature_K) noexcept {
+    const double pressure = moisture.pressure_Pa[layer];
+    const double saturated = saturation_specific_humidity(temperature_K, pressure);
+    const double slope = saturation_specific_humidity_slope(temperature_K, pressure);
+    LayerEquilibrium result;
+    result.cloud = subgrid_cloud(total_kg_kg - saturated,
+                                 moisture.subgrid_width_fraction * saturated);
+    result.d_water_d_temperature = -result.cloud.area * slope +
+                                   result.cloud.d_water_d_width *
+                                       moisture.subgrid_width_fraction * slope;
+    return result;
+}
 
 struct ColumnSolveSettings {
     int max_iterations = 40;
@@ -566,6 +595,55 @@ inline void add_cloud_longwave(ColumnRadiation& column, const CloudOptics& optic
     return low;
 }
 
+// The isobaric evaporation x of a layer's cloud water towards its sub-grid
+// equilibrium (ADR-0025 §4.1): with held cloud water q_l (of which
+// `available` may evaporate) and total water q_t = q + q_l fixed,
+// q_l − x = q_l*(q_t, T − h x). g(x) = q_l − x − q_l*(T − h x) falls with
+// x (cooling raises q_l*); zero where g(0) ≤ 0. Bisection safeguards Newton,
+// and the lower end of the bracket is returned, so the layer never ends
+// below its equilibrium. At β = 0 this is evaporation_to_saturation's
+// problem.
+[[nodiscard]] inline double evaporation_to_equilibrium(const ColumnMoisture& moisture,
+                                                       std::size_t layer, double temperature_K,
+                                                       double humidity_kg_kg, double held_kg_kg,
+                                                       double available_kg_kg, double heating_K) {
+    const double total = humidity_kg_kg + held_kg_kg;
+    const auto g = [&](double x, double* slope) {
+        const auto equilibrium =
+            layer_equilibrium(moisture, layer, total, temperature_K - heating_K * x);
+        if (slope != nullptr) {
+            *slope = -1.0 + heating_K * equilibrium.d_water_d_temperature;
+        }
+        return held_kg_kg - x - equilibrium.cloud.water_kg_kg;
+    };
+    if (!(g(0.0, nullptr) > 0.0) || !(available_kg_kg > 0.0)) {
+        return 0.0;
+    }
+    double low = 0.0;
+    double high = available_kg_kg;
+    if (g(high, nullptr) >= 0.0) {
+        return high;
+    }
+    double x = 0.5 * high;
+    for (int iteration = 0; iteration < 100; ++iteration) {
+        double slope = -1.0;
+        const double value = g(x, &slope);
+        if (value == 0.0) {
+            return x;
+        }
+        (value > 0.0 ? low : high) = x;
+        double next = x - value / slope;
+        if (!(next > low && next < high)) {
+            next = 0.5 * (low + high);
+        }
+        if (high - low <= 1e-14 * available_kg_kg || next == x) {
+            break;
+        }
+        x = next;
+    }
+    return low;
+}
+
 // Cloud water to precipitation (ADR-0023 §4.3, §12, §14) on equal-mass
 // layers, after the column solve and convection. Cloud water in a
 // subsaturated layer evaporates by 1 − exp(−Δt/τ_e) of it, never beyond
@@ -608,10 +686,18 @@ inline MicrophysicsResult cloud_microphysics(const ColumnRadiation& column,
     for (std::size_t k = 0; k < n; ++k) {
         double& cloud = cloud_water_kg_kg[k];
         if (cloud > 0.0) {
-            const double x = std::min(
-                moisture.evaporation_fraction * cloud,
-                evaporation_to_saturation(temperature_K[k], humidity_kg_kg[k],
-                                          moisture.pressure_Pa[k], heating));
+            // ADR-0025 §4.1: towards the sub-grid equilibrium of the
+            // layer's total water, the step's condensate held with it; at
+            // β = 0 up to saturation, as before.
+            const double x =
+                moisture.subgrid_width_fraction > 0.0
+                    ? moisture.evaporation_fraction *
+                          evaporation_to_equilibrium(
+                              moisture, k, temperature_K[k], humidity_kg_kg[k],
+                              cloud + condensate_kg_kg[k] + convective_kg_kg[k], cloud, heating)
+                    : std::min(moisture.evaporation_fraction * cloud,
+                               evaporation_to_saturation(temperature_K[k], humidity_kg_kg[k],
+                                                         moisture.pressure_Pa[k], heating));
             temperature_K[k] -= heating * x;
             humidity_kg_kg[k] += x;
             cloud -= x;
@@ -809,6 +895,8 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
         double max_abs = 0.0;
         LayerArray humidity{};    // q*_k, the bottom layer with the evaporation
         LayerArray condensate{};  // C_k
+        LayerArray condensing_share{};             // dC_k/dq_k
+        LayerArray d_condensate_d_temperature{};   // dC_k/dT_k
     };
     // L m / Δt: the heating of a unit of condensate.
     const double condensation_rate =
@@ -837,9 +925,28 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
             }
             e.humidity[0] += e.exchange.vapour_kg_m2_s * dt_s / moisture->layer_mass_kg_m2;
             for (std::size_t k = 0; k < n; ++k) {
-                e.condensate[k] = in_solve_fraction *
-                                  std::max(0.0, e.humidity[k] - saturation_specific_humidity(
-                                                                    t[k], moisture->pressure_Pa[k]));
+                if (moisture->moist_convection && moisture->subgrid_width_fraction > 0.0) {
+                    // ADR-0025 §4.1: towards the sub-grid equilibrium of the
+                    // layer's total water (β = 0 takes the branch below,
+                    // saturation adjustment, bit for bit).
+                    const double cloud = std::max(0.0, moisture->cloud_water_kg_kg[k]);
+                    const auto equilibrium =
+                        layer_equilibrium(*moisture, k, e.humidity[k] + cloud, t[k]);
+                    e.condensate[k] = std::max(0.0, equilibrium.cloud.water_kg_kg - cloud);
+                    e.condensing_share[k] = e.condensate[k] > 0.0 ? equilibrium.cloud.area : 0.0;
+                    e.d_condensate_d_temperature[k] =
+                        e.condensate[k] > 0.0 ? equilibrium.d_water_d_temperature : 0.0;
+                } else {
+                    e.condensate[k] = in_solve_fraction *
+                                      std::max(0.0, e.humidity[k] - saturation_specific_humidity(
+                                                                        t[k], moisture->pressure_Pa[k]));
+                    e.condensing_share[k] = e.condensate[k] > 0.0 ? in_solve_fraction : 0.0;
+                    e.d_condensate_d_temperature[k] =
+                        e.condensate[k] > 0.0
+                            ? -in_solve_fraction * saturation_specific_humidity_slope(
+                                                       t[k], moisture->pressure_Pa[k])
+                            : 0.0;
+                }
             }
         }
         for (std::size_t k = 0; k < n; ++k) {
@@ -880,19 +987,34 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
                     value -= d_sensible;
                 }
                 if (moisture != nullptr && e.condensate[r] > 0.0) {
-                    // dC_r/dT_c: the bottom layer's evaporation, and the
-                    // layer's own saturation.
+                    // dC_r/dT_c: the bottom layer's evaporation, which
+                    // condenses in the share dC/dq, and the layer's own
+                    // equilibrium.
                     double d_condensate = 0.0;
-                    if (r == 0U) {
-                        d_condensate += (e.exchange.d_vapour_d_downward * d_down +
-                                         e.exchange.d_vapour_d_air * d_air) *
-                                        dt_s / moisture->layer_mass_kg_m2;
+                    if (moisture->moist_convection && moisture->subgrid_width_fraction > 0.0) {
+                        if (r == 0U) {
+                            d_condensate += e.condensing_share[r] *
+                                            (e.exchange.d_vapour_d_downward * d_down +
+                                             e.exchange.d_vapour_d_air * d_air) *
+                                            dt_s / moisture->layer_mass_kg_m2;
+                        }
+                        if (r == c) {
+                            d_condensate += e.d_condensate_d_temperature[r];
+                        }
+                        value -= condensation_rate * d_condensate;
+                    } else {
+                        // Saturation adjustment, as before ADR-0025.
+                        if (r == 0U) {
+                            d_condensate += (e.exchange.d_vapour_d_downward * d_down +
+                                             e.exchange.d_vapour_d_air * d_air) *
+                                            dt_s / moisture->layer_mass_kg_m2;
+                        }
+                        if (r == c) {
+                            d_condensate -= saturation_specific_humidity_slope(
+                                e.temperature[r], moisture->pressure_Pa[r]);
+                        }
+                        value -= condensation_rate * in_solve_fraction * d_condensate;
                     }
-                    if (r == c) {
-                        d_condensate -= saturation_specific_humidity_slope(
-                            e.temperature[r], moisture->pressure_Pa[r]);
-                    }
-                    value -= condensation_rate * in_solve_fraction * d_condensate;
                 }
                 j[r][c] = value;
             }
@@ -997,16 +1119,25 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
         const double specific_heat = column.layer_heat_capacity_J_m2_K / moisture->layer_mass_kg_m2;
         double slope = 0.0;
         for (std::size_t k = 0; k < n; ++k) {
+            // T_m's L q / c_p: a warmer layer condenses less (dC/dT < 0).
             double gain = 1.0;
-            if (current.condensate[k] > 0.0) {
+            if (moisture->moist_convection && moisture->subgrid_width_fraction > 0.0) {
+                gain -= moisture->latent_J_kg / specific_heat *
+                        current.d_condensate_d_temperature[k];
+            } else if (current.condensate[k] > 0.0) {
                 gain += in_solve_fraction * moisture->latent_J_kg / specific_heat *
                         saturation_specific_humidity_slope(current.temperature[k],
                                                            moisture->pressure_Pa[k]);
             }
             slope += gain * response[k];
         }
-        if (!(current.condensate[0] > 0.0)) {
-            // The surface's evaporation stays in the bottom layer's vapour.
+        // The share of the surface's evaporation that stays in the bottom
+        // layer's vapour: all but what condenses (ADR-0025 §4.1); M7's path
+        // keeps none where the layer condenses at all.
+        const double kept = moisture->moist_convection
+                                ? 1.0 - current.condensing_share[0]
+                                : (current.condensate[0] > 0.0 ? 0.0 : 1.0);
+        if (kept > 0.0) {
             double d_vapour = 0.0;
             for (std::size_t c = 0; c < n; ++c) {
                 LayerArray d_emission{};
@@ -1017,7 +1148,7 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
                              current.exchange.d_vapour_d_air * d_air) *
                             response[c];
             }
-            slope += moisture->latent_J_kg / specific_heat * d_vapour * dt_s /
+            slope += kept * moisture->latent_J_kg / specific_heat * d_vapour * dt_s /
                      moisture->layer_mass_kg_m2;
         }
         result.moist_enthalpy_slope_K_m2_W = slope / static_cast<double>(n);
@@ -1162,6 +1293,40 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
             for (std::size_t k = 0; k < n; ++k) {
                 const double pressure = moisture->pressure_Pa[k];
                 const double q = result.humidity_kg_kg[k];
+                if (moist && moisture->subgrid_width_fraction > 0.0) {
+                    // ADR-0025 §4.1: towards the sub-grid equilibrium of the
+                    // layer's total water, the cloud water so far included
+                    // (the step's start, the solve's condensate and
+                    // Betts–Miller's drying, which all become cloud water):
+                    // c_p (T' − T) = L (q_l*(T') − q_l), Newton on
+                    // g(T') = T' − T − h (q_l*(T') − q_l), increasing.
+                    const double held = std::max(0.0, moisture->cloud_water_kg_kg[k]) +
+                                        result.condensate_kg_kg[k] + convective_kg_kg[k];
+                    const double total = q + held;
+                    if (!(layer_equilibrium(*moisture, k, total, temperature_K[k]).cloud.water_kg_kg >
+                          held)) {
+                        continue;
+                    }
+                    double t = temperature_K[k];
+                    for (int iteration = 0; iteration < 30; ++iteration) {
+                        const auto equilibrium = layer_equilibrium(*moisture, k, total, t);
+                        const double g =
+                            t - temperature_K[k] - heating * (equilibrium.cloud.water_kg_kg - held);
+                        const double next =
+                            t - g / (1.0 - heating * equilibrium.d_water_d_temperature);
+                        if (std::abs(next - t) <= 4.0 * std::numeric_limits<double>::epsilon() * t) {
+                            t = next;
+                            break;
+                        }
+                        t = next;
+                    }
+                    const double condensate = (t - temperature_K[k]) / heating;
+                    temperature_K[k] = t;
+                    result.humidity_kg_kg[k] = q - condensate;
+                    result.condensate_kg_kg[k] += condensate;
+                    condensed += condensate;
+                    continue;
+                }
                 if (!(q > saturation_specific_humidity(temperature_K[k], pressure))) {
                     continue;
                 }
