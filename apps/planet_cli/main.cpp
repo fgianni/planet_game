@@ -143,6 +143,7 @@ struct ThermalOptions {
     // preset's).
     std::optional<bool> moist_convection;
     std::optional<double> cloud_subgrid_width;   // ADR-0025 §4.2's β
+    std::optional<double> convective_detrainment;   // ADR-0025 §4.3's e_d
     std::optional<double> cloud_non_precipitating_path;   // ADR-0025 §11's W_np
     std::size_t worker_count = 0;        // 0: hardware concurrency
 };
@@ -449,6 +450,8 @@ void print_usage(std::ostream& output) {
                 throw std::invalid_argument("--moist-convection takes 0 or 1");
             }
             options.moist_convection = value == "1";
+        } else if (argument == "--convective-detrainment") {
+            options.convective_detrainment = parse_double(value, "convective detrainment share");
         } else if (argument == "--cloud-subgrid-width") {
             options.cloud_subgrid_width = parse_double(value, "sub-grid condensation width");
         } else if (argument == "--cloud-non-precipitating-path") {
@@ -2689,6 +2692,9 @@ int run_thermal(const ThermalOptions& options) {
     if (options.cloud_non_precipitating_path) {
         surface.atmosphere.cloud_non_precipitating_path_kg_m2 = *options.cloud_non_precipitating_path;
     }
+    if (options.convective_detrainment) {
+        surface.atmosphere.convective_detrainment_share = *options.convective_detrainment;
+    }
     planetsim::validate_atmosphere_parameters(surface.atmosphere);
     if (options.moist_convection) {
         surface.atmosphere.moist_convection = *options.moist_convection;
@@ -2890,6 +2896,9 @@ int run_thermal(const ThermalOptions& options) {
               << " cre_sw_W_m2=" << year.cloud_shortwave_effect_W / (4.0 * std::numbers::pi * mesh->radius_m() * mesh->radius_m())
               << " cre_lw_W_m2=" << year.cloud_longwave_effect_W / (4.0 * std::numbers::pi * mesh->radius_m() * mesh->radius_m())
               << " cloud_water_g_m2=" << 1e3 * year.cloud_water_kg / (4.0 * std::numbers::pi * mesh->radius_m() * mesh->radius_m())
+              << " e_d=" << surface.atmosphere.convective_detrainment_share
+              << " convective_share=" << (year.precipitation_kg > 0.0 ? year.convective_precipitation_kg / year.precipitation_kg : 0.0)
+              << " detrained_share=" << (year.precipitation_kg > 0.0 ? year.detrained_kg / year.precipitation_kg : 0.0)
               << '\n' << "zonal_cloud_cover";
     for (const double value : year.zonal_cloud_cover) {
         std::cout << ' ' << std::setprecision(2) << value;

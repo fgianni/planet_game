@@ -87,6 +87,10 @@ void validate_atmosphere_parameters(const AtmosphereParameters& parameters) {
         !std::isfinite(parameters.cloud_non_precipitating_path_kg_m2)) {
         throw std::invalid_argument("the non-precipitating cloud water path must be non-negative");
     }
+    if (!(parameters.convective_detrainment_share >= 0.0 &&
+          parameters.convective_detrainment_share <= 1.0)) {
+        throw std::invalid_argument("the convective detrainment share must lie in [0, 1]");
+    }
     if (!(parameters.cloud_in_cloud_water_path_kg_m2 > 0.0) ||
         !std::isfinite(parameters.cloud_in_cloud_water_path_kg_m2) ||
         !(parameters.cloud_effective_radius_m > 0.0) ||

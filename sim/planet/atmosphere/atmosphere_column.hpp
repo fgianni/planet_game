@@ -197,6 +197,9 @@ struct ColumnMoisture {
     // q_th = A W_np / m, A the layer's sub-grid cloudy area. 0: ADR-0023
     // §12's threshold alone.
     double non_precipitating_path_kg_m2 = 0.0;
+    // Convective detrainment (ADR-0025 §4.3): the share e_d of the column's
+    // convective condensate moved to its detrainment layers; 0: none.
+    double detrainment_share = 0.0;
 };
 
 // A layer's equilibrium cloud water under the sub-grid distribution
@@ -263,6 +266,13 @@ struct ColumnSolveResult {
     // condensate that joins the cloud water as the large-scale kind does
     // (ADR-0023 §14).
     LayerArray convective_condensate_kg_kg{};
+    // ADR-0025 §4.3: each layer's cloud-water source this step after
+    // detrainment (kg/kg), its convective part (Betts–Miller's drying and
+    // w_k of the condensation, moved or kept), and the column's detrained
+    // water (kg/m²/s).
+    LayerArray cloud_source_kg_kg{};
+    LayerArray convective_cloud_source_kg_kg{};
+    double detrained_kg_m2_s = 0.0;
     double precipitation_kg_m2_s = 0.0;
     double condensation_W_m2 = 0.0;
     double evaporation_kg_m2_s = 0.0;
@@ -658,7 +668,9 @@ inline void add_cloud_longwave(ColumnRadiation& column, const CloudOptics& optic
 // convective (§14: Betts–Miller's drying V_k), entering at the constant rate
 // c = C_k/Δt, integrated exactly: x(Δt) = c τ_a + (x₀ − c τ_a) exp(−Δt/τ_a)
 // (from the moment it reaches q_l0 if it starts below); what leaves is
-// precipitation, convective in the share V_k / C_k (at most V_k). The cloud water so
+// precipitation, convective in the share V_k / C_k (at most V_k; ADR-0025
+// §4.3: V_k the layer's convective condensate after detrainment, C_k its
+// whole source, `source_kg_kg`). The cloud water so
 // settles at q_l0 + c τ_a, and a month in one step gives what the same month
 // gives in reference steps. Precipitation falls from the top: entering a
 // layer it evaporates by ε (1 − RH) (1 − exp(−Δt/τ_e)) of itself, never
@@ -678,7 +690,7 @@ struct MicrophysicsResult {
 
 inline MicrophysicsResult cloud_microphysics(const ColumnRadiation& column,
                                              const ColumnMoisture& moisture,
-                                             std::span<const double> condensate_kg_kg,
+                                             std::span<const double> source_kg_kg,
                                              std::span<const double> convective_kg_kg,
                                              std::span<double> temperature_K,
                                              std::span<double> humidity_kg_kg,
@@ -703,7 +715,7 @@ inline MicrophysicsResult cloud_microphysics(const ColumnRadiation& column,
                     ? moisture.evaporation_fraction *
                           evaporation_to_equilibrium(
                               moisture, k, temperature_K[k], humidity_kg_kg[k],
-                              cloud + condensate_kg_kg[k] + convective_kg_kg[k], cloud, heating)
+                              cloud + source_kg_kg[k], cloud, heating)
                     : std::min(moisture.evaporation_fraction * cloud,
                                evaporation_to_saturation(temperature_K[k], humidity_kg_kg[k],
                                                          moisture.pressure_Pa[k], heating));
@@ -714,7 +726,7 @@ inline MicrophysicsResult cloud_microphysics(const ColumnRadiation& column,
             result.cloud_evaporation_kg_kg[k] = x;
         }
         {
-            const double source = condensate_kg_kg[k] + convective_kg_kg[k];
+            const double source = source_kg_kg[k];
             convective_share[k] = source > 0.0 ? convective_kg_kg[k] / source : 0.0;
             // ADR-0025 §11.2.1: the layer's cloud up to A W_np / m does not
             // rain; A from its sub-grid distribution, the step's
@@ -1225,6 +1237,7 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
     }
     const bool moist = convection && moisture != nullptr && moisture->moist_convection;
     LayerArray convective_kg_kg{};   // each layer's drying by Betts–Miller
+    LayerArray convective_weight{};  // its weights relative to the bottom's, w_k / w_0 (0: none)
     if (convection) {
         // The adjustment is linear for its pools: the θ_c response sees it.
         // With moist convection it is to the dry adiabat (ADR-0023 §4.2).
@@ -1276,6 +1289,9 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
             convective_kg_kg[k] = before_q[k] - result.humidity_kg_kg[k];
         }
         result.convection_top = bm.top;
+        if (bm.top >= 1 && bm.weight[0] > 0.0) {
+            for (std::size_t k = 0; k < n; ++k) convective_weight[k] = bm.weight[k] / bm.weight[0];
+        }
         if (bm.top >= 1) {
             result.adjusted = true;
             const double specific_heat = column.layer_heat_capacity_J_m2_K / moisture->layer_mass_kg_m2;
@@ -1385,12 +1401,52 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
         // The condensate becomes cloud water, which rains by autoconversion;
         // the rain and the cloud water re-evaporate (ADR-0023 §4.3).
         result.cloud_water_kg_kg = moisture->cloud_water_kg_kg;
+        // ADR-0025 §4.3 (§13). A layer's convective condensate is its
+        // Betts–Miller drying V_k and the share ŵ_k = w_k / w_0 of its
+        // condensation in the solve and after convection: the layer's place
+        // in the convecting column, not how strongly it convects, which
+        // depends on the step (a month's step meets a month's instability).
+        // A share e_d of the column's convective condensate is moved, as
+        // liquid (no latent heat moves), to its detrainment layers, weighted
+        // d_k = ŵ_k (1 − ŵ_{k+1}): the top of the convection.
+        LayerArray source{};
+        LayerArray convective{};
+        double detrained = 0.0;
+        for (std::size_t k = 0; k < n; ++k) {
+            source[k] = result.condensate_kg_kg[k] + convective_kg_kg[k];
+            convective[k] = convective_kg_kg[k] + convective_weight[k] * result.condensate_kg_kg[k];
+        }
+        if (moisture->detrainment_share > 0.0) {
+            LayerArray detrainment{};
+            double total_weight = 0.0;
+            for (std::size_t k = 0; k < n; ++k) {
+                const double above = k + 1U < n ? convective_weight[k + 1U] : 0.0;
+                detrainment[k] = convective_weight[k] * (1.0 - above);
+                total_weight += detrainment[k];
+            }
+            if (total_weight > 0.0) {
+                for (std::size_t k = 0; k < n; ++k) {
+                    const double moved = moisture->detrainment_share * convective[k];
+                    source[k] -= moved;
+                    convective[k] -= moved;
+                    detrained += moved;
+                }
+                for (std::size_t k = 0; k < n; ++k) {
+                    const double arriving = detrained * (detrainment[k] / total_weight);
+                    source[k] += arriving;
+                    convective[k] += arriving;
+                }
+            }
+        }
+        result.detrained_kg_m2_s = detrained * moisture->layer_mass_kg_m2 / dt_s;
         const MicrophysicsResult rain = cloud_microphysics(
-            column, *moisture, std::span<const double>(result.condensate_kg_kg.data(), n),
-            std::span<const double>(convective_kg_kg.data(), n), temperature_K,
+            column, *moisture, std::span<const double>(source.data(), n),
+            std::span<const double>(convective.data(), n), temperature_K,
             std::span<double>(result.humidity_kg_kg.data(), n),
             std::span<double>(result.cloud_water_kg_kg.data(), n));
         result.convective_condensate_kg_kg = convective_kg_kg;
+        result.cloud_source_kg_kg = source;
+        result.convective_cloud_source_kg_kg = convective;
         double condensed = 0.0;
         for (std::size_t k = 0; k < n; ++k) {
             condensed += result.condensate_kg_kg[k] + convective_kg_kg[k];

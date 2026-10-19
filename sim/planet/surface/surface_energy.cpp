@@ -181,6 +181,7 @@ struct BudgetPartial {
     double cloud_water_change_kg = 0.0;
     double cloud_water_kg = 0.0;
     double convective_precipitation_kg = 0.0;
+    double detrained_kg = 0.0;
     double cloud_evaporation_kg = 0.0;
     double rain_evaporation_kg = 0.0;
     double ice_area_north_m2 = 0.0;
@@ -274,6 +275,7 @@ struct BudgetPartial {
     a.cloud_water_change_kg += b.cloud_water_change_kg;
     a.cloud_water_kg += b.cloud_water_kg;
     a.convective_precipitation_kg += b.convective_precipitation_kg;
+    a.detrained_kg += b.detrained_kg;
     a.cloud_evaporation_kg += b.cloud_evaporation_kg;
     a.rain_evaporation_kg += b.rain_evaporation_kg;
     a.ice_area_north_m2 += b.ice_area_north_m2;
@@ -1032,6 +1034,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             moisture.rain_evaporation_efficiency = atmosphere.rain_evaporation_efficiency;
             moisture.subgrid_width_fraction = atmosphere.cloud_subgrid_width;
             moisture.non_precipitating_path_kg_m2 = atmosphere.cloud_non_precipitating_path_kg_m2;
+            moisture.detrainment_share = atmosphere.convective_detrainment_share;
             moisture.latent_J_kg = latent_heat_vaporisation_J_kg +
                                    snow_share[cell] * latent_heat_of_fusion_J_kg;
             cell_surface.water = true;
@@ -1355,6 +1358,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 CellTiles tiles;
                 double precipitation_kg_m2 = 0.0;
                 double convective_kg_m2_s = 0.0;
+                double detrained_kg_m2_s = 0.0;
                 double condensation_W_m2 = 0.0;
                 double cell_evaporation_kg_m2_s = 0.0;
                 LayerArray humidity_after{};
@@ -1388,6 +1392,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                         // ocean's.
                         precipitation_kg_m2 = column.precipitation_kg_m2_s * dt_s;
                         convective_kg_m2_s = column.convective_precipitation_kg_m2_s;
+                        detrained_kg_m2_s = column.detrained_kg_m2_s;
                         condensation_W_m2 = column.condensation_W_m2;
                         cell_evaporation_kg_m2_s = column.evaporation_kg_m2_s;
                         humidity_after = column.humidity_kg_kg;
@@ -1612,6 +1617,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     partial.cloud_water_change_kg += area_m2 * bottom_mass[cell] * cloud_change;
                     partial.cloud_water_kg += area_m2 * bottom_mass[cell] * cloud_stock;
                     partial.convective_precipitation_kg += area_m2 * dt_s * convective_kg_m2_s;
+                    partial.detrained_kg += area_m2 * dt_s * detrained_kg_m2_s;
                     partial.cloud_evaporation_kg += area_m2 * dt_s * cloud_evaporation_kg_m2_s;
                     partial.rain_evaporation_kg += area_m2 * dt_s * rain_evaporation_kg_m2_s;
                     partial.water_evaporation_kg += ocean_weight * ocean_tile.evaporation_kg_m2;
@@ -1734,6 +1740,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.cloud_water_change_kg = total.cloud_water_change_kg;
     diagnostics.cloud_water_kg = total.cloud_water_kg;
     diagnostics.convective_precipitation_kg = total.convective_precipitation_kg;
+    diagnostics.detrained_kg = total.detrained_kg;
     diagnostics.cloud_evaporation_kg = total.cloud_evaporation_kg;
     diagnostics.rain_evaporation_kg = total.rain_evaporation_kg;
     diagnostics.ice_change_kg = total.ice_change_kg;
@@ -1914,6 +1921,9 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
                 summary.northward_transport_W[band] += dt_s * step.northward_transport_W[band];
             }
             summary.high_cloud_cover_m2 += dt_s * step.high_cloud_cover_m2;
+            summary.precipitation_kg += step.precipitation_kg;
+            summary.convective_precipitation_kg += step.convective_precipitation_kg;
+            summary.detrained_kg += step.detrained_kg;
             summary.cloud_cover_m2 += dt_s * step.cloud_cover_m2;
             summary.cloud_shortwave_effect_W += dt_s * step.cloud_shortwave_effect_W;
             summary.cloud_longwave_effect_W += dt_s * step.cloud_longwave_effect_W;

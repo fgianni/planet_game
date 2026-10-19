@@ -213,6 +213,9 @@ struct SurfaceEnergyDiagnostics {
     double cloud_water_change_kg = 0.0;
     double cloud_water_kg = 0.0;
     double convective_precipitation_kg = 0.0;
+    // ADR-0025 §4.3: the convective condensate moved to the tops of the
+    // convection.
+    double detrained_kg = 0.0;
     double cloud_evaporation_kg = 0.0;
     double rain_evaporation_kg = 0.0;
     // Cloud radiation (ADR-0023 §4.4, §4.7): Σ A × column cloud fraction
@@ -352,6 +355,11 @@ struct AnnualSurfaceSummary {
     std::array<double, 17> northward_transport_W{};
     std::array<double, 18> zonal_mean_surface_temperature_K{};
     double high_cloud_cover_m2 = 0.0;             // ADR-0025 §4.4, the year's mean
+    // The year's precipitation, its convective part and the detrained
+    // convective condensate (ADR-0025 §4.3), kg.
+    double precipitation_kg = 0.0;
+    double convective_precipitation_kg = 0.0;
+    double detrained_kg = 0.0;
     double cloud_cover_m2 = 0.0;                  // and the global cloud statistics'
     double cloud_shortwave_effect_W = 0.0;
     double cloud_longwave_effect_W = 0.0;

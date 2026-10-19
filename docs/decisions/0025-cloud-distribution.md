@@ -9,7 +9,9 @@
   brought forward and required (decided with the user, option 1 of task
   M8-07); §12: the humidity, the layers and what the clouds can follow,
   option 1 accepted with the user 2026-10-19 (β and W_np off in the
-  preset, M8-09 next, the humidity in the V8 investigation)
+  preset, M8-09 next, the humidity in the V8 investigation); §13: the
+  convective share by the layer's place in the column, w_k / w_0
+  (decided with the user, task M8-09)
 - **Milestone:** P0 / M8, reopened for its cloud distribution (tasks below);
   before M9
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24;
@@ -458,3 +460,36 @@ open option; prototyped and reverted, not committed):
 3. **The V8 investigation:** the gap beyond the clouds, the upper layers'
    humidity in both modes, §4.2's b_eddy and V3.
 4. **M8-10:** one refit (§4.4) and the gates.
+
+## 13. Amendment: the convective share by the layer's place in the column (accepted 2026-10-19 with the user, task M8-09)
+
+**13.1 What §4.3 gave.** Counting a layer's condensation as convective in
+proportion to its Betts–Miller weight w_k fails V4. A convecting column
+over a held warm surface (`test_cloud_water` §9), a month in 10-minute
+steps against the month in one step: convective shares 0.47 and 1.0.
+
+- The solve's condensation is in the saturated bottom layer.
+- In 10-minute steps the relaxation keeps the column just past its
+  trigger: it convects in every step, with w_0 about 0.04.
+- A month's step meets the month's instability at once: w_0 = 1.
+- So w_k measures how strongly the column convects at that instant,
+  which depends on the step. The §14 split (Betts–Miller's drying alone)
+  gives 0.50 and 0.26 on the same column.
+
+**13.2 Decision (amends §4.3; decided with the user).** With
+ŵ_k = w_k / w_0 (w_0 the largest weight, the column's bottom):
+
+1. **Convective condensate:** a layer's Betts–Miller drying and ŵ_k of
+   its condensation in the solve and after convection. ŵ_k is the
+   layer's place in the convecting column: 1 through it, tapering at its
+   top, 0 above it or where the column does not convect.
+2. **Detrainment layers:** weighted d_k = ŵ_k (1 − ŵ_{k+1}), the top of
+   the convection whatever its strength (with the absolute weights a
+   weakly convecting column would spread its "detrainment" over every
+   layer in proportion to w_k).
+3. **Continuity:** ŵ jumps when a column starts or stops convecting. The
+   classification and the detrainment act after the solve, on the cloud
+   water, which radiates from the next step; the step's Newton and the
+   coupled transport's slopes do not see them.
+
+V4 on the same column: 0.983 and 1.0.

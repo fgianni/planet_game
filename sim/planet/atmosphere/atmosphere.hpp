@@ -63,6 +63,10 @@ struct AtmosphereParameters {
     // Non-precipitating cloud (ADR-0025 §11.2.1): W_np, the in-cloud water
     // path a layer's cloudy area holds without raining; 0: none.
     double cloud_non_precipitating_path_kg_m2 = 0.0;
+    // Convective detrainment (ADR-0025 §4.3): e_d, the share of a column's
+    // convective condensate moved to the top of its convection; 0: each
+    // layer keeps its own. Set by the refit (task M8-10).
+    double convective_detrainment_share = 0.0;
     double rain_evaporation_time_s = 3600.0;       // τ_e
     // Cloud radiation (ADR-0023 §4.4, §13), with moist convection: each
     // layer cloudy over its cloud water path divided by W_c, the in-cloud

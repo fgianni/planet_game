@@ -184,11 +184,12 @@ int main() {
                     LayerArray cloud{initial};
                     const LayerArray condensate{rate * dt_s * (1.0 - convective_part)};
                     const LayerArray convective{rate * dt_s * convective_part};
+                    const LayerArray source{condensate[0] + convective[0]};
                     double rain = 0.0;
                     for (int step = 0; step < steps; ++step) {
                         const auto result = planetsim::cloud_microphysics(
                             column.radiation, column.moisture,
-                            std::span<const double>(condensate.data(), 1U),
+                            std::span<const double>(source.data(), 1U),
                             std::span<const double>(convective.data(), 1U),
                             std::span<double>(t.data(), 1U), std::span<double>(q.data(), 1U),
                             std::span<double>(cloud.data(), 1U));
@@ -283,11 +284,13 @@ int main() {
                 condensate[k] = 2e-3 * uniform(random) * uniform(random);
                 convective[k] = uniform(random) < 0.3 ? 5e-3 * uniform(random) : 0.0;
             }
+            LayerArray source{};
+            for (std::size_t k = 0; k < n; ++k) source[k] = condensate[k] + convective[k];
             const double before = moist_enthalpy(t, q, n);
             const double water = total(q, n) + total(cloud, n) + total(condensate, n) +
                                  total(convective, n);
             const auto result = planetsim::cloud_microphysics(
-                column.radiation, column.moisture, std::span<const double>(condensate.data(), n),
+                column.radiation, column.moisture, std::span<const double>(source.data(), n),
                 std::span<const double>(convective.data(), n), std::span<double>(t.data(), n),
                 std::span<double>(q.data(), n), std::span<double>(cloud.data(), n));
             const double m = column.moisture.layer_mass_kg_m2;
@@ -387,6 +390,103 @@ int main() {
                   << " g/m2, re-evaporated " << result.rain_evaporation_kg_m2_s * 86'400.0
                   << " mm/day of rain and " << result.cloud_evaporation_kg_m2_s * 86'400.0
                   << " of cloud\n";
+    }
+
+    // 8. ADR-0025 §4.3 and V4: convective condensate and detrainment. A deep
+    // convecting column at 10 minutes: e_d of its convective condensate
+    // reaches the detrainment layers w_k (1 − w_{k+1}) and nothing else
+    // changes the column's water or its moist enthalpy (the liquid moves,
+    // not its latent heat); with e_d = 1 none stays below them.
+    {
+        const auto solve = [&](double share, double dt_s) {
+            Column column(n, dt_s);
+            column.moisture.detrainment_share = share;
+            LayerArray before{303.0, 284.0, 262.0, 238.0, 214.0};
+            for (std::size_t k = 0; k < n; ++k) {
+                column.moisture.humidity_kg_kg[k] = 0.9 * column.saturation(before[k], k);
+                column.moisture.cloud_water_kg_kg[k] = 0.1e-3;
+            }
+            HeldSurface surface;
+            surface.surface_K = 305.0;
+            surface.evaporation_kg_m2_s = 5e-5;
+            LayerArray after = before;
+            auto result = planetsim::solve_atmosphere_column(
+                column.radiation, std::span<const double>(before.data(), n), dt_s, 0.0, true,
+                surface, std::span<double>(after.data(), n), {}, nullptr, &column.moisture);
+            return std::pair{result, after};
+        };
+        const auto [kept, kept_t] = solve(0.0, 600.0);
+        const auto [half, half_t] = solve(0.5, 600.0);
+        const auto [all, all_t] = solve(1.0, 600.0);
+        PLANETSIM_EXPECT(test, kept.convection_top >= 3);
+        PLANETSIM_EXPECT(test, kept.detrained_kg_m2_s == 0.0);
+        const Column column(n, 600.0);
+        const double m = column.moisture.layer_mass_kg_m2;
+        PLANETSIM_EXPECT_NEAR(test, half.detrained_kg_m2_s,
+                              0.5 * total(kept.convective_cloud_source_kg_kg, n) * m / 600.0,
+                              1e-14 * half.detrained_kg_m2_s);
+        PLANETSIM_EXPECT_NEAR(test, total(half.cloud_source_kg_kg, n), total(kept.cloud_source_kg_kg, n),
+                              1e-14 * total(kept.cloud_source_kg_kg, n));
+        PLANETSIM_EXPECT_NEAR(test, total(all.convective_cloud_source_kg_kg, n),
+                              total(kept.convective_cloud_source_kg_kg, n),
+                              1e-14 * total(kept.convective_cloud_source_kg_kg, n));
+        const auto top = static_cast<std::size_t>(kept.convection_top);
+        PLANETSIM_EXPECT(test, half.cloud_source_kg_kg[top] > kept.cloud_source_kg_kg[top]);
+        PLANETSIM_EXPECT(test, all.convective_cloud_source_kg_kg[0] == 0.0);
+        PLANETSIM_EXPECT(test, all.cloud_water_kg_kg[top] > kept.cloud_water_kg_kg[top]);
+        double water_kept = kept.precipitation_kg_m2_s * 600.0;
+        double water_half = half.precipitation_kg_m2_s * 600.0;
+        for (std::size_t k = 0; k < n; ++k) {
+            water_kept += (kept.humidity_kg_kg[k] + kept.cloud_water_kg_kg[k]) * m;
+            water_half += (half.humidity_kg_kg[k] + half.cloud_water_kg_kg[k]) * m;
+        }
+        PLANETSIM_EXPECT_NEAR(test, water_half, water_kept, 1e-12 * water_kept);
+        const double h_kept = moist_enthalpy(kept_t, kept.humidity_kg_kg, n);
+        const double h_half = moist_enthalpy(half_t, half.humidity_kg_kg, n);
+        PLANETSIM_EXPECT_NEAR(test, h_half, h_kept, 1e-13 * h_kept);
+        std::cout << "detrainment: top " << kept.convection_top << ", convective source "
+                  << total(kept.convective_cloud_source_kg_kg, n) * m * 1e3 << " g/m2 of "
+                  << total(kept.cloud_source_kg_kg, n) * m * 1e3 << ", top layer's cloud "
+                  << kept.cloud_water_kg_kg[top] * m * 1e3 << " -> "
+                  << half.cloud_water_kg_kg[top] * m * 1e3 << " g/m2 (e_d 0.5)\n";
+    }
+
+    // 9. V4: the convective share of the rain is independent of the step. A
+    // convecting column over a held warm surface, a month in 10-minute steps
+    // against the same month in one step: the shares within 0.1.
+    {
+        const LayerArray start{300.0, 284.0, 264.0, 240.0, 216.0};
+        const auto month = [&](double dt_s) {
+            Column column(n, dt_s);
+            LayerArray t = start;
+            for (std::size_t k = 0; k < n; ++k) {
+                column.moisture.humidity_kg_kg[k] = 0.8 * column.saturation(t[k], k);
+            }
+            HeldSurface surface;
+            surface.surface_K = 302.0;
+            surface.evaporation_kg_m2_s = 4e-5;
+            double rain = 0.0;
+            double convective = 0.0;
+            const auto steps = static_cast<int>(std::lround(month_s / dt_s));
+            for (int step = 0; step < steps; ++step) {
+                LayerArray after = t;
+                const auto result = planetsim::solve_atmosphere_column(
+                    column.radiation, std::span<const double>(t.data(), n), dt_s, 0.0, true,
+                    surface, std::span<double>(after.data(), n), {}, nullptr, &column.moisture);
+                rain += result.precipitation_kg_m2_s * dt_s;
+                convective += result.convective_precipitation_kg_m2_s * dt_s;
+                t = after;
+                column.moisture.humidity_kg_kg = result.humidity_kg_kg;
+                column.moisture.cloud_water_kg_kg = result.cloud_water_kg_kg;
+            }
+            return std::pair{convective / rain, rain};
+        };
+        const auto [short_share, short_rain] = month(600.0);
+        const auto [long_share, long_rain] = month(month_s);
+        std::cout << "convective share: 10 minutes " << short_share << " (rain " << short_rain
+                  << " kg/m2), a month " << long_share << " (rain " << long_rain << " kg/m2)\n";
+        PLANETSIM_EXPECT(test, short_rain > 0.0 && long_rain > 0.0);
+        PLANETSIM_EXPECT(test, std::abs(short_share - long_share) <= 0.1);
     }
 
     return test.result();
