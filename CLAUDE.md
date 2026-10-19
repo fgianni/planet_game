@@ -40,8 +40,10 @@ state/fluxes rather than scripted climate modifiers; - production code
 and tests together; - do not proceed to M9 unless explicitly requested.
 
 Current milestone: **P0 / M8, reopened for its cloud distribution**
-(ADR-0025, accepted 2026-10-19, staged): M8-07 (sub-grid condensation),
-M8-09 (convective condensate and anvils), then the V8 investigation with
+(ADR-0025, accepted 2026-10-19, staged): M8-07 (sub-grid condensation,
+complete, off in the preset under ADR-0025 §12), M8-09 (convective
+condensate and anvils, next), then the V8 investigation (with the
+upper layers' humidity, §12) and
 M8-08 (the eddies' variance; ADR-0025 §4.2 accepted only after its V3),
 then M8-10 (one refit and the gates). V8's +6.47 K climate-reference
 temperature gap (ADR-0023 §15) is carried forward into that

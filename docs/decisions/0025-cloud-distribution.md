@@ -7,8 +7,9 @@
 - **Accepted:** 2026-10-19 (staged, §9)
 - **Amended:** 2026-10-19 — §11: non-precipitating cloud, §4.2's b_eddy
   brought forward and required (decided with the user, option 1 of task
-  M8-07); §12 proposed: the humidity, the layers and what the clouds can
-  follow (task M8-07)
+  M8-07); §12: the humidity, the layers and what the clouds can follow,
+  option 1 accepted with the user 2026-10-19 (β and W_np off in the
+  preset, M8-09 next, the humidity in the V8 investigation)
 - **Milestone:** P0 / M8, reopened for its cloud distribution (tasks below);
   before M9
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24;
@@ -353,7 +354,7 @@ decided with the user).**
    gates.
 
 
-## 12. Amendment: the humidity, the layers and what the clouds can follow (proposed 2026-10-19, task M8-07)
+## 12. Amendment: the humidity, the layers and what the clouds can follow (proposed 2026-10-19, task M8-07; option 1 accepted 2026-10-19)
 
 **12.1 What was asked.** Task M8-07 stopped with the air too moist
 (finding 3: both modes' upper layers near saturation, so any
@@ -433,7 +434,7 @@ open option; prototyped and reverted, not committed):
 **12.6 Options.**
 
 1. **Park §4.1 and §11 off; do M8-09 next; move the humidity into the
-   V8 investigation (recommended).** β = 0 and W_np = 0 in the preset,
+   V8 investigation (recommended; accepted with the user, 2026-10-19).** β = 0 and W_np = 0 in the preset,
    their code and tests kept (both bit-identical when off). M8-09 next,
    since it does not depend on the humidity. The V8 investigation then
    takes the humidity question: why both modes' upper layers saturate,
