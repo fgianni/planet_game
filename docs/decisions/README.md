@@ -25,6 +25,7 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0022 | [Player placement, zoning and a continuous Earth-viewer camera](0022-player-placement-zoning-and-continuous-zoom.md) | Accepted (amended 2026-10-14: camera-relative rendering; 2026-10-15: terrain hands over at cell edges, V4) | 2026-10-13 |
 | 0023 | [Cloud water, moist convection, precipitation and cloud radiation](0023-clouds-moist-convection-and-precipitation.md) | Accepted | 2026-10-16 |
 | 0024 | [The climate transport's eddies driven by moist enthalpy](0024-moist-enthalpy-eddies.md) | Accepted | 2026-10-18 |
+| 0025 | [Where the clouds are: sub-grid condensation, the eddies' variance and convective anvils](0025-cloud-distribution.md) | Proposed | 2026-10-19 |
 
 Records cite the design record by version and section (for example "Design
 Record v0.4, §28"). The current design record is
