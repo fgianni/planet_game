@@ -2,8 +2,9 @@
 
 - **Milestone:** P0 / M8, reopened (ADR-0025)
 - **Status:** in progress (2026-10-19): implemented with e_d = 0 in the
-  preset (its value is the refit's, task M8-10); V4 passes; the modes'
-  convective shares being measured
+  preset; V4 passes on a column but the modes' convective shares
+  disagree on the planet (0.99 against 0.44), and detrainment warms
+  climate mode 25 K and reference mode 1 K; stopped for a decision
 - **Governing decisions:** ADR-0025 §4.3 as amended by §13, V1, V4
 
 ## Done
@@ -65,3 +66,39 @@
     effect triples and the surface warms 25 K. ADR-0023 has no ice
     clouds (§8); real anvil cirrus is ice, with larger particles and less
     water per area.
+
+- **The modes on the planet** (V8's command, `planet_cli parity
+  --subdivision 3 --spin-up-years 10 --days 365`, seed 1; each mode spun
+  up in its own physics, year 11; e_d = 0.5 from a scratch build with it
+  as the default, not committed):
+
+  | | Climate, e_d 0 | Reference, e_d 0 | Climate, e_d 0.5 | Reference, e_d 0.5 |
+  |---|---|---|---|---|
+  | Surface (K) | 289.07 | 295.51 | 314.34 | 296.47 |
+  | Convective share | 0.99 | 0.44 | 1.00 | 0.56 |
+  | Precipitation (m/yr) | 1.554 | 1.541 | 1.523 | 1.601 |
+  | Rain re-evaporated (m/yr) | 0.004 | 0.004 | 0.135 | 0.009 |
+  | Cloud water (g/m²) | 29.0 | 30.2 | 31.3 | 31.8 |
+
+  - **The shares disagree the other way.** M8-05's split gave 0.06 and
+    0.38. A month's step convects in almost every column, so ŵ = 1 and
+    all its condensation is convective. Reference mode's 10-minute
+    columns rain from large-scale ascent in steps where they do not
+    convect (ŵ = 0). §13 makes a convecting column's share independent
+    of the step; it cannot tell a month's mean convection from a
+    month of intermittent convection.
+  - **So detrainment acts on all of climate mode's rain and on about half
+    of reference mode's.** With e_d = 0.5, climate mode warms 25 K
+    (liquid anvils at 220 K, nearly black in the longwave) and reference
+    mode 1 K. V8's gap goes from +6.4 K to −17.9 K.
+
+## Open (for the decision)
+
+- e_d = 0.5 cannot go into the preset while the modes detrain this
+  differently: no refit can meet V8 (ADR-0025 V7).
+- What a month should count as convective: the share of its steps
+  that convect is what reference mode resolves and a month's single
+  step does not see. That is the same monthly-mean problem as §4.2's
+  b_eddy, for convection.
+- The anvils' optics: liquid cloud at the top layer's temperature
+  (ADR-0023 has no ice clouds, its §8).
