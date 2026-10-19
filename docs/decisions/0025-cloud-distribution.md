@@ -5,6 +5,9 @@
   measurement (V3), within the V8 investigation
 - **Date:** 2026-10-19
 - **Accepted:** 2026-10-19 (staged, §9)
+- **Amended:** 2026-10-19 — §11: non-precipitating cloud, §4.2's b_eddy
+  brought forward and required (decided with the user, option 1 of task
+  M8-07)
 - **Milestone:** P0 / M8, reopened for its cloud distribution (tasks below);
   before M9
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24;
@@ -301,3 +304,50 @@ decided with the user (2026-10-19).
 - Tompkins, A. M. (2002). A prognostic parameterization for the subgrid-scale
   variability of water vapor and clouds in large-scale models and its use
   to diagnose cloud cover. *J. Atmos. Sci.* 59, 1917–1942.
+
+## 11. Amendment: non-precipitating cloud; the eddies' variance required (accepted 2026-10-19, task M8-07)
+
+**11.1 What §4.1 gives.** Implemented as written (task M8-07), the
+sub-grid width changes nothing in climate mode. At L4 over three years
+the zonal cover is the same to two decimals at β = 0, 0.2 and 0.4.
+- Under ADR-0023 §12 and §14 a layer's cloud water settles at its
+  condensation rate times τ_a: all cloud water precipitates.
+- A month's condensation is fixed by the column's water balance, since
+  what evaporates and converges rains out. The distribution moves the
+  humidity at which a layer starts condensing, not how much it
+  condenses.
+- So the cloud water follows the rain. A humid layer that does not rain
+  cannot hold cloud, and the storm tracks, the polar air and the
+  subtropical stratocumulus are such layers.
+
+**11.2 Decision (amends ADR-0023 §12's threshold and this ADR's §4.1;
+decided with the user).**
+
+1. **Non-precipitating cloud.** Each layer's autoconversion acts above a
+   threshold q_th,k = A_k W_np / m_k:
+   - A_k is the layer's sub-grid cloudy area (§4.1's closed form) at the
+     microphysics' state;
+   - W_np is a non-precipitating in-cloud water path, a calibration
+     constant;
+   - cloud water up to q_th persists without raining, and above it
+     ADR-0023 §12.2's exact integration rains it out over τ_a. A raining
+     layer settles at q_th + c τ_a; a humid layer that does not rain
+     holds the distribution's own cloud, up to q_th;
+   - W_np = 0 is §12's threshold, bit for bit.
+2. **§4.2's b_eddy is required, not staged.** The cloudy area is
+   nonlinear in a month's mean humidity (ADR-0023 §13). The eddies'
+   variance in climate mode is what makes a monthly mean's area match the
+   mean of reference mode's. b_eddy is part of task M8-07, and V3 is its
+   gate. If V3 fails, this amendment is revisited before the refit.
+3. **L6 must converge** with β > 0 before the refit (task M8-07 found it
+   does not at β = 0.2).
+
+**11.3 Tasks** (supersede §9's first three):
+
+1. **M8-07:** §4.1, §11.2.1 and §4.2's b_eddy; V1–V3; L6's convergence;
+   the zonal cover measured at L3 and L4. M8-08 is merged into it.
+2. **M8-09:** convective condensate and anvils (§4.3), as before.
+3. **The V8 investigation**, beyond the clouds.
+4. **M8-10:** one refit (§4.4, W_np added to the constants) and the
+   gates.
+

@@ -193,6 +193,10 @@ struct ColumnMoisture {
     // and evaporates towards the distribution's equilibrium cloud water.
     // β = 0 is saturation adjustment, ADR-0023 §11.1's.
     double subgrid_width_fraction = 0.0;
+    // Non-precipitating cloud (ADR-0025 §11.2.1): autoconversion acts above
+    // q_th = A W_np / m, A the layer's sub-grid cloudy area. 0: ADR-0023
+    // §12's threshold alone.
+    double non_precipitating_path_kg_m2 = 0.0;
 };
 
 // A layer's equilibrium cloud water under the sub-grid distribution
@@ -706,9 +710,21 @@ inline MicrophysicsResult cloud_microphysics(const ColumnRadiation& column,
         {
             const double source = condensate_kg_kg[k] + convective_kg_kg[k];
             convective_share[k] = source > 0.0 ? convective_kg_kg[k] / source : 0.0;
+            // ADR-0025 §11.2.1: the layer's cloud up to A W_np / m does not
+            // rain; A from its sub-grid distribution, the step's
+            // condensate in its total water.
+            double threshold = moisture.cloud_water_threshold_kg_kg;
+            if (moisture.non_precipitating_path_kg_m2 > 0.0 &&
+                moisture.subgrid_width_fraction > 0.0) {
+                const double area =
+                    layer_equilibrium(moisture, k, humidity_kg_kg[k] + cloud + source,
+                                      temperature_K[k])
+                        .cloud.area;
+                threshold = std::max(threshold, area * moisture.non_precipitating_path_kg_m2 / mass);
+            }
             const double equilibrium = source * moisture.autoconversion_time_ratio;   // c τ_a
             const double decay = 1.0 - moisture.autoconversion_fraction;
-            const double x0 = cloud - moisture.cloud_water_threshold_kg_kg;
+            const double x0 = cloud - threshold;
             double x = 0.0;
             if (x0 >= 0.0) {
                 x = equilibrium + (x0 - equilibrium) * decay;
@@ -722,7 +738,7 @@ inline MicrophysicsResult cloud_microphysics(const ColumnRadiation& column,
                 cloud += source;
                 continue;
             }
-            const double after = moisture.cloud_water_threshold_kg_kg + x;
+            const double after = threshold + x;
             autoconversion[k] = std::max(0.0, cloud + source - after);
             cloud = cloud + source - autoconversion[k];
         }

@@ -993,6 +993,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             moisture.evaporation_fraction = -std::expm1(-dt_s / atmosphere.rain_evaporation_time_s);
             moisture.rain_evaporation_efficiency = atmosphere.rain_evaporation_efficiency;
             moisture.subgrid_width_fraction = atmosphere.cloud_subgrid_width;
+            moisture.non_precipitating_path_kg_m2 = atmosphere.cloud_non_precipitating_path_kg_m2;
             moisture.latent_J_kg = latent_heat_vaporisation_J_kg +
                                    snow_share[cell] * latent_heat_of_fusion_J_kg;
             cell_surface.water = true;

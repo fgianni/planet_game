@@ -143,6 +143,7 @@ struct ThermalOptions {
     // preset's).
     std::optional<bool> moist_convection;
     std::optional<double> cloud_subgrid_width;   // ADR-0025 §4.2's β
+    std::optional<double> cloud_non_precipitating_path;   // ADR-0025 §11's W_np
     std::size_t worker_count = 0;        // 0: hardware concurrency
 };
 
@@ -450,6 +451,8 @@ void print_usage(std::ostream& output) {
             options.moist_convection = value == "1";
         } else if (argument == "--cloud-subgrid-width") {
             options.cloud_subgrid_width = parse_double(value, "sub-grid condensation width");
+        } else if (argument == "--cloud-non-precipitating-path") {
+            options.cloud_non_precipitating_path = parse_double(value, "non-precipitating path");
         } else if (argument == "--preset") {
             const auto preset = planetsim::parse_planet_preset(value);
             if (!preset) {
@@ -2682,8 +2685,11 @@ int run_thermal(const ThermalOptions& options) {
     }
     if (options.cloud_subgrid_width) {
         surface.atmosphere.cloud_subgrid_width = *options.cloud_subgrid_width;
-        planetsim::validate_atmosphere_parameters(surface.atmosphere);
     }
+    if (options.cloud_non_precipitating_path) {
+        surface.atmosphere.cloud_non_precipitating_path_kg_m2 = *options.cloud_non_precipitating_path;
+    }
+    planetsim::validate_atmosphere_parameters(surface.atmosphere);
     if (options.moist_convection) {
         surface.atmosphere.moist_convection = *options.moist_convection;
     }

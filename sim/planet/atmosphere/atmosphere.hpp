@@ -60,6 +60,9 @@ struct AtmosphereParameters {
     // half-width as a share of q_sat; 0 is saturation adjustment. Set by
     // the refit (task M8-10).
     double cloud_subgrid_width = 0.0;
+    // Non-precipitating cloud (ADR-0025 §11.2.1): W_np, the in-cloud water
+    // path a layer's cloudy area holds without raining; 0: none.
+    double cloud_non_precipitating_path_kg_m2 = 0.0;
     double rain_evaporation_time_s = 3600.0;       // τ_e
     // Cloud radiation (ADR-0023 §4.4, §13), with moist convection: each
     // layer cloudy over its cloud water path divided by W_c, the in-cloud

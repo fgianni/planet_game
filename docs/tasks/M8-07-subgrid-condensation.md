@@ -1,8 +1,9 @@
 # Task M8-07 — Sub-grid condensation
 
 - **Milestone:** P0 / M8, reopened (ADR-0025)
-- **Status:** in progress (2026-10-19): implemented and tested; two
-  findings stop it for a decision (Results)
+- **Status:** in progress (2026-10-19): ADR-0025 §11 (non-precipitating
+  cloud) implemented; stopped again for a decision: the model's air is
+  nearly saturated in both modes (Results, finding 3)
 - **Governing decisions:** ADR-0025 §4.1, §4.2 (b_sub), V1, V2
 
 ## Done
@@ -58,6 +59,33 @@
   (−1 004 W/m²) takes a column's bottom layer to 5 K. This is ADR-0024's
   failure class. L3 and L4 run (no failed months, closure 3e-6 and 5e-6).
   At β = 0 L6 runs (20 s for the year).
+
+- **ADR-0025 §11.2.1, non-precipitating cloud** (`ColumnMoisture::
+  non_precipitating_path_kg_m2`, `AtmosphereParameters::
+  cloud_non_precipitating_path_kg_m2`, `planet_cli thermal
+  --cloud-non-precipitating-path`): autoconversion acts above
+  q_th = A W_np / m, A the layer's sub-grid cloudy area at the
+  microphysics' state. W_np = 0 is §12's threshold, bit for bit.
+- **Finding 3 — non-precipitating cloud overcasts the planet.** L4, three
+  years, β = 0.2: W_np = 0.03 kg/m² gives cover 0.96 in every band (high
+  0.44, longwave effect +116 W/m²); W_np = 0.1 gives 1.0 everywhere. The
+  layers' sub-grid area is near 1 almost everywhere, because the air is
+  near saturation. Relative humidity by layer, L3 (share of the time
+  saturated in brackets):
+
+  | Band | Climate, year 11: bottom / middle / top | Reference, days 730–790: bottom / middle / top |
+  |---|---|---|
+  | 60–90° N | 0.91 (0.43) / 0.83 (0.44) / 0.92 (0.87) | 0.95 (0.57) / 0.94 (0.65) / 0.98 (0.75) |
+  | 30–60° N | 0.84 (0.11) / 0.59 (0.10) / 0.96 (0.89) | 0.96 (0.54) / 0.84 (0.25) / 0.93 (0.44) |
+  | 0–30° N | 0.82 (0.01) / 0.43 (0.02) / 0.98 (0.85) | 0.92 (0.27) / 0.89 (0.09) / 0.95 (0.43) |
+  | 0–30° S | 0.82 (0.02) / 0.46 (0.04) / 0.97 (0.85) | 0.92 (0.30) / 0.89 (0.08) / 0.94 (0.46) |
+  | 30–60° S | 0.82 (0.09) / 0.61 (0.08) / 0.92 (0.79) | 0.95 (0.50) / 0.88 (0.25) / 0.91 (0.44) |
+  | 60–90° S | 0.92 (0.54) / 0.78 (0.51) / 0.85 (0.76) | 0.98 (0.68) / 0.96 (0.65) / 0.97 (0.66) |
+
+  Earth's layer means are about 0.7–0.8 at the bottom and 0.3–0.6
+  above. Both modes are too moist, reference mode more so, and climate
+  mode's top layer is saturated most of the time. A cloud scheme driven
+  by humidity cannot place the clouds until the humidity is right.
 
 ## Open (for the decision)
 
