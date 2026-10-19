@@ -7,7 +7,8 @@
 - **Accepted:** 2026-10-19 (staged, §9)
 - **Amended:** 2026-10-19 — §11: non-precipitating cloud, §4.2's b_eddy
   brought forward and required (decided with the user, option 1 of task
-  M8-07)
+  M8-07); §12 proposed: the humidity, the layers and what the clouds can
+  follow (task M8-07)
 - **Milestone:** P0 / M8, reopened for its cloud distribution (tasks below);
   before M9
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24;
@@ -351,3 +352,108 @@ decided with the user).**
 4. **M8-10:** one refit (§4.4, W_np added to the constants) and the
    gates.
 
+
+## 12. Amendment: the humidity, the layers and what the clouds can follow (proposed 2026-10-19, task M8-07)
+
+**12.1 What was asked.** Task M8-07 stopped with the air too moist
+(finding 3: both modes' upper layers near saturation, so any
+humidity-driven cloud is overcast), and with two candidate fixes: more
+layers (five layers dry the lower and middle troposphere in climate
+mode), and the cloud water relaxing towards q_l* plus the raining part
+(task M8-07, Open). Both were measured before this amendment (L4, three
+years from the initial state, β = 0.2, not refitted: compare the rows,
+not the absolute temperatures; `planet_cli thermal --subdivision 4
+--years 3 --coupled --water --moist-convection 1 --cloud-subgrid-width
+0.2`, seed 1).
+
+**12.2 Five layers.**
+
+| | 3 layers | 5 layers |
+|---|---|---|
+| Cover, W_np = 0 | 0.66 | 0.71 |
+| Cover / high cover, W_np = 0.03 kg/m² | 0.96 / 0.44 | 0.98 / 0.35 |
+| L5, ten years (4 workers) | 19.0 s | 31.7 s (×1.67) |
+| L6, one year, β = 0 | runs (20 s) | breaks in year 1 (a bottom layer at 5 K under −1 316 W/m²) |
+
+- Five layers do not stop the overcast: the fourth and fifth layers stay
+  near saturation (task M8-07: the fourth saturated 36–49 % of the
+  time), and the non-precipitating cloud fills them.
+- They cost ×1.67 a climate year. V11 would still pass by the estimate
+  (L5 about 450 s against 608 s; L6 about 1 590 s against 2 025 s), but
+  L6 breaks at five layers even with β = 0, which is ADR-0024's failure
+  class again.
+- Reference mode at five layers is unmeasured: `planet_cli reference`
+  stops at the 150 m/s sub-step bound at L3 with three layers as with
+  five, and `planet_cli run` takes the preset's layer count.
+
+**12.3 The non-precipitating path W_np** (§11.2.1), cover by 10° band:
+
+| W_np (kg/m²) | Global cover | High | Poles | 20–40° | Tropics | Cloud LW effect |
+|---|---|---|---|---|---|---|
+| 0 | 0.66 | 0.02 | 0.07–0.20 | 0.69–0.79 | 0.85–0.87 | +23 W/m² |
+| 0.003 | 0.71 | 0.07 | 0.28–0.36 | 0.73–0.82 | 0.85–0.86 | +54 |
+| 0.01 | 0.79 | 0.17 | 0.57–0.60 | 0.78–0.88 | 0.84–0.86 | +86 |
+| 0.03 | 0.96 | 0.44 | 0.95 | 0.94–0.99 | 0.95–0.98 | +116 |
+
+(three layers; five behave alike.) W_np adds cloud where it does not
+rain, so the poles and the storm tracks gain cover, as intended. But the
+cloud it adds is high: the saturated upper layers hold most of it, and
+its longwave effect rises four- to fivefold. The tropics and subtropics
+do not lose cloud at any W_np, because their cloud is the raining part
+(finding 1: c τ_a).
+
+**12.4 Cloud water towards the distribution's equilibrium** (the
+open option; prototyped and reverted, not committed):
+
+- q_l* itself as the non-raining reservoir never rains: q_l* includes
+  the step's condensate, so the threshold is always above the cloud
+  water, and the columns fail within the first year.
+- q_l* capped at the cloud the distribution holds below saturation,
+  q_l*(min(s, 0), b) (at most b / 6): 234–392 g/m² of cloud water,
+  optical depth 23–42, cover 0.82–0.89, the planet 15–25 K colder. A
+  layer is 2 000–3 400 kg/m², so any share of q_sat over a whole layer is
+  far more water than Earth's clouds hold (50–100 g/m²). ADR-0023 §12
+  met the same problem with Kessler's q_l0.
+
+**12.5 What the measurements say.**
+
+1. With the fraction linear in the cloud water (ADR-0023 §13), the cloud
+   that rains follows the rain, and the cloud that does not rain follows
+   the humidity of the coldest, most saturated layers. Neither gives
+   Earth's pattern, and the non-raining cloud has no form found here
+   that is both small enough and in the right layers.
+2. The upper layers' near-saturation is not only the vertical
+   resolution: five layers move it up a layer.
+3. The tropics' and subtropics' excess cover (0.7–0.87 against
+   CERES's 0.4–0.7) is the raining cloud. §4.3 (convective condensate
+   detrained to the top of the column, task M8-09) changes how that
+   cloud is partitioned between the layers and the modes, and does not
+   depend on the humidity.
+
+**12.6 Options.**
+
+1. **Park §4.1 and §11 off; do M8-09 next; move the humidity into the
+   V8 investigation (recommended).** β = 0 and W_np = 0 in the preset,
+   their code and tests kept (both bit-identical when off). M8-09 next,
+   since it does not depend on the humidity. The V8 investigation then
+   takes the humidity question: why both modes' upper layers saturate,
+   with the vapour budget split into ascent and subsidence by layer, in
+   both modes, at three and five layers (reference mode at five needs a
+   way to run it). §4.2's b_eddy and V3 stay with it. The zonal-cover
+   target (§4.4) is kept for M8-10 and may fail there, recorded.
+2. **Five layers in the preset now.** Not sufficient for the clouds
+   (12.2); L6 must first be made to converge at five layers, a task of
+   ADR-0024's kind; then a refit.
+3. **Accept the global-only cloud field for P0.** Record the zonal
+   pattern as a known limitation (task M8-06's measurements), close M8
+   after M8-09 and the refit, and return to the pattern after M9 with the
+   vertical structure the later milestones need anyway.
+
+**12.7 Tasks under option 1** (supersede §11.3):
+
+1. **M8-07** closes with §4.1 and §11 implemented, off in the preset, and
+   these measurements recorded.
+2. **M8-09:** convective condensate and anvils (§4.3), as before.
+3. **The V8 investigation:** the gap beyond the clouds, the upper layers'
+   humidity in both modes, §4.2's b_eddy and V3.
+4. **M8-10:** one refit (§4.4) and the gates.

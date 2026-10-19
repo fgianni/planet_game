@@ -3,7 +3,8 @@
 - **Milestone:** P0 / M8, reopened (ADR-0025)
 - **Status:** in progress (2026-10-19): ADR-0025 §11 (non-precipitating
   cloud) implemented; stopped again for a decision: the model's air is
-  nearly saturated in both modes (Results, finding 3)
+  nearly saturated in both modes (Results, finding 3). The two candidate
+  fixes were measured and ADR-0025 §12 is proposed (Results, finding 4)
 - **Governing decisions:** ADR-0025 §4.1, §4.2 (b_sub), V1, V2
 
 ## Done
@@ -115,7 +116,29 @@
   and middle troposphere is dry, as Earth's is. Most of three layers'
   near-saturation is their vertical resolution.
 
+- **Finding 4 — neither five layers nor q_l* fixes it** (ADR-0025 §12,
+  proposed; L4, three years, β = 0.2):
+  - Five layers: cover 0.71 at W_np = 0 and 0.98 at W_np = 0.03 (three
+    layers: 0.66, 0.96); a climate year costs ×1.67 at L5 (31.7 s
+    against 19.0 s for ten years, 4 workers); L6 breaks in its first year
+    at five layers even with β = 0.
+  - W_np swept 0, 0.003, 0.01, 0.03 kg/m²: the poles gain cover (0.07 to
+    0.3, 0.6, 0.95) but the cloud is high and its longwave effect rises
+    from +23 to +54, +86, +116 W/m²; the tropics' cover (0.85) does not
+    fall at any W_np.
+  - The cloud water towards q_l* (prototyped, reverted): q_l* as the
+    non-raining threshold never rains and the columns fail; capped at
+    q_l*(min(s, 0), b), 234–392 g/m² of cloud water, optical depth
+    23–42, the planet 15–25 K colder.
+  - `planet_cli reference` stops at the 150 m/s bound at L3 with three
+    layers as with five, so reference mode at five layers is unmeasured.
+
 ## Open (for the decision)
+
+- **ADR-0025 §12 (proposed)** sets out the options; the recommended one
+  parks §4.1 and §11 off in the preset (they are already: β = 0,
+  W_np = 0), takes M8-09 next and moves the humidity question into the
+  V8 investigation. The items below are its background.
 
 - ADR-0025 needs revising before more work. With the cloud water at
   C τ_a, the sub-grid distribution can change the clouds only if part of
