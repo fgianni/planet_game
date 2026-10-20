@@ -156,3 +156,27 @@ quoted, as the probe sampled one step in six):
   at it, but with climate mode counting 0.99 of its rain as convective it
   detrained all of it and warmed 25 K.
 
+### 5. ADR-0026 option 1: Betts–Miller moistening (prototype)
+
+`AtmosphereParameters::convective_moistening` (off: bit-identical, the
+state hash unchanged): the convecting column relaxes every layer towards
+RH_bm q_sat(T_ref), the deep case raining the net loss, the shallow case
+scaling the reference profile to add no water
+(`tests/unit/test_convective_moistening.cpp`, V1 and V2).
+
+Climate mode, L3, year 11:
+
+| | Before | With moistening | Reference, before |
+|---|---|---|---|
+| Surface temperature | 289.07 K | 292.33 K | 295.51 K |
+| Middle-layer vapour | 3.8 kg/m² | 11.3 | 12.6 |
+| Top-layer vapour | 1.0 | 1.1 | 1.7 |
+| Greenhouse, σT_s⁴ − OLR | 154.6 W/m² | 172.3 | 177.5 |
+| High cover | 0.013 | 0.037 | 0.20 |
+| Cloud longwave effect | +21.6 | +26.5 | +39.2 |
+| Absorbed sunlight | 235.3 | 236.4 | 248.8 |
+
+The middle troposphere's water nearly reaches reference mode's, and the
+greenhouse gap falls from 23 to 5 W/m². High cloud and the absorbed
+sunlight remain. Reference mode with moistening is measured next.
+

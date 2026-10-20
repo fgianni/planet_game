@@ -178,6 +178,10 @@ struct ColumnMoisture {
     bool moist_convection = false;
     double moist_convection_fraction = 1.0;
     double moist_convection_relative_humidity = 0.8;
+    // ADR-0026 option 1 (prototype, off: ADR-0023 §4.2.5): the convecting
+    // column's humidity relaxes towards RH_bm q_sat(T_ref) in every layer,
+    // moistening as well as drying.
+    bool convective_moistening = false;
     // Cloud water (ADR-0023 §4.3, §12), with moist convection: each layer's
     // at the start of the step, the autoconversion threshold q_l0, the
     // step's shares 1 − exp(−Δt/τ_a) and 1 − exp(−Δt/τ_e), τ_a / Δt, and the
@@ -472,7 +476,7 @@ inline BettsMillerResult betts_miller(const ColumnRadiation& column, const Colum
             const double q_ref = rh * saturation_specific_humidity(t, moisture.pressure_Pa[k]);
             sum += weight[k] * cp * (t - temperature_K[k]);
             slope += weight[k] * cp;
-            if (q_ref < humidity_kg_kg[k]) {
+            if (moisture.convective_moistening || q_ref < humidity_kg_kg[k]) {
                 sum += weight[k] * latent * (q_ref - humidity_kg_kg[k]);
                 slope += weight[k] * latent * rh *
                          saturation_specific_humidity_slope(t, moisture.pressure_Pa[k]);
@@ -498,6 +502,57 @@ inline BettsMillerResult betts_miller(const ColumnRadiation& column, const Colum
     }
     result.shift_K = shift;
     const double r = moisture.moist_convection_fraction;
+    if (moisture.convective_moistening) {
+        // ADR-0026 option 1. Deep: every layer towards q_ref, the column's
+        // net loss raining. Shallow (relaxing would add water): the
+        // temperatures keep Σ w ΔT = 0 and the humidity profile is scaled
+        // to add none (Betts 1986's shallow case). Both keep the column's
+        // moist enthalpy.
+        double net = 0.0;
+        double weights = 0.0;
+        for (std::size_t k = 0; k < layers; ++k) {
+            net += weight[k] *
+                   (rh * saturation_specific_humidity(reference[k] + shift, moisture.pressure_Pa[k]) -
+                    humidity_kg_kg[k]);
+            weights += weight[k];
+        }
+        if (net <= 0.0) {
+            for (std::size_t k = 0; k < layers; ++k) {
+                const double t = reference[k] + shift;
+                const double dq =
+                    rh * saturation_specific_humidity(t, moisture.pressure_Pa[k]) - humidity_kg_kg[k];
+                temperature_K[k] += r * weight[k] * (t - temperature_K[k]);
+                humidity_kg_kg[k] += r * weight[k] * dq;
+            }
+            result.shallow = false;
+            result.precipitation_kg_m2 = -r * net * moisture.layer_mass_kg_m2;
+            return result;
+        }
+        double sum_t = 0.0;
+        for (std::size_t k = 0; k < layers; ++k) sum_t += weight[k] * (reference[k] - temperature_K[k]);
+        const double shallow_shift = -sum_t / weights;
+        // The reference profile scaled so the column's water is unchanged
+        // (a constant shift could take a cold layer's tiny q_ref below zero).
+        double reference_water = 0.0;
+        double water = 0.0;
+        for (std::size_t k = 0; k < layers; ++k) {
+            reference_water += weight[k] * rh *
+                               saturation_specific_humidity(reference[k] + shallow_shift,
+                                                            moisture.pressure_Pa[k]);
+            water += weight[k] * humidity_kg_kg[k];
+        }
+        const double scale = reference_water > 0.0 ? water / reference_water : 0.0;
+        for (std::size_t k = 0; k < layers; ++k) {
+            const double t = reference[k] + shallow_shift;
+            const double dq = scale * rh * saturation_specific_humidity(t, moisture.pressure_Pa[k]) -
+                              humidity_kg_kg[k];
+            temperature_K[k] += r * weight[k] * (t - temperature_K[k]);
+            humidity_kg_kg[k] += r * weight[k] * dq;
+        }
+        result.shallow = true;
+        result.precipitation_kg_m2 = 0.0;
+        return result;
+    }
     double drying = 0.0;
     for (std::size_t k = 0; k < layers; ++k) {
         const double t = reference[k] + shift;
@@ -1287,6 +1342,21 @@ ColumnSolveResult solve_atmosphere_column(const ColumnRadiation& column,
             column, *moisture, temperature_K, std::span<double>(result.humidity_kg_kg.data(), n));
         for (std::size_t k = 0; k < n; ++k) {
             convective_kg_kg[k] = before_q[k] - result.humidity_kg_kg[k];
+        }
+        if (moisture->convective_moistening) {
+            // ADR-0026 option 1: the moistened layers' gain is water the
+            // dried layers lost. Each layer's convective condensate is its
+            // drying, scaled to sum to the column's net loss.
+            double dried = 0.0;
+            double net = 0.0;
+            for (std::size_t k = 0; k < n; ++k) {
+                dried += std::max(0.0, convective_kg_kg[k]);
+                net += convective_kg_kg[k];
+            }
+            const double scale = dried > 0.0 ? std::max(0.0, net) / dried : 0.0;
+            for (std::size_t k = 0; k < n; ++k) {
+                convective_kg_kg[k] = std::max(0.0, convective_kg_kg[k]) * scale;
+            }
         }
         result.convection_top = bm.top;
         if (bm.top >= 1 && bm.weight[0] > 0.0) {

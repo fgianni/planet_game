@@ -44,6 +44,8 @@ struct AtmosphereParameters {
     bool moist_convection = false;
     double moist_convection_time_s = 2.0 * 3600.0;     // τ_bm (Betts and Miller, 1986)
     double moist_convection_relative_humidity = 0.8;   // RH_bm
+    // ADR-0026 option 1 (prototype, proposed; off): Betts–Miller moistens.
+    bool convective_moistening = false;
     // Cloud water and precipitation (ADR-0023 §4.3, §12), with moist
     // convection: condensate becomes cloud water, whose excess over q_l0
     // converts to precipitation over τ_a, integrated exactly with the

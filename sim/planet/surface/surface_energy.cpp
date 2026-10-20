@@ -1033,6 +1033,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             moisture.evaporation_fraction = -std::expm1(-dt_s / atmosphere.rain_evaporation_time_s);
             moisture.rain_evaporation_efficiency = atmosphere.rain_evaporation_efficiency;
             moisture.subgrid_width_fraction = atmosphere.cloud_subgrid_width;
+            moisture.convective_moistening = atmosphere.convective_moistening;
             moisture.non_precipitating_path_kg_m2 = atmosphere.cloud_non_precipitating_path_kg_m2;
             moisture.detrainment_share = atmosphere.convective_detrainment_share;
             moisture.latent_J_kg = latent_heat_vaporisation_J_kg +
