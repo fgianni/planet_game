@@ -1,7 +1,9 @@
 # ADR-0026 — Climate mode's convection carries water up
 
-- **Status:** Proposed
+- **Status:** Option 1 accepted (2026-10-20, with the user); options 2
+  and 3 open
 - **Date:** 2026-10-20
+- **Accepted:** 2026-10-20, option 1 (§8)
 - **Milestone:** P0, between M8 and M9 (investigation INV-01)
 - **Context documents:** `docs/tasks/INV-01-reference-humidity-and-parity.md`
   (findings 1–4); task M8-07 (the vapour budget); task M8-09 (the modes'
@@ -106,3 +108,26 @@ troposphere in climate mode and most of V8's gap are one cause.
 - Betts, A. K., and Miller, M. J. (1986). A new convective adjustment
   scheme. Part II: Single column tests using GATE wave, BOMEX, ATEX and
   arctic air-mass data sets. *Q. J. R. Meteorol. Soc.* 112, 693–709.
+
+## 8. Decisions
+
+**8.1 Option 1 accepted (2026-10-20, with the user; INV-01 finding 5).**
+- **What it gives:** at L3, year 11, climate mode's middle-layer vapour
+  rises from 3.8 to 11.3 kg/m² (reference 12.6), and reference mode is
+  unchanged (295.46 K against 295.51).
+- **V8's gap** falls from +6.4 to +3.1 K, the greenhouse difference from
+  23 to 5 W/m².
+- **It amends ADR-0023 §4.2.5:** Betts–Miller moistens as well as dries,
+  as in Betts and Miller's scheme. Water and moist enthalpy are exact
+  (V1, V2).
+- **In the preset with the one refit** at the end of this ADR's work, so
+  the constants are fitted once against the final physics. Until then
+  `AtmosphereParameters::convective_moistening` stays off by default.
+- **What remains of the gap:** high cloud (0.04 against 0.20, about
+  12 W/m² of the longwave effect) and the surface albedo (clear-sky
+  absorbed sunlight +11 W/m², the ice-albedo feedback).
+- **Option 2 set aside** unless option 3 falls short. Moving the bottom
+  layer's moisture past the solve's condensation would take the month's
+  latent heat out of the implicit balance, the failure ADR-0023 §11.1
+  fixed (task M8-02).
+
