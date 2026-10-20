@@ -177,6 +177,27 @@ Climate mode, L3, year 11:
 | Absorbed sunlight | 235.3 | 236.4 | 248.8 |
 
 The middle troposphere's water nearly reaches reference mode's, and the
-greenhouse gap falls from 23 to 5 W/m². High cloud and the absorbed
-sunlight remain. Reference mode with moistening is measured next.
+greenhouse gap falls from 23 to 5 W/m².
+
+Reference mode with moistening, year 11: 295.46 K (295.51 without),
+cloud longwave effect +38.9, high cover 0.201, vapour 33.3 / 12.6 /
+1.7 kg/m²: unchanged, as its resolved ascent and convection already lift
+water. So option 1 changes climate mode only.
+
+| Both with moistening | Climate | Reference | Gap |
+|---|---|---|---|
+| Surface temperature | 292.33 K | 295.46 K | **+3.1 K** (from +6.4) |
+| Greenhouse, σT_s⁴ − OLR | 172.3 W/m² | 177.6 | +5.3 (from +22.9) |
+| Cloud longwave effect | +26.5 | +38.9 | +12.4 |
+| High cover | 0.037 | 0.201 | |
+| Clear-sky absorbed sunlight (absorbed − cloud SW effect) | 282.9 | 294.2 | +11.3 |
+
+- **Option 1 halves V8's gap.**
+- **High cloud carries most of the rest** (0.04 against 0.20): options 3
+  and 2.
+- **The surface's albedo carries the other part.** The atmosphere absorbs
+  no sunlight, so the clear-sky difference is the surface: clear-sky
+  planetary albedo 0.168 against 0.135, more snow and ice on the colder
+  planet (Earth about 0.15). The ice-albedo feedback amplifies whatever
+  gap the clouds leave.
 
