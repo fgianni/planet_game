@@ -133,6 +133,11 @@
   - `planet_cli reference` stops at the 150 m/s bound at L3 with three
     layers as with five, so reference mode at five layers is unmeasured.
 
+- **Reference mode at five layers** (ADR-0025 §14.2; L3, two years from
+  rest, days 730–790): the bottom layer at 0.94–0.98 relative humidity,
+  saturated 50–73 % of the time in every band; the layers above at
+  0.77–0.96. Five layers do not dry reference mode.
+
 ## Carried forward (ADR-0025 §12, option 1)
 
 - **ADR-0025 §12, option 1 (accepted):** §4.1 and §11 stay off in the
