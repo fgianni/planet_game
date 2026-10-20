@@ -1,10 +1,11 @@
 # Task M8-09 — Convective condensate and anvils
 
 - **Milestone:** P0 / M8, reopened (ADR-0025)
-- **Status:** in progress (2026-10-19): implemented with e_d = 0 in the
-  preset; V4 passes on a column but the modes' convective shares
-  disagree on the planet (0.99 against 0.44), and detrainment warms
-  climate mode 25 K and reference mode 1 K; stopped for a decision
+- **Status:** complete (2026-10-20), with e_d = 0 in the preset: closed
+  under ADR-0025 §14 (M8 closes with the global cloud field) as decided
+  with the user. Detrainment is implemented and tested, off until the
+  investigation before M9 (ADR-0025 §14.3) settles what a month counts
+  as convective
 - **Governing decisions:** ADR-0025 §4.3 as amended by §13, V1, V4
 
 ## Done
@@ -92,7 +93,7 @@
     (liquid anvils at 220 K, nearly black in the longwave) and reference
     mode 1 K. V8's gap goes from +6.4 K to −17.9 K.
 
-## Open (for the decision)
+## Open (carried into the investigation before M9, ADR-0025 §14.3)
 
 - e_d = 0.5 cannot go into the preset while the modes detrain this
   differently: no refit can meet V8 (ADR-0025 V7).

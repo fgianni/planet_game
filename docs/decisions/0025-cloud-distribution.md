@@ -5,6 +5,9 @@
   measurement (V3), within the V8 investigation
 - **Date:** 2026-10-19
 - **Accepted:** 2026-10-19 (staged, §9)
+- **Amended:** 2026-10-20 — §14: M8 closed with the global cloud field
+  (§12.6 option 3); the cloud pattern, the humidity and V8 carried into a
+  separate investigation before M9 (decided with the user)
 - **Amended:** 2026-10-19 — §11: non-precipitating cloud, §4.2's b_eddy
   brought forward and required (decided with the user, option 1 of task
   M8-07); §12: the humidity, the layers and what the clouds can follow,
@@ -493,3 +496,66 @@ steps against the month in one step: convective shares 0.47 and 1.0.
    coupled transport's slopes do not see them.
 
 V4 on the same column: 0.983 and 1.0.
+
+## 14. Amendment: M8 closes with the global cloud field (accepted 2026-10-20 with the user, task M8-09)
+
+**14.1 Why stop here.** Every step towards Earth's cloud pattern has met
+the same two problems:
+
+1. **A month cannot see what happens within it.** That has now shown
+   itself three times:
+   - the cloud fraction (ADR-0023 §13);
+   - the sub-grid spread that climate mode would need (§4.2's b_eddy);
+   - the convective share. Under §13, climate mode counts 0.99 of its
+     rain as convective and reference mode 0.44, and detrainment then
+     warms climate mode 25 K and reference mode 1 K (task M8-09).
+   Climate mode sees a month's mean, and reference mode the intermittency
+   within it.
+2. **Reference mode, the modes' reference, is the further from Earth.**
+   It is the moister at three layers (task M8-07) and at five (14.2). It
+   runs 6.5 K warmer (V8), and it is fragile when it takes over from
+   climate mode (ADR-0023 §15.1).
+
+Tuning the clouds on top of these does not converge. They are one
+question, to be answered first.
+
+**14.2 Reference mode at five layers** (the measurement §12.2 lacked; L3,
+`PlanetRun` with `Scenario::atmosphere_layers = 5`, two years from rest,
+days 730–790; relative humidity by layer, bottom to top, the share of
+the time saturated in brackets):
+
+| Band | 0 | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|---|
+| 60–90° N | 0.98 (0.69) | 0.92 | 0.95 | 0.91 | 0.96 |
+| 30–60° N | 0.98 (0.70) | 0.82 | 0.85 | 0.80 | 0.84 |
+| 0–30° N | 0.96 (0.56) | 0.79 | 0.77 | 0.93 | 0.88 |
+| 0–30° S | 0.94 (0.50) | 0.81 | 0.77 | 0.91 | 0.90 |
+| 30–60° S | 0.98 (0.66) | 0.83 | 0.86 | 0.85 | 0.84 |
+| 60–90° S | 0.98 (0.73) | 0.94 | 0.95 | 0.91 | 0.93 |
+
+Five layers do not dry reference mode. Its bottom layer is saturated half
+the time or more in every band; climate mode's at five layers is
+0.82–0.93 (task M8-07). Earth's layer means are about 0.7–0.8 at the
+bottom and 0.3–0.6 above.
+
+**14.3 Decision (§12.6 option 3; decided with the user).**
+- **M8 closes** with the cloud field M8-05 fitted to the global targets
+  (ADR-0023 V9). The preset is unchanged: β = 0, W_np = 0, e_d = 0.
+  §4.1, §11 and §4.3 stay implemented, tested and off, bit-identical in
+  their physics when off.
+- **No refit (M8-10 is withdrawn):** with all three off, the physics is
+  M8-05's, whose calibration and gates stand.
+- **Recorded as known limitations, not met:**
+  - §4.4's zonal-cover, high-cloud and optical-depth targets (V5): the
+    zonal pattern of task M8-06;
+  - V7: the modes' cloud longwave effects differ by about 18 W/m²;
+  - ADR-0023 V8: the temperature gap, +6.4 K.
+- **Before M9, a separate investigation:**
+  - why reference mode is so moist, with the vapour budget by band and
+    layer (task M8-07) in both modes, at three and five layers;
+  - what a month must carry of its sub-monthly variability: the cloud
+    fraction, the sub-grid spread (§4.2, V3) and the convective share;
+  - and with them V8's temperature gap.
+  Clouds, convection and V8 all need its answer. Its results decide what
+  becomes of §4.1–§4.3 and §11.
+

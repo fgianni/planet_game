@@ -22,16 +22,19 @@ validation strategy, and current implementation task for the Planetary
 Civilization Simulator.
 
 Most recently completed milestone: **P0 / M8 --- Clouds and precipitation**
-(ADR-0023, amended §11--§15; ADR-0024): M8-01 (cloud water state, PSNAP
-schema 7), M8-02 (Betts--Miller moist convection), M8-03 (cloud water to
-precipitation), M8-04 (cloud radiation), M8-05
-(`docs/tasks/M8-05-refit-and-gates.md`: the refit, V9 passing, V11
-passing at L5 and L6, V8's temperature recorded failing at +6.47 K and
-carried forward) and M8-06 (clouds on screen, V12). M0--M7 (mesh, orbit,
-terrain, drainage, scheduler and calendar, surface energy columns,
-replay, snow and sea ice, diffusive transport, snapshot history, the
-layered atmosphere, winds and the climate circulation, humidity and
-evaporation) are complete.
+(ADR-0023, amended §11--§15; ADR-0024; ADR-0025, amended §11--§14):
+M8-01 (cloud water state, PSNAP schema 7), M8-02 (Betts--Miller moist
+convection), M8-03 (cloud water to precipitation), M8-04 (cloud
+radiation), M8-05 (`docs/tasks/M8-05-refit-and-gates.md`: the refit, V9
+passing, V11 passing at L5 and L6), M8-06 (clouds on screen, V12), M8-07
+(sub-grid condensation) and M8-09 (convective condensate and anvils), the
+last two implemented and off in the preset. M8 closed on 2026-10-20 with
+the global cloud field (ADR-0025 §14): the zonal cloud pattern, the
+modes' cloud longwave difference and V8's +6.4 K temperature gap are
+recorded as known limitations. M0--M7 (mesh, orbit, terrain, drainage,
+scheduler and calendar, surface energy columns, replay, snow and sea ice,
+diffusive transport, snapshot history, the layered atmosphere, winds and
+the climate circulation, humidity and evaporation) are complete.
 
 Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI
@@ -39,15 +42,12 @@ units; - deterministic and testable implementation; - physical
 state/fluxes rather than scripted climate modifiers; - production code
 and tests together; - do not proceed to M9 unless explicitly requested.
 
-Current milestone: **P0 / M8, reopened for its cloud distribution**
-(ADR-0025, accepted 2026-10-19, staged): M8-07 (sub-grid condensation,
-complete, off in the preset under ADR-0025 §12), M8-09 (convective
-condensate and anvils, next), then the V8 investigation (with the
-upper layers' humidity, §12) and
-M8-08 (the eddies' variance; ADR-0025 §4.2 accepted only after its V3),
-then M8-10 (one refit and the gates). V8's +6.47 K climate-reference
-temperature gap (ADR-0023 §15) is carried forward into that
-investigation. Do not proceed to M9 unless explicitly requested.
+Current milestone: none in progress. Before M9, a separate investigation
+(ADR-0025 §14.3), not started: why reference mode is so moist (the vapour
+budget by band and layer, both modes, three and five layers), what a
+month must carry of its sub-monthly variability (the cloud fraction, the
+sub-grid spread, the convective share), and V8's temperature gap. M9
+must not start unless explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is
