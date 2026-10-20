@@ -1,7 +1,9 @@
 # Investigation INV-01 — Reference mode's humidity, the month's variability and V8
 
 - **Milestone:** P0, between M8 and M9 (ADR-0025 §14.3)
-- **Status:** in progress (started 2026-10-20)
+- **Status:** findings complete (2026-10-20); closed with ADR-0026 option 1
+  accepted and option 3 not taken for P0 (decided with the user). Next:
+  the refit with moistening on, then V8 measured again (not started)
 - **Governing decisions:** ADR-0025 §14 (the questions); ADR-0001 V2
   (climate–reference parity); ADR-0023 §13 and §15 (V8 and its reading);
   ADR-0021 §4.5 (one physics in both modes)
@@ -200,4 +202,54 @@ water. So option 1 changes climate mode only.
   planetary albedo 0.168 against 0.135, more snow and ice on the colder
   planet (Earth about 0.15). The ice-albedo feedback amplifies whatever
   gap the clouds leave.
+
+### 6. ADR-0026 option 3: the month's convective share (measured, not taken)
+
+Reference mode with moistening, L3, 120 days from rest then 60 days
+hourly: each cell's share of steps convecting against the parcel
+buoyancy of its 60-day mean column (`BettsMillerResult::buoyancy_K`):
+
+| Mean buoyancy (K) | Cells | Share convecting (sd) | Convective share of rain |
+|---|---|---|---|
+| below −8 | 137 | ~0.00 | ~0.00 |
+| −8 to −6 | 56 | 0.01–0.02 | 0.02–0.04 |
+| −6 to −3 | 107 | 0.04–0.07 | 0.10–0.15 |
+| −3 to −2 | 25 | 0.14 (0.13) | 0.26 |
+| −2 to −1 | 46 | 0.20 (0.12) | 0.42 |
+| −1 to 0 | 85 | 0.46 (0.16) | 0.66 |
+| 0 to 1 | 153 | 0.81 (0.09) | 0.77 |
+
+- The relation is clean and monotone.
+- It does not transfer to climate mode as it stands. Climate mode's
+  month-end columns (year 11, moistening on) sit at −6 to −4 K, 65 % of
+  the cell-months, because a month's step completes the relaxation
+  (r ≈ 1). Reference mode's 10-minute steps relax 8 % each and keep the
+  mean column near its trigger. The curve would give climate mode a share
+  near 0.1 against reference mode's 0.42.
+- A fitted offset would make it match, an empirical closure on three
+  layers too coarse for physical anvils and with liquid anvils (task
+  M8-09: +25 K). **Not taken for P0** (decided with the user, 2026-10-20).
+
+## Conclusion
+
+- **Question 1:**
+  - reference mode's bottom layer saturates where columns do not
+    convect (findings 1–3). Its whole atmosphere is too moist, mainly
+    because it is warmer (finding 4);
+  - three layers are too coarse for the upper troposphere's humidity
+    (task M8-07);
+  - five layers dry climate mode's lower and middle troposphere but not
+    reference mode's (ADR-0025 §14.2).
+- **Question 2:** the monthly step completes what reference mode does
+  intermittently: the cloud fraction (ADR-0023 §13), the convective share
+  (task M8-09; finding 6) and, by the same token, the sub-grid spread.
+  The intermittency is measured (finding 6) but not carried in P0.
+- **Question 3:** V8's gap was mostly climate mode carrying no water up
+  (finding 4). ADR-0026 option 1, accepted, halves it to +3.1 K before
+  the refit. The rest is high cloud (0.04 against 0.20) and the
+  ice-albedo feedback.
+- **Next (not started):** the refit with `convective_moistening` on in
+  the earth_like preset (τ_d, κ_v to 288 K; the cloud constants to
+  ADR-0023 V9's global targets), then V8 measured again, then a
+  decision on M9.
 

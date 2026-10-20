@@ -42,7 +42,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [M8-06](M8-06-clouds-on-screen.md) | Clouds on screen: presentation snapshot schema 6, the `cloud_cover` and `cloud_thickness` channels, the cloud layer in both styles (ADR-0023 §4.8, V12) | Complete |
 | [M8-07](M8-07-subgrid-condensation.md) | Sub-grid condensation (ADR-0025 §4.1, §11): implemented, off in the preset; neither it, five layers nor q_l* places the clouds while the upper layers saturate; closed under ADR-0025 §12 option 1 | Complete |
 | [M8-09](M8-09-convective-condensate-and-anvils.md) | Convective condensate and anvils (ADR-0025 §4.3, §13): the convective share by the layer's place in the column; detrainment to the top of the convection, implemented and off (e_d = 0); the modes' shares disagree on the planet; M8 closed under ADR-0025 §14 | Complete |
-| [INV-01](INV-01-reference-humidity-and-parity.md) | Investigation before M9 (ADR-0025 §14.3): reference mode's humidity, the month's sub-monthly variability, V8's gap | In progress |
+| [INV-01](INV-01-reference-humidity-and-parity.md) | Investigation before M9 (ADR-0025 §14.3): reference mode's humidity, the month's sub-monthly variability, V8's gap; closed with ADR-0026 option 1 (V8 +6.4 → +3.1 K before the refit) | Findings complete; refit next |
 | [R1-01](R1-01-presentation-library-and-channels.md) | Presentation library and semantic channels (ADR-0018; rendering track, parallel to M6) | Complete |
 | [R1-02](R1-02-style-packs-and-switching.md) | Godot style packs, recorded playback and instant switching (ADR-0018) | Complete |
 | [R1-03](R1-03-readability-harness.md) | Offscreen style readability gate and colour-vision checks (ADR-0018) | Complete |

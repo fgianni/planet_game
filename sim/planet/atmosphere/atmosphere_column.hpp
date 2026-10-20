@@ -386,6 +386,9 @@ struct BettsMillerResult {
     LayerArray parcel_K{};           // the parcel's temperatures, layers 0..top
     LayerArray weight{};             // each layer's share w_k of the relaxation
     double shift_K = 0.0;            // s: T_ref = parcel + s
+    // The parcel's buoyancy in layer 1, T_parcel,1 − T_1, whether or not the
+    // column convects (ADR-0026 option 3's measurements).
+    double buoyancy_K = 0.0;
 };
 
 inline BettsMillerResult betts_miller(const ColumnRadiation& column, const ColumnMoisture& moisture,
@@ -456,6 +459,7 @@ inline BettsMillerResult betts_miller(const ColumnRadiation& column, const Colum
         }
         top = static_cast<int>(k);
     }
+    result.buoyancy_K = reference[1] - temperature_K[1];
     if (top < 1) {
         return result;
     }

@@ -1,7 +1,7 @@
 # ADR-0026 — Climate mode's convection carries water up
 
-- **Status:** Option 1 accepted (2026-10-20, with the user); options 2
-  and 3 open
+- **Status:** Option 1 accepted; options 2 and 3 not taken for P0
+  (2026-10-20, with the user)
 - **Date:** 2026-10-20
 - **Accepted:** 2026-10-20, option 1 (§8)
 - **Milestone:** P0, between M8 and M9 (investigation INV-01)
@@ -130,4 +130,20 @@ troposphere in climate mode and most of V8's gap are one cause.
   layer's moisture past the solve's condensation would take the month's
   latent heat out of the implicit balance, the failure ADR-0023 §11.1
   fixed (task M8-02).
+
+**8.2 Option 3 not taken for P0 (2026-10-20, with the user; INV-01
+finding 6).**
+- Reference mode's share of convecting steps rises cleanly with its mean
+  column's parcel buoyancy (0 below −8 K, 0.46 at −1 to 0 K, 0.81 at 0 to
+  1 K).
+- Climate mode's month-end columns are stable (−6 to −4 K), since a
+  month's step completes the relaxation, so the curve would give it a
+  share near 0.1 against reference mode's 0.42.
+- Only a fitted offset would match them. On three layers, with liquid
+  anvils that overheat the planet (task M8-09), that is not worth a
+  closure in P0. V8's remaining gap (high cloud and the ice-albedo
+  feedback) is recorded after the refit.
+
+**8.3 Next:** the refit with option 1 in the preset, then V8 measured
+again (INV-01, Conclusion).
 
