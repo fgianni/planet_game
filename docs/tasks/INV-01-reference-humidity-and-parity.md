@@ -118,3 +118,41 @@ between the layers to how much there is.
   the gap's anatomy (absorbed sunlight, outgoing longwave, the cloud
   effects, the vapour path by layer) in both modes' eleventh year.
 
+### 4. V8's anatomy: climate mode carries no water up (L3, each mode's eleventh year)
+
+Each mode spun up ten years in its own physics (ADR-0023 §15), then its
+eleventh year (reference mode sampled hourly; its precipitation is not
+quoted, as the probe sampled one step in six):
+
+| | Climate | Reference | Difference |
+|---|---|---|---|
+| Surface temperature | 289.07 K | 295.51 K | +6.4 K |
+| Absorbed sunlight | 235.3 W/m² | 248.8 W/m² | +13.5 |
+| Cloud shortwave effect | −46.2 | −45.4 | +0.8 |
+| Cloud longwave effect | +21.6 | +39.2 | +17.6 |
+| Greenhouse effect, σT_s⁴ − OLR | 154.6 | 177.5 | +22.9 |
+| Cover / above the bottom layer | 0.58 / 0.013 | 0.46 / 0.20 | |
+| Vapour by layer (kg/m²) | 21.6 / 3.8 / 1.0 | 33.3 / 12.6 / 1.7 | the middle ×3.3 |
+| Layer temperatures | 274.6 / 251.6 / 223.7 K | 283.2 / 263.7 / 233.0 K | +9 to +12 K |
+| Convective share | 0.99 | 0.44 | |
+
+- **Reference mode's extra greenhouse, +23 W/m²:** about 18 from its high
+  cloud (0.20 against 0.013), about 5 from clear-sky vapour (three times
+  climate mode's in the middle layer).
+- **Its extra absorbed sunlight, +13.5 W/m²,** with the same cloud
+  shortwave effect: the surface's albedo, most likely less snow and sea
+  ice on the warmer planet (not yet measured).
+- **The cause is in climate mode.** Reference mode's resolved ascent
+  lifts water (finding 3; task M8-07's budget: 15 times climate mode's
+  into the middle layer), and its high cover (0.20) is near Earth's
+  0.2–0.3. Climate mode keeps its water in the bottom layer:
+  - the month's evaporation condenses there in the solve (ADR-0023
+    §11.1);
+  - Betts–Miller never moistens a layer (§4.2.5).
+  So it has almost no high cloud and less greenhouse, holds more ice, and
+  runs 6.4 K colder.
+- **V8's gap, the missing high cloud and the middle troposphere's
+  dryness in climate mode are one cause.** Task M8-09's detrainment aimed
+  at it, but with climate mode counting 0.99 of its rain as convective it
+  detrained all of it and warmed 25 K.
+
