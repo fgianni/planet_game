@@ -42,14 +42,16 @@ units; - deterministic and testable implementation; - physical
 state/fluxes rather than scripted climate modifiers; - production code
 and tests together; - do not proceed to M9 unless explicitly requested.
 
-Current milestone: none in progress. Investigation INV-01
-(`docs/tasks/INV-01-reference-humidity-and-parity.md`) has its findings:
-V8's gap was mostly climate mode carrying no water up, and ADR-0026's
-option 1 (Betts--Miller moistening, accepted 2026-10-20; options 2 and 3
-not taken for P0) halves it (+6.4 to +3.1 K before a refit). Next, not
-started: the refit with `convective_moistening` on in the earth_like
-preset, then V8 measured again, then a decision on M9. M9 must not start
-unless explicitly requested.
+Current investigation: INV-02
+(`docs/tasks/INV-02-moistening-refit-and-parity.md`). It enabled
+`convective_moistening` in the Earth-like preset, refit the shared
+radiation pair, and recorded V9, V8 and L5. V8 still fails its 0.3 K
+temperature limit at 4.148 K, while precipitation passes at a 0.969
+climate/reference ratio. The L6 startup transport solve fails with a
+non-positive layer temperature after exhausting the existing Newton
+iteration limit; raising that limit experimentally did not converge and
+was removed. The transport-method choice must be resolved before
+claiming L6 support; M9 must not start unless explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is

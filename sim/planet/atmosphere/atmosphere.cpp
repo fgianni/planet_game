@@ -30,6 +30,7 @@ AtmosphereParameters atmosphere_parameters_for(PlanetPreset preset) noexcept {
         parameters.dry_optical_depth = earth_like_dry_optical_depth;
         parameters.vapour_absorption_m2_kg = earth_like_vapour_absorption_m2_kg;
         parameters.moist_convection = true;   // ADR-0023, ADR-0024 (task M8-05)
+        parameters.convective_moistening = true;   // ADR-0026 option 1, refitted together
         break;
     }
     return parameters;

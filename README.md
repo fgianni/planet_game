@@ -1,10 +1,13 @@
 # Planetary Civilization Simulator
 
-The repository has completed **P0 / M7 — Humidity and evaporation**, on top
-of M6's winds and climate circulation, M5's layered atmosphere, M4's snow,
+The repository has completed **P0 / M8 — Clouds and precipitation**, on top
+of M7's water cycle, M6's winds and climate circulation, M5's layered
+atmosphere, M4's snow,
 sea ice and diffusive heat transport, M3's surface energy columns and M2's
-geological planet, terrain and ocean basins. M8 (clouds and precipitation)
-is next. It contains a standalone C++20 `PlanetSim` library; headless mesh,
+geological planet, terrain and ocean basins. The follow-up moistening refit
+and parity measurements are recorded in
+[`INV-02`](docs/tasks/INV-02-moistening-refit-and-parity.md).
+It contains a standalone C++20 `PlanetSim` library; headless mesh,
 solar, terrain, drainage, calendar, thermal, atmosphere, wind and water
 diagnostics; recorded and replayable runs; tests; and an optional Godot 4
 presentation adapter.
@@ -289,10 +292,10 @@ and M6-05):
 ./build/planet_cli history --subdivision 6 --decades 10
 ```
 
-The `PSNAP` format (schema v6: M3 added the surface temperatures and the
+The `PSNAP` format (schema v7: M3 added the surface temperatures and the
 `double` ocean mixed layer, M4 the snow and sea-ice reservoirs, M5 the
 atmosphere, whose layer count each file states, M7 the layers' humidity and
-the land's water bucket) stores only
+the land's water bucket, M8 the layers' cloud water) stores only
 authoritative slow state, in stable
 field-ID order and layer-major/cell-major order within each field. Its fixed
 little-endian representation, canonical manifest, per-field CRC-32C checksums,
@@ -448,20 +451,24 @@ hydrostatic rest, its surface pressure the reference sea-level pressure
 reduced to the cell's height, so high ground carries less air (98.9 kPa
 mean, 45 kPa on a 6 km plateau). The layers exchange grey longwave with
 each other, the surface and space, with an optical depth that falls with
-pressure, receive sensible heat from the surface, and mix convectively
-wherever they cool faster than 6.5 K/km. The column and its land and ocean
+pressure and receive sensible heat from the surface. Dry columns mix
+wherever they cool faster than 6.5 K/km; with the water cycle, convection
+uses a dry-adiabatic adjustment and Betts–Miller moist relaxation.
+The column and its land and ocean
 tiles are solved together, implicitly, every step, and the energy budget of
 surface and air closes to rounding. Nothing imposes a lapse rate on the
-surface, yet a dome 4 km high cools at about 6 K/km.
+surface: M5's dry-column plateau experiment cools about 6 K/km.
 
 With the water cycle on, each layer's longwave optical depth is a dry
 part plus its water vapour, `τ_d Δp/p₀ + κ_v q Δp/g` (ADR-0021). Both are
-fitted together to a 288 K global mean: `τ_d = 1.0220` and
-`κ_v = 0.005110 m²/kg` (task M7-07). On a dry run, `τ₀ = 1.442` is the
+fitted together with convective moistening to a 288 K global mean:
+`τ_d = 1.11144453` and `κ_v = 0.00555722248 m²/kg` (task INV-02).
+On a dry run, `τ₀ = 1.442` is the
 whole depth, fitted with the circulation carrying the heat (ADR-0011
 §17.7); M5's diffusive fit, `τ₀ = 1.3581` with `D = 0.6371 W/m²/K`,
-survives only as the circulation's fallback. Sunlight still passes through
-the air unabsorbed, and there are no clouds yet (M8).
+survives only as the circulation's fallback. Cloud water reflects sunlight
+and absorbs longwave radiation (ADR-0023). The shortwave scheme includes
+reflection but no atmospheric absorption.
 
 ## Water cycle
 
@@ -474,15 +481,19 @@ the air unabsorbed, and there are no clouds yet (M8).
 The Earth-like planet carries water (ADR-0021, tasks M7-01 to M7-07); the
 water cycle is on in its preset, and `--dry` turns it off.
 - **State.** Each atmospheric layer has a specific humidity, and the land
-  tile a bucket that holds up to 150 mm (PSNAP schema 6). Older snapshots
+  tile a bucket that holds up to 150 mm, with cloud water in each layer
+  (PSNAP schema 7). Older snapshots
   start at 60 % relative humidity with the bucket half full.
 - **Evaporation.** Open water, sea-ice floes, snow and the bucket evaporate
   or sublimate by bulk transfer, implicitly in the surface temperature.
   The bucket's evaporation slows as it dries; it overflows to runoff.
-- **Rainout.** Each layer condenses what it holds above saturation, inside
-  the column solve and again after convection, with a 12-hour condensation
-  time. The latent heat warms the layer. The condensate reaches the ground
-  as snow on frozen land and as rain otherwise.
+- **Clouds and rain.** With moist convection on, each layer condenses its
+  excess over saturation inside the column solve. Betts–Miller convection
+  relaxes the buoyant column towards a moist reference, drying and moistening
+  layers while conserving water and moist enthalpy (ADR-0026). Condensate
+  becomes cloud water and converts to precipitation over 600 s; falling rain
+  and cloud water can re-evaporate. The latent terms heat or cool the air.
+  Precipitation reaches the ground as snow on frozen land and as rain otherwise.
 - **Transport.** In climate mode the circulation's overturning and eddies
   move the humidity, with an implicit upwind tracer solve that conserves
   it to rounding. In reference mode the resolved winds advect it.
@@ -491,16 +502,19 @@ water cycle is on in its preset, and `--dry` turns it off.
 - **Budgets.** Every step books energy, with the latent terms, and water;
   each column closes to rounding and the planet within its gates.
 
-After 150 years at L4 the planet averages 287.98 K, with a 53.3 K
-equator-to-pole difference and a 3.60 PW poleward transport peak. At L3 it
-rains 0.95 m a year, against Earth's about 1.0. Two targets are still open:
+The fit targets 288 K after 150 years at L4, with cloud cover 0.5–0.7
+and cloud radiative effects within 30 % of −47 W/m² shortwave and
++26 W/m² longwave. Commands, fitted constants and measurements are in
+[`INV-02`](docs/tasks/INV-02-moistening-refit-and-parity.md).
 
-- Earth's 42 K equator-to-pole difference needs clouds (M8) and ocean
-  currents (M11); with inert vapour the model gives 45.9 K.
-- `parity` compares a year in climate mode with a year in reference mode
-  from the same state. It fails ADR-0021's V9 gate: reference mode is
-  5.45 K warmer (gate 0.3 K) and rains 29 % more (gate 10 %). This is
-  deferred to M8's moist convection.
+`parity` compares each mode's eleventh year after its own ten-year
+spin-up from the initial state (ADR-0023 §15). Its limits remain 0.3 K
+and 10 % precipitation. With convective moistening and the shared refit,
+precipitation passes at a 0.969 climate/reference ratio, but temperature
+still differs by 4.148 K. Reference mode has 0.192 high cloud cover
+against climate mode's 0.031. The measurements and diagnostics are in
+[`INV-02`](docs/tasks/INV-02-moistening-refit-and-parity.md). Ocean heat
+transport is still pending (M11).
 
 ## Recorded runs and replay
 
@@ -528,7 +542,7 @@ equivalent, and `replay` says so. `run` also prints the stepping rate in
 simulated years per minute; `--min-years-per-minute` and `--max-seconds` turn
 it into the ADR-0001 performance gate. CI applies it to 25-year runs at L5
 and L6 on every push, and [`nightly.yml`](.github/workflows/nightly.yml) to
-250-year runs. On a 16-thread machine, 250 years with the water cycle take
+250-year runs. The M7 water-cycle baseline on a 16-thread machine took
 405 s at L5 and 1,350 s at L6.
 
 ## Optional Godot preview
@@ -681,7 +695,7 @@ not alter persistent `PSNAP` files.
 - `PlanetState` retains a shared immutable mesh handle. Its authoritative
   `SlowState` owns hypsometry, global sea level, the four surface
   temperatures, snow and sea-ice mass, the atmosphere's surface pressure,
-  layer temperatures and humidity, and the land's water bucket;
+  layer temperatures, humidity and cloud water, and the land's water bucket;
   `FastState` (reference mode's winds) is optional and lazily allocated,
   `Climatology` is derived, and forcing remains outside the persistent
   partition.
@@ -739,11 +753,12 @@ replayable runs; M4 snow, sea ice and their albedo feedback; M5 a layered
 atmosphere with pressure, grey longwave and convection; M6 winds in
 reference mode and a balanced circulation in climate mode that carries the
 heat; M7 water vapour, evaporation, rainout and the vapour's longwave
-absorption. Without clouds or ocean currents the transport is weaker than
-Earth's (53 K equator to pole, against 42 K), and the azonal flow carries no
-heat. Climate and reference mode do not yet agree (ADR-0021 V9, deferred
-to M8). There are no clouds: sunlight reaches the surface unabsorbed, and
-convection is dry. The bucket's runoff is booked but not routed; discharge,
+absorption; M8 cloud water, moist convection, precipitation and cloud
+radiation. The clouds' global targets are met, but their latitude and
+height distributions remain unlike Earth's (ADR-0025 §14), and climate
+and reference mode do not yet agree in temperature (ADR-0023 V8,
+ADR-0026). There are no ice clouds or ocean currents, and the azonal flow
+carries no heat. The bucket's runoff is booked but not routed; discharge,
 rivers and lake water balance, orbital precession and perturbations are not
 yet computed. Geology and drainage are generated once and are not
 time-evolving, and `GeologyState` is not persisted. Autosaves remain

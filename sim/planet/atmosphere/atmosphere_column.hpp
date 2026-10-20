@@ -178,7 +178,7 @@ struct ColumnMoisture {
     bool moist_convection = false;
     double moist_convection_fraction = 1.0;
     double moist_convection_relative_humidity = 0.8;
-    // ADR-0026 option 1 (prototype, off: ADR-0023 §4.2.5): the convecting
+    // ADR-0026 option 1 (amends ADR-0023 §4.2.5): the convecting
     // column's humidity relaxes towards RH_bm q_sat(T_ref) in every layer,
     // moistening as well as drying.
     bool convective_moistening = false;

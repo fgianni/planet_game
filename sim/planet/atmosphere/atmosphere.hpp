@@ -39,12 +39,13 @@ struct AtmosphereParameters {
     // Moist convection (ADR-0023 §4.2): with the water cycle, a dry
     // adjustment to the dry adiabat and a Betts–Miller relaxation towards
     // the moist adiabat over τ_bm, the reference at RH_bm, in place of the
-    // adjustment to Γ_c and of the condensation time τ_c. Off until the
-    // refit (task M8-05) turns it on with the clouds.
+    // adjustment to Γ_c and of the condensation time τ_c. Enabled in the
+    // Earth-like preset with the clouds (task M8-05).
     bool moist_convection = false;
     double moist_convection_time_s = 2.0 * 3600.0;     // τ_bm (Betts and Miller, 1986)
     double moist_convection_relative_humidity = 0.8;   // RH_bm
-    // ADR-0026 option 1 (prototype, proposed; off): Betts–Miller moistens.
+    // ADR-0026 option 1: Betts–Miller moistens as well as dries. Enabled
+    // in the Earth-like preset with its refitted vapour path.
     bool convective_moistening = false;
     // Cloud water and precipitation (ADR-0023 §4.3, §12), with moist
     // convection: condensate becomes cloud water, whose excess over q_l0
@@ -100,19 +101,16 @@ inline constexpr double gravitational_constant_m3_kg_s2 = 6.67430e-11;
 inline constexpr double earth_like_longwave_optical_depth = 1.442;
 
 // The vapour path's constants (ADR-0021 §4.6, §4.8, §12): calibration
-// constants. Refit (2026-10-18, task M8-05; ADR-0023 §4.6, ADR-0024) with
-// moist convection, cloud water and cloud radiation on (τ_a = 600 s, W_c =
-// 0.05 kg/m², r_e = 18 µm) and the eddies on moist enthalpy, the coupled
-// circulation, L4, seed 1, three layers, 150 years (`planet_cli thermal
-// --subdivision 4 --years 150 --layers 3 --coupled --water
-// --moist-convection 1 --dry-depth 1.2289237 --vapour-absorption
-// 0.0061446183 --calibrate 288`): M7's split, scaled together by bisection
-// to 288.00 K (scale 0.97383 of the given pair). The P2 equator-to-pole
-// difference is 48.1 K and the peak poleward transport 2.75 PW. M7's fit
-// (task M7-07) was 1.0220175 and 0.0051100875, with P2 53.3 K; ADR-0023's
-// with the eddies on θ_c, 1.2289237 and 0.0061446183, with P2 45.1 K.
-inline constexpr double earth_like_dry_optical_depth = 1.19676046;
-inline constexpr double earth_like_vapour_absorption_m2_kg = 0.00598380212;
+// constants. Refit (2026-10-20, task INV-02; ADR-0026 option 1) with
+// convective moistening on, the coupled circulation and moist-enthalpy
+// eddies, L4, seed 1, three layers, 150 years (`planet_cli thermal
+// --subdivision 4 --seed 1 --years 150 --layers 3 --coupled --water
+// --workers 16 --dry-depth 1.19676046 --vapour-absorption 0.00598380212
+// --calibrate 288`): scale 0.9287109375 of M8-05's pair gives 288.005 K.
+// The cloud constants stay τ_a = 600 s, W_c = 0.05 kg/m², r_e = 18 µm.
+// M8-05 records the earlier fits; INV-02 records V9, V8 and the gates.
+inline constexpr double earth_like_dry_optical_depth = 1.1114445287695311;
+inline constexpr double earth_like_vapour_absorption_m2_kg = 0.005557222476679688;
 
 // dead_rock and aqua_planet: no atmosphere (experiments A and B,
 // specification §13.1). earth_like: three layers (design record §15.1) of

@@ -144,6 +144,15 @@ finding 6).**
   closure in P0. V8's remaining gap (high cloud and the ice-albedo
   feedback) is recorded after the refit.
 
-**8.3 Next:** the refit with option 1 in the preset, then V8 measured
-again (INV-01, Conclusion).
+**8.3 Follow-up (INV-02, measured 2026-10-20).** The Earth-like preset
+now enables option 1. A shared refit gives τ_d = 1.11144453 and
+κ_v = 0.00555722248 m²/kg. V9's global cloud targets pass without
+changing the cloud constants. In V8, precipitation passes at a 0.969
+climate/reference ratio, but the temperature gap is 4.148 K against the
+0.3 K limit; reference high cloud cover remains 0.192 against climate's
+0.031. At L5, the 250-year budget and performance gates pass. At L6, the
+initial coupled transport solve exhausts its Newton limit and produces a
+non-positive layer temperature; INV-02 records this limitation and the
+needed transport-method decision. M9 has not started. Full measurements
+are in [`INV-02`](../tasks/INV-02-moistening-refit-and-parity.md).
 

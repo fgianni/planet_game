@@ -7,7 +7,7 @@
 #include <cmath>
 #include <iostream>
 
-// ADR-0026 option 1 (prototype): Betts–Miller moistening, V1 and V2.
+// ADR-0026 option 1: Betts–Miller moistening, V1 and V2.
 namespace {
 
 using planetsim::ColumnMoisture;

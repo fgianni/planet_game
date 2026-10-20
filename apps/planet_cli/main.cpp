@@ -1664,8 +1664,8 @@ int run_reference(const ReferenceOptions& options) {
     return 0;
 }
 
-// ADR-0001 V2 / ADR-0021 V9: climate mode against reference mode from the
-// same spun-up state under the same forcing, over the same span: the
+// ADR-0001 V2 / ADR-0021 V9 / ADR-0023 §15: each mode spun up in its own
+// physics from the initial state, then measured over a year: the
 // duration-weighted mean surface temperature and the global precipitation.
 int run_parity(const ReferenceOptions& options) {
     const std::size_t workers =
@@ -1684,6 +1684,17 @@ int run_parity(const ReferenceOptions& options) {
         double rain_evaporation_kg = 0.0;
         double cloud_evaporation_kg = 0.0;
         double cloud_water_kg = 0.0;
+        // Time-weighted means for the anatomy of V8 (INV-01, ADR-0026).
+        double absorbed_J = 0.0;
+        double emitted_J = 0.0;
+        double surface_upward_J = 0.0;
+        double cloud_shortwave_J = 0.0;
+        double cloud_longwave_J = 0.0;
+        double cover_m2_s = 0.0;
+        double high_cover_m2_s = 0.0;
+        std::array<double, planetsim::max_atmosphere_layer_count> vapour_kg_s{};
+        double worst_energy_ratio = 0.0;
+        double worst_water_ratio = 0.0;
     };
     const auto measure = [&](planetsim::SimulationMode mode) {
         planetsim::Scenario scenario;
@@ -1701,8 +1712,14 @@ int run_parity(const ReferenceOptions& options) {
         if (reference) {
             const auto spun = static_cast<planetsim::SimulationTick>(
                 std::llround(options.spin_up_years * 365.25 * 1'440.0));
+            constexpr planetsim::SimulationTick report_year_ticks = 36525 * 1440 / 100;
             while (run.tick() < spun) {
                 run.run_until(std::min<planetsim::SimulationTick>(run.tick() + 10, spun));
+                if (run.tick() % report_year_ticks == 0) {
+                    std::cout << "reference spin_up_year=" << run.tick() / report_year_ticks
+                              << " surface_K=" << run.last_step().mean_surface_temperature_K
+                              << std::endl;
+                }
             }
         }
         Record record;
@@ -1728,6 +1745,22 @@ int run_parity(const ReferenceOptions& options) {
             record.rain_evaporation_kg += step.rain_evaporation_kg;
             record.cloud_evaporation_kg += step.cloud_evaporation_kg;
             record.cloud_water_kg = step.cloud_water_kg;
+            record.absorbed_J += step.absorbed_W * step.duration_s;
+            record.emitted_J += step.emitted_W * step.duration_s;
+            record.surface_upward_J += step.surface_upward_longwave_W * step.duration_s;
+            record.cloud_shortwave_J += step.cloud_shortwave_effect_W * step.duration_s;
+            record.cloud_longwave_J += step.cloud_longwave_effect_W * step.duration_s;
+            record.cover_m2_s += step.cloud_cover_m2 * step.duration_s;
+            record.high_cover_m2_s += step.high_cloud_cover_m2 * step.duration_s;
+            for (const auto& band : step.vapour_budget) {
+                for (std::size_t layer = 0; layer < options.layers; ++layer) {
+                    record.vapour_kg_s[layer] += band.vapour_kg[layer] * step.duration_s;
+                }
+            }
+            record.worst_energy_ratio = std::max(
+                record.worst_energy_ratio, step.closure_residual_J() / step.closure_gate_J());
+            record.worst_water_ratio = std::max(
+                record.worst_water_ratio, step.water_cycle_residual_kg() / step.water_cycle_gate_kg());
         }
         record.wall_s =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
@@ -1745,6 +1778,23 @@ int run_parity(const ReferenceOptions& options) {
                   << " cloud_evaporation_m_yr=" << record.cloud_evaporation_kg * to_m_yr
                   << " cloud_water_g_m2=" << record.cloud_water_kg / area * 1000.0
                   << " wall_s=" << record.wall_s << std::endl;
+        const double area_seconds = area * record.seconds;
+        std::cout << "  absorbed_W_m2=" << record.absorbed_J / area_seconds
+                  << " olr_W_m2=" << record.emitted_J / area_seconds
+                  << " greenhouse_W_m2=" << (record.surface_upward_J - record.emitted_J) / area_seconds
+                  << " clear_sky_absorbed_W_m2="
+                  << (record.absorbed_J - record.cloud_shortwave_J) / area_seconds
+                  << " cre_sw_W_m2=" << record.cloud_shortwave_J / area_seconds
+                  << " cre_lw_W_m2=" << record.cloud_longwave_J / area_seconds
+                  << " cover=" << record.cover_m2_s / area_seconds
+                  << " high_cover=" << record.high_cover_m2_s / area_seconds
+                  << " energy_gate_ratio=" << record.worst_energy_ratio
+                  << " water_gate_ratio=" << record.worst_water_ratio
+                  << " vapour_kg_m2_by_layer=";
+        for (std::size_t layer = 0; layer < options.layers; ++layer) {
+            std::cout << ' ' << record.vapour_kg_s[layer] / area_seconds;
+        }
+        std::cout << std::endl;
         return record;
     };
     const Record climate = measure(planetsim::SimulationMode::climate);
