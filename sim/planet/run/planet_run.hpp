@@ -85,8 +85,12 @@ enum class ClimateCirculationUse { none, diagnostic, coupled };
 // count or on how run_until calls are chunked.
 class PlanetRun {
   public:
+    // `adjust`, for investigations only (INV-01): changes the scenario's
+    // surface and atmosphere parameters before the run starts. The
+    // manifest does not record it, so such a run is not replayable.
     explicit PlanetRun(const Scenario& scenario, std::size_t worker_count = 1U,
-                       ClimateCirculationUse circulation = ClimateCirculationUse::coupled);
+                       ClimateCirculationUse circulation = ClimateCirculationUse::coupled,
+                       const std::function<void(SurfaceEnergyParameters&)>& adjust = {});
     PlanetRun(const PlanetRun&) = delete;
     PlanetRun& operator=(const PlanetRun&) = delete;
     PlanetRun(PlanetRun&&) = delete;

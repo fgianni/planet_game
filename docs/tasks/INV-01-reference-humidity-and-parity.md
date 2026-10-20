@@ -1,0 +1,120 @@
+# Investigation INV-01 — Reference mode's humidity, the month's variability and V8
+
+- **Milestone:** P0, between M8 and M9 (ADR-0025 §14.3)
+- **Status:** in progress (started 2026-10-20)
+- **Governing decisions:** ADR-0025 §14 (the questions); ADR-0001 V2
+  (climate–reference parity); ADR-0023 §13 and §15 (V8 and its reading);
+  ADR-0021 §4.5 (one physics in both modes)
+- **Kind:** an investigation. It measures and explains. Any change to the
+  physics it points to gets its own ADR first.
+
+## Questions
+
+1. **Why is reference mode so moist?** Its bottom layer is at 0.92–0.98
+   relative humidity and saturated half the time or more in every band,
+   at three and at five layers (ADR-0025 §14.2; Earth about 0.7–0.8).
+   Climate mode's bottom layer is at 0.82–0.93.
+2. **What must a month carry of its sub-monthly variability?** Three
+   times the monthly step has split the modes: the cloud fraction
+   (ADR-0023 §13), the sub-grid spread (ADR-0025 §4.2) and the
+   convective share (ADR-0025 §13, task M8-09: 0.99 against 0.44).
+3. **V8's temperature gap:** reference mode runs +6.4 K warmer (ADR-0023
+   §15.3). About 5 K predates the clouds (§15.4).
+
+## Plan
+
+1. Where reference mode's bottom layer saturates: in convecting or
+   stable columns, by band.
+2. What keeps it there: the budget of the saturated cells against the
+   unsaturated ones (task M8-07's diagnostics), and what Earth's boundary
+   layer does that the model lacks (turbulent mixing, shallow convection
+   moving moisture up).
+3. Prototypes behind parameters, off by default and bit-identical, to
+   test each candidate in both modes. None reaches the preset without an
+   ADR.
+4. Question 2 from the same runs: each mode's within-month statistics of
+   the quantities that split them.
+5. Question 3: V8's gap broken down by term once the humidity is
+   understood.
+
+## Tools
+
+- `PlanetRun`'s fourth argument, `adjust`: changes the scenario's surface
+  and atmosphere parameters before a run, for investigation runs only
+  (the manifest does not record it, so such a run is not replayable).
+- Task M8-07's vapour budget by 30° band and layer
+  (`SurfaceEnergyDiagnostics::vapour_budget`,
+  `AtmosphereDynamicsDiagnostics::advection_by_band_kg`).
+
+## Findings
+
+### 1. Where reference mode's bottom layer saturates (L3, three layers)
+
+Reference mode from rest, days 120–150 (the bottom layer's humidity
+settles within weeks); a column counts as convecting in a step when it
+rains convectively:
+
+| Band | Share convecting | Bottom RH (saturated share): convecting | not convecting |
+|---|---|---|---|
+| 60–90° N | 0.05 | 0.92 (0.20) | 0.99 (0.68) |
+| 30–60° N | 0.29 | 0.91 (0.21) | 0.97 (0.61) |
+| 0–30° N | 0.68 | 0.93 (0.41) | 0.92 (0.35) |
+| 0–30° S | 0.26 | 0.94 (0.43) | 0.91 (0.37) |
+| 30–60° S | 0.03 | 0.87 (0.05) | 0.94 (0.43) |
+| 60–90° S | 0.00 | 0.69 (0.00) | 0.92 (0.47) |
+
+- **Convection is intermittent in reference mode:** 0–68 % of the
+  columns convect in a step, by band and season. Climate mode's month
+  convects in nearly every column (task M8-09: convective share 0.99).
+  That is question 2's intermittency, measured.
+- **A column that does not convect saturates its bottom layer.** At mid
+  and high latitudes it sits at 0.97–0.99. Nothing exports the layer's
+  moisture but the resolved winds, and each step condenses its excess in
+  place (ADR-0023 §11.1, no τ_c).
+- **Convecting columns saturate too** in the tropics (41–43 % of the
+  time). Betts–Miller removes moisture towards RH_bm over τ_bm = 2 h,
+  while the in-place condensation caps the layer at saturation in every
+  10-minute step.
+- **Candidate mechanism:** the model has no export of moisture from the
+  lowest layer except deep convection and the resolved winds. Earth's
+  boundary layer exports it by turbulent mixing and shallow convection
+  in every column. Tested next by sensitivity runs and a prototype.
+
+### 2. Convection's constants are not the lever (L3, reference, days 120–150)
+
+Bottom-layer RH in non-convecting / convecting columns:
+
+| Band | τ_bm 2 h, RH_bm 0.8 | τ_bm 0.5 h | RH_bm 0.7 |
+|---|---|---|---|
+| 60–90° N | 0.99 / 0.92 | 0.98 / 0.89 | 0.98 / 0.87 |
+| 30–60° N | 0.97 / 0.91 | 0.97 / 0.89 | 0.97 / 0.86 |
+| 0–30° N | 0.92 / 0.93 | 0.93 / 0.92 | 0.89 / 0.91 |
+| 30–60° S | 0.94 / 0.87 | 0.94 / 0.83 | 0.93 / 0.80 |
+
+Four times faster convection, or a drier reference profile, lowers the
+convecting columns by a few hundredths and leaves the others where they
+were.
+
+### 3. Mixing the boundary layer moves the water, not out (prototype, withdrawn)
+
+A prototype exchanged humidity between the bottom two layers, the
+equal-mass pair relaxing to its mean over τ_mix in every column:
+- **τ_mix = 24 h:** bottom RH 0.89–0.97, saturated 19–43 % of the time
+  (from 35–68 %);
+- **τ_mix = 6 h:** much the same;
+- **the cost:** the layer above rises to 0.80–0.96, and convection stops
+  everywhere (the share of convecting columns falls to 0). Moisture taken
+  from the bottom layer removes the parcel's buoyancy, so Betts–Miller
+  never triggers, and the rain becomes large-scale one layer up.
+
+The prototype is withdrawn. It points from how the water is shared
+between the layers to how much there is.
+- Reference mode's tropical column holds 80 kg/m² (Earth about 45,
+  climate mode 38).
+- Its water stays about 15 days (Earth about 9, climate mode 7).
+- Reference mode is also 6.5 K warmer, which alone raises q_sat by about
+  60 %, and the grey vapour feedback is strong (ADR-0021 §12: bistable).
+- The humidity and V8's temperature gap may then be one problem: next,
+  the gap's anatomy (absorbed sunlight, outgoing longwave, the cloud
+  effects, the vapour path by layer) in both modes' eleventh year.
+

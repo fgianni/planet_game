@@ -214,12 +214,20 @@ SimulationTick orbital_year_begin_tick(std::int64_t year, const PlanetParameters
 }
 
 PlanetRun::PlanetRun(const Scenario& scenario, std::size_t worker_count,
-                     ClimateCirculationUse circulation)
+                     ClimateCirculationUse circulation,
+                     const std::function<void(SurfaceEnergyParameters&)>& adjust)
     : scenario_(validated(scenario)),
       worker_count_(std::max<std::size_t>(1U, worker_count)),
       base_parameters_(scenario_parameters(scenario_)),
       parameters_(base_parameters_),
-      surface_(scenario_surface_parameters(scenario_)),
+      surface_([&] {
+          auto surface = scenario_surface_parameters(scenario_);
+          if (adjust) {
+              adjust(surface);
+              validate_atmosphere_parameters(surface.atmosphere);
+          }
+          return surface;
+      }()),
       mesh_(std::make_shared<const PlanetMesh>(
           make_icosphere(scenario_.subdivision, base_parameters_.radius_m))),
       state_(mesh_) {
