@@ -153,6 +153,8 @@ climate/reference ratio, but the temperature gap is 4.148 K against the
 0.031. At L5, the 250-year budget and performance gates pass. At L6, the
 initial coupled transport solve exhausts its Newton limit and produces a
 non-positive layer temperature; INV-02 records this limitation and the
-needed transport-method decision. M9 has not started. Full measurements
+needed transport-method decision. INV-03 tested transport-strength and
+response continuation, and a residual-gradient fallback; none passed the
+L6 convergence gate. M9 has not started. Full measurements
 are in [`INV-02`](../tasks/INV-02-moistening-refit-and-parity.md).
 

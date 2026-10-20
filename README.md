@@ -514,7 +514,9 @@ precipitation passes at a 0.969 climate/reference ratio, but temperature
 still differs by 4.148 K. Reference mode has 0.192 high cloud cover
 against climate mode's 0.031. The measurements and diagnostics are in
 [`INV-02`](docs/tasks/INV-02-moistening-refit-and-parity.md). Ocean heat
-transport is still pending (M11).
+transport is still pending (M11). The refitted preset also has an
+unresolved L6 startup transport solve; unsuccessful solver prototypes are
+recorded in [`INV-03`](docs/tasks/INV-03-l6-startup-transport.md).
 
 ## Recorded runs and replay
 

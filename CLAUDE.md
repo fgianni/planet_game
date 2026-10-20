@@ -42,16 +42,15 @@ units; - deterministic and testable implementation; - physical
 state/fluxes rather than scripted climate modifiers; - production code
 and tests together; - do not proceed to M9 unless explicitly requested.
 
-Current investigation: INV-02
-(`docs/tasks/INV-02-moistening-refit-and-parity.md`). It enabled
-`convective_moistening` in the Earth-like preset, refit the shared
-radiation pair, and recorded V9, V8 and L5. V8 still fails its 0.3 K
-temperature limit at 4.148 K, while precipitation passes at a 0.969
-climate/reference ratio. The L6 startup transport solve fails with a
-non-positive layer temperature after exhausting the existing Newton
-iteration limit; raising that limit experimentally did not converge and
-was removed. The transport-method choice must be resolved before
-claiming L6 support; M9 must not start unless explicitly requested.
+Current investigation: INV-03
+(`docs/tasks/INV-03-l6-startup-transport.md`), following INV-02's shared
+refit and V8 measurement. V8 still fails its 0.3 K temperature limit at
+4.148 K, while precipitation passes at a 0.969 climate/reference ratio.
+The L6 startup transport solve remains unconverged; transport-strength
+continuation, response continuation and a residual-gradient fallback
+were tested and removed because none met the convergence gate. A solver
+method decision is still needed before claiming L6 support; M9 must not
+start unless explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is
