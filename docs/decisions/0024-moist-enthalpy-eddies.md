@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-18
 - **Accepted:** 2026-10-18
+- **Amendment proposed:** 2026-10-21 — §9: an unconverged coupled month falls back to the diffusive transport (amends ADR-0011 §17's fourth decision; investigation INV-03)
 - **Milestone:** P0 / M8 (task M8-05)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24; ADR-0023 §5 V11
 - **Related:** ADR-0009 (the implicit transport's Newton, its floors and line search, §12's coarse groups), ADR-0010 §11 (the source enters the bottom layer), ADR-0011 §17 (the coupled climate transport: eddies on θ_c, advection of s_k), ADR-0021 §4.5 (humidity carried by the same fluxes and eddies), ADR-0023 (moist convection, cloud water, precipitation)
@@ -153,3 +154,75 @@ fallback, the tests (V1–V3), then V4 and the refit (V5).
 
 - Frierson, D. M. W., Held, I. M. and Zurita-Gotor, P. (2006), A gray-radiation aquaplanet moist GCM. Part I, *J. Atmos. Sci.* 63, 2548–2566.
 - Betts, A. K. (1986), A new convective adjustment scheme. Part I, *Q. J. R. Meteorol. Soc.* 112, 677–691.
+
+## 9. Amendment: an unconverged coupled month falls back to diffusion (proposed 2026-10-21, investigation INV-03)
+
+**9.1 What fails.** With ADR-0026's moistening and INV-02's refit in the
+preset, L6 stops in its first month from the initial state (INV-02).
+- The coupled transport's Newton ends at 30 iterations about 2.2 kW/m²
+  from consistency. Applying that unconverged source drives a column's
+  bottom layer to about 5 K, and the column solve throws.
+- M8-05's L6 first month also ended unconverged (§4: about 1 900 W/m²)
+  and survived. What breaks now is the application, not the lack of
+  convergence.
+- Three solver prototypes did not meet the convergence gate (INV-03):
+  ramping the transport strength from zero, blending the column
+  response from moistening off to on, and a damped residual-gradient
+  fallback.
+- The failure is not moistening's alone: with the refitted constants
+  and the old response, L6's first month still caps (2 511 W/m²).
+
+**9.2 Decision (amends ADR-0011 §17's fourth decision).**
+1. **A month whose coupled transport ends unconverged** falls back to
+   ADR-0009's diffusive transport with its calibrated D. That is a
+   consistency residual above R_f after its Newton, whether at the
+   iteration cap or stopped by the line search. §17 already does the
+   same for a month whose circulation fails.
+   - With moist convection on, the fallback diffuses T_m, as ADR-0024
+     §4.5's fallback does.
+2. **The latent energy moves once.** In such a month the humidity
+   transport has already run on the circulation's fluxes, unlike a
+   failed circulation month, where no humidity moves. So the eddies'
+   latent heat E, which moved as water, comes off the fallback's heat as
+   it comes off the coupled transport's (§4).
+3. **R_f = 100 W/m²,** to be confirmed by V2 below. ADR-0009's diffusion
+   converges to its own gate in every month measured.
+4. **Determinism:** the fallback depends on the state alone (the
+   residual of a deterministic solve), so runs stay bit-identical across
+   worker counts and on continuing from a snapshot (§17's fourth
+   decision). Each fallback month is counted and reported, as the failed
+   circulation months are.
+
+**9.3 The prototype** (INV-03; it does not yet subtract E). L6, the
+refitted preset, R_f = 100 W/m², ten years from the initial state:
+- 9 of 120 months fell back, 4 and 3 in the first two years as the
+  planet cooled from its hot start, then none until one each in years 7
+  and 10;
+- the energy closed every month (about 1e-5 of its gate), and no
+  circulation month failed;
+- settled months converged on their own in 4–6 iterations, to
+  1e-5–1e-4 W/m².
+
+**9.4 Validation.**
+
+| ID | Check |
+|---|---|
+| V1 | With R_f off (0), every run is bit-identical to today's |
+| V2 | L6, 250 years from the initial state: completes; energy and water close every month; fallback months counted. V11's time within 1.5 × M7's (2 025 s), measured on an idle machine |
+| V3 | L4 and L5 measured again. Their first months also exceed 100 W/m² (INV-02: up to 107 and 203 W/m²), so they change slightly; INV-02's 288 K fit and V9's targets are re-checked, and refitted only if they leave their tolerances |
+| V4 | The latent energy moves once: in a fallback month, E is subtracted and the global energy closes to its gate |
+| V5 | Determinism: one and four workers, and a run continued from a snapshot taken before a fallback month, end with the same state hash |
+
+**9.5 Consequences.**
+- L6 runs from the initial state with the moistening preset.
+- The fallback is a safety net, not a cure. The coupled Newton still
+  fails occasionally after spin-up, usually where the line search stops
+  at a kink in the columns' response (INV-03). A solver that handles the
+  kinks (INV-03's damped least squares, or a smoother response) remains
+  open and would make the fallback rarer, not unnecessary.
+- In a fallback month the circulation's heat transport is replaced by
+  diffusion, so that month's poleward heat transport is ADR-0009's. That
+  was already true of §17's failed months.
+- **Not changed:** the 30-iteration cap, the coupled Newton's tolerance
+  and the circulation itself.
+
