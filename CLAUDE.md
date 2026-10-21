@@ -48,9 +48,11 @@ refit and V8 measurement. V8 still fails its 0.3 K temperature limit at
 4.148 K, while precipitation passes at a 0.969 climate/reference ratio.
 The L6 startup transport solve remains unconverged; transport-strength
 continuation, response continuation and a residual-gradient fallback
-were tested and removed because none met the convergence gate. A solver
-method decision is still needed before claiming L6 support; M9 must not
-start unless explicitly requested.
+were tested and removed because none met the convergence gate. A fallback
+prototype (an unconverged coupled month takes ADR-0011 §17.4's diffusive
+transport; off by default) runs ten L6 years from the cold start with 9
+fallback months of 120. Accepting it needs an ADR amendment and a clean
+V11 run; M9 must not start unless explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is

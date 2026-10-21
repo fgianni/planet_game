@@ -143,6 +143,7 @@ struct ThermalOptions {
     // preset's).
     std::optional<bool> moist_convection;
     std::optional<double> cloud_subgrid_width;   // ADR-0025 §4.2's β
+    std::optional<double> transport_fallback;   // INV-03 prototype, W/m²
     std::optional<double> convective_detrainment;   // ADR-0025 §4.3's e_d
     std::optional<double> cloud_non_precipitating_path;   // ADR-0025 §11's W_np
     std::size_t worker_count = 0;        // 0: hardware concurrency
@@ -452,6 +453,8 @@ void print_usage(std::ostream& output) {
             options.moist_convection = value == "1";
         } else if (argument == "--convective-detrainment") {
             options.convective_detrainment = parse_double(value, "convective detrainment share");
+        } else if (argument == "--transport-fallback") {
+            options.transport_fallback = parse_double(value, "transport fallback residual");
         } else if (argument == "--cloud-subgrid-width") {
             options.cloud_subgrid_width = parse_double(value, "sub-grid condensation width");
         } else if (argument == "--cloud-non-precipitating-path") {
@@ -2735,6 +2738,9 @@ int run_thermal(const ThermalOptions& options) {
     }
     if (options.water) {
         surface.water_cycle = *options.water;
+    }
+    if (options.transport_fallback) {
+        surface.transport_fallback_residual_W_m2 = *options.transport_fallback;
     }
     if (options.cloud_subgrid_width) {
         surface.atmosphere.cloud_subgrid_width = *options.cloud_subgrid_width;

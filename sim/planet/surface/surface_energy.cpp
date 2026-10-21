@@ -1095,6 +1095,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     // The circulation carries the heat when it solved this month (ADR-0011
     // §17.1); otherwise ADR-0009's diffusion with D (§17.4).
     const bool coupled = circulation != nullptr && circulation->active && layers > 0U;
+    bool fell_back = false;   // INV-03 prototype
     double transport_seconds = 0.0;
     if (coefficient > 0.0 || coupled) {
         const double conductance = coefficient * mesh.radius_m() * mesh.radius_m();
@@ -1334,6 +1335,18 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                                     .count();
             for (std::size_t cell = 0; cell < cells; ++cell) {
                 transport[cell] = coupled_solve.source_W_m2[group_of_cell[cell]];
+            }
+            // INV-03 prototype: an unconverged coupled month takes the
+            // diffusive transport instead (ADR-0011 §17.4's fallback).
+            if (surface.transport_fallback_residual_W_m2 > 0.0 &&
+                coupled_solve.consistency_residual_W_m2 > surface.transport_fallback_residual_W_m2 &&
+                coefficient > 0.0) {
+                solve = solve_implicit_transport(graph, conductance, floor, response, {},
+                                                 worker_count);
+                for (std::size_t cell = 0; cell < cells; ++cell) {
+                    transport[cell] = solve.source_W_m2[group_of_cell[cell]];
+                }
+                fell_back = true;
             }
         } else {
             const auto solve_start = std::chrono::steady_clock::now();
@@ -1670,6 +1683,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 : 0.0;
     }
     diagnostics.transport_solve_s = transport_seconds;
+    diagnostics.transport_fell_back = fell_back;
     if (coupled) {
         diagnostics.transport_coupled = true;
         diagnostics.transport_cell_sum_W = coupled_solve.sum_W;
