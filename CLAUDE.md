@@ -46,13 +46,16 @@ Current investigation: INV-03
 (`docs/tasks/INV-03-l6-startup-transport.md`), following INV-02's shared
 refit and V8 measurement. V8 still fails its 0.3 K temperature limit at
 4.148 K, while precipitation passes at a 0.969 climate/reference ratio.
-The L6 startup transport solve remains unconverged; transport-strength
-continuation, response continuation and a residual-gradient fallback
-were tested and removed because none met the convergence gate. A fallback
-prototype (an unconverged coupled month takes ADR-0011 §17.4's diffusive
-transport; off by default) runs ten L6 years from the cold start with 9
-fallback months of 120. Accepting it needs an ADR amendment and a clean
-V11 run; M9 must not start unless explicitly requested.
+The accepted ADR-0024 §9 fallback is on in the Earth-like preset: a coupled
+month over 100 W/m² consistency residual uses the diffusive transport.
+With the refitted pair τ_d = 1.111, κ_v = 0.005555 m²/kg, the L4/150
+mean is 287.984 K, the L5/250 run takes 308.3 s, and the L6/250 run
+takes 1,061.1 s. Both performance runs pass their budget and column
+convergence gates; L6 has 10 fallback months and no failed circulation
+months. Two-year L6 runs on one and four workers have the same hash
+through eight fallback months. Snapshot restart before a fallback remains
+unverified because `PlanetRun` has no resume constructor. M9 must not
+start unless explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is

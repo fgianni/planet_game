@@ -2,9 +2,9 @@
 
 - **Milestone:** P0, following INV-02 and before M9
 - **Status:** ADR-0024 §9 accepted and implemented (2026-10-21): the
-  diffusive fallback is in the earth_like preset (R_f = 100 W/m²). L6
-  runs 250 years within V11; one column-convergence flag in L6's first
-  month is open (below)
+  diffusive fallback is in the earth_like preset (R_f = 100 W/m²). Its L4
+  radiation pair is refitted below. L4, L5 and L6 have now passed their
+  measured calibration, budget and performance gates on the refitted pair.
 - **Scope:** investigate a numerical method for the L6 cold-start transport failure
 - **Predecessor:** [INV-02](INV-02-moistening-refit-and-parity.md), which records the refit and V8 result
 - **Governing records:** ADR-0024 §§1–5; ADR-0009 §9; development specification §20.12
@@ -126,20 +126,37 @@ response, ADR-0024 §1).
 - **V5:** six L4 months on one and four workers, through a fallback month
   (month 2, 106.6 W/m²), end with the same state hash
   (`c49db7ff261a5cd8`).
-- **V2 and V11:** L6, 250 years from the initial state, 16 workers, the
-  machine idle (`test_convective_moistening_run 6 250 16`):
-  - **1 516.6 s** (9.9 years per minute; the limit is 2 025 s);
-  - energy within 1.41e-5 of its gate and water within 3.18e-4;
-  - no failed circulation month;
-  - final mean 288.50 K, cover 0.582, cloud effects −46.3 / +25.5 W/m²;
-  - 10 months at the iteration cap, all within the first 6 years; 8
-    fallback months in the first ten years (months 0, 4, 5, 6, 11, 16,
-    62, 107).
-- **Open: one unconverged column.** The long test's
-  `unconverged_columns == 0` fails once, in month 0 (the cold start's
-  fallback month): one column, finished from its fluxes with a correction
-  of 7.8e-11 K, at rounding. The gate is not weakened here.
+- **Prior-pair L6 result:** with INV-02's coefficients, L6 completed in
+  1 516.6 s and passed energy/water budgets with no failed circulation
+  month. One column-convergence assertion failed in month 0 with a
+  7.8e-11 K correction; this is superseded by the refitted-pair run below.
+- **V2/V11 after refit:** L6, 250 years from the initial state, 16 workers
+  (`test_convective_moistening_run 6 250 16`): **1 061.1 s**, within the
+  2 025 s limit; energy 1.39e-5 and water 3.23e-4 of their gates; zero
+  unconverged columns and no failed circulation months. There are 10
+  fallback months and 8 months at the Newton cap. The final-year mean is
+  288.473 K, cloud cover 0.582, and cloud effects −46.29/+25.54 W/m².
+- **V5 worker determinism after refit:** two L6 years on one and four
+  workers both pass through the same eight fallback months and end at
+  state hash `479957516275377720`. The L4 fallback case was also restarted
+  from a PSNAP written at the start of month 2: the loaded climate scheduler
+  reproduced the fallback and reached the uninterrupted six-month hash with
+  four workers versus one. This exercises the saved slow state and tick
+  across a fallback without adding a `PlanetRun` resume API; PRUN replay still
+  starts from the scenario's initial state. The restart uses INV-02's L4 pair,
+  which has the month-2 fallback; the refitted L4 pair has no fallback, so a
+  snapshot restart through a fallback on the refitted L6 path remains open.
+- **L5/250 after refit:** **308.3 s**, within the 607.5 s limit; energy
+  1.11e-5 and water 2.29e-4 of their gates; zero unconverged columns and
+  no failed circulation months. There are 3 fallback months and 5 capped
+  months. The final-year mean is 288.377 K.
 - **V3:** L4's 150-year fit gives 288.086 K with the fallback (one
   fallback month, month 2), against INV-02's 288.005 K. That is outside
-  the long test's ±0.05 K, so τ_d and κ_v are refitted (below).
+  the long test's ±0.05 K. The calibration CLI's surface-only spin-up
+  does not run `AtmosphereDynamics`, so the refit was measured with the
+  same `PlanetRun` path as the acceptance test. At τ_d = 1.111 and
+  κ_v = 0.005555 m²/kg, the 150-year L4 run gives 287.984 K; energy is
+  1.15e-5 and water 1.69e-4 of their gates. It has three capped early
+  transport months but no fallback month. V9 cloud targets still pass.
+  The refitted pair preserves the INV-02 dry/vapour ratio.
 

@@ -208,10 +208,10 @@ refitted preset, R_f = 100 W/m², ten years from the initial state:
 | ID | Check |
 |---|---|
 | V1 | With R_f off (0), every run is bit-identical to today's |
-| V2 | L6, 250 years from the initial state: completes; energy and water close every month; fallback months counted. V11's time within 1.5 × M7's (2 025 s), measured on an idle machine |
-| V3 | L4 and L5 measured again. Their first months also exceed 100 W/m² (INV-02: up to 107 and 203 W/m²), so they change slightly; INV-02's 288 K fit and V9's targets are re-checked, and refitted only if they leave their tolerances |
+| V2 | L6, 250 years from the initial state: completes; energy and water close every month; fallback months counted. V11's time within 1.5 × M7's (2 025 s), measured on an idle machine. Rechecked after INV-03's refit: 1 061.1 s, energy 1.39e-5 and water 3.23e-4 of their gates, 10 fallback months, zero unconverged columns and zero failed circulation months. |
+| V3 | L4 and L5 measured again. Their first months also exceed 100 W/m² (INV-02: up to 107 and 203 W/m²), so they change slightly; INV-02's 288 K fit and V9's targets are re-checked, and refitted only if they leave their tolerances. L4 was 288.086 K on the INV-02 pair; INV-03 refit to τ_d = 1.111, κ_v = 0.005555 m²/kg, giving 287.984 K with energy/water gates and V9 cloud targets passing. L5/250 on this pair passes in 308.3 s, with energy 1.11e-5 and water 2.29e-4 of their gates. |
 | V4 | The latent energy moves once: in a fallback month, E is subtracted and the global energy closes to its gate |
-| V5 | Determinism: one and four workers, and a run continued from a snapshot taken before a fallback month, end with the same state hash |
+| V5 | Determinism: one and four workers, and a run continued from a snapshot taken before a fallback month, end with the same state hash. INV-03 rechecked worker-count determinism on the refitted pair: two L6 years on one and four workers match at `479957516275377720` through eight fallback months. The L4 month-2 fallback case also restarts from a PSNAP at that month's start: the restored climate scheduler reproduces the fallback and matches the uninterrupted six-month hash with four versus one workers, using INV-02's L4 radiation pair. A refitted-pair L6 snapshot restart through a fallback remains unverified; `PlanetRun` has no resume constructor. |
 
 **9.5 Consequences.**
 - L6 runs from the initial state with the moistening preset.

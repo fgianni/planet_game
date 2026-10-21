@@ -150,11 +150,11 @@ now enables option 1. A shared refit gives τ_d = 1.11144453 and
 changing the cloud constants. In V8, precipitation passes at a 0.969
 climate/reference ratio, but the temperature gap is 4.148 K against the
 0.3 K limit; reference high cloud cover remains 0.192 against climate's
-0.031. At L5, the 250-year budget and performance gates pass. At L6, the
-initial coupled transport solve exhausts its Newton limit and produces a
-non-positive layer temperature; INV-02 records this limitation and the
-needed transport-method decision. INV-03 tested transport-strength and
-response continuation, and a residual-gradient fallback; none passed the
-L6 convergence gate. M9 has not started. Full measurements
-are in [`INV-02`](../tasks/INV-02-moistening-refit-and-parity.md).
+0.031. At L5, the 250-year budget and performance gates pass. At L6,
+ADR-0024 §9's accepted diffusive fallback completes the 250-year cold
+start on INV-02's pair within V11. INV-03 then refitted τ_d and κ_v to
+1.111 and 0.005555 m²/kg; L5/250 and L6/250 pass performance, energy,
+water and column-convergence gates on this pair. M9 has not started. Full measurements are in
+[`INV-02`](../tasks/INV-02-moistening-refit-and-parity.md) and
+[`INV-03`](../tasks/INV-03-l6-startup-transport.md).
 

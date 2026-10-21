@@ -101,16 +101,13 @@ inline constexpr double gravitational_constant_m3_kg_s2 = 6.67430e-11;
 inline constexpr double earth_like_longwave_optical_depth = 1.442;
 
 // The vapour path's constants (ADR-0021 §4.6, §4.8, §12): calibration
-// constants. Refit (2026-10-20, task INV-02; ADR-0026 option 1) with
-// convective moistening on, the coupled circulation and moist-enthalpy
-// eddies, L4, seed 1, three layers, 150 years (`planet_cli thermal
-// --subdivision 4 --seed 1 --years 150 --layers 3 --coupled --water
-// --workers 16 --dry-depth 1.19676046 --vapour-absorption 0.00598380212
-// --calibrate 288`): scale 0.9287109375 of M8-05's pair gives 288.005 K.
+// constants. INV-02's 2026-10-20 fit was 1.1114445287695311 and
+// 0.005557222476679688 m²/kg. Following ADR-0024 §9's fallback, the
+// 2026-10-21 INV-03 L4/150 PlanetRun measurement refit the shared scale to
+// τ_d = 1.111 and κ_v = 0.005555 m²/kg (287.984 K, seed 1, 4 workers).
 // The cloud constants stay τ_a = 600 s, W_c = 0.05 kg/m², r_e = 18 µm.
-// M8-05 records the earlier fits; INV-02 records V9, V8 and the gates.
-inline constexpr double earth_like_dry_optical_depth = 1.1114445287695311;
-inline constexpr double earth_like_vapour_absorption_m2_kg = 0.005557222476679688;
+inline constexpr double earth_like_dry_optical_depth = 1.111;
+inline constexpr double earth_like_vapour_absorption_m2_kg = 0.005555;
 
 // dead_rock and aqua_planet: no atmosphere (experiments A and B,
 // specification §13.1). earth_like: three layers (design record §15.1) of

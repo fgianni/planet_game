@@ -514,9 +514,11 @@ precipitation passes at a 0.969 climate/reference ratio, but temperature
 still differs by 4.148 K. Reference mode has 0.192 high cloud cover
 against climate mode's 0.031. The measurements and diagnostics are in
 [`INV-02`](docs/tasks/INV-02-moistening-refit-and-parity.md). Ocean heat
-transport is still pending (M11). The refitted preset also has an
-unresolved L6 startup transport solve; unsuccessful solver prototypes are
-recorded in [`INV-03`](docs/tasks/INV-03-l6-startup-transport.md).
+transport is still pending (M11). ADR-0024 §9's diffusive fallback lets
+the refitted preset complete 250-year L5 and L6 runs within their
+performance limits, with energy, water and column-convergence gates
+passing. Details are in
+[`INV-03`](docs/tasks/INV-03-l6-startup-transport.md).
 
 ## Recorded runs and replay
 
