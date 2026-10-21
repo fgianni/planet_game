@@ -66,9 +66,9 @@ struct SurfaceEnergyParameters {
     // spin-up but not after 10 (winds past 150 m/s within 3 hours at L3);
     // 12 h holds. M8's moist convection replaces it.
     double condensation_time_s = 12.0 * 3600.0;
-    // INV-03 prototype (0: off): a month whose coupled transport ends above
-    // this consistency residual takes ADR-0009's diffusive transport
-    // instead, as a failed circulation month does (ADR-0011 §17.4).
+    // ADR-0024 §9: a month whose coupled transport ends above this
+    // consistency residual R_f takes ADR-0009's diffusive transport instead,
+    // as a failed circulation month does (ADR-0011 §17); 0: never.
     double transport_fallback_residual_W_m2 = 0.0;
 };
 
@@ -183,7 +183,7 @@ struct SurfaceEnergyDiagnostics {
     double transport_dissipation_W_K = 0.0;   // Σ A H T̄ ≤ 0
     double transport_consistency_W_m2 = 0.0;  // max |H − h| of the implicit solve
     int transport_newton_iterations = 0;
-    bool transport_fell_back = false;   // INV-03 prototype: the diffusive transport replaced it
+    bool transport_fell_back = false;   // ADR-0024 §9: the diffusive transport replaced it
     int transport_cg_iterations = 0;
     // The coupled transport (ADR-0011 §17.1): whether the circulation carried
     // the heat this step, and its eddy and advective parts (Σ A |H|).

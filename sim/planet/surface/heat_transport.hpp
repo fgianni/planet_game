@@ -123,10 +123,15 @@ void diffusion_source(const TransportGraph& graph, double conductance_W_K,
 // (per cell), where the caller's local solves still have a positive root.
 // Bit-identical for any worker count: all parallel work runs over the
 // mesh's fixed blocks with block-ordered reductions.
+//
+// `latent_W_m2`, if given (one value per node), is the eddies' latent heat
+// E that the humidity transport already moved as water (ADR-0024 §4, §9.2):
+// the solve then finds h = K ∇² T̄(h) − E, and the source it applies is
+// K ∇² T̄ − E. E sums to zero over the graph, so the source still does.
 [[nodiscard]] ImplicitTransportResult solve_implicit_transport(
     const TransportGraph& graph, double conductance_W_K, const Field2D<double>& source_floor_W_m2,
     const TransportResponse& response, const ImplicitTransportSettings& settings = {},
-    std::size_t worker_count = 1U);
+    std::size_t worker_count = 1U, const std::vector<double>* latent_W_m2 = nullptr);
 
 // The coupled climate transport (ADR-0011 §3.5, §4.7, §17): on a transport
 // graph, the eddies' diffusion of the columns' θ_c with per-face

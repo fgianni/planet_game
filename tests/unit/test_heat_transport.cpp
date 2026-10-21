@@ -226,10 +226,64 @@ void check_validation(planetsim::test::Context& test, const planetsim::PlanetMes
 
 }  // namespace
 
+// ADR-0024 §9.2: the fallback's diffusion with the eddies' latent heat E
+// taken off. A zero-sum E per node gives h = K ∇² T̄(h) − E: the solve
+// converges, its applied source still sums to zero and differs from the
+// solve without E, and a wrongly sized E is refused.
+void check_latent(planetsim::test::Context& test, const planetsim::PlanetMesh& mesh) {
+    std::vector<double> base(mesh.cell_count());
+    for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
+        base[cell] = 250.0 + 50.0 * unit_random(cell, 1U);
+    }
+    const planetsim::TransportResponse response =
+        [&](const planetsim::Field2D<double>& source, planetsim::Field2D<double>& mean,
+            planetsim::Field2D<double>& slope) {
+            for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
+                mean[cell] = base[cell] + 0.05 * source[cell];
+                slope[cell] = 0.05;
+            }
+        };
+    const auto graph = graph_of(mesh);
+    const planetsim::Field2D<double> floor(mesh.cell_count(),
+                                           -std::numeric_limits<double>::infinity());
+    // E: a pattern made zero-sum by area.
+    std::vector<double> latent(mesh.cell_count());
+    double sum = 0.0;
+    double area = 0.0;
+    for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
+        latent[cell] = 20.0 * (unit_random(cell, 7U) - 0.5);
+        sum += graph.area_m2[cell] * latent[cell];
+        area += graph.area_m2[cell];
+    }
+    for (double& value : latent) value -= sum / area;
+    const auto without =
+        planetsim::solve_implicit_transport(graph, conductance_W_K, floor, response, {}, 4U);
+    const auto with =
+        planetsim::solve_implicit_transport(graph, conductance_W_K, floor, response, {}, 4U, &latent);
+    double change = 0.0;
+    double change_sum = 0.0;
+    for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
+        change = std::max(change, std::abs(with.source_W_m2[cell] - without.source_W_m2[cell]));
+        change_sum += graph.area_m2[cell] * (with.source_W_m2[cell] - without.source_W_m2[cell]);
+    }
+    std::cout << "latent: residual " << with.consistency_residual_W_m2 << " W/m2, sum ratio "
+              << std::abs(with.sum_W) / with.absolute_sum_W << ", largest change " << change
+              << " W/m2\n";
+    PLANETSIM_EXPECT(test, with.consistency_residual_W_m2 <= 1e-6);
+    PLANETSIM_EXPECT(test, std::abs(with.sum_W) <= 1e-12 * with.absolute_sum_W);
+    PLANETSIM_EXPECT(test, change > 0.1);
+    PLANETSIM_EXPECT(test, std::abs(change_sum) <= 1e-9 * area * change);
+    const std::vector<double> short_latent(3U, 0.0);
+    PLANETSIM_EXPECT_THROWS(test, std::invalid_argument,
+                            static_cast<void>(planetsim::solve_implicit_transport(
+                                graph, conductance_W_K, floor, response, {}, 4U, &short_latent)));
+}
+
 int main() {
     planetsim::test::Context test;
     const auto mesh = planetsim::make_icosphere(4U, radius_m);
     check_linear(test, mesh);
+    check_latent(test, mesh);
     check_quartic(test, mesh);
     check_workers(test, mesh);
     check_agglomeration(test, mesh);

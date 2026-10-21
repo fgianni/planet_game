@@ -1,8 +1,10 @@
 # Investigation INV-03 — L6 coupled-transport startup
 
 - **Milestone:** P0, following INV-02 and before M9
-- **Status:** a fallback prototype runs L6 (2026-10-21); for a decision.
-  The 2026-10-20 solver prototypes did not meet the convergence gate
+- **Status:** ADR-0024 §9 accepted and implemented (2026-10-21): the
+  diffusive fallback is in the earth_like preset (R_f = 100 W/m²). L6
+  runs 250 years within V11; one column-convergence flag in L6's first
+  month is open (below)
 - **Scope:** investigate a numerical method for the L6 cold-start transport failure
 - **Predecessor:** [INV-02](INV-02-moistening-refit-and-parity.md), which records the refit and V8 result
 - **Governing records:** ADR-0024 §§1–5; ADR-0009 §9; development specification §20.12
@@ -99,4 +101,45 @@ an ADR amendment (ADR-0011 §17.4 and ADR-0024). Then: a clean V11 run at
 L5 and L6, and the threshold chosen. The kinks that stop the line search
 early remain a separate, deeper question (the columns' non-monotone
 response, ADR-0024 §1).
+
+## ADR-0024 §9, implemented (2026-10-21)
+
+**Code:**
+- **The fallback subtracts the eddies' latent heat E.**
+  `solve_implicit_transport` takes an optional per-node E, solving
+  h = K ∇² T̄(h) − E and applying K ∇² T̄ − E, which still sums to zero.
+  The surface step keeps E for the fallback; the coupled solve used to
+  move it away.
+- **On in the preset:**
+  `SurfaceEnergyParameters::transport_fallback_residual_W_m2 = 100` in
+  earth_like.
+- **The long test** (`test_convective_moistening_run`) reports each
+  fallback month and each month with unconverged columns.
+
+**Validation (ADR-0024 §9.4):**
+- **V1:** the two-year L3 run ends with the same state hash,
+  `49c729e4dea72e2b`. No L3 month reaches 100 W/m², so L3 and its golden
+  data are unchanged.
+- **V4** (`test_heat_transport`, `check_latent`): with a zero-sum E the
+  solve converges to 9.7e-7 W/m², its source sums to zero (1e-17
+  relative), and E changes it by up to 2.1 W/m².
+- **V5:** six L4 months on one and four workers, through a fallback month
+  (month 2, 106.6 W/m²), end with the same state hash
+  (`c49db7ff261a5cd8`).
+- **V2 and V11:** L6, 250 years from the initial state, 16 workers, the
+  machine idle (`test_convective_moistening_run 6 250 16`):
+  - **1 516.6 s** (9.9 years per minute; the limit is 2 025 s);
+  - energy within 1.41e-5 of its gate and water within 3.18e-4;
+  - no failed circulation month;
+  - final mean 288.50 K, cover 0.582, cloud effects −46.3 / +25.5 W/m²;
+  - 10 months at the iteration cap, all within the first 6 years; 8
+    fallback months in the first ten years (months 0, 4, 5, 6, 11, 16,
+    62, 107).
+- **Open: one unconverged column.** The long test's
+  `unconverged_columns == 0` fails once, in month 0 (the cold start's
+  fallback month): one column, finished from its fluxes with a correction
+  of 7.8e-11 K, at rounding. The gate is not weakened here.
+- **V3:** L4's 150-year fit gives 288.086 K with the fallback (one
+  fallback month, month 2), against INV-02's 288.005 K. That is outside
+  the long test's ±0.05 K, so τ_d and κ_v are refitted (below).
 

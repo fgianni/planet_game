@@ -46,6 +46,7 @@ SurfaceEnergyParameters surface_energy_parameters_for(PlanetPreset preset) noexc
                                         earth_like_transport_coefficient_W_m2_K,
                                         bulk_air_exchange_W_m2_K, atmosphere_parameters_for(preset)};
         surface.water_cycle = true;   // ADR-0021, since the M7-07 refit
+        surface.transport_fallback_residual_W_m2 = 100.0;   // ADR-0024 §9, R_f
         return surface;
     }
     }
@@ -1095,7 +1096,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     // The circulation carries the heat when it solved this month (ADR-0011
     // §17.1); otherwise ADR-0009's diffusion with D (§17.4).
     const bool coupled = circulation != nullptr && circulation->active && layers > 0U;
-    bool fell_back = false;   // INV-03 prototype
+    bool fell_back = false;   // ADR-0024 §9
     double transport_seconds = 0.0;
     if (coefficient > 0.0 || coupled) {
         const double conductance = coefficient * mesh.radius_m() * mesh.radius_m();
@@ -1325,7 +1326,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     worker_count);
             } else {
                 AdvectionDiffusion moist_transport = circulation->transport;
-                moist_transport.eddy_latent_W_m2 = std::move(eddy_latent);
+                moist_transport.eddy_latent_W_m2 = eddy_latent;   // kept for the fallback
                 coupled_solve = solve_implicit_advection_diffusion(
                     graph, moist_transport, floor, coupled_response, coupled_settings,
                     worker_count);
@@ -1336,13 +1337,16 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             for (std::size_t cell = 0; cell < cells; ++cell) {
                 transport[cell] = coupled_solve.source_W_m2[group_of_cell[cell]];
             }
-            // INV-03 prototype: an unconverged coupled month takes the
-            // diffusive transport instead (ADR-0011 §17.4's fallback).
+            // ADR-0024 §9: an unconverged coupled month takes ADR-0009's
+            // diffusive transport, as a failed circulation month does
+            // (ADR-0011 §17), with the eddies' latent heat E taken off: the
+            // humidity transport already moved it as water.
             if (surface.transport_fallback_residual_W_m2 > 0.0 &&
                 coupled_solve.consistency_residual_W_m2 > surface.transport_fallback_residual_W_m2 &&
                 coefficient > 0.0) {
                 solve = solve_implicit_transport(graph, conductance, floor, response, {},
-                                                 worker_count);
+                                                 worker_count,
+                                                 eddy_latent.empty() ? nullptr : &eddy_latent);
                 for (std::size_t cell = 0; cell < cells; ++cell) {
                     transport[cell] = solve.source_W_m2[group_of_cell[cell]];
                 }

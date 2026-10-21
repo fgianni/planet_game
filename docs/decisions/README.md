@@ -18,13 +18,13 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0008 | [Snow, sea ice and the ice–albedo feedback](0008-snow-and-sea-ice.md) | Accepted (amended 2026-10-01, V7 and §10 floes and leads; implementation record §9–9.2) | 2026-09-30 |
 | 0009 | [Diffusive horizontal heat transport before the atmosphere](0009-diffusive-heat-transport.md) | Accepted (amended 2026-09-30, §10–12; 2026-10-08, §13) | 2026-09-30 |
 | 0010 | [A layered atmosphere: hydrostatic columns, grey longwave and convection](0010-layered-atmosphere.md) | Accepted (amended 2026-10-02, §11) | 2026-10-01 |
-| 0011 | [Winds: a C-grid dynamical core in reference mode and a balanced circulation in climate mode](0011-winds-and-circulation.md) | Accepted (amended 2026-10-02, §12, §13; 2026-10-04, §14, §15, §16; 2026-10-06, §17; 2026-10-18, §17.1 by ADR-0024) | 2026-10-02 |
+| 0011 | [Winds: a C-grid dynamical core in reference mode and a balanced circulation in climate mode](0011-winds-and-circulation.md) | Accepted (amended 2026-10-02, §12, §13; 2026-10-04, §14, §15, §16; 2026-10-06, §17; 2026-10-18, §17.1 by ADR-0024; 2026-10-21, §17's fallback by ADR-0024 §9) | 2026-10-02 |
 | 0018 | [Presentation boundary, semantic channels and style packs](0018-presentation-channels-and-style-packs.md) | Accepted (amendment §11 proposed 2026-10-12, revised 2026-10-14) | 2026-10-04 |
 | 0020 | [The planet's read contract: published snapshots, field descriptors, accumulators, regions and the observation interface](0020-planet-read-contract.md) | Proposed | — |
 | 0021 | [Water vapour, evaporation, the land bucket and saturation rainout](0021-water-vapour-evaporation-and-rainout.md) | Accepted | 2026-10-09 |
 | 0022 | [Player placement, zoning and a continuous Earth-viewer camera](0022-player-placement-zoning-and-continuous-zoom.md) | Accepted (amended 2026-10-14: camera-relative rendering; 2026-10-15: terrain hands over at cell edges, V4) | 2026-10-13 |
 | 0023 | [Cloud water, moist convection, precipitation and cloud radiation](0023-clouds-moist-convection-and-precipitation.md) | Accepted | 2026-10-16 |
-| 0024 | [The climate transport's eddies driven by moist enthalpy](0024-moist-enthalpy-eddies.md) | Accepted (amendment §9 proposed 2026-10-21: the unconverged month's fallback) | 2026-10-18 |
+| 0024 | [The climate transport's eddies driven by moist enthalpy](0024-moist-enthalpy-eddies.md) | Accepted (amended 2026-10-21, §9: the unconverged month's fallback) | 2026-10-18 |
 | 0025 | [Where the clouds are: sub-grid condensation, the eddies' variance and convective anvils](0025-cloud-distribution.md) | Accepted (amended 2026-10-19, §11–§13; 2026-10-20, §14: M8 closed with §4.1–§4.3 and §11 off) | 2026-10-19 |
 | 0026 | [Climate mode's convection carries water up](0026-climate-convection-carries-water.md) | Accepted in part (option 1; options 2 and 3 not taken for P0, 2026-10-20) | 2026-10-20 |
 

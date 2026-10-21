@@ -45,12 +45,24 @@ Result measure(planetsim::test::Context& test, std::size_t workers, bool moisten
     double shortwave_J = 0.0;
     double longwave_J = 0.0;
     std::vector<double> latent_J_m2(run.state().mesh().cell_count(), 0.0);
+    int fallback_months = 0;   // ADR-0024 §9
     for (int month = 0; month < years * 12; ++month) {
         run.run_until(planetsim::climate_substep_containing(run.tick(), run.parameters()).end_tick);
         const auto& step = run.last_step();
         energy = std::max(energy, step.closure_residual_J() / step.closure_gate_J());
         water = std::max(water, step.water_cycle_residual_kg() / step.water_cycle_gate_kg());
         PLANETSIM_EXPECT(test, step.unconverged_columns == 0U);
+        if (step.unconverged_columns != 0U) {
+            std::cout << "unconverged_columns month=" << month << " count=" << step.unconverged_columns
+                      << " max_correction_K=" << step.max_column_correction_K
+                      << " fell_back=" << (step.transport_fell_back ? 1 : 0)
+                      << " consistency_W_m2=" << step.transport_consistency_W_m2 << std::endl;
+        }
+        if (step.transport_fell_back) {
+            ++fallback_months;
+            std::cout << "transport_fallback month=" << month
+                      << " consistency_W_m2=" << step.transport_consistency_W_m2 << std::endl;
+        }
         consistency = std::max(consistency, step.transport_consistency_W_m2);
         if (step.transport_newton_iterations >= 30) {
             ++capped_months;
@@ -100,7 +112,7 @@ Result measure(planetsim::test::Context& test, std::size_t workers, bool moisten
               << " middle_vapour_kg_m2=" << mass / area
               << " energy_gate_ratio=" << energy << " water_gate_ratio=" << water
               << " worst_transport_consistency_W_m2=" << consistency
-              << " capped_months=" << capped_months
+              << " capped_months=" << capped_months << " fallback_months=" << fallback_months
               << " failed_circulation_months=" << run.circulation()->diagnostics().failed_months
               << " mean_K=" << mean << " cover=" << cover
               << " cre_sw_W_m2=" << sw << " cre_lw_W_m2=" << lw

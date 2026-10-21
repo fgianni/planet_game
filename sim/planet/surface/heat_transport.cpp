@@ -597,13 +597,17 @@ ImplicitTransportResult solve_implicit_transport(const TransportGraph& graph,
                                                  const Field2D<double>& source_floor_W_m2,
                                                  const TransportResponse& response,
                                                  const ImplicitTransportSettings& settings,
-                                                 std::size_t worker_count) {
+                                                 std::size_t worker_count,
+                                                 const std::vector<double>* latent_W_m2) {
     const std::size_t cells = graph.size();
     if (!std::isfinite(conductance_W_K) || !(conductance_W_K > 0.0)) {
         throw std::invalid_argument("transport conductance must be finite and positive");
     }
     if (source_floor_W_m2.size() != cells) {
         throw std::invalid_argument("transport floor does not match the mesh");
+    }
+    if (latent_W_m2 != nullptr && latent_W_m2->size() != cells) {
+        throw std::invalid_argument("transport latent heat does not match the mesh");
     }
 
     std::vector<Level> levels = build_hierarchy(graph, cells);
@@ -634,6 +638,9 @@ ImplicitTransportResult solve_implicit_transport(const TransportGraph& graph,
                 double merit = 0.0;
                 for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                     at_residual[cell] = at[cell] - diffusion[cell];
+                    if (latent_W_m2 != nullptr) {
+                        at_residual[cell] += (*latent_W_m2)[cell];
+                    }
                     merit += graph.area_m2[cell] * at_residual[cell] * at_residual[cell];
                 }
                 return merit;
@@ -727,6 +734,11 @@ ImplicitTransportResult solve_implicit_transport(const TransportGraph& graph,
     // The transport applied is the conservative diffusion of the last cell
     // temperatures; |F| there is the consistency residual.
     diffusion_source(graph, conductance_W_K, mean, result.source_W_m2, worker_count);
+    if (latent_W_m2 != nullptr) {
+        for (std::size_t cell = 0; cell < cells; ++cell) {
+            result.source_W_m2[cell] -= (*latent_W_m2)[cell];
+        }
+    }
     result.mean_K = mean;
     result.consistency_residual_W_m2 = max_abs(graph, residual, worker_count);
 

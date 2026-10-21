@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-18
 - **Accepted:** 2026-10-18
-- **Amendment proposed:** 2026-10-21 — §9: an unconverged coupled month falls back to the diffusive transport (amends ADR-0011 §17's fourth decision; investigation INV-03)
+- **Amended:** 2026-10-21 — §9 (accepted with the user): an unconverged coupled month falls back to the diffusive transport (amends ADR-0011 §17's fourth decision; investigation INV-03)
 - **Milestone:** P0 / M8 (task M8-05)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24; ADR-0023 §5 V11
 - **Related:** ADR-0009 (the implicit transport's Newton, its floors and line search, §12's coarse groups), ADR-0010 §11 (the source enters the bottom layer), ADR-0011 §17 (the coupled climate transport: eddies on θ_c, advection of s_k), ADR-0021 §4.5 (humidity carried by the same fluxes and eddies), ADR-0023 (moist convection, cloud water, precipitation)
@@ -155,7 +155,7 @@ fallback, the tests (V1–V3), then V4 and the refit (V5).
 - Frierson, D. M. W., Held, I. M. and Zurita-Gotor, P. (2006), A gray-radiation aquaplanet moist GCM. Part I, *J. Atmos. Sci.* 63, 2548–2566.
 - Betts, A. K. (1986), A new convective adjustment scheme. Part I, *Q. J. R. Meteorol. Soc.* 112, 677–691.
 
-## 9. Amendment: an unconverged coupled month falls back to diffusion (proposed 2026-10-21, investigation INV-03)
+## 9. Amendment: an unconverged coupled month falls back to diffusion (accepted 2026-10-21 with the user, investigation INV-03)
 
 **9.1 What fails.** With ADR-0026's moistening and INV-02's refit in the
 preset, L6 stops in its first month from the initial state (INV-02).
