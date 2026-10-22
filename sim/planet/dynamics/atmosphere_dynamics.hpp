@@ -55,6 +55,13 @@ struct AtmosphereDynamicsDiagnostics {
     // The advection's change of vapour by 30° band (south to north) and
     // layer, kg over the step (the vapour budget, task M8-07).
     std::array<std::array<double, max_atmosphere_layer_count>, 6> advection_by_band_kg{};
+    // The step's northward energy transport across 80° S, 70° S, ..., 80° N
+    // (W; INV-04), from each column's change by 10° band (cell centres):
+    // dry, Σ_k μ_k c_p T_k + p_s z_s (enthalpy and potential energy of a
+    // hydrostatic column), and latent, L_v Σ_k μ_k q_k. Kinetic energy is
+    // left out.
+    std::array<double, 17> northward_dry_W{};
+    std::array<double, 17> northward_latent_W{};
 };
 
 class AtmosphereDynamics {

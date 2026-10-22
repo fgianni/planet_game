@@ -270,6 +270,10 @@ struct SurfaceEnergyDiagnostics {
     // Northward transport (W) across 80° S, 70° S, ..., 80° N: the heat the
     // transport delivers north of each latitude.
     std::array<double, 17> northward_transport_W{};
+    // The humidity transport's latent heat L_v across the same latitudes
+    // (W, climate mode; INV-04): the water it moved north of each, per
+    // second.
+    std::array<double, 17> northward_latent_transport_W{};
     // Area- and tile-weighted surface temperature of the 10° bands from
     // 90° S (0 for a band with no area).
     std::array<double, 18> zonal_mean_surface_temperature_K{};
@@ -358,6 +362,7 @@ struct AnnualSurfaceSummary {
     double snow_area_south_min_m2 = 0.0;
     // Time means over the year (ADR-0009 §4.5).
     std::array<double, 17> northward_transport_W{};
+    std::array<double, 17> northward_latent_transport_W{};
     std::array<double, 18> zonal_mean_surface_temperature_K{};
     double high_cloud_cover_m2 = 0.0;             // ADR-0025 §4.4, the year's mean
     // The year's precipitation, its convective part and the detrained

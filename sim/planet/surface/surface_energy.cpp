@@ -798,6 +798,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             std::clamp(std::floor((latitude * 180.0 / std::numbers::pi + 90.0) / 30.0), 0.0, 5.0));
     };
     std::array<std::array<double, max_atmosphere_layer_count>, 6> transport_by_band{};
+    std::array<double, 18> latent_delivered_W{};   // by 10° band from 90° S
     if (water && circulation != nullptr && circulation->active) {
         const std::size_t n = slow.atmosphere_layer_count();
         std::vector<double> before(n * cells);
@@ -813,10 +814,15 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
         for (std::size_t cell = 0; cell < cells; ++cell) {
             const double mass = mesh.cells()[cell].area_m2 *
                                 slow.atmosphere_surface_pressure_Pa[cell] / (g * static_cast<double>(n));
+            const double latitude_deg =
+                latitude_rad(mesh.cells()[cell].center_unit) * 180.0 / std::numbers::pi;
+            const auto band10 = static_cast<std::size_t>(
+                std::clamp(std::floor((latitude_deg + 90.0) / 10.0), 0.0, 17.0));
             for (std::size_t k = 0; k < n; ++k) {
-                transport_by_band[band_of(cell)][k] +=
-                    mass * (slow.atmosphere_specific_humidity_kg_kg.layer(k)[cell] -
-                            before[k * cells + cell]);
+                const double moved = mass * (slow.atmosphere_specific_humidity_kg_kg.layer(k)[cell] -
+                                             before[k * cells + cell]);
+                transport_by_band[band_of(cell)][k] += moved;
+                latent_delivered_W[band10] += latent_heat_vaporisation_J_kg * moved / dt_s;
             }
         }
     }
@@ -1721,6 +1727,14 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             diagnostics.northward_transport_W[boundary] = north;
         }
     }
+    for (std::size_t boundary = 0; boundary < diagnostics.northward_latent_transport_W.size();
+         ++boundary) {
+        double north = 0.0;
+        for (std::size_t band = boundary + 1U; band < latent_delivered_W.size(); ++band) {
+            north += latent_delivered_W[band];
+        }
+        diagnostics.northward_latent_transport_W[boundary] = north;
+    }
     diagnostics.snowfall_kg = total.snowfall_kg;
     diagnostics.rain_kg = total.rain_kg;
     diagnostics.melt_kg = total.melt_kg;
@@ -1938,6 +1952,8 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
             summary.p2_surface_temperature_K += dt_s * step.p2_surface_temperature_K;
             for (std::size_t band = 0; band < summary.northward_transport_W.size(); ++band) {
                 summary.northward_transport_W[band] += dt_s * step.northward_transport_W[band];
+                summary.northward_latent_transport_W[band] +=
+                    dt_s * step.northward_latent_transport_W[band];
             }
             summary.high_cloud_cover_m2 += dt_s * step.high_cloud_cover_m2;
             summary.precipitation_kg += step.precipitation_kg;
@@ -1973,6 +1989,9 @@ AnnualSurfaceSummary spin_up_surface_energy(PlanetState& state,
         summary.sensible_heat_W /= total_s;
         summary.convective_area_fraction /= total_s;
         for (auto& value : summary.northward_transport_W) {
+            value /= total_s;
+        }
+        for (auto& value : summary.northward_latent_transport_W) {
             value /= total_s;
         }
         summary.high_cloud_cover_m2 /= total_s;

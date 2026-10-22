@@ -1713,6 +1713,12 @@ int run_parity(const ReferenceOptions& options) {
         // 90° S) and its P2 component, duration-weighted.
         std::array<double, 18> zonal_K_s{};
         double p2_K_s = 0.0;
+        // Northward transport across 80° S ... 80° N, W × s: dry (the
+        // climate transport's H, the reference dynamics' c_p T + p_s z_s)
+        // and latent (L_v of the water the humidity transport or the
+        // dynamics moved).
+        std::array<double, 17> dry_W_s{};
+        std::array<double, 17> latent_W_s{};
     };
     const auto measure = [&](planetsim::SimulationMode mode) {
         planetsim::Scenario scenario;
@@ -1823,6 +1829,18 @@ int run_parity(const ReferenceOptions& options) {
                 record.zonal_K_s[band] += step.zonal_mean_surface_temperature_K[band] * step.duration_s;
             }
             record.p2_K_s += step.p2_surface_temperature_K * step.duration_s;
+            for (std::size_t boundary = 0; boundary < record.dry_W_s.size(); ++boundary) {
+                if (reference && run.dynamics() != nullptr) {
+                    record.dry_W_s[boundary] +=
+                        run.dynamics()->last().northward_dry_W[boundary] * step.duration_s;
+                    record.latent_W_s[boundary] +=
+                        run.dynamics()->last().northward_latent_W[boundary] * step.duration_s;
+                } else {
+                    record.dry_W_s[boundary] += step.northward_transport_W[boundary] * step.duration_s;
+                    record.latent_W_s[boundary] +=
+                        step.northward_latent_transport_W[boundary] * step.duration_s;
+                }
+            }
             record.convective_kg += step.convective_precipitation_kg;
             record.rain_evaporation_kg += step.rain_evaporation_kg;
             record.cloud_evaporation_kg += step.cloud_evaporation_kg;
@@ -1894,6 +1912,14 @@ int run_parity(const ReferenceOptions& options) {
                   << " zonal_mean_K=";
         for (const double band_K_s : record.zonal_K_s) {
             std::cout << ' ' << std::setprecision(5) << band_K_s / record.seconds;
+        }
+        std::cout << "\n  northward_dry_PW=";
+        for (const double value : record.dry_W_s) {
+            std::cout << ' ' << std::setprecision(3) << value / record.seconds * 1e-15;
+        }
+        std::cout << "\n  northward_latent_PW=";
+        for (const double value : record.latent_W_s) {
+            std::cout << ' ' << std::setprecision(3) << value / record.seconds * 1e-15;
         }
         std::cout << std::setprecision(9) << std::endl;
         return record;

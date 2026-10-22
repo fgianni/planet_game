@@ -2,6 +2,7 @@
 
 #include "sim/core/math/vec3d.hpp"
 #include "sim/core/scheduler/simulation_clock.hpp"
+#include "sim/planet/atmosphere/saturation.hpp"
 #include "sim/planet/dynamics/climate_circulation.hpp"
 #include "sim/planet/dynamics/orography.hpp"
 
@@ -170,6 +171,25 @@ void AtmosphereDynamics::step(PlanetState& state, double dt_s) {
             }
         }
     }
+    // INV-04: each column's dry and latent energy before the step, J/m².
+    const std::size_t cell_count = mesh_->cell_count();
+    std::vector<double> dry_before(cell_count, 0.0);
+    std::vector<double> latent_before(cell_count, 0.0);
+    {
+        const auto& t = state.slow().atmosphere_temperature_K;
+        for (std::size_t i = 0; i < cell_count; ++i) {
+            const double ps = pe.surface_pressure_Pa[i];
+            const double mass = ps / (g * n_d);
+            double sum = ps * dynamics_height_m_[i];
+            double vapour = 0.0;
+            for (std::size_t k = 0; k < n; ++k) {
+                sum += mass * model_.parameters().heat_capacity_J_kg_K * t.layer(k)[i];
+                if (water) vapour += mass * humidity.layer(k)[i];
+            }
+            dry_before[i] = sum;
+            latent_before[i] = latent_heat_vaporisation_J_kg * vapour;
+        }
+    }
     const double before = model_.diagnose(pe, worker_count_).energy_J();
     last_.steps = model_.advance(pe, dt_s, parameters_.rule, worker_count_);
     if (water) {
@@ -228,6 +248,38 @@ void AtmosphereDynamics::step(PlanetState& state, double dt_s) {
     state.slow().atmosphere_surface_pressure_Pa = pe.surface_pressure_Pa;
     model_.temperatures(pe, state.slow().atmosphere_temperature_K, worker_count_);
     winds = std::move(pe.normal_velocity_m_s);
+    {
+        std::array<double, 18> dry{};
+        std::array<double, 18> latent{};
+        const auto& t = state.slow().atmosphere_temperature_K;
+        for (std::size_t i = 0; i < cell_count; ++i) {
+            const double ps = state.slow().atmosphere_surface_pressure_Pa[i];
+            const double mass = ps / (g * n_d);
+            double sum = ps * dynamics_height_m_[i];
+            double vapour = 0.0;
+            for (std::size_t k = 0; k < n; ++k) {
+                sum += mass * model_.parameters().heat_capacity_J_kg_K * t.layer(k)[i];
+                if (water) vapour += mass * humidity.layer(k)[i];
+            }
+            const double latitude =
+                std::asin(std::clamp(cells[i].center_unit.z, -1.0, 1.0)) * 180.0 / std::numbers::pi;
+            const auto band = static_cast<std::size_t>(
+                std::clamp(std::floor((latitude + 90.0) / 10.0), 0.0, 17.0));
+            dry[band] += cells[i].area_m2 * (sum - dry_before[i]) / dt_s;
+            latent[band] +=
+                cells[i].area_m2 * (latent_heat_vaporisation_J_kg * vapour - latent_before[i]) / dt_s;
+        }
+        for (std::size_t boundary = 0; boundary < last_.northward_dry_W.size(); ++boundary) {
+            double north_dry = 0.0;
+            double north_latent = 0.0;
+            for (std::size_t band = boundary + 1U; band < dry.size(); ++band) {
+                north_dry += dry[band];
+                north_latent += latent[band];
+            }
+            last_.northward_dry_W[boundary] = north_dry;
+            last_.northward_latent_W[boundary] = north_latent;
+        }
+    }
 }
 
 void register_atmosphere_dynamics(Scheduler& scheduler, PlanetState& state,
