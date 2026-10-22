@@ -268,3 +268,56 @@ cause. No solver, field meaning,
 PSNAP schema, preset or acceptance threshold has changed. ADR-0026's
 previously deferred options remain deferred; temperature tuning alone is
 not evidence for accepting them.
+
+## Open tasks (2026-10-22)
+
+**V8 (this investigation), in order:**
+1. **V8 with a 20-year spin-up** (`planet_cli parity … --spin-up-years 20`,
+   about 1.5 h at L3, nearly all reference mode). Does the 4.146 K gap
+   change between 10- and 20-year spin-ups?
+2. **Depending on 1:**
+   - if the gap moves, propose amending ADR-0023 §15's independent
+     starts: spin up the deep ocean once in climate mode, then give both
+     modes that state and their own 10–20-year spin-ups;
+   - if it holds, compare land temperature with snow cover held equal
+     in both modes, to separate the snow-albedo feedback from its cause.
+3. **The 30-piece surface-timestep case:** OLR jumps to 252.2 W/m²
+   (−20 W/m² at the top) and high cover falls back to 0.030, out of line
+   with 1, 2 and 6 pieces. Explain it before reading its 1.6 K cooling as
+   a timestep effect.
+4. **A heat-only transport comparison:** the diffusive configuration is
+   3.0 K warmer, but it also changes the humidity transport and the
+   evaporation winds.
+5. **High cloud:** reference mode's 0.19 against climate mode's 0.03,
+   which gives a 12.3 W/m² longwave cloud difference here (V7's known
+   limitation is about 18 W/m²).
+6. **ADR-0025's cloud work measured again** on top of ADR-0026 option 1
+   (ADR-0026 §5): sub-grid condensation and anvils (§4.1, §11, §4.3),
+   implemented and off.
+
+**Model, found on the way:**
+7. **Snow on land grows without bound** (about 4.4e14 kg a year at L3
+   after 150 years): nothing removes it. A sink, such as ice-sheet flow
+   or a cap, needs a decision; it is probably outside P0.
+8. **L6's coupled transport:** a solver that handles the kinks in the
+   columns' response (ADR-0024 §9.5) would make the fallback rarer.
+9. **The L4 fit's fragility:** it passes because its cold start has no
+   fallback month. If a refit brings one back, the option is a fallback
+   triggered by the columns failing (INV-03), by amendment.
+10. **`PlanetRun` has no resume constructor,** and PRUN replay cannot
+    start from a snapshot (INV-03).
+11. **M8's known limitations** (ADR-0025 §14): §4.4's zonal cloud
+    targets (V5) and V7's longwave difference.
+
+**Decisions waiting:**
+12. **ADR-0020** (the planet's read contract) is proposed. It must not
+    be implemented until it is accepted.
+13. **M9** starts only on explicit request.
+
+**Housekeeping:**
+14. Push the local commits.
+15. `git stash`: `stash@{0}` (the continuous fallback blend) can be
+    dropped. `stash@{1}` holds only Godot's import changes to
+    `godot/project.godot`, which are always reverted; it can be dropped
+    too.
+16. Rebuild `build` and `build-godot` (Release) after every pull.
