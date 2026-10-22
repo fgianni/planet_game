@@ -44,8 +44,11 @@ and tests together; - do not proceed to M9 unless explicitly requested.
 
 Current investigation: [INV-04](docs/tasks/INV-04-v8-transport-and-radiation.md),
 the remaining V8 gap. INV-03 completed the post-fallback refit and restart
-checks. INV-02's V8 measurement still fails its 0.3 K temperature limit at
-4.148 K, while precipitation passes at a 0.969 reference/climate ratio.
+checks. V8 is now measured at L4 over three years (ADR-0023 §16, accepted
+2026-10-22). Its baseline fails: 0.936 K against the 0.3 K limit, and a
+0.901 reference/climate precipitation ratio against ±10 %. The gap is
+reference land 9.2 K warmer and its ocean 2.4 K colder. The earlier
+L3 measurement was 4.148 K.
 The accepted ADR-0024 §9 fallback is on in the Earth-like preset: a coupled
 month over 100 W/m² consistency residual uses the diffusive transport.
 With the refitted pair τ_d = 1.111, κ_v = 0.005555 m²/kg, the L4/150

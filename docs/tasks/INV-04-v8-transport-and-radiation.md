@@ -505,6 +505,35 @@ running forward. Reproduce with
   per L3 year on 4 workers, so a spin-up of several centuries would take
   more than a day.
 
+## V8 at L4 over three years: the baseline (2026-10-22)
+
+ADR-0023 §16's measurement (`planet_cli parity --subdivision 4 --seed 1
+--layers 3 --spin-up-years 10 --days 1096 --workers 20`, 6,263 s wall,
+log `build/inv04/v8_L4_3yr.log`):
+
+| | Climate | Reference |
+|---|---|---|
+| Surface, years 11–13 (K) | 290.359 | 291.295 |
+| Land / ocean (K) | 278.57 / 295.18 | 287.78 / 292.73 |
+| Snow share of land / ice share of ocean | 0.275 / 0.058 | 0.175 / 0.096 |
+| P2 equator-to-pole contrast (K) | 48.7 | 47.0 |
+| Precipitation (m/yr) | 1.610 | 1.451 |
+| Convective share | 0.99 | 0.23 |
+| Top-of-atmosphere imbalance (W/m²) | −7.0 | −8.2 |
+
+- **V8 fails:** 0.936 K (limit 0.3 K), precipitation ratio 0.901
+  (limit ±10 %). The one-year L4 values were 0.924 K and 0.901, so
+  averaging three years changes little.
+- **The gap is land against ocean:** reference land is 9.2 K warmer,
+  its ocean 2.4 K colder. Weighted by area (0.29 land) that is +2.67 K
+  and −1.74 K, which give the 0.94 K. A gap near zero in the global mean
+  would hide both.
+- Reference mode has less snow on land but more sea ice; the zonal
+  means differ most at 30–40° S (reference +3.7 to +4.3 K) and at the
+  poles (90–80° S +4.8 K, 80–90° N −4.4 K).
+- Reference mode carries most of its poleward heat as vapour (2.5 PW at
+  40° N against climate mode's 0.46 PW); climate mode carries it dry.
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
@@ -520,8 +549,9 @@ not evidence for accepting them.
 ## Decision in progress (2026-10-22)
 
 With the user: V8 is measured at L4 over three years (ADR-0023 §16,
-accepted 2026-10-22). The next measurement is that V8, then the
-remaining land gap at L4.
+accepted 2026-10-22). Its baseline (above) is 0.936 K and a 0.901
+precipitation ratio. Next: the land–ocean split at L4 (reference land
+9.2 K warmer, ocean 2.4 K colder).
 
 ## Open tasks (2026-10-22)
 

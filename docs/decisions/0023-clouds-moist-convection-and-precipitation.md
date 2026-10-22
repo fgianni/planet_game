@@ -685,3 +685,20 @@ preset, seed 1, ten-year spin-ups, the eleventh year):
 - At L4 the remaining 0.92 K is mostly land (9.3 K warmer in reference
   mode), with more snow on climate mode's land (0.27 against 0.17 of
   it), and the precipitation ratio 0.90 sits at the edge of its limit.
+
+**16.4 Baseline result (2026-10-22).** The first V8 under §16.2
+(`build/inv04/v8_L4_3yr.log`, 20 workers, 6,263 s wall):
+
+| | Climate | Reference |
+|---|---|---|
+| Surface, years 11–13 (K) | 290.359 | 291.295 |
+| Land / ocean (K) | 278.57 / 295.18 | 287.78 / 292.73 |
+| Snow share of land / ice share of ocean | 0.275 / 0.058 | 0.175 / 0.096 |
+| P2 equator-to-pole contrast (K) | 48.7 | 47.0 |
+| Precipitation (m/yr) | 1.610 | 1.451 |
+| Top-of-atmosphere imbalance (W/m²) | −7.0 | −8.2 |
+
+V8 fails: 0.936 K against 0.3 K, and a reference/climate precipitation
+ratio of 0.901 against ±10 %. The three-year means are within 0.15 K
+of §16.1's one-year L4 values (0.924 K, 0.901), so the year-to-year
+spread is not what fails the gate.
