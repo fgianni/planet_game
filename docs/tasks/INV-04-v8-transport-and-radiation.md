@@ -207,6 +207,31 @@ baseline exactly (290.090 / 294.236 K, gap 4.146 K, ratio 0.9693).
   mode's fit from ADR-0011; whether that fit still holds with ADR-0024's
   moist eddies and the clouds is the next question.
 
+### The coupled transport's sensitivity to c_E (2026-10-22)
+
+L3, seed 1, year 11, `planet_cli thermal --subdivision 3 --layers 3
+--years 11 --water --coupled --eddy-generation c_E`:
+
+| c_E | P2 contrast (K) | Surface (K) | Land (K) | Peak poleward (PW) | Cloud LW (W/m²) | Failed months |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1.39e12 (preset) | 49.07 | 290.090 | 278.32 | 2.849 | +27.83 | 0 |
+| 2.08e12 (×1.5) | 44.91 | 290.824 | 279.28 | 3.064 | +28.48 | 0 |
+| 2.78e12 (×2) | 41.27 | 291.715 | 280.25 | 3.250 | +29.22 | 0 |
+| 4.17e12 (×3) | 36.75 | 292.796 | 281.40 | 3.447 | +30.47 | 1 |
+
+- The transport grows less than in proportion to c_E: the eddies'
+  generation goes with the square of the gradient they flatten.
+  Reference mode's 30.3 K would need well beyond ×3, where a circulation
+  month already fails.
+- **Against Earth, the modes err on opposite sides:** P2 about 42 K
+  (ADR-0010 §4.6's target); the preset's coupled circulation gives 49 K,
+  reference mode 30 K. c_E × 2 gives Earth's 41 K, but leaves V8's gap
+  near 2.5 K.
+- So V8's temperature gap is mostly a disagreement between the two
+  modes' poleward transports, and making climate mode match reference
+  mode would move it away from Earth's contrast. Which mode's transport
+  is wrong is the question for the decision.
+
 ## Column timestep and the radiation/adjustment ordering
 
 Code audit: `solve_atmosphere_column` captures the budget's OLR and surface
