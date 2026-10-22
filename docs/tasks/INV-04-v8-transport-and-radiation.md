@@ -264,6 +264,24 @@ step lengths as arguments, `--no-cloud-longwave` and
   mode's cloud longwave effect is the larger one (+40.1 against +27.8
   W/m²).
 
+## ADR-0025's options on top of ADR-0026's moistening (2026-10-22)
+
+Open task 6. Climate mode, L4, seed 1, three layers, ten years from the
+initial state, the current preset (`planet_cli thermal --subdivision 4
+--years 10 --layers 3 --coupled --water` plus the option):
+
+| Option | Surface (K) | Cover | High cover | 20–40° | Poles | Cloud LW (W/m²) |
+|---|---:|---:|---:|---:|---:|---:|
+| Preset | 290.72 | 0.596 | 0.030 | 0.68–0.69 | 0.06–0.14 | +27.7 |
+| β = 0.2 (§4.1) | 290.72 | 0.596 | 0.030 | 0.68–0.69 | 0.06–0.14 | +27.7 |
+| β = 0.2, W_np = 0.003 kg/m² (§11) | 305.60 | 0.654 | 0.174 | 0.64–0.67 | 0.34–0.40 | +72.0 |
+| e_d = 0.5 (§4.3, §13) | 312.73 | 0.488 | 0.355 | 0.46–0.47 | 0.13–0.26 | +78.4 |
+
+The moistening leaves M8-07's and M8-09's findings as they were: β alone
+changes nothing in climate mode, and the non-precipitating cloud and the
+anvils add high liquid cloud whose longwave effect warms the planet by
+15–22 K before any refit. They stay off.
+
 ## The spin-up's drift: the deep ocean (2026-10-22)
 
 Climate mode, L3, seed 1, three layers, from the initial state with no
@@ -335,9 +353,8 @@ not evidence for accepting them.
 5. **High cloud:** reference mode's 0.19 against climate mode's 0.03,
    which gives a 12.3 W/m² longwave cloud difference here (V7's known
    limitation is about 18 W/m²).
-6. **ADR-0025's cloud work measured again** on top of ADR-0026 option 1
-   (ADR-0026 §5): sub-grid condensation and anvils (§4.1, §11, §4.3),
-   implemented and off.
+6. ~~**ADR-0025's cloud work measured again**~~ (above): unchanged by
+   the moistening; it stays off.
 
 **Model, found on the way:**
 7. **Snow on land grows without bound** (about 4.4e14 kg a year at L3
