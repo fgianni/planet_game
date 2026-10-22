@@ -219,6 +219,42 @@ fix. No production subcycling is introduced.
 Build/run as for the column probe, replacing `column_timestep_probe.cpp`
 with `surface_timestep_probe.cpp` and the executable name accordingly.
 
+## The spin-up's drift: the deep ocean (2026-10-22)
+
+Climate mode, L3, seed 1, three layers, from the initial state with no
+spin-up before tick 0, yearly means. Year 11 reproduces the parity run
+(290.090 K, −7.104 W/m²), so the pre-tick-0 spin-up is equivalent to
+running forward.
+
+| Year | 1 | 11 | 25 | 50 | 100 | 150 |
+|---|---:|---:|---:|---:|---:|---:|
+| Surface (K) | 305.05 | 290.09 | 289.22 | 288.83 | 288.25 | 287.90 |
+| Land (K) | 299.05 | 278.32 | | 277.17 | 276.60 | 276.34 |
+| TOA net (W/m²) | −24.95 | −7.10 | −5.58 | −4.58 | −3.15 | −2.17 |
+| Deep ocean, ocean-weighted (K) | 309.72 | | 307.49 | 305.33 | 302.06 | 299.82 |
+| Snow on land (kg) | 2.24e15 | | 1.85e16 | 2.98e16 | 5.26e16 | 7.47e16 |
+| Sea ice (kg) | 6.12e15 | | 3.11e17 | 4.13e17 | 5.47e17 | 6.53e17 |
+
+- **The imbalance is real and is the deep ocean draining.** The start is
+  deliberately warm (ADR-0010 §4.6, `initialise_surface_temperatures`):
+  every column's grey equilibrium, deep ocean included (about 310 K).
+  The deep layer's 2.5e9 J/m²/K over the ocean fraction, cooled by 9.9 K
+  in 150 years, is about 3.7 W/m² on average: essentially the whole
+  imbalance. Its e-folding time is about 135 years, and at year 150 it
+  is still about 5 K above the surface ocean.
+- **So a ten-year spin-up measures both modes in transit.** Climate mode
+  cools another 2.2 K between years 11 and 150 (land 2.0 K). Reference
+  mode cools faster near year 10 (0.54 K from year 9 to 10, against
+  climate mode's 0.29 K).
+- **Snow on land grows without bound** (about 4.4e14 kg a year at the
+  end, not slowing): no store removes it. Its latent heat is about
+  0.01 W/m², and its albedo saturates (W / (W + W_m)), so it barely
+  affects the energy budget, but the land's water never reaches
+  equilibrium.
+- **Brute force is too expensive:** reference mode takes about 4 minutes
+  per L3 year on 4 workers, so a spin-up of several centuries would take
+  more than a day.
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
