@@ -229,6 +229,48 @@ baseline exactly (290.090 / 294.236 K, gap 4.146 K, ratio 0.9693).
   mode's fit from ADR-0011; whether that fit still holds with ADR-0024's
   moist eddies and the clouds is the next question.
 
+### The modes' poleward transports, dry and latent (2026-10-22)
+
+`planet_cli parity` now reports each mode's annual northward transport
+across 80° S … 80° N (`build/inv04/parity_L3_spinup10_transport.log`,
+the same 10-year runs, results identical to the baseline):
+
+- climate mode: dry, the coupled transport's H (as
+  `northward_transport_W`); latent, L_v of the water the humidity
+  transport moved north of each latitude;
+- reference mode: each dynamics step's change of the columns' dry energy
+  Σ μ_k c_p T_k + p_s z_s and latent energy L_v Σ μ_k q_k, summed north
+  of each latitude by 10° band of cell centres (kinetic energy left out).
+
+| Latitude | Climate dry | Climate latent | Climate total | Reference dry | Reference latent | Reference total |
+|---|---:|---:|---:|---:|---:|---:|
+| 80° S | −0.38 | −0.03 | −0.41 | −0.21 | −0.14 | −0.35 |
+| 70° S | −1.51 | −0.15 | −1.66 | −0.48 | −0.88 | −1.36 |
+| 60° S | −2.06 | −0.29 | −2.35 | −0.48 | −1.43 | −1.91 |
+| 50° S | −2.22 | −0.40 | −2.62 | −0.52 | −1.53 | −2.05 |
+| 40° N | 2.85 | 0.37 | 3.22 | 0.99 | 2.46 | 3.45 |
+| 50° N | 2.64 | 0.31 | 2.95 | 1.17 | 2.37 | 3.54 |
+| 60° N | 1.76 | 0.18 | 1.94 | 1.19 | 1.32 | 2.51 |
+| 70° N | 1.03 | 0.06 | 1.09 | 0.91 | 0.61 | 1.51 |
+| 80° N | 0.43 | 0.03 | 0.46 | 0.46 | 0.20 | 0.66 |
+
+(PW, positive northward.)
+
+- **The split differs most.** Climate mode's latent transport is small
+  (0.37 PW at 40° N; Earth's is about 1.5 PW) and its dry eddies carry
+  nearly everything. Reference mode carries two thirds or more as vapour.
+- **Northern hemisphere:** reference mode carries 30–40 % more energy
+  poleward of 50°.
+- **Southern hemisphere:** reference mode carries *less* (−1.36 against
+  −1.66 PW at 70° S, −0.35 against −0.41 at 80° S), yet its southern
+  polar bands are 20–24 K warmer. The total transport does not explain
+  the southern gap; the snow and ice on climate mode's southern land
+  (snow-covered land 0.26 against 0.09 of the land) are the next
+  candidate there.
+- So the "weak transport" reading of the P2 profiles holds in the north
+  only, and the modes' moisture transports differ by a factor of about
+  six.
+
 ### The coupled transport's sensitivity to c_E (2026-10-22)
 
 L3, seed 1, year 11, `planet_cli thermal --subdivision 3 --layers 3
