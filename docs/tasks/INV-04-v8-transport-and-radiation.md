@@ -177,6 +177,36 @@ month:
   the diffusive coefficient is the old calibrated one, not a fit to
   reference mode.
 
+### The modes' temperature profiles: reference mode moves more heat poleward (2026-10-22)
+
+`planet_cli parity` now reports each mode's P2 equator-to-pole
+difference (−1.5 P2, as `AnnualSurfaceSummary`) and its zonal surface
+profile, duration-weighted. The 10-year parity run again
+(`build/inv04/parity_L3_spinup10_p2.log`, 8 workers) reproduces the
+baseline exactly (290.090 / 294.236 K, gap 4.146 K, ratio 0.9693).
+
+| 10° band | 80–90° S | 60–70° S | 40–50° S | 0–10° S | 0–10° N | 40–50° N | 60–70° N | 80–90° N | P2 contrast |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Climate (K) | 254.8 | 257.5 | 285.2 | 303.4 | 301.2 | 289.5 | 255.9 | 249.3 | 49.1 |
+| Reference (K) | 274.4 | 281.5 | 291.8 | 302.6 | 302.6 | 291.1 | 274.3 | 263.6 | 30.3 |
+| Reference − climate | +19.6 | +24.0 | +6.6 | −0.8 | +1.4 | +1.6 | +18.4 | +14.3 | −18.8 |
+
+- **The gap is at high latitudes.** The tropics agree to about a kelvin;
+  poleward of 60° reference mode is 14–24 K warmer.
+- **Reference mode's resolved circulation carries more heat poleward**
+  than climate mode's coupled one: its P2 contrast is 30.3 K against
+  49.1 K (Earth about 42 K).
+- **The diffusive heat transport (heat-only comparison above) gives a
+  32.6 K contrast,** close to reference mode's, and a climate 2.85 K
+  warmer: 292.94 K against reference mode's 294.24 K, a gap of 1.30 K
+  instead of 4.15 K, from the same 10-year start. Its coefficient is the
+  old calibrated one, not a fit to reference mode.
+- So most of V8's gap is the coupled circulation's weak poleward heat
+  transport, with the snow and ice its consequence at high latitudes.
+  The coupled circulation's eddy coefficient c_E (1.39e12) is reference
+  mode's fit from ADR-0011; whether that fit still holds with ADR-0024's
+  moist eddies and the clouds is the next question.
+
 ## Column timestep and the radiation/adjustment ordering
 
 Code audit: `solve_atmosphere_column` captures the budget's OLR and surface
