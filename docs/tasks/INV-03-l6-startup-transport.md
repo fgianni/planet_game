@@ -160,3 +160,16 @@ response, ADR-0024 §1).
   transport months but no fallback month. V9 cloud targets still pass.
   The refitted pair preserves the INV-02 dry/vapour ratio.
 
+
+**A continuous fallback, tried and not kept (2026-10-22).** Blending the
+two sources with w = smoothstep((R − R_f/2) / (2 R_f − R_f/2)) does not
+make L4's fit smooth. The jump is in R itself. Across scales of INV-02's
+pair, L4's first months end at 52/37/80 W/m² (scale 1.0), 41/37/22
+(0.9978) and 38/253 (0.9970): the cold start's Newton converges at one
+scale and fails at the next. With the fallback off, the 150-year mean is
+smooth (288.005 / 287.919 / 287.899 K). One full-diffusion month at the
+start moves it by up to about 0.2 K, beyond the ±0.05 K gate. So the
+refitted pair passes L4 because its cold start has no fallback month, and
+a later refit can lose that. If it does, the option is a fallback
+triggered by the columns failing instead of by R: L4 would then never
+fall back.
