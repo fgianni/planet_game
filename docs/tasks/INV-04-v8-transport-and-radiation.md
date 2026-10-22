@@ -229,6 +229,36 @@ baseline exactly (290.090 / 294.236 K, gap 4.146 K, ratio 0.9693).
   mode's fit from ADR-0011; whether that fit still holds with ADR-0024's
   moist eddies and the clouds is the next question.
 
+### Reference mode at L4: its flat profile is L3's (2026-10-22)
+
+`planet_cli parity --subdivision 4 --seed 1 --layers 3 --spin-up-years
+10 --days 365 --workers 16` (`build/inv04/parity_L4_spinup10_p2.log`,
+about 90 min, nearly all reference mode):
+
+| | L3 climate | L3 reference | L4 climate | L4 reference |
+|---|---:|---:|---:|---:|
+| Surface (K) | 290.090 | 294.236 | 290.512 | 291.436 |
+| Land / ocean (K) | 278.32 / 294.90 | 290.63 / 295.71 | 278.67 / 295.35 | 287.97 / 292.85 |
+| P2 contrast (K) | 49.07 | **30.28** | 48.49 | **46.57** |
+| Polar bands 80–90° S / N (K) | 254.8 / 249.3 | 274.4 / 263.6 | 250.3 / 256.6 | 255.1 / 252.5 |
+| Snow (of land) / sea ice (of ocean) | 0.264 / 0.086 | 0.090 / 0.010 | 0.273 / 0.057 | 0.171 / 0.095 |
+| Convective share | 0.99 | 0.38 | 0.99 | 0.23 |
+| TOA imbalance (W/m²) | −7.10 | −6.69 | −7.53 | −8.39 |
+
+**V8 at L4: 0.924 K** (L3: 4.146 K); precipitation ratio (reference /
+climate) 0.901, just outside its 10 %.
+
+- **Reference mode's flat profile is a property of L3.** At L4 its P2
+  contrast is 46.6 K, against 30.3 K at L3 (Earth about 42 K); climate
+  mode's barely changes (48.5 against 49.1 K).
+- **So at L3 V8 mostly measures reference mode's coarse-grid transport.**
+  At L4 the modes' profiles agree within 2 K in P2 and the global gap
+  is 0.9 K, with land still 9.3 K warmer in reference mode.
+- Reference mode at L4 was still cooling at the end of its spin-up
+  (292.50 K in year 9, 291.55 K in year 10), as at L3.
+- The L3 transport table below (reference mode's large latent transport)
+  is then L3's resolved flow, not a target for climate mode.
+
 ### The modes' poleward transports, dry and latent (2026-10-22)
 
 `planet_cli parity` now reports each mode's annual northward transport
