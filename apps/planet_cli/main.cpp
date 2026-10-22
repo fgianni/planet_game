@@ -1709,6 +1709,10 @@ int run_parity(const ReferenceOptions& options) {
         double ice_reflected_J = 0.0;
         double albedo_closure_W_m2 = 0.0;
         std::array<double, planetsim::max_atmosphere_layer_count> layer_K_s{};
+        // INV-04: the surface temperature's zonal profile (10° bands from
+        // 90° S) and its P2 component, duration-weighted.
+        std::array<double, 18> zonal_K_s{};
+        double p2_K_s = 0.0;
     };
     const auto measure = [&](planetsim::SimulationMode mode) {
         planetsim::Scenario scenario;
@@ -1815,6 +1819,10 @@ int run_parity(const ReferenceOptions& options) {
             for (std::size_t layer = 0; layer < layers; ++layer) {
                 record.layer_K_s[layer] += step.mean_layer_temperature_K[layer] * step.duration_s;
             }
+            for (std::size_t band = 0; band < record.zonal_K_s.size(); ++band) {
+                record.zonal_K_s[band] += step.zonal_mean_surface_temperature_K[band] * step.duration_s;
+            }
+            record.p2_K_s += step.p2_surface_temperature_K * step.duration_s;
             record.convective_kg += step.convective_precipitation_kg;
             record.rain_evaporation_kg += step.rain_evaporation_kg;
             record.cloud_evaporation_kg += step.cloud_evaporation_kg;
@@ -1881,7 +1889,13 @@ int run_parity(const ReferenceOptions& options) {
         for (std::size_t layer = 0; layer < layers; ++layer) {
             std::cout << ' ' << record.layer_K_s[layer] / record.seconds;
         }
-        std::cout << std::endl;
+        // AnnualSurfaceSummary's P2 equator-to-pole difference, −1.5 P2.
+        std::cout << "\n  p2_equator_to_pole_K=" << -1.5 * record.p2_K_s / record.seconds
+                  << " zonal_mean_K=";
+        for (const double band_K_s : record.zonal_K_s) {
+            std::cout << ' ' << std::setprecision(5) << band_K_s / record.seconds;
+        }
+        std::cout << std::setprecision(9) << std::endl;
         return record;
     };
     const Record climate = measure(planetsim::SimulationMode::climate);
