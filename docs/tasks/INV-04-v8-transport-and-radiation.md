@@ -224,7 +224,9 @@ with `surface_timestep_probe.cpp` and the executable name accordingly.
 Climate mode, L3, seed 1, three layers, from the initial state with no
 spin-up before tick 0, yearly means. Year 11 reproduces the parity run
 (290.090 K, −7.104 W/m²), so the pre-tick-0 spin-up is equivalent to
-running forward.
+running forward. Reproduce with
+[`tools/v8/climate_drift_probe.cpp`](../../tools/v8/climate_drift_probe.cpp)
+(built as the column probe; argument: the number of years).
 
 | Year | 1 | 11 | 25 | 50 | 100 | 150 |
 |---|---:|---:|---:|---:|---:|---:|
