@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-15
 - **Accepted:** 2026-10-16
-- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17); 2026-10-17 — §4.3.2: autoconversion integrated exactly with the step's condensation, no threshold; §4.4.1: the convective floor from the start-of-step trigger (§12, tasks M8-03, M8-04; accepted 2026-10-17); 2026-10-17 — §4.4.1: the cloud fraction from the cloud water at a fixed in-cloud path, the same in both modes (§13, task M8-05; accepted 2026-10-17); 2026-10-18 — §4.2.4, §4.3.2: convective condensate through the cloud water (§14, task M8-05; accepted 2026-10-18); 2026-10-18 — §5 V8: each mode's own spin-up (§15, task M8-05; accepted 2026-10-18)
+- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17); 2026-10-17 — §4.3.2: autoconversion integrated exactly with the step's condensation, no threshold; §4.4.1: the convective floor from the start-of-step trigger (§12, tasks M8-03, M8-04; accepted 2026-10-17); 2026-10-17 — §4.4.1: the cloud fraction from the cloud water at a fixed in-cloud path, the same in both modes (§13, task M8-05; accepted 2026-10-17); 2026-10-18 — §4.2.4, §4.3.2: convective condensate through the cloud water (§14, task M8-05; accepted 2026-10-18); 2026-10-18 — §5 V8: each mode's own spin-up (§15, task M8-05; accepted 2026-10-18); 2026-10-22 — §5 V8 at L4 over three years (§16, investigation INV-04; proposed)
 - **Milestone:** P0 / M8 (clouds and precipitation)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24, §31.2 (the cloud channels); Planetary Civilization Simulator — Design Record v1.4, §5, §15
 - **Related:** ADR-0001 (V1 water budget, V2 climate–reference parity), ADR-0003 (PSNAP migration), ADR-0006 (sub-steps), ADR-0008 (snow, rain and snow at the surface), ADR-0010 (layered atmosphere, grey longwave, Γ_c adjustment, §3.3 C deferring Betts–Miller to M8), ADR-0011 (winds, ascent), ADR-0018 (presentation channels `cloud_cover`, `cloud_thickness`), ADR-0021 (vapour, evaporation, saturation rainout; §13.7 V9 deferred to M8)
@@ -636,3 +636,52 @@ reference run took 26 min at 16 threads):
 Climate mode's land–sea contrast (§15.1) and its evaporation from monthly
 means (§4.5) are the other known differences. Closing the gap is not
 part of this amendment.
+
+## 16. Amendment: V8 at L4, over three years (proposed 2026-10-22, investigation INV-04)
+
+**16.1 Why L3 does not measure the modes' agreement.** Investigation
+INV-04 measured V8 as §15.2 reads it at L3 and at L4 (the current
+preset, seed 1, ten-year spin-ups, the eleventh year):
+
+| | L3 climate | L3 reference | L4 climate | L4 reference |
+|---|---:|---:|---:|---:|
+| Surface (K) | 290.09 | 294.24 | 290.51 | 291.44 |
+| Land (K) | 278.32 | 290.63 | 278.67 | 287.97 |
+| P2 equator-to-pole contrast (K) | 49.1 | 30.3 | 48.5 | 46.6 |
+| V8 temperature / precipitation ratio | | 4.15 K / 0.969 | | 0.92 K / 0.901 |
+
+- Reference mode's equator-to-pole contrast is 30 K at L3 and 47 K at
+  L4 (Earth about 42 K). Climate mode's hardly changes (49 and 48 K): its
+  transport is parameterised, and its coarse transport graph does not
+  depend on the level the same way.
+- At L3 the resolved flow carries much more heat to high latitudes
+  (northward of 50° N, 30–40 % more than climate mode, two thirds of it
+  as vapour), and reference mode's poles are 14–24 K warmer. Most of
+  L3's gap is that flow's resolution, not a difference of the two modes'
+  physics.
+- One reference year varies by about ±0.3 K (L3 spin-up years 10–20:
+  293.69–294.40 K), V8's whole limit.
+
+**16.2 Proposal (amends §15.2).**
+
+1. **V8 is measured at L4**, the lowest level at which the reference
+   dynamics' equator-to-pole contrast is near Earth's and climate
+   mode's.
+2. **Over three years:** each mode spun up ten years from the initial
+   state in its own physics (§15.2), then the mean of years 11–13
+   (`planet_cli parity --subdivision 4 --spin-up-years 10 --days 1096`).
+   Three years reduce the year-to-year spread to about ±0.2 K.
+3. The gate is unchanged: 0.3 K and ±10 % precipitation.
+4. Cost: about 2 hours on 16 workers, nearly all reference mode. V8
+   stays a milestone measurement, not a CI test.
+
+**16.3 What it does not settle.**
+
+- Both modes are still cooling after ten years (the deep ocean, INV-04;
+  reference mode at L4 lost 0.95 K between years 9 and 10). The
+  comparison remains between two states in transit, as before.
+- Whether L4 has converged is not measured; L5's reference mode costs
+  about four times L4's.
+- At L4 the remaining 0.92 K is mostly land (9.3 K warmer in reference
+  mode), with more snow on climate mode's land (0.27 against 0.17 of
+  it), and the precipitation ratio 0.90 sits at the edge of its limit.

@@ -517,6 +517,12 @@ PSNAP schema, preset or acceptance threshold has changed. ADR-0026's
 previously deferred options remain deferred; temperature tuning alone is
 not evidence for accepting them.
 
+## Decision in progress (2026-10-22)
+
+With the user: V8 is proposed at L4 over three years
+(ADR-0023 §16, proposed). Once accepted, the next measurement is that
+V8, then the remaining land gap at L4.
+
 ## Open tasks (2026-10-22)
 
 **V8 (this investigation), in order:**
