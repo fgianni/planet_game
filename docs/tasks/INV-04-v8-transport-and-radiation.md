@@ -105,6 +105,28 @@ What the measurement shows, without attributing cause:
   the gap compares two drifting states. That bears on V8's protocol
   rather than on the physics.
 
+## V8 after a 20-year spin-up (2026-10-22)
+
+Open task 1. `planet_cli parity --subdivision 3 --seed 1 --layers 3
+--spin-up-years 20 --days 365 --workers 16`
+(`build/inv04/parity_L3_spinup20.log`, 63 min):
+
+| | Climate, 10 years | Climate, 20 years | Reference, 10 years | Reference, 20 years |
+|---|---:|---:|---:|---:|
+| Surface (K) | 290.090 | 289.320 | 294.236 | 294.039 |
+| Land / ocean (K) | 278.32 / 294.90 | 277.66 / 294.08 | 290.63 / 295.71 | 290.52 / 295.48 |
+| Snow (share of land) / sea ice (of ocean) | 0.264 / 0.086 | 0.268 / 0.091 | 0.090 / 0.010 | 0.091 / 0.012 |
+| TOA imbalance (W/m²) | −7.10 | −5.79 | −6.69 | −6.15 |
+
+**V8: 4.719 K** (10 years: 4.146 K); precipitation ratio 0.976, passing.
+
+- **The gap moves, and grows:** climate mode keeps cooling with its deep
+  ocean (−0.77 K in ten years); reference mode hardly does.
+- **Reference mode's year-to-year variation is about ±0.3 K:** its
+  spin-up years 10–20 run 293.69–294.40 K. A one-year measurement of
+  reference mode is uncertain by about V8's whole 0.3 K limit.
+- Both modes still lose about 6 W/m² at the top of the atmosphere.
+
 ## Existing transport configurations: sensitivity, not a replacement
 
 ```bash
@@ -426,9 +448,8 @@ not evidence for accepting them.
 ## Open tasks (2026-10-22)
 
 **V8 (this investigation), in order:**
-1. **V8 with a 20-year spin-up** (`planet_cli parity … --spin-up-years 20`,
-   about 1.5 h at L3, nearly all reference mode). Does the 4.146 K gap
-   change between 10- and 20-year spin-ups?
+1. ~~**V8 with a 20-year spin-up.**~~ Done (above): 4.719 K; climate
+   mode keeps cooling, reference mode varies ±0.3 K a year.
 2. **Depending on 1:**
    - if the gap moves, propose amending ADR-0023 §15's independent
      starts: spin up the deep ocean once in climate mode, then give both
