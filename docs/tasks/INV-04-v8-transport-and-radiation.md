@@ -219,6 +219,51 @@ fix. No production subcycling is introduced.
 Build/run as for the column probe, replacing `column_timestep_probe.cpp`
 with `surface_timestep_probe.cpp` and the executable name accordingly.
 
+## The 30-piece case: an oscillation of the lagged cloud longwave (2026-10-22)
+
+Open task 3. Thirty pieces a month are steps of about a day, and the
+column probe's 1-day case is out of line too (budget OLR 295.9 W/m²
+between 284 at an hour and 270 at five days). The column probe now takes
+step lengths as arguments, `--no-cloud-longwave` and
+`--fixed-vapour-radiation`, and reports the spread of OLR over days
+90–120 and its largest change between consecutive steps:
+
+```bash
+./build/column_timestep_probe 600 3600 21600 43200 86400 172800 432000 2592000
+./build/column_timestep_probe --no-cloud-longwave 3600 43200 86400 432000
+```
+
+| Step | OLR (W/m²) | OLR spread | Largest step-to-step change | Without cloud LW: OLR / largest change |
+|---|---:|---:|---:|---:|
+| 10 minutes | 284.20 | 0.04 | 6e-5 | |
+| 1 hour | 283.92 | 0.04 | 4e-4 | 326.63 / 6e-4 |
+| 6 hours | 299.99 | 7.98 | 16.2 | |
+| 12 hours | 300.99 | 10.88 | 32.1 | 326.97 / 2.39 |
+| 1 day | 295.90 | 11.72 | 35.4 | 327.04 / 2.35 |
+| 2 days | 283.28 | 2.66 | 8.5 | |
+| 5 days | 270.36 | 0.05 | 0.04 | 325.83 / 0.07 |
+| 30 days | 269.08 | 0 | 0 | |
+
+- **Steps of 6 hours to 2 days oscillate from step to step,** by up to
+  35 W/m² in OLR. Shorter and longer steps are smooth.
+- **The cloud longwave drives it.** The radiation takes the cloud water
+  at the start of the step (ADR-0023 §4.4, held through the step).
+  Without the clouds' longwave the largest change is 2.4 W/m²; holding
+  the radiation's vapour at its starting value changes nothing (34.0
+  W/m² at a day).
+- **So the 30-piece case is this oscillation, not a timestep trend,** and
+  its 1.6 K cooling is not evidence about the month's step. The 1-, 2-
+  and 6-piece cases (steps of 30, 15 and 5 days) are outside the window.
+  Neither production step is in it: climate mode takes a month,
+  reference mode 10 minutes.
+- **The cloud longwave is also most of the column's step dependence:**
+  without it budget OLR moves by 0.8 W/m² between an hour and five days;
+  with it, by 13.6 W/m² (the cloud longwave effect 42.7 W/m² at an hour,
+  55.5 at five days, with similar cloud water, 26.8 and 24.2 g/m²). How
+  much of that reaches V8 is not measured: on the planet reference
+  mode's cloud longwave effect is the larger one (+40.1 against +27.8
+  W/m²).
+
 ## The spin-up's drift: the deep ocean (2026-10-22)
 
 Climate mode, L3, seed 1, three layers, from the initial state with no
@@ -281,10 +326,9 @@ not evidence for accepting them.
      modes that state and their own 10–20-year spin-ups;
    - if it holds, compare land temperature with snow cover held equal
      in both modes, to separate the snow-albedo feedback from its cause.
-3. **The 30-piece surface-timestep case:** OLR jumps to 252.2 W/m²
-   (−20 W/m² at the top) and high cover falls back to 0.030, out of line
-   with 1, 2 and 6 pieces. Explain it before reading its 1.6 K cooling as
-   a timestep effect.
+3. ~~**The 30-piece surface-timestep case.**~~ Explained (above): steps
+   of 6 hours to 2 days oscillate through the lagged cloud longwave; the
+   case is not a timestep trend.
 4. **A heat-only transport comparison:** the diffusive configuration is
    3.0 K warmer, but it also changes the humidity transport and the
    evaporation winds.

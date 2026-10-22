@@ -5,6 +5,11 @@
 // experiment does not predict the free planet's temperature response.
 // Exit 1: column convergence failure; exit 2: column budget failure.
 // The reported post-adjustment OLR is diagnostic only, never fed back.
+// Arguments: optional step lengths in seconds (default 600 s, 1 h, 1, 5 and
+// 30 days); --no-cloud-longwave leaves the clouds out of the radiation;
+// --fixed-vapour-radiation gives the radiation the starting humidity
+// throughout. olr_sd and olr_max_jump (days 90–120) show the step-to-step
+// oscillation of 6-hour to 2-day steps.
 #include "sim/planet/atmosphere/atmosphere.hpp"
 #include "sim/planet/atmosphere/atmosphere_column.hpp"
 #include "sim/planet/atmosphere/saturation.hpp"
@@ -12,8 +17,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <iostream>
 #include <span>
+#include <string_view>
+#include <vector>
 
 using namespace planetsim;
 struct Surface {
@@ -26,12 +34,26 @@ struct Surface {
         return x;
     }
 };
-int main() {
+int main(int argc, char** argv) {
+    bool cloud_longwave = true;
+    bool fixed_vapour = false;
+    std::vector<double> steps;
+    for (int a = 1; a < argc; ++a) {
+        const std::string_view argument = argv[a];
+        if (argument == "--no-cloud-longwave") {
+            cloud_longwave = false;
+        } else if (argument == "--fixed-vapour-radiation") {
+            fixed_vapour = true;
+        } else {
+            steps.push_back(std::atof(argv[a]));
+        }
+    }
     const auto p = atmosphere_parameters_for(PlanetPreset::earth_like);
     const double g = surface_gravity_m_s2(PlanetParameters::earth_development());
     constexpr std::size_t n = 3;
     constexpr double ps = 100'000.0, day = 86'400.0;
-    for (const double dt : {600.0, 3600.0, day, 5 * day, 30 * day}) {
+    if (steps.empty()) steps = {600.0, 3600.0, day, 5 * day, 30 * day};
+    for (const double dt : steps) {
         ColumnMoisture m;
         m.layer_mass_kg_m2 = ps / (g * n);
         m.latent_J_kg = latent_heat_vaporisation_J_kg;
@@ -50,11 +72,13 @@ int main() {
         }
         double mean_olr = 0, mean_shift = 0, mean_t = 0, mean_rain = 0, seconds = 0;
         double worst_water = 0, worst_energy = 0;
+        double olr_squared = 0, olr_jump = 0, previous_olr = -1;
+        const LayerArray start_humidity = m.humidity_kg_kg;
         const int count = static_cast<int>(120 * day / dt);
         for (int i = 0; i < count; ++i) {
-            auto column =
-                column_radiation(p, ps, g, std::span<const double>(m.humidity_kg_kg.data(), n));
-            add_cloud_longwave(column, cloud_optics(p, column, m));
+            const LayerArray& radiated = fixed_vapour ? start_humidity : m.humidity_kg_kg;
+            auto column = column_radiation(p, ps, g, std::span<const double>(radiated.data(), n));
+            if (cloud_longwave) add_cloud_longwave(column, cloud_optics(p, column, m));
             LayerArray after = t;
             const auto r = solve_atmosphere_column(
                 column, std::span<const double>(t.data(), n), dt, 0, true, Surface{},
@@ -88,6 +112,11 @@ int main() {
                     dt;
                 mean_t += after[0] * dt;
                 mean_rain += r.precipitation_kg_m2_s * dt;
+                olr_squared += r.outgoing_W_m2 * r.outgoing_W_m2 * dt;
+                if (previous_olr >= 0) {
+                    olr_jump = std::max(olr_jump, std::abs(r.outgoing_W_m2 - previous_olr));
+                }
+                previous_olr = r.outgoing_W_m2;
                 seconds += dt;
             }
             t = after;
@@ -98,6 +127,9 @@ int main() {
                   << " olr_W_m2=" << mean_olr / seconds
                   << " post_adjustment_olr_minus_budget_W_m2=" << mean_shift / seconds
                   << " rain_mm_day=" << mean_rain / seconds * day
+                  << " olr_sd=" << std::sqrt(std::max(0.0, olr_squared / seconds -
+                                                          std::pow(mean_olr / seconds, 2)))
+                  << " olr_max_jump=" << olr_jump
                   << " worst_water_kg_m2=" << worst_water << " worst_energy_W_m2=" << worst_energy
                   << '\n';
         if (worst_water > 1e-9 || worst_energy > 1e-7) {
