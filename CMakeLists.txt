@@ -128,6 +128,12 @@ if(PLANETSIM_BUILD_TESTS)
                     "${CMAKE_CURRENT_SOURCE_DIR}/tools/ci/check_readability.py"
                     --self-test
         )
+        add_test(
+            NAME planet_cli_parity_report
+            COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/test_parity_report.py"
+                    "$<TARGET_FILE:planet_cli>"
+        )
     endif()
     add_subdirectory(tests)
     add_test(

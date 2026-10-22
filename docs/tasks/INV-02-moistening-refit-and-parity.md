@@ -152,7 +152,7 @@ gate, while the temperature limit fails:
 | Water closure / gate | 8.32e-5 | 1.49e-5 |
 
 The reference-minus-climate temperature gap is **4.148 K** against the
-0.3 K limit. The climate/reference precipitation ratio is **0.968746**,
+0.3 K limit. The reference/climate precipitation ratio is **0.968746**,
 within the 10 % limit. Reference mode retains substantially more high
 cloud and vapour in every layer; its larger longwave cloud effect and
 clear-sky absorbed sunlight coexist with a similar greenhouse proxy.

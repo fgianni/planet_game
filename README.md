@@ -462,7 +462,8 @@ surface: M5's dry-column plateau experiment cools about 6 K/km.
 With the water cycle on, each layer's longwave optical depth is a dry
 part plus its water vapour, `τ_d Δp/p₀ + κ_v q Δp/g` (ADR-0021). Both are
 fitted together with convective moistening to a 288 K global mean:
-`τ_d = 1.11144453` and `κ_v = 0.00555722248 m²/kg` (task INV-02).
+`τ_d = 1.111` and `κ_v = 0.005555 m²/kg` (task INV-03, refitted after
+the diffusive fallback was enabled).
 On a dry run, `τ₀ = 1.442` is the
 whole depth, fitted with the circulation carrying the heat (ADR-0011
 §17.7); M5's diffusive fit, `τ₀ = 1.3581` with `D = 0.6371 W/m²/K`,
@@ -510,14 +511,18 @@ and cloud radiative effects within 30 % of −47 W/m² shortwave and
 `parity` compares each mode's eleventh year after its own ten-year
 spin-up from the initial state (ADR-0023 §15). Its limits remain 0.3 K
 and 10 % precipitation. With convective moistening and the shared refit,
-precipitation passes at a 0.969 climate/reference ratio, but temperature
+precipitation passes at a 0.969 reference/climate ratio, but temperature
 still differs by 4.148 K. Reference mode has 0.192 high cloud cover
 against climate mode's 0.031. The measurements and diagnostics are in
 [`INV-02`](docs/tasks/INV-02-moistening-refit-and-parity.md). Ocean heat
 transport is still pending (M11). ADR-0024 §9's diffusive fallback lets
 the refitted preset complete 250-year L5 and L6 runs within their
 performance limits, with energy, water and column-convergence gates
-passing. Details are in
+passing. An L4 snapshot restart through a fallback also matches the
+uninterrupted run using INV-02's radiation pair. On the refitted L6 preset,
+a snapshot restart with four workers matches the uninterrupted one-worker
+run at four monthly checkpoints, including three fallback months and the
+following non-fallback month. Details and the restart-check command are in
 [`INV-03`](docs/tasks/INV-03-l6-startup-transport.md).
 
 ## Recorded runs and replay

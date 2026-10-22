@@ -27,6 +27,8 @@
 #include "sim/planet/planet_state.hpp"
 #include "sim/planet/run/planet_run.hpp"
 #include "sim/planet/surface/surface_energy.hpp"
+#include "sim/planet/surface/land_snow.hpp"
+#include "sim/planet/surface/sea_ice.hpp"
 #include "sim/planet/terrain/surface_fractions.hpp"
 #include "sim/planet/terrain/hypsometry.hpp"
 #include "sim/planet/terrain/terrain_diagnostics.hpp"
@@ -1698,6 +1700,15 @@ int run_parity(const ReferenceOptions& options) {
         std::array<double, planetsim::max_atmosphere_layer_count> vapour_kg_s{};
         double worst_energy_ratio = 0.0;
         double worst_water_ratio = 0.0;
+        double land_K_s = 0.0;
+        double ocean_K_s = 0.0;
+        double snow_cover_m2_s = 0.0;
+        double ice_cover_m2_s = 0.0;
+        double bare_absorbed_J = 0.0;
+        double snow_reflected_J = 0.0;
+        double ice_reflected_J = 0.0;
+        double albedo_closure_W_m2 = 0.0;
+        std::array<double, planetsim::max_atmosphere_layer_count> layer_K_s{};
     };
     const auto measure = [&](planetsim::SimulationMode mode) {
         planetsim::Scenario scenario;
@@ -1726,11 +1737,45 @@ int run_parity(const ReferenceOptions& options) {
             }
         }
         Record record;
+        const auto& mesh = run.state().mesh();
+        const auto& fractions = run.fractions();
+        const std::size_t layers = scenario.resolved_atmosphere_layers();
+        const double land_albedo = planetsim::material_properties(
+            run.surface_parameters().land_material).albedo;
+        const double ocean_albedo = planetsim::material_properties(
+            planetsim::SurfaceMaterial::ocean).albedo;
+        double area = 0.0;
+        double land_area = 0.0;
+        for (const auto& cell : mesh.cells()) {
+            area += cell.area_m2;
+            land_area += cell.area_m2 * fractions.land_fraction[cell.id];
+        }
+        // Diagnose the actual start-of-step albedo with the insolation used
+        // by that step. These arrays are read-only weights, never solver input.
+        std::vector<double> bare_absorbing_m2(mesh.cell_count());
+        std::vector<double> snow_reflecting_m2(mesh.cell_count());
+        std::vector<double> ice_reflecting_m2(mesh.cell_count());
+        for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
+            bare_absorbing_m2[cell] = mesh.cells()[cell].area_m2 *
+                (fractions.land_fraction[cell] * (1.0 - land_albedo) +
+                 fractions.ocean_fraction[cell] * (1.0 - ocean_albedo));
+        }
         const auto start = std::chrono::steady_clock::now();
         const planetsim::SimulationTick end =
             run.tick() + static_cast<planetsim::SimulationTick>(std::llround(options.days * 1'440.0));
         while (run.tick() < end) {
             const planetsim::SimulationTick before = run.tick();
+            const auto& slow = run.state().slow();
+            for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
+                snow_reflecting_m2[cell] = mesh.cells()[cell].area_m2 *
+                    fractions.land_fraction[cell] *
+                    (planetsim::snow_covered_albedo(
+                        land_albedo, slow.land_snow_water_equivalent_kg_m2[cell]) - land_albedo);
+                ice_reflecting_m2[cell] = mesh.cells()[cell].area_m2 *
+                    fractions.ocean_fraction[cell] *
+                    (planetsim::sea_ice_covered_albedo(
+                        ocean_albedo, slow.sea_ice_mass_kg_m2[cell]) - ocean_albedo);
+            }
             run.run_until(reference
                               ? std::min<planetsim::SimulationTick>(before + 10, end)
                               : planetsim::climate_substep_containing(before, run.parameters())
@@ -1744,6 +1789,32 @@ int run_parity(const ReferenceOptions& options) {
             record.evaporation_kg += step.water_evaporation_kg + step.bucket_evaporation_kg +
                                      step.snow_sublimation_kg + step.ice_sublimation_kg;
             record.seconds += step.duration_s;
+            record.land_K_s += step.land_mean_surface_temperature_K * step.duration_s;
+            record.ocean_K_s += step.ocean_mean_surface_temperature_K * step.duration_s;
+            record.snow_cover_m2_s +=
+                (step.snow_cover_north_m2 + step.snow_cover_south_m2) * step.duration_s;
+            record.ice_cover_m2_s +=
+                (step.ice_cover_north_m2 + step.ice_cover_south_m2) * step.duration_s;
+            const auto& sunlight = reference
+                ? run.state().forcing().top_of_atmosphere_insolation_W_m2
+                : run.state().forcing().substep_mean_insolation_W_m2;
+            double bare_W = 0.0;
+            double snow_W = 0.0;
+            double ice_W = 0.0;
+            for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
+                bare_W += bare_absorbing_m2[cell] * sunlight[cell];
+                snow_W += snow_reflecting_m2[cell] * sunlight[cell];
+                ice_W += ice_reflecting_m2[cell] * sunlight[cell];
+            }
+            record.bare_absorbed_J += bare_W * step.duration_s;
+            record.snow_reflected_J += snow_W * step.duration_s;
+            record.ice_reflected_J += ice_W * step.duration_s;
+            record.albedo_closure_W_m2 = std::max(record.albedo_closure_W_m2,
+                std::abs(bare_W - snow_W - ice_W -
+                         (step.absorbed_W - step.cloud_shortwave_effect_W)) / area);
+            for (std::size_t layer = 0; layer < layers; ++layer) {
+                record.layer_K_s[layer] += step.mean_layer_temperature_K[layer] * step.duration_s;
+            }
             record.convective_kg += step.convective_precipitation_kg;
             record.rain_evaporation_kg += step.rain_evaporation_kg;
             record.cloud_evaporation_kg += step.cloud_evaporation_kg;
@@ -1756,7 +1827,7 @@ int run_parity(const ReferenceOptions& options) {
             record.cover_m2_s += step.cloud_cover_m2 * step.duration_s;
             record.high_cover_m2_s += step.high_cloud_cover_m2 * step.duration_s;
             for (const auto& band : step.vapour_budget) {
-                for (std::size_t layer = 0; layer < options.layers; ++layer) {
+                for (std::size_t layer = 0; layer < layers; ++layer) {
                     record.vapour_kg_s[layer] += band.vapour_kg[layer] * step.duration_s;
                 }
             }
@@ -1767,10 +1838,6 @@ int run_parity(const ReferenceOptions& options) {
         }
         record.wall_s =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-        double area = 0.0;
-        for (const auto& cell : run.state().mesh().cells()) {
-            area += cell.area_m2;
-        }
         const double to_m_yr = 1.0 / area / 1000.0 / record.seconds * 365.25 * 86'400.0;
         std::cout << std::setprecision(6) << planetsim::simulation_mode_name(mode)
                   << ": mean_K=" << record.temperature_K_s / record.seconds
@@ -1794,8 +1861,25 @@ int run_parity(const ReferenceOptions& options) {
                   << " energy_gate_ratio=" << record.worst_energy_ratio
                   << " water_gate_ratio=" << record.worst_water_ratio
                   << " vapour_kg_m2_by_layer=";
-        for (std::size_t layer = 0; layer < options.layers; ++layer) {
+        for (std::size_t layer = 0; layer < layers; ++layer) {
             std::cout << ' ' << record.vapour_kg_s[layer] / area_seconds;
+        }
+        std::cout << "\n  land_mean_K=" << record.land_K_s / record.seconds
+                  << " ocean_mean_K=" << record.ocean_K_s / record.seconds
+                  << " land_fraction=" << land_area / area
+                  << " snow_cover_fraction_of_land=" << record.snow_cover_m2_s / (land_area * record.seconds)
+                  << " ice_cover_fraction_of_ocean="
+                  << record.ice_cover_m2_s / ((area - land_area) * record.seconds)
+                  << " bare_clear_sky_absorbed_W_m2=" << record.bare_absorbed_J / area_seconds
+                  << " snow_clear_sky_reflection_W_m2=" << record.snow_reflected_J / area_seconds
+                  << " ice_clear_sky_reflection_W_m2=" << record.ice_reflected_J / area_seconds
+                  << " albedo_decomposition_error_W_m2=" << record.albedo_closure_W_m2
+                  << " toa_imbalance_W_m2=" << (record.absorbed_J - record.emitted_J) / area_seconds
+                  << " measurement_seconds=" << record.seconds
+                  << " state_hash=" << run.state_hash()
+                  << " layer_temperature_K=";
+        for (std::size_t layer = 0; layer < layers; ++layer) {
+            std::cout << ' ' << record.layer_K_s[layer] / record.seconds;
         }
         std::cout << std::endl;
         return record;
@@ -1811,6 +1895,7 @@ int run_parity(const ReferenceOptions& options) {
                         std::abs(precipitation_ratio - 1.0) <= 0.1;
     std::cout << "parity reference_minus_climate_K=" << temperature_difference
               << " precipitation_ratio=" << precipitation_ratio
+              << " precipitation_ratio_direction=reference_over_climate"
               << " gate=" << (passed ? "pass" : "fail") << " (V2: 0.3 K, 10 %)" << std::endl;
     return passed ? 0 : 3;
 }

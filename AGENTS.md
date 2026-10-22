@@ -24,58 +24,38 @@ documents keep the version citations they were written against.
 
 P0 --- Living Planet.
 
-Most recently completed milestone: **M6 --- Wind and Coriolis**.
+Most recently completed milestone: **M8 --- Clouds and precipitation**.
 
-M0 through M6 are complete. M2 includes gate G2-M2 (finite-volume
-operators), the state-partition/persistent-snapshot foundation, foundation
-hardening, plate-scale terrain with sub-cell hypsometry and sea level, static
-cell-mesh drainage, and the simulation modes, scheduler skeleton and sub-step
-calendar (task M2-04). The pre-M3 seasonal decision record is accepted
-(ADR-0006).
+M0 through M8 are complete. The standalone core includes the centroidal
+Voronoi mesh, orbit, geological terrain and drainage, scheduler and calendar,
+surface energy, replay and persistent snapshots, snow and sea ice, layered
+atmosphere, winds and climate circulation, humidity, clouds and precipitation.
+M8 closed under ADR-0023, ADR-0024 and ADR-0025 §14; sub-grid condensation
+and convective anvils are implemented but off in the Earth-like preset.
+Task documents in [`docs/tasks/README.md`](docs/tasks/README.md) state their
+scope, accepted decisions, acceptance criteria and current status.
 
-M3 tasks M3-01 (sub-step mean insolation), M3-02 (surface energy columns,
-experiments A and B, ADR-0007) and M3-03 (the ocean mixed layer in `double`,
-run manifests, state hashes and replay, the ADR-0001 performance gate) are
-complete.
-
-M4 (basic snow, ice and albedo feedback) is complete under ADR-0008 and
-ADR-0009: tasks M4-01 (cryosphere state, land snow, PSNAP schema 4), M4-02
-(diffusive heat transport with shared cell air), M4-03 (sea ice), M4-04
-(seasonal experiment, climatology, refit) and M4-05 (ADR-0003 snapshot
-history: zstd compression, delta chains and forks).
-Task documents in `docs/tasks/` state their scope, the decisions already
-made, acceptance criteria and what to report.
-
-M5 (atmosphere and pressure) is complete under ADR-0010 (accepted
-2026-10-01, amended §11): tasks M5-01 (the ordered snapshot migration
-chain), M5-02 (atmosphere state, hydrostatics, PSNAP schema 5), M5-03
-(column radiation and convection; ADR-0008 §10 sea-ice floes and leads)
-and M5-04 (refit of τ₀ and D, the Earth-like preset on three layers, the
-plateau experiment, performance gates). Most recently completed task:
-[`docs/tasks/M5-04-calibration-and-close.md`](docs/tasks/M5-04-calibration-and-close.md).
-M6 (wind and Coriolis) is complete under ADR-0011 (amended §12–§17) and
-ADR-0009 §13: tasks M6-01 (C-grid geometry and vector operators), M6-02
-(shallow-water core), M6-03 (primitive equations, Held–Suarez, the winds
-in reference mode), M6-04 (the climate-mode balanced circulation) and
-M6-05 (the circulation carries the heat, the balanced p_s in the slow
-state, τ₀ refitted, the gates). M7 (humidity and evaporation, ADR-0021,
-amended §10–§13) is complete: M7-01 (water state, saturation, PSNAP
-schema 6), M7-02 (evaporation and the bucket), M7-03 (saturation rainout),
-M7-04 (humidity transport in climate mode), M7-05 (vapour radiation),
-M7-06 (reference mode) and M7-07 (the refit, the water cycle on in the
-preset, the gates; V9 parity recorded failing, deferred to M8). Most
-recently completed task:
-[`docs/tasks/M7-07-refit-and-close.md`](docs/tasks/M7-07-refit-and-close.md).
-Do not implement M8 or later milestones unless explicitly requested.
+Current investigation: [INV-04](docs/tasks/INV-04-v8-transport-and-radiation.md),
+the remaining V8 gap. [INV-03](docs/tasks/INV-03-l6-startup-transport.md)
+completed the post-fallback refit and restart checks. ADR-0026 option 1
+(convective moistening) and ADR-0024 §9's diffusive fallback are enabled in
+the Earth-like preset. The fallback threshold is 100 W/m²; the refitted
+radiation pair is τ_d = 1.111 and κ_v = 0.005555 m²/kg. L4 calibration,
+L5/L6 budget and performance gates, and worker-count determinism pass.
+The L4 snapshot restart through a fallback passes using INV-02's radiation
+pair. The refitted L6 restart also passes: all four monthly hashes match
+with one worker uninterrupted versus four after restart, through three
+fallback months and the following non-fallback month (2026-10-22).
+The measured INV-02 temperature-parity gap remains 4.148 K against a 0.3 K
+limit, while precipitation passes at a 0.969 reference/climate ratio.
+Changes to the fallback or nonlinear solve require an architecture decision.
+Do not implement M9 or later milestones unless explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
-milestones. Its first task is
-[`docs/tasks/R1-01-presentation-library-and-channels.md`](docs/tasks/R1-01-presentation-library-and-channels.md),
-under ADR-0018 (accepted 2026-10-04). It may proceed alongside the P0 milestones, but
-must never change a solver, a field's meaning or the PSNAP format. Its next
-task is [`docs/tasks/R1-04-continuous-globe-camera-and-terrain-tiles.md`](docs/tasks/R1-04-continuous-globe-camera-and-terrain-tiles.md),
-under ADR-0022 (accepted 2026-10-13), which starts with its precision spike
-(step 0).
+milestones under ADR-0018. It must never change a solver, a field's meaning
+or the PSNAP format. R1-04, the continuous globe camera and streamed terrain
+tiles under ADR-0022, is complete (2026-10-15); M8-06's cloud rendering is
+also complete. See the task index for the completed rendering tasks.
 
 ## Hard rules
 

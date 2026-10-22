@@ -148,7 +148,7 @@ finding 6).**
 now enables option 1. A shared refit gives τ_d = 1.11144453 and
 κ_v = 0.00555722248 m²/kg. V9's global cloud targets pass without
 changing the cloud constants. In V8, precipitation passes at a 0.969
-climate/reference ratio, but the temperature gap is 4.148 K against the
+reference/climate ratio, but the temperature gap is 4.148 K against the
 0.3 K limit; reference high cloud cover remains 0.192 against climate's
 0.031. At L5, the 250-year budget and performance gates pass. At L6,
 ADR-0024 §9's accepted diffusive fallback completes the 250-year cold

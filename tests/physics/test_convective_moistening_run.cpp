@@ -17,6 +17,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -24,6 +25,7 @@
 // and energy, and remains deterministic through the coupled transport.
 // With arguments <level> <years> <workers>, measures one preset run for
 // the L4 calibration and L5/L6 performance/transport records.
+// --snapshot-restart-l6 checks ADR-0024 §9 V5 on the refitted L6 preset.
 namespace {
 
 struct Result {
@@ -144,24 +146,44 @@ Result measure(planetsim::test::Context& test, std::size_t workers, bool moisten
     return {run.state_hash(), mass / area};
 }
 
-void snapshot_restart_v5(planetsim::test::Context& test) {
+void snapshot_restart_v5(planetsim::test::Context& test, std::uint32_t level = 4U) {
     namespace fs = std::filesystem;
     using namespace planetsim;
 
     Scenario scenario;
-    scenario.subdivision = 4U;
+    scenario.subdivision = level;
+    const auto start = std::chrono::steady_clock::now();
     constexpr double prior_dry_depth = 1.1114445287695311;
     constexpr double prior_vapour_absorption = 0.005557222476679688;
     const auto fit = [=](SurfaceEnergyParameters& parameters) {
-        parameters.atmosphere.dry_optical_depth = prior_dry_depth;
-        parameters.atmosphere.vapour_absorption_m2_kg = prior_vapour_absorption;
+        // Keep the established L4 case; L6 exercises the current preset.
+        if (level == 4U) {
+            parameters.atmosphere.dry_optical_depth = prior_dry_depth;
+            parameters.atmosphere.vapour_absorption_m2_kg = prior_vapour_absorption;
+        }
     };
     PlanetRun uninterrupted(scenario, 1U, ClimateCirculationUse::coupled, fit);
-    for (int month = 0; month < 2; ++month) {
-        uninterrupted.run_until(
-            climate_substep_containing(uninterrupted.tick(), uninterrupted.parameters()).end_tick);
+    double energy = 0.0;
+    double water = 0.0;
+    const auto check_step = [&](const SurfaceEnergyDiagnostics& step) {
+        const double e = step.closure_residual_J() / step.closure_gate_J();
+        const double w = step.water_cycle_residual_kg() / step.water_cycle_gate_kg();
+        PLANETSIM_EXPECT(test, std::isfinite(e) && e <= 1.0);
+        PLANETSIM_EXPECT(test, std::isfinite(w) && w <= 1.0);
+        PLANETSIM_EXPECT(test, step.unconverged_columns == 0U);
+        energy = std::max(energy, e);
+        water = std::max(water, w);
+    };
+    // Restart from evolved state, not merely a serialization of the initial
+    // condition. L4 keeps its month-2 case; L6 searches months 1..11 so a
+    // different build may take a different nonlinear startup path (ADR-0003).
+    const int first_month = level == 4U ? 2 : 1;
+    const int search_end = level == 4U ? 3 : 12;
+    const auto calendar = make_orbital_calendar(uninterrupted.parameters());
+    for (int month = 0; month < first_month; ++month) {
+        uninterrupted.run_until(climate_substep(calendar, month + 1).begin_tick);
+        check_step(uninterrupted.last_step());
     }
-    const SimulationTick restart_tick = uninterrupted.tick();
     const fs::path snapshot_path =
         fs::temp_directory_path() /
         ("planet_game_inv03_restart_" +
@@ -173,15 +195,46 @@ void snapshot_restart_v5(planetsim::test::Context& test) {
             fs::remove(path, ignored);
         }
     } remove_snapshot{snapshot_path};
-    write_snapshot(snapshot_path, uninterrupted.state(), restart_tick);
+    SimulationTick restart_tick = 0;
+    std::uint64_t restart_hash = 0;
+    int fallback_month = first_month;
+    bool found_fallback = false;
+    for (; fallback_month < search_end; ++fallback_month) {
+        restart_tick = uninterrupted.tick();
+        restart_hash = uninterrupted.state_hash();
+        write_snapshot(snapshot_path, uninterrupted.state(), restart_tick);
+        uninterrupted.run_until(climate_substep(calendar, fallback_month + 1).begin_tick);
+        check_step(uninterrupted.last_step());
+        if (uninterrupted.last_step().transport_fell_back) {
+            found_fallback = true;
+            break;
+        }
+    }
+    PLANETSIM_EXPECT(test, found_fallback);
+    if (!found_fallback) return;
+    PLANETSIM_EXPECT(test, restart_tick > 0);
+    std::cout << "snapshot_restart level=" << level << " fallback_month=" << fallback_month
+              << " restart_tick=" << restart_tick << " restart_hash=" << restart_hash
+              << std::endl;
 
-    // Continue one copy without interruption. Month 2 is the accepted
-    // fallback case in INV-03 / ADR-0024 V5.
-    const auto calendar = make_orbital_calendar(uninterrupted.parameters());
-    uninterrupted.run_until(climate_substep(calendar, 3).begin_tick);
-    PLANETSIM_EXPECT(test, uninterrupted.last_step().transport_fell_back);
-    uninterrupted.run_until(climate_substep(calendar, 6).begin_tick);
-    const std::uint64_t uninterrupted_hash = uninterrupted.state_hash();
+    struct Checkpoint {
+        SimulationTick tick;
+        std::uint64_t hash;
+        bool fell_back;
+    };
+    std::vector<Checkpoint> checkpoints;
+    // Include the fallback itself and three subsequent months; compare every
+    // boundary to catch a transient divergence even if a later state matches.
+    for (int offset = 0; offset < 4; ++offset) {
+        if (offset != 0) {
+            uninterrupted.run_until(
+                climate_substep(calendar, fallback_month + offset + 1).begin_tick);
+            check_step(uninterrupted.last_step());
+        }
+        checkpoints.push_back({uninterrupted.tick(), uninterrupted.state_hash(),
+                               uninterrupted.last_step().transport_fell_back});
+    }
+    PLANETSIM_EXPECT(test, uninterrupted.circulation()->diagnostics().failed_months == 0U);
 
     // Rebuild the deterministic terrain/runtime, then replace its slow state
     // with the PSNAP payload and resume the climate scheduler at its tick.
@@ -201,6 +254,7 @@ void snapshot_restart_v5(planetsim::test::Context& test) {
     initialise_climate(*mesh, restored.slow(), parameters, surface, restart_workers);
     const SnapshotManifest manifest = read_snapshot(snapshot_path, restored);
     PLANETSIM_EXPECT(test, manifest.tick == restart_tick);
+    PLANETSIM_EXPECT(test, slow_state_hash(restored) == restart_hash);
 
     const auto fractions = compute_surface_fractions(*mesh, restored.slow().hypsometry_m,
                                                      restored.slow().sea_level_m, restart_workers);
@@ -214,17 +268,37 @@ void snapshot_restart_v5(planetsim::test::Context& test) {
     register_surface_energy(scheduler, restored, parameters, surface, fractions, restart_workers,
                             &last, false, &circulation.transport());
 
-    const auto restored_calendar = make_orbital_calendar(parameters);
-    scheduler.run_until(climate_substep(restored_calendar, 3).begin_tick);
-    PLANETSIM_EXPECT(test, last.transport_fell_back);
-    scheduler.run_until(climate_substep(restored_calendar, 6).begin_tick);
-    PLANETSIM_EXPECT(test, slow_state_hash(restored) == uninterrupted_hash);
+    for (const auto& checkpoint : checkpoints) {
+        scheduler.run_until(checkpoint.tick);
+        check_step(last);
+        const auto restored_hash = slow_state_hash(restored);
+        PLANETSIM_EXPECT(test, clock.tick() == checkpoint.tick);
+        PLANETSIM_EXPECT(test, last.transport_fell_back == checkpoint.fell_back);
+        PLANETSIM_EXPECT(test, restored_hash == checkpoint.hash);
+        std::cout << "snapshot_restart_checkpoint level=" << level
+                  << " tick=" << checkpoint.tick
+                  << " fallback=" << last.transport_fell_back
+                  << " uninterrupted_hash=" << checkpoint.hash
+                  << " restored_hash=" << restored_hash << std::endl;
+    }
+    PLANETSIM_EXPECT(test, circulation.diagnostics().failed_months == 0U);
+    std::cout << "snapshot_restart level=" << level
+              << " uninterrupted_workers=1 restart_workers=" << restart_workers
+              << " compared_months=" << checkpoints.size()
+              << " energy_gate_ratio=" << energy << " water_gate_ratio=" << water
+              << " wall_s="
+              << std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count()
+              << std::endl;
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
     planetsim::test::Context test;
+    if (argc == 2 && std::string_view(argv[1]) == "--snapshot-restart-l6") {
+        snapshot_restart_v5(test, 6U);
+        return test.result();
+    }
     if (argc == 4 || argc == 6) {
         const int level = std::stoi(argv[1]);
         const int years = std::stoi(argv[2]);

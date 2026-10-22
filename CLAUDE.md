@@ -42,10 +42,10 @@ units; - deterministic and testable implementation; - physical
 state/fluxes rather than scripted climate modifiers; - production code
 and tests together; - do not proceed to M9 unless explicitly requested.
 
-Current investigation: INV-03
-(`docs/tasks/INV-03-l6-startup-transport.md`), following INV-02's shared
-refit and V8 measurement. V8 still fails its 0.3 K temperature limit at
-4.148 K, while precipitation passes at a 0.969 climate/reference ratio.
+Current investigation: [INV-04](docs/tasks/INV-04-v8-transport-and-radiation.md),
+the remaining V8 gap. INV-03 completed the post-fallback refit and restart
+checks. INV-02's V8 measurement still fails its 0.3 K temperature limit at
+4.148 K, while precipitation passes at a 0.969 reference/climate ratio.
 The accepted ADR-0024 §9 fallback is on in the Earth-like preset: a coupled
 month over 100 W/m² consistency residual uses the diffusive transport.
 With the refitted pair τ_d = 1.111, κ_v = 0.005555 m²/kg, the L4/150
@@ -53,9 +53,16 @@ mean is 287.984 K, the L5/250 run takes 308.3 s, and the L6/250 run
 takes 1,061.1 s. Both performance runs pass their budget and column
 convergence gates; L6 has 10 fallback months and no failed circulation
 months. Two-year L6 runs on one and four workers have the same hash
-through eight fallback months. Snapshot restart before a fallback remains
-unverified because `PlanetRun` has no resume constructor. M9 must not
-start unless explicitly requested.
+through eight fallback months. An L4 PSNAP restart before the month-2
+fallback, using INV-02's radiation pair, reproduces the fallback and the
+uninterrupted six-month hash with four versus one workers. It restores the
+climate scheduler directly; `PlanetRun` still has no resume constructor.
+The refitted L6 restart also passes (2026-10-22): a PSNAP at tick 175317
+before month 4 reproduces all four monthly hashes through months 4–7 with
+four versus one workers, including three fallback months and the next
+non-fallback month. Energy/water gates and column convergence pass. Changes
+to the fallback or nonlinear solve require an architecture decision. M9 must
+not start unless explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is

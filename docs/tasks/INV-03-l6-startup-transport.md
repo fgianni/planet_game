@@ -5,6 +5,8 @@
   diffusive fallback is in the earth_like preset (R_f = 100 W/m²). Its L4
   radiation pair is refitted below. L4, L5 and L6 have now passed their
   measured calibration, budget and performance gates on the refitted pair.
+  Snapshot restart through a fallback also passes at L4 and, as of
+  2026-10-22, on the refitted L6 preset (recorded below).
 - **Scope:** investigate a numerical method for the L6 cold-start transport failure
 - **Predecessor:** [INV-02](INV-02-moistening-refit-and-parity.md), which records the refit and V8 result
 - **Governing records:** ADR-0024 §§1–5; ADR-0009 §9; development specification §20.12
@@ -144,8 +146,9 @@ response, ADR-0024 §1).
   four workers versus one. This exercises the saved slow state and tick
   across a fallback without adding a `PlanetRun` resume API; PRUN replay still
   starts from the scenario's initial state. The restart uses INV-02's L4 pair,
-  which has the month-2 fallback; the refitted L4 pair has no fallback, so a
-  snapshot restart through a fallback on the refitted L6 path remains open.
+  which has the month-2 fallback; the refitted L4 pair has no fallback. A
+  snapshot restart through a fallback on the refitted L6 path was subsequently
+  verified on 2026-10-22, as recorded below.
 - **L5/250 after refit:** **308.3 s**, within the 607.5 s limit; energy
   1.11e-5 and water 2.29e-4 of their gates; zero unconverged columns and
   no failed circulation months. There are 3 fallback months and 5 capped
@@ -173,3 +176,48 @@ refitted pair passes L4 because its cold start has no fallback month, and
 a later refit can lose that. If it does, the option is a fallback
 triggered by the columns failing instead of by R: L4 would then never
 fall back.
+
+## Refitted L6 snapshot restart (2026-10-22)
+
+ADR-0024 §9.4 V5 now passes on the current Earth-like preset at L6
+(seed 1, τ_d = 1.111, κ_v = 0.005555 m²/kg, R_f = 100 W/m²).
+The test writes a PSNAP at tick **175317**, immediately before zero-based
+month **4**, after evolving the uninterrupted run with one worker. It
+rebuilds the terrain and climate scheduler, loads the slow state and saved
+tick, and continues with four workers. The loaded hash is identical to the
+saved hash (`11623466116100483792`). Every subsequent monthly checkpoint
+matches, including three fallback months and the next non-fallback month:
+
+| Month (zero-based) | End tick | Fallback in both runs | State hash in both runs |
+|---|---:|---|---:|
+| 4 | 219146 | yes | 15066035426067663690 |
+| 5 | 262975 | yes | 11692907357000182108 |
+| 6 | 306804 | yes | 2869199173728343433 |
+| 7 | 350633 | no | 16000283396048090233 |
+
+- Maximum energy residual/gate: **1.22979e-5**.
+- Maximum water residual/gate: **1.75347e-4**.
+- Zero unconverged columns and zero failed circulation months.
+- Runtime: **377.5 s**, GCC 11.4 Release on the development machine;
+  this is a restart-check measurement, not a new performance gate.
+- The existing L4 restart, L3 moistening/determinism, snapshot-file and
+  heat-transport checks also pass.
+
+Reproduce the L6 check with:
+
+```bash
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DPLANETSIM_BUILD_TESTS=ON
+cmake --build build-release --parallel --target test_convective_moistening_run
+./build-release/tests/test_convective_moistening_run --snapshot-restart-l6
+```
+
+This explicit long-run command complements the default test's L4 case.
+It searches months 1–11 for a fallback, saving before each candidate,
+and fails if none occurs. This permits build-dependent startup paths
+under ADR-0003 while requiring an evolved-state restart through an actual
+fallback. It checks the fallback and three following months, including
+per-step energy/water gates, column convergence, ticks, fallback decisions
+and state hashes. No physics, tolerance, preset or PSNAP format changed.
+The restart still uses the climate scheduler directly; a general
+`PlanetRun` resume API and PRUN replay from a snapshot are not provided.
+V8 temperature parity remains unresolved, and M9 has not started.
