@@ -141,6 +141,42 @@ It is not a controlled heat-only comparison, and no replacement or refit is
 accepted from it. The diffusive coefficient is the old calibrated fallback,
 not a new fit to reference mode.
 
+### Heat-only: the diffusive heat transport with everything else coupled (2026-10-22)
+
+Open task 4. ADR-0024 §9's fallback is the controlled comparison: it
+replaces only the coupled heat transport by ADR-0009's diffusion, while
+the circulation's winds, the humidity transport and the eddies' latent
+heat E stay coupled. A fallback threshold just above zero takes it every
+month:
+
+```bash
+./build/planet_cli thermal --subdivision 3 --seed 1 --layers 3 \
+  --years 11 --water --workers 6 --coupled --transport-fallback 1e-300
+```
+
+| Quantity | Coupled | Heat by diffusion, the rest coupled | Fully diffusive (above) |
+|---|---:|---:|---:|
+| Global surface (K) | 290.090 | 292.944 | 293.121 |
+| Land / ocean (K) | 278.32 / 294.90 | 282.61 / 297.17 | 283.04 / 297.24 |
+| Peak poleward transport (PW) | 2.849 | 3.829 | 3.883 |
+| P2 equator-to-pole contrast (K) | 49.07 | 32.62 | 34.31 |
+| Sea ice at the year's end (kg) | 1.934e17 | 4.386e16 | 4.645e16 |
+| Snow at the year's end (kg) | 1.160e16 | 6.761e15 | 4.608e15 |
+| Cover / high cover | 0.571 / 0.031 | 0.557 / 0.026 | 0.521 / 0.016 |
+| Cloud SW / LW effect (W/m²) | −46.06 / +27.83 | −44.36 / +27.50 | −41.42 / +26.83 |
+
+- **The heat transport alone gives 2.85 K** of the fully diffusive
+  configuration's 3.03 K; the humidity transport and the evaporation
+  winds less than 0.2 K.
+- The diffusive heat moves a third more energy poleward (3.83 against
+  2.85 PW), takes P2 from 49 K past Earth's 42 K to 33 K, and melts most
+  of the sea ice. The clouds hardly change.
+- That is V8's pattern (cold land and more snow and ice in climate mode,
+  little cloud difference besides the high cloud). Whether reference
+  mode's resolved transport is the stronger one is the next measurement;
+  the diffusive coefficient is the old calibrated one, not a fit to
+  reference mode.
+
 ## Column timestep and the radiation/adjustment ordering
 
 Code audit: `solve_atmosphere_column` captures the budget's OLR and surface
@@ -347,9 +383,9 @@ not evidence for accepting them.
 3. ~~**The 30-piece surface-timestep case.**~~ Explained (above): steps
    of 6 hours to 2 days oscillate through the lagged cloud longwave; the
    case is not a timestep trend.
-4. **A heat-only transport comparison:** the diffusive configuration is
-   3.0 K warmer, but it also changes the humidity transport and the
-   evaporation winds.
+4. ~~**A heat-only transport comparison.**~~ Done (above): the heat
+   transport alone gives 2.85 K of the 3.03 K. Next: reference mode's
+   poleward heat transport against the coupled circulation's 2.85 PW.
 5. **High cloud:** reference mode's 0.19 against climate mode's 0.03,
    which gives a 12.3 W/m² longwave cloud difference here (V7's known
    limitation is about 18 W/m²).
