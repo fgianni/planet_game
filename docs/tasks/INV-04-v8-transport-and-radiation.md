@@ -519,9 +519,9 @@ not evidence for accepting them.
 
 ## Decision in progress (2026-10-22)
 
-With the user: V8 is proposed at L4 over three years
-(ADR-0023 §16, proposed). Once accepted, the next measurement is that
-V8, then the remaining land gap at L4.
+With the user: V8 is measured at L4 over three years (ADR-0023 §16,
+accepted 2026-10-22). The next measurement is that V8, then the
+remaining land gap at L4.
 
 ## Open tasks (2026-10-22)
 

@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-15
 - **Accepted:** 2026-10-16
-- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17); 2026-10-17 — §4.3.2: autoconversion integrated exactly with the step's condensation, no threshold; §4.4.1: the convective floor from the start-of-step trigger (§12, tasks M8-03, M8-04; accepted 2026-10-17); 2026-10-17 — §4.4.1: the cloud fraction from the cloud water at a fixed in-cloud path, the same in both modes (§13, task M8-05; accepted 2026-10-17); 2026-10-18 — §4.2.4, §4.3.2: convective condensate through the cloud water (§14, task M8-05; accepted 2026-10-18); 2026-10-18 — §5 V8: each mode's own spin-up (§15, task M8-05; accepted 2026-10-18); 2026-10-22 — §5 V8 at L4 over three years (§16, investigation INV-04; proposed)
+- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17); 2026-10-17 — §4.3.2: autoconversion integrated exactly with the step's condensation, no threshold; §4.4.1: the convective floor from the start-of-step trigger (§12, tasks M8-03, M8-04; accepted 2026-10-17); 2026-10-17 — §4.4.1: the cloud fraction from the cloud water at a fixed in-cloud path, the same in both modes (§13, task M8-05; accepted 2026-10-17); 2026-10-18 — §4.2.4, §4.3.2: convective condensate through the cloud water (§14, task M8-05; accepted 2026-10-18); 2026-10-18 — §5 V8: each mode's own spin-up (§15, task M8-05; accepted 2026-10-18); 2026-10-22 — §5 V8 at L4 over three years (§16, investigation INV-04; accepted 2026-10-22)
 - **Milestone:** P0 / M8 (clouds and precipitation)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24, §31.2 (the cloud channels); Planetary Civilization Simulator — Design Record v1.4, §5, §15
 - **Related:** ADR-0001 (V1 water budget, V2 climate–reference parity), ADR-0003 (PSNAP migration), ADR-0006 (sub-steps), ADR-0008 (snow, rain and snow at the surface), ADR-0010 (layered atmosphere, grey longwave, Γ_c adjustment, §3.3 C deferring Betts–Miller to M8), ADR-0011 (winds, ascent), ADR-0018 (presentation channels `cloud_cover`, `cloud_thickness`), ADR-0021 (vapour, evaporation, saturation rainout; §13.7 V9 deferred to M8)
@@ -637,7 +637,7 @@ Climate mode's land–sea contrast (§15.1) and its evaporation from monthly
 means (§4.5) are the other known differences. Closing the gap is not
 part of this amendment.
 
-## 16. Amendment: V8 at L4, over three years (proposed 2026-10-22, investigation INV-04)
+## 16. Amendment: V8 at L4, over three years (proposed and accepted 2026-10-22, investigation INV-04)
 
 **16.1 Why L3 does not measure the modes' agreement.** Investigation
 INV-04 measured V8 as §15.2 reads it at L3 and at L4 (the current
@@ -662,7 +662,7 @@ preset, seed 1, ten-year spin-ups, the eleventh year):
 - One reference year varies by about ±0.3 K (L3 spin-up years 10–20:
   293.69–294.40 K), V8's whole limit.
 
-**16.2 Proposal (amends §15.2).**
+**16.2 Decision (amends §15.2; accepted with the user).**
 
 1. **V8 is measured at L4**, the lowest level at which the reference
    dynamics' equator-to-pole contrast is near Earth's and climate
