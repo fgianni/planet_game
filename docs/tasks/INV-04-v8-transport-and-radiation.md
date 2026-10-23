@@ -654,6 +654,55 @@ within a group land and ocean do not exchange heat or water.
   climate mode's humidity transport also converges little water over
   land where it can.
 
+## The water reaches land only through the eddies (2026-10-23)
+
+Climate mode, L4, seed 1, ten-year spin-up, then three years (36 months,
+all with moist eddies;
+[`tools/v8/land_moisture_split_probe.cpp`](../../tools/v8/land_moisture_split_probe.cpp),
+7.8 s; log `build/inv04/land_moisture_split.log`). The surface step now
+also reports each cell's group's E (`cell_eddy_latent_transport_W_m2`,
+ADR-0024 §4.3: the latent heat of the water the humidity transport's
+eddies moved); the rest of the group's delivery is the mean flow's.
+Group values, weighted by the land in each group (by the ocean for
+all-ocean groups):
+
+| Groups | Total (W/m²) | Eddies | Mean flow |
+|---|---:|---:|---:|
+| All land (≥ 95 %) | 3.01 | 3.00 | 0.01 |
+| Mixed | −0.21 | −0.54 | 0.33 |
+| All land groups together | 1.49 | 1.33 | 0.16 |
+| All ocean | −0.92 | −0.83 | −0.08 |
+
+| Group latitude | Share of land | Total | Eddies | Mean flow |
+|---|---:|---:|---:|---:|
+| 90–60° S | 0.03 | 5.25 | 4.58 | 0.66 |
+| 60–30° S | 0.19 | 1.56 | 1.65 | −0.09 |
+| 30–0° S | 0.34 | 0.20 | 0.76 | −0.56 |
+| 0–30° N | 0.21 | 0.06 | −1.20 | 1.26 |
+| 30–60° N | 0.12 | 1.85 | 1.64 | 0.21 |
+| 60–90° N | 0.12 | 6.31 | 5.79 | 0.52 |
+
+- **The mean flow brings land almost no water** (0.16 W/m²): nine tenths
+  of the little that arrives is the eddies'. The reason is by design:
+  since ADR-0011 §17.6 (2026-10-06) the transport's layer mass fluxes are
+  the zonal-mean overturning's alone; the azonal flow was withdrawn
+  because, without a thermodynamic equation, its divergent part was
+  unbounded and the coupled solve had no solution. The humidity transport
+  uses the same fluxes (ADR-0021 §4.5). A zonally uniform overturning
+  cannot converge water onto land rather than onto the ocean at the
+  same latitude, so the mean flow's water goes to land and ocean alike,
+  and in the tropics it nearly cancels (−0.56 and +1.26 W/m²).
+- **The eddies are weak over land.** They diffuse the group humidity
+  down its gradient, so they bring water only where land air is already
+  drier than the ocean's, and in the northern tropics (0–30° N) they
+  take it away (−1.20 W/m²).
+- Reference mode's 23.3 W/m² therefore comes from flow climate mode does
+  not have: azonal, monsoon-like convergence onto land, which its
+  resolved dynamics carry. §17.6 named the cost as stationary eddies'
+  heat transport; this is a second cost, the land's water, and through
+  it the land's greenhouse.
+- Read-only: the L3 state hash and the tests are unchanged.
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
@@ -707,9 +756,10 @@ were) before proposing an ADR.
   groups receives none.
 
 **V8 (this investigation), in order:**
-1. **Which part of the climate transport fails to bring water to land:**
-   split its delivery to land into the circulation's mean flow and its
-   eddies (a diagnostic).
+1. ~~**Which part of the climate transport fails to bring water to
+   land.**~~ Done (above): the mean flow brings almost none, because
+   since ADR-0011 §17.6 it is the zonal-mean overturning alone; the
+   eddies bring nine tenths of the 1.5 W/m².
 2. **Climate-only sensitivity tests** (seconds each at L4; off by
    default): mixing heat and water within a transport group, and a
    stronger humidity transport onto land. The target is reference

@@ -1749,6 +1749,14 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.land_melt_kg_m2 = std::move(land_melt_kg_m2);
     diagnostics.cell_transport_W_m2.assign(transport.values().begin(), transport.values().end());
     diagnostics.cell_latent_transport_W_m2 = std::move(latent_delivered_W_m2);
+    if (!eddy_latent.empty()) {
+        const std::vector<std::size_t>* group_map = nullptr;
+        static_cast<void>(agglomerated_transport_graph(mesh, group_map));
+        diagnostics.cell_eddy_latent_transport_W_m2.resize(cells);
+        for (std::size_t cell = 0; cell < cells; ++cell) {
+            diagnostics.cell_eddy_latent_transport_W_m2[cell] = eddy_latent[(*group_map)[cell]];
+        }
+    }
     diagnostics.transport_solve_s = transport_seconds;
     diagnostics.transport_fell_back = fell_back;
     if (coupled) {

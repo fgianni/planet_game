@@ -297,6 +297,10 @@ struct SurfaceEnergyDiagnostics {
     // the humidity transport moved into it (zero in reference mode).
     std::vector<double> cell_transport_W_m2;
     std::vector<double> cell_latent_transport_W_m2;
+    // Of the humidity transport's water, the part its eddies moved: each
+    // cell's group's E (ADR-0024 §4.3), per m² of the group (W/m²; empty
+    // without moist eddies). The rest of the group's is the mean flow's.
+    std::vector<double> cell_eddy_latent_transport_W_m2;
     // The P2(sin φ) component of the area- and tile-weighted surface
     // temperature, Σ w T P2 / Σ w P2² (K); negative when the poles are cold.
     double p2_surface_temperature_K = 0.0;
