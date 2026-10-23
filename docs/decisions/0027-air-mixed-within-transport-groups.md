@@ -106,6 +106,13 @@ reused; INV-04, "One update a month"): L4's within-group contrast −0.4 K
 and V8's gap 0.460 K at 10.2 s; **L5 528.1 s (passes), L6 2 200.9 s
 (fails by 9 %)**; the equilibrium still 285.4 K.
 
+With the second solve also started from the first's sources (a new
+`ImplicitTransportSettings::initial_source_W_m2`, used only by the
+mixing), **L6 takes 1 878.6 s on a quiet machine (passes)**; the earlier
+L6 time overlapped another process. V5 passes for this form too.
+Option 1's form is therefore: one update a month, the first solve's
+columns reused, the second solve started from the first's sources.
+
 ## 5. Recommendation
 
 **Option 1** (or 2, which adds the water for consistency at no cost).
@@ -113,10 +120,10 @@ It removes the within-group contrast, halves land's deficit, and moves
 V8's gap from 0.93 to about 0.4 K at L4 after ten years. m = 1 is the
 physical value, not a fit: the air of a group is one air.
 
-**Not in its prototyped form:** it fails V4's budgets and cools the
-equilibrium planet 3.2 K (§4), so it needs a cheaper form (without two
-extra column passes a month) and a refit of V3's L4 fit. Choosing the
-form is the next decision.
+**In its cheaper form** (§4: one update a month, the second solve
+started from the first's sources), which passes V4 at L5 and L6. It
+cools the equilibrium planet 3 K (§4), so a refit of V3's L4 fit
+follows.
 
 Option 3 is not recommended now: it warms the planet 3 K (a refit) and
 triples the Newton iterations. Between groups, the zonal wind's
@@ -127,9 +134,10 @@ advection is the next candidate if V8 still fails after options 1–2.
 - A group is one air: the mixing scale is the group's size (about 480 km
   at L5, 240 km at L6), so the remaining land–ocean contrast is between
   groups and depends on the level.
-- As prototyped, the step does two more coupled solves and column passes
-  each month (1.7 times L4's three-year wall time, 2.7–2.8 times L5's and
-  L6's 250-year runs).
+- The step does one more coupled solve each month, started from the
+  first's sources (1.8 times L5's and L6's 250-year wall time; the first
+  prototype, with two more solves and column passes, took 2.7–2.8
+  times).
 - V3's L4 fit (287.984 K at 150 years) moves: L5's equilibrium cools
   3.2 K, so a refit of τ_d and κ_v follows.
 - PSNAP and field meanings are unchanged: the applied source per cell is
@@ -150,9 +158,10 @@ advection is the next candidate if V8 still fails after options 1–2.
 
 - ~~L5 and L6 at 250 years with option 1~~ (done, §4: over budget).
 - ~~V5 on one and four workers~~ (done, §4: passes).
-- A cheaper form of option 1, measured against V4: one update a month
-  (L6 9 % over); next, the second solve started from the first's
-  sources.
+- ~~A cheaper form of option 1, measured against V4~~ (done, §4: L5
+  528.1 s, L6 1 878.6 s).
+- The refit of τ_d and κ_v for the 3 K cooler equilibrium, then V8
+  and V9.
 
 ## 9. Tasks
 

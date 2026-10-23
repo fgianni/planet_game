@@ -905,6 +905,23 @@ it is bit-identical (L4: 290.361 K, as before). Logs
   starts again from the floor, as every coupled solve does.
 - The equilibrium still cools 3 K (L5: 285.36 K against 288.38 K).
 
+**The second solve started from the first's sources** (a new
+`ImplicitTransportSettings::initial_source_W_m2`, used only by the
+mixing; without it every solve starts from the floor, as before, and
+mixing off is bit-identical). On a quiet machine (log
+`build/inv04/group_mixing_warm_performance.log`):
+
+| Level | Mean (K) | Land − ocean (K) | Air within mixed groups (K) | Newton (36 months, last solve) | Fallback months | Wall (s) | Budget (s) |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 4 (ten years, then three) | 290.834 | −9.0 | −0.4 | 122 (from the floor: 144) | 0 | | |
+| 6 (250 years) | 285.386 | −8.3 | −0.1 | 189 (220) | 0 | **1 878.6** | 2 025 |
+
+- **L6 passes its budget,** 7 % under it (1.77 times INV-03's baseline);
+  L5 (528.1 s without the warm start) is not rerun.
+- **V5 passes:** one and four workers give the same hash at L4,
+  `24df5e7e191d1c2b`.
+- Energy and water gates pass in every measured month.
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
@@ -971,8 +988,9 @@ were) before proposing an ADR.
    V8's gap 0.37–0.48 K without a refit); ~~its cost at L5 and L6~~
    (done above: 2.7–2.8 times the baselines, over both budgets, and
    −3.2 K in equilibrium); a cheaper form, one update a month (done
-   above: L5 within budget, L6 9 % over); next, the second solve started
-   from the first's sources. The target is reference
+   above: L5 within budget), with the second solve started from the
+   first's sources (L6 within budget, 1 878.6 s); next, the refit for the
+   3 K cooler equilibrium. The target is reference
    land's numbers: about 23 W/m² of latent heat delivered, about 12 g/kg
    of equatorial humidity, and the cloud longwave about 40 W/m².
 3. **An ADR proposal** for whichever change works, then a refit and V8
