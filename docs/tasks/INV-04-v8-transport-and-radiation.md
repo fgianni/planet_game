@@ -534,6 +534,62 @@ log `build/inv04/v8_L4_3yr.log`):
 - Reference mode carries most of its poleward heat as vapour (2.5 PW at
   40° N against climate mode's 0.46 PW); climate mode carries it dry.
 
+## Why reference land is warmer at L4 (2026-10-23)
+
+V8 under ADR-0023 §16.2 again, with `planet_cli parity`'s land
+diagnostics (commit `c21d957`; `build/inv04/v8_L4_3yr_land.log`, 16
+workers, 151.6 min). It reproduces §16.4's baseline exactly (0.935815 K,
+0.901286).
+
+**Land minus ocean by 10° band (K), south to north:**
+
+| Band from | 90S | 80S | 70S | 60S | 50S | 40S | 30S | 20S | 10S | 0 | 10N | 20N | 30N | 40N | 50N | 60N | 70N | 80N |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Climate | −6.0 | −24.4 | −23.2 | −30.4 | −27.8 | −18.6 | −8.8 | −10.0 | −10.3 | −10.1 | −11.8 | −13.0 | −15.4 | −27.8 | −29.5 | −24.2 | −22.5 | −26.5 |
+| Reference | −0.9 | −2.5 | −5.4 | −4.3 | −2.7 | −4.1 | −5.6 | −5.5 | −4.0 | −3.3 | −4.4 | −3.8 | −4.0 | −3.9 | −7.7 | −4.2 | −1.5 | −3.0 |
+
+**The land tiles' budget, per m² of land (W/m²):**
+
+| | Absorbed sunlight | Source from the air | Emitted | Evaporation | Melt | Residual |
+|---|---:|---:|---:|---:|---:|---:|
+| Climate | 186.69 | 212.65 | 340.50 | 58.82 | 0.03 | −9e-14 |
+| Reference | 196.33 | 242.68 | 377.38 | 60.45 | 1.19 | −7e-11 |
+| Reference − climate | +9.64 | **+30.03** | +36.88 | +1.64 | +1.16 | |
+
+**Snowmelt:** climate 0.0026 m/yr of land, 21 % in months whose land
+surface averaged below 273.15 K; reference 0.112 m/yr, **73 %** in such
+months.
+
+What it shows:
+- **Climate mode's land is cold at every latitude, not only where there
+  is snow.** In the tropics (30° S–30° N), where there is no snow, its
+  land is 9–13 K colder than its ocean; reference mode's is 3–6 K
+  colder. Poleward of 40° the difference grows to 22–30 K in climate
+  mode, but stays 1–8 K in reference mode.
+- **Three quarters of reference land's extra heat comes from the air:**
+  +30.0 W/m² of source (downward longwave and sensible heat), against
+  +9.6 W/m² of sunlight (less snow). Reference land emits 36.9 W/m²
+  more, as a surface about 9 K warmer would.
+- **Sub-monthly melt is real but secondary.** Reference mode melts 44
+  times as much snow, three quarters of it in months whose mean is below
+  freezing, which a monthly step cannot do. But that melt's heat is
+  1.2 W/m², and the snow's whole sunlight effect is 9.6 W/m², a quarter
+  of the land difference.
+- **So the main gap is in how climate mode's land and its air exchange
+  heat with the ocean's.** A climate land column receives much less from
+  its air than a reference one. Two places it could come from:
+  - the transport: it gives each group of about four cells (ADR-0009
+    §12, `agglomerated_transport_graph`) one source per m², and diffuses
+    the groups' moist-enthalpy temperature, so it may deliver too little
+    heat to land columns;
+  - the land column itself: its radiation, convection and clouds over
+    dry land. Climate mode's convective share is 0.99 against 0.23.
+
+The next measurement separates the two: the air's bottom-layer
+temperature and humidity over land and over ocean by band in both modes,
+the heat the transport delivers to land columns against ocean columns,
+and the cloud longwave effect over land.
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
