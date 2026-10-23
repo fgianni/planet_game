@@ -1136,8 +1136,13 @@ AdvectionDiffusionResult solve_implicit_advection_diffusion(
     AdvectionDiffusionResult result;
     Iterate current;
     current.source = Field2D<double>(nodes, 0.0);
+    const Field2D<double>* initial = settings.initial_source_W_m2;
+    if (initial != nullptr && initial->size() != nodes) {
+        throw std::invalid_argument("the initial sources do not match the graph");
+    }
     for (std::size_t a = 0; a < nodes; ++a) {
-        current.source[a] = std::max(0.0, source_floor_W_m2[a]);
+        current.source[a] = initial != nullptr ? std::max((*initial)[a], source_floor_W_m2[a])
+                                               : std::max(0.0, source_floor_W_m2[a]);
     }
     evaluate(current);
     Iterate trial;

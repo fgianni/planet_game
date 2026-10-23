@@ -1457,9 +1457,10 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             coupled_settings.newton_tolerance_W_m2 = coupled_newton_tolerance_W_m2;
             // An inexact Newton: each linear solve to 1e-3 of its residual.
             coupled_settings.cg_relative_tolerance = 1e-3;
-            // With heat_group_mixing, two solves, δ updated after the first;
-            // the last solve's δ is the one applied. A pass whose solve ends
-            // with a larger residual than the one before is undone.
+            // With heat_group_mixing, two solves, δ updated after the first,
+            // the second started from the first's sources; the last solve's
+            // δ is the one applied. A pass whose solve ends with a larger
+            // residual than the one before is undone.
             const int passes = mixing != 0.0 ? 2 : 1;
             std::vector<double> previous_shift;
             AdvectionDiffusionResult previous_solve;
@@ -1470,6 +1471,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     update_shift(coupled_solve.source_W_m2,
                                  coupled_solve.consistency_residual_W_m2 <=
                                      coupled_newton_tolerance_W_m2);
+                    coupled_settings.initial_source_W_m2 = &previous_solve.source_W_m2;
                 }
                 if (eddy_latent.empty()) {
                     coupled_solve = solve_implicit_advection_diffusion(

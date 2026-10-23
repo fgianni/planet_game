@@ -97,6 +97,10 @@ struct ImplicitTransportSettings {
     double newton_tolerance_W_m2 = 1e-6;
     double cg_relative_tolerance = 1e-6;   // inexact Newton: the outer loop converges regardless
     int max_cg_iterations = 2'000;
+    // The first iterate's sources, raised to the floor (INV-04's
+    // heat_group_mixing starts its second solve from the first's); the
+    // floor, raised to zero, if none.
+    const Field2D<double>* initial_source_W_m2 = nullptr;
 };
 
 // The coupled climate transport's Newton tolerance (ADR-0009 §13, task
