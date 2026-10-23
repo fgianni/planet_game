@@ -27,6 +27,7 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0024 | [The climate transport's eddies driven by moist enthalpy](0024-moist-enthalpy-eddies.md) | Accepted (amended 2026-10-21, §9: the unconverged month's fallback) | 2026-10-18 |
 | 0025 | [Where the clouds are: sub-grid condensation, the eddies' variance and convective anvils](0025-cloud-distribution.md) | Accepted (amended 2026-10-19, §11–§13; 2026-10-20, §14: M8 closed with §4.1–§4.3 and §11 off) | 2026-10-19 |
 | 0026 | [Climate mode's convection carries water up](0026-climate-convection-carries-water.md) | Accepted in part (option 1; options 2 and 3 not taken for P0, 2026-10-20) | 2026-10-20 |
+| 0027 | [The air mixed within the climate transport's groups](0027-air-mixed-within-transport-groups.md) | Proposed | 2026-10-23 |
 
 Records cite the design record by version and section (for example "Design
 Record v0.4, §28"). The current design record is
