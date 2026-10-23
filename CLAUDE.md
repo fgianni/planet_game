@@ -48,7 +48,10 @@ checks. V8 is now measured at L4 over three years (ADR-0023 §16, accepted
 2026-10-22). Its baseline fails: 0.936 K against the 0.3 K limit, and a
 0.901 reference/climate precipitation ratio against ±10 %. The gap is
 reference land 9.2 K warmer and its ocean 2.4 K colder. The earlier
-L3 measurement was 4.148 K.
+L3 measurement was 4.148 K. Its cause, found 2026-10-23: climate mode's
+land air is cold and dry because its transport brings almost no water to
+land (1.55 against reference mode's 23.3 W/m² of latent heat), which
+weakens the greenhouse over land. INV-04's open tasks list what is next.
 The accepted ADR-0024 §9 fallback is on in the Earth-like preset: a coupled
 month over 100 W/m² consistency residual uses the diffusive transport.
 With the refitted pair τ_d = 1.111, κ_v = 0.005555 m²/kg, the L4/150

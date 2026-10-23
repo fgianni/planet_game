@@ -45,7 +45,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [INV-01](INV-01-reference-humidity-and-parity.md) | Investigation before M9 (ADR-0025 §14.3): reference mode's humidity, the month's sub-monthly variability, V8's gap; closed with ADR-0026 option 1 (V8 +6.4 → +3.1 K before the refit) | Findings complete; refit next |
 | [INV-02](INV-02-moistening-refit-and-parity.md) | ADR-0026 option 1 in the Earth-like preset, the shared refit, V9 cloud targets and V8 measured again | Refit/V8 complete; L6 fallback accepted under ADR-0024 §9 |
 | [INV-03](INV-03-l6-startup-transport.md) | L6 startup transport; failed solver prototypes, accepted diffusive fallback, and post-fallback radiation refit | L4/L5/L6 calibration, budget, performance and worker-determinism checks pass; L4 and refitted L6 snapshot restarts through fallback months pass |
-| [INV-04](INV-04-v8-transport-and-radiation.md) | Current-preset V8 measurement, shortwave decomposition, transport sensitivity and timestep experiments | In progress; no solver or preset change |
+| [INV-04](INV-04-v8-transport-and-radiation.md) | Current-preset V8 measurement, shortwave decomposition, transport sensitivity and timestep experiments; V8 at L4; the cause, climate mode's dry land | In progress; no solver or preset change |
 | [R1-01](R1-01-presentation-library-and-channels.md) | Presentation library and semantic channels (ADR-0018; rendering track, parallel to M6) | Complete |
 | [R1-02](R1-02-style-packs-and-switching.md) | Godot style packs, recorded playback and instant switching (ADR-0018) | Complete |
 | [R1-03](R1-03-readability-harness.md) | Offscreen style readability gate and colour-vision checks (ADR-0018) | Complete |

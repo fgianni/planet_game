@@ -1,7 +1,8 @@
 # Investigation INV-04 — V8 transport and radiation
 
 - **Milestone:** P0, after INV-03 and before M9
-- **Status:** investigation in progress (2026-10-22); current-preset V8 measured (4.146 K, fails)
+- **Status:** investigation in progress (2026-10-23). V8 at L4 (ADR-0023 §16) fails at 0.936 K and
+  0.901; the cause found so far is climate mode's dry land (below). No solver or preset change
 - **Governing decisions:** ADR-0001 V2, ADR-0023 §15 (independent starts),
   ADR-0024 §9 (fallback), ADR-0025 §14 and ADR-0026 §8 (deferred options)
 - **Predecessor:** [INV-03](INV-03-l6-startup-transport.md)
@@ -672,6 +673,16 @@ accepted 2026-10-22). Its baseline (above) is 0.936 K and a 0.901
 precipitation ratio. Next: the land–ocean split at L4 (reference land
 9.2 K warmer, ocean 2.4 K colder).
 
+**Update (2026-10-23).** Done: the land–ocean split. Climate mode's land
+is cold at every latitude because its air is cold and dry. Its transport
+delivers 1.55 W/m² of latent heat to land against reference mode's
+23.3 W/m², and the cloud longwave over land is 19.5 against 40.2 W/m².
+Land that shares a transport group with ocean (47 % of it) receives no
+water. Next, if the user agrees: split climate mode's water delivery to
+land into the circulation's mean flow and its eddies, then run cheap
+climate-only sensitivity tests (off by default, as INV-03's prototypes
+were) before proposing an ADR.
+
 ## Open tasks (updated 2026-10-23)
 
 **Done since the first list (2026-10-22):**
@@ -685,21 +696,34 @@ precipitation ratio. Next: the land–ocean split at L4 (reference land
 - V8 moved to L4 over three years (ADR-0023 §16): 0.936 K, with a 0.901
   precipitation ratio.
 
+**Done on 2026-10-23:**
+- the land–ocean split at L4, with the land budget and sub-monthly melt
+  (commit `c21d957`): climate land is cold at every latitude; three
+  quarters of reference land's extra heat comes from its air; sub-monthly
+  melt is real but a quarter of the effect;
+- the air and transport over land and ocean (commit `1c94d89`): climate
+  mode's land air is dry, because its transport brings almost no water
+  to land (1.55 against 23.3 W/m²); coastal land in mixed transport
+  groups receives none.
+
 **V8 (this investigation), in order:**
-1. **The L4 land–ocean split** (decision in progress): reference land is
-   9.2 K warmer and its ocean 2.4 K colder; climate mode's land has more
-   snow (0.275 against 0.175 of it).
-2. **The poleward heat transport:** whether reference mode's resolved
-   transport is stronger than climate mode's at L4, as at L3, and
-   whether that explains the land.
-3. **The precipitation ratio, 0.901,** at the edge of its ±10 % limit.
-4. **The drift (ADR-0023 §16.3):** both modes are still cooling with the
+1. **Which part of the climate transport fails to bring water to land:**
+   split its delivery to land into the circulation's mean flow and its
+   eddies (a diagnostic).
+2. **Climate-only sensitivity tests** (seconds each at L4; off by
+   default): mixing heat and water within a transport group, and a
+   stronger humidity transport onto land. The target is reference
+   land's numbers: about 23 W/m² of latent heat delivered, about 12 g/kg
+   of equatorial humidity, and the cloud longwave about 40 W/m².
+3. **An ADR proposal** for whichever change works, then a refit and V8
+   again (about 3 h at L4).
+4. **The precipitation ratio, 0.901,** at the edge of its ±10 % limit:
+   expected to move with the land's water.
+5. **The drift (ADR-0023 §16.3):** both modes are still cooling with the
    deep ocean after ten years. If it decides the gap, the option is a
    shared, spun-up deep ocean as the start, by amending ADR-0023 §15.
-5. **L4's convergence is unmeasured:** L5's reference mode costs about
+6. **L4's convergence is unmeasured:** L5's reference mode costs about
    four times L4's.
-6. **High cloud:** reference mode's 0.19 against climate mode's 0.03 at
-   L3, a 12.3 W/m² longwave cloud difference.
 
 **Model, found on the way:**
 7. **The cloud longwave oscillates** at steps of 6 hours to 2 days: the
@@ -728,3 +752,6 @@ precipitation ratio. Next: the land–ocean split at L4 (reference land
     continuous fallback blend; `stash@{1}` holds only Godot's import
     changes to `godot/project.godot`.
 16. Rebuild `build` and `build-godot` (Release) after every pull.
+17. **Long runs:** an L4 V8 run takes about 2.5–3 hours, longer than a
+    tool's 2-hour background limit, so start it detached (`setsid
+    nohup … &`) and write its log under `build/inv04/`.
