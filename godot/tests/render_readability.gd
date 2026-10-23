@@ -205,6 +205,19 @@ func _cloud_pairs(output_dir: String) -> Array[Dictionary]:
 				"baseline": baseline_name + ".ppm",
 				"changed": signal_name + ".ppm",
 			})
+		# Cover alone is not a visible cloud: a zero-optical-depth shell must
+		# produce exactly the same pixels as the uncovered surface.
+		_cloud_shell.visible = false
+		await process_frame
+		await process_frame
+		var clear_pixels := _viewport.get_texture().get_image().get_data()
+		_cloud_material.set_shader_parameter("cloud_cover_map", _constant_texture(Color(1.0, 0.0, 0.0, 1.0)))
+		_cloud_material.set_shader_parameter("cloud_thickness_map", _constant_texture(Color(0.0, 0.0, 0.0, 1.0)))
+		_cloud_shell.visible = true
+		await process_frame
+		await process_frame
+		assert(_viewport.get_texture().get_image().get_data() == clear_pixels,
+			"%s style drew a cloud with zero optical depth" % style)
 		# The map style keeps the map readable through its veil: land and
 		# ocean stay apart under overcast.
 		if style == "map":

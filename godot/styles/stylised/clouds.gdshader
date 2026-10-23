@@ -68,7 +68,10 @@ void fragment() {
 	float tau = -THICKNESS_DEPTH * log(1.0 - thickness);
 	float scaled = (1.0 - ASYMMETRY) * tau;
 	float reflectance = scaled / (2.0 + scaled);
-	float density = clamp(0.10 + 1.7 * reflectance, 0.0, 0.97) * mix(1.0, 0.7 + 0.6 * billow, amount);
+	// Preserve the established look at ordinary depths, but do not draw the
+	// opacity floor when the column has no optical depth at all.
+	float density = clamp(0.10 + 1.7 * reflectance, 0.0, 0.97) *
+		smoothstep(0.0, 0.02, thickness) * mix(1.0, 0.7 + 0.6 * billow, amount);
 	float alpha = clamp(patch * density, 0.0, 0.97);
 	if (alpha <= 0.002) {
 		discard;

@@ -55,7 +55,11 @@ void fragment() {
 	float line = 1.0 - smoothstep(width - 0.5 * edge, width + 0.5 * edge, phase);
 	line *= step(1e-4, patch);
 	float gap = mix(0.10, 0.22, step(0.5, thickness));
-	float alpha = max(0.85 * line, gap * patch);
+	// A fractional cover without optical depth must not paint a hatch. Fade
+	// only optically thin clouds; the existing half-cover/overcast signals
+	// retain their full contrast.
+	float optical_visibility = smoothstep(0.0, 0.1, thickness);
+	float alpha = optical_visibility * max(0.85 * line, gap * patch);
 	if (alpha <= 0.002) {
 		discard;
 	}
