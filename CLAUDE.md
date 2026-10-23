@@ -51,7 +51,11 @@ reference land 9.2 K warmer and its ocean 2.4 K colder. The earlier
 L3 measurement was 4.148 K. Its cause, found 2026-10-23: climate mode's
 land air is cold and dry because its transport brings almost no water to
 land (1.55 against reference mode's 23.3 W/m² of latent heat), which
-weakens the greenhouse over land. INV-04's open tasks list what is next.
+weakens the greenhouse over land. Most of the contrast is inside the
+transport's groups; ADR-0027 (accepted 2026-10-23) mixes each group's heat
+(prototype `heat_group_mixing`, still off in the preset; L5/250 528.1 s,
+L6/250 1,878.6 s; equilibrium 3 K cooler). Next: its implementation task
+(preset on, unit test, refit, V8, V9). INV-04's open tasks list the rest.
 The accepted ADR-0024 §9 fallback is on in the Earth-like preset: a coupled
 month over 100 W/m² consistency residual uses the diffusive transport.
 With the refitted pair τ_d = 1.111, κ_v = 0.005555 m²/kg, the L4/150
