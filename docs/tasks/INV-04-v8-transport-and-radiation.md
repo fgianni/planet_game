@@ -590,6 +590,69 @@ temperature and humidity over land and over ocean by band in both modes,
 the heat the transport delivers to land columns against ocean columns,
 and the cloud longwave effect over land.
 
+## Climate mode's land is dry: its transport brings almost no water (2026-10-23)
+
+V8 under ADR-0023 §16.2 with the air and transport over land and ocean
+(commit `1c94d89`; `build/inv04/v8_L4_3yr_air.log`, 170.5 min). It
+reproduces §16.4 exactly (0.935815 K, 0.901286). Over land and over
+ocean, each cell weighted by its land or ocean area:
+
+**Bottom-layer air, land minus ocean (K), by 10° band from 90° S:**
+
+| | 90S | 80S | 70S | 60S | 50S | 40S | 30S | 20S | 10S | 0 | 10N | 20N | 30N | 40N | 50N | 60N | 70N | 80N |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Climate | −3.6 | −20.4 | −15.9 | −23.1 | −22.2 | −15.6 | −8.5 | −9.8 | −10.1 | −10.1 | −11.6 | −11.9 | −13.1 | −23.3 | −22.3 | −16.8 | −16.1 | −20.9 |
+| Reference | +0.5 | −0.8 | −1.9 | −0.2 | +0.2 | −2.1 | −4.6 | −5.5 | −4.5 | −3.9 | −4.6 | −3.2 | −2.2 | −1.6 | −3.6 | −0.8 | +0.3 | −1.0 |
+
+**Over land (per m² of land) and over ocean:**
+
+| | Climate land | Reference land | Climate ocean | Reference ocean |
+|---|---:|---:|---:|---:|
+| Dry heat delivered by the transport (W/m²) | 28.14 | 21.14 | −11.49 | −8.63 |
+| Latent heat delivered (W/m²) | **1.55** | **23.32** | −0.63 | −9.52 |
+| Air humidity, equator band (g/kg) | 6.46 | 12.26 | 12.28 | 16.14 |
+| Cloud longwave effect (W/m²) | **19.52** | **40.22** | 30.65 | 37.87 |
+| Cloud shortwave effect (W/m²) | −21.15 | −27.39 | −58.61 | −42.84 |
+| Precipitation (m/yr) | 0.832 | 1.124 | 1.928 | 1.584 |
+| Convective share | 0.984 | 0.057 | 0.992 | 0.285 |
+
+- **Reference mode's air over land is nearly as warm as over the ocean
+  at the same latitude** (within 0–5.5 K). Climate mode's land air is
+  8.5–23 K colder. So climate mode's land is cold because its air is
+  cold, not only because the surface is poorly coupled to its air.
+- **The difference is water, not dry heat.** Climate mode's transport
+  delivers about as much dry heat to land as reference mode's (28 against
+  21 W/m²), but 15 times less latent heat: 1.55 against 23.3 W/m², a
+  moisture convergence of 0.02 against 0.29 m/yr (Earth's land is about
+  0.27 m/yr). Its land air is about half as humid.
+- **Dry land air means a weak greenhouse over land.** The cloud longwave
+  effect over land is 19.5 W/m² in climate mode against 40.2 in
+  reference mode: 20.7 W/m² of the 30.0 W/m² more that reference land
+  receives from its air (above). Weaker water-vapour absorption adds to
+  it.
+
+**The coast, from the transport's groups** (climate mode, L4, after a
+ten-year spin-up, three years;
+[`tools/v8/land_groups_probe.cpp`](../../tools/v8/land_groups_probe.cpp)).
+Both transports work on groups of about four cells (642 groups of 2 562
+cells at L4). Each group's heat source is applied per m² to all its
+cells, and each cell's humidity is scaled by its group's change, so
+within a group land and ocean do not exchange heat or water.
+
+| Land in | Share of land | Latent delivered (W/m²) | Dry delivered (W/m²) | Land surface (K) | Air q (g/kg) |
+|---|---:|---:|---:|---:|---:|
+| All-land groups (≥ 95 % land) | 0.527 | 3.00 | 31.35 | 282.47 | 4.86 |
+| Mixed groups | 0.473 | −0.04 | 24.76 | 274.16 | 3.41 |
+
+- **Nearly half of climate mode's land shares a group with ocean, and
+  receives no water at all.** Its surface is 8.3 K colder than land in
+  all-land groups. The two sets differ in latitude too, so the 8.3 K is
+  not all the group's effect.
+- **Even land in all-land groups receives 3.0 W/m²,** an eighth of
+  reference land's 23.3 W/m². So the groups are not the whole cause:
+  climate mode's humidity transport also converges little water over
+  land where it can.
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
