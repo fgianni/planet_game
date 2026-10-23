@@ -553,52 +553,59 @@ accepted 2026-10-22). Its baseline (above) is 0.936 K and a 0.901
 precipitation ratio. Next: the land–ocean split at L4 (reference land
 9.2 K warmer, ocean 2.4 K colder).
 
-## Open tasks (2026-10-22)
+## Open tasks (updated 2026-10-23)
+
+**Done since the first list (2026-10-22):**
+- the 20-year spin-up: the gap grows to 4.719 K, as climate mode keeps
+  cooling;
+- the 30-piece case: an oscillation of the lagged cloud longwave at steps
+  of 6 hours to 2 days, not a timestep trend;
+- the heat-only comparison: the diffusive heat transport alone gives
+  2.85 K of the 3.03 K;
+- ADR-0025's options re-measured on the moistening: they stay off;
+- V8 moved to L4 over three years (ADR-0023 §16): 0.936 K, with a 0.901
+  precipitation ratio.
 
 **V8 (this investigation), in order:**
-1. ~~**V8 with a 20-year spin-up.**~~ Done (above): 4.719 K; climate
-   mode keeps cooling, reference mode varies ±0.3 K a year.
-2. **Depending on 1:**
-   - if the gap moves, propose amending ADR-0023 §15's independent
-     starts: spin up the deep ocean once in climate mode, then give both
-     modes that state and their own 10–20-year spin-ups;
-   - if it holds, compare land temperature with snow cover held equal
-     in both modes, to separate the snow-albedo feedback from its cause.
-3. ~~**The 30-piece surface-timestep case.**~~ Explained (above): steps
-   of 6 hours to 2 days oscillate through the lagged cloud longwave; the
-   case is not a timestep trend.
-4. ~~**A heat-only transport comparison.**~~ Done (above): the heat
-   transport alone gives 2.85 K of the 3.03 K. Next: reference mode's
-   poleward heat transport against the coupled circulation's 2.85 PW.
-5. **High cloud:** reference mode's 0.19 against climate mode's 0.03,
-   which gives a 12.3 W/m² longwave cloud difference here (V7's known
-   limitation is about 18 W/m²).
-6. ~~**ADR-0025's cloud work measured again**~~ (above): unchanged by
-   the moistening; it stays off.
+1. **The L4 land–ocean split** (decision in progress): reference land is
+   9.2 K warmer and its ocean 2.4 K colder; climate mode's land has more
+   snow (0.275 against 0.175 of it).
+2. **The poleward heat transport:** whether reference mode's resolved
+   transport is stronger than climate mode's at L4, as at L3, and
+   whether that explains the land.
+3. **The precipitation ratio, 0.901,** at the edge of its ±10 % limit.
+4. **The drift (ADR-0023 §16.3):** both modes are still cooling with the
+   deep ocean after ten years. If it decides the gap, the option is a
+   shared, spun-up deep ocean as the start, by amending ADR-0023 §15.
+5. **L4's convergence is unmeasured:** L5's reference mode costs about
+   four times L4's.
+6. **High cloud:** reference mode's 0.19 against climate mode's 0.03 at
+   L3, a 12.3 W/m² longwave cloud difference.
 
 **Model, found on the way:**
-7. **Snow on land grows without bound** (about 4.4e14 kg a year at L3
+7. **The cloud longwave oscillates** at steps of 6 hours to 2 days: the
+   radiation holds the step's starting cloud water. Neither production
+   step is in that window, but a weather or subcycled step would be.
+8. **Snow on land grows without bound** (about 4.4e14 kg a year at L3
    after 150 years): nothing removes it. A sink, such as ice-sheet flow
    or a cap, needs a decision; it is probably outside P0.
-8. **L6's coupled transport:** a solver that handles the kinks in the
+9. **L6's coupled transport:** a solver that handles the kinks in the
    columns' response (ADR-0024 §9.5) would make the fallback rarer.
-9. **The L4 fit's fragility:** it passes because its cold start has no
-   fallback month. If a refit brings one back, the option is a fallback
-   triggered by the columns failing (INV-03), by amendment.
-10. **`PlanetRun` has no resume constructor,** and PRUN replay cannot
+10. **The L4 fit's fragility:** it passes because its cold start has no
+    fallback month. If a refit brings one back, the option is a fallback
+    triggered by the columns failing (INV-03), by amendment.
+11. **`PlanetRun` has no resume constructor,** and PRUN replay cannot
     start from a snapshot (INV-03).
-11. **M8's known limitations** (ADR-0025 §14): §4.4's zonal cloud
+12. **M8's known limitations** (ADR-0025 §14): §4.4's zonal cloud
     targets (V5) and V7's longwave difference.
 
 **Decisions waiting:**
-12. **ADR-0020** (the planet's read contract) is proposed. It must not
+13. **ADR-0020** (the planet's read contract) is proposed. It must not
     be implemented until it is accepted.
-13. **M9** starts only on explicit request.
+14. **M9** starts only on explicit request.
 
 **Housekeeping:**
-14. Push the local commits.
-15. `git stash`: `stash@{0}` (the continuous fallback blend) can be
-    dropped. `stash@{1}` holds only Godot's import changes to
-    `godot/project.godot`, which are always reverted; it can be dropped
-    too.
+15. `git stash`: both entries can be dropped. `stash@{0}` is the unused
+    continuous fallback blend; `stash@{1}` holds only Godot's import
+    changes to `godot/project.godot`.
 16. Rebuild `build` and `build-godot` (Release) after every pull.
