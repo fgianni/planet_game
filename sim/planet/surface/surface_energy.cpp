@@ -205,6 +205,17 @@ struct BudgetPartial {
     double land_area_m2 = 0.0;
     double ocean_temperature_K_m2 = 0.0;
     double ocean_area_m2 = 0.0;
+    // INV-04: the land tiles' budget and each surface's 10° bands.
+    double land_absorbed_W = 0.0;
+    double land_source_W = 0.0;
+    double land_emitted_W = 0.0;
+    double land_evaporation_W = 0.0;
+    double land_melt_J = 0.0;
+    double land_storage_change_J = 0.0;
+    std::array<double, 18> land_band_K_m2{};
+    std::array<double, 18> land_band_m2{};
+    std::array<double, 18> ocean_band_K_m2{};
+    std::array<double, 18> ocean_band_m2{};
     double min_K = std::numeric_limits<double>::infinity();
     double max_K = -std::numeric_limits<double>::infinity();
     // The atmosphere (ADR-0010).
@@ -301,6 +312,18 @@ struct BudgetPartial {
     a.land_area_m2 += b.land_area_m2;
     a.ocean_temperature_K_m2 += b.ocean_temperature_K_m2;
     a.ocean_area_m2 += b.ocean_area_m2;
+    a.land_absorbed_W += b.land_absorbed_W;
+    a.land_source_W += b.land_source_W;
+    a.land_emitted_W += b.land_emitted_W;
+    a.land_evaporation_W += b.land_evaporation_W;
+    a.land_melt_J += b.land_melt_J;
+    a.land_storage_change_J += b.land_storage_change_J;
+    for (std::size_t band = 0; band < a.land_band_m2.size(); ++band) {
+        a.land_band_K_m2[band] += b.land_band_K_m2[band];
+        a.land_band_m2[band] += b.land_band_m2[band];
+        a.ocean_band_K_m2[band] += b.ocean_band_K_m2[band];
+        a.ocean_band_m2[band] += b.ocean_band_m2[band];
+    }
     a.min_K = std::min(a.min_K, b.min_K);
     a.max_K = std::max(a.max_K, b.max_K);
     a.atmosphere_storage_change_J += b.atmosphere_storage_change_J;
@@ -1371,6 +1394,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
         }
     }
 
+    std::vector<double> land_melt_kg_m2(cells, 0.0);   // INV-04, per cell
     const BudgetPartial total = reduce_deterministic_blocks<BudgetPartial>(
         mesh.blocks(), worker_count, BudgetPartial{},
         [&](std::size_t, const CellBlock& block) {
@@ -1554,6 +1578,16 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 if (land_weight > 0.0) {
                     partial.land_temperature_K_m2 += land_weight * land_step.state.surface_K;
                     partial.land_area_m2 += land_weight;
+                    partial.land_absorbed_W += land_weight * land_step.absorbed_W_m2;
+                    partial.land_source_W += land_weight * land_step.source_W_m2;
+                    partial.land_emitted_W += land_weight * land_step.emitted_W_m2;
+                    partial.land_evaporation_W += land_weight * land_step.evaporation_W_m2;
+                    partial.land_melt_J += land_weight * land_tile.latent_J_m2;
+                    partial.land_storage_change_J += land_weight * land_step.storage_change_J_m2;
+                    partial.land_band_K_m2[band_of_cell[cell]] +=
+                        land_weight * land_step.state.surface_K;
+                    partial.land_band_m2[band_of_cell[cell]] += land_weight;
+                    land_melt_kg_m2[cell] = land_tile.melt_kg_m2;
                     partial.latent_heat_J += land_weight * land_tile.latent_J_m2;
                     partial.snowfall_kg += land_weight * land_tile.snowfall_kg_m2;
                     partial.rain_kg += land_weight * land_tile.rain_kg_m2;
@@ -1572,6 +1606,8 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     const double ice = slow.sea_ice_mass_kg_m2[cell];
                     partial.ocean_temperature_K_m2 += ocean_weight * ocean_K;
                     partial.ocean_area_m2 += ocean_weight;
+                    partial.ocean_band_K_m2[band_of_cell[cell]] += ocean_weight * ocean_K;
+                    partial.ocean_band_m2[band_of_cell[cell]] += ocean_weight;
                     partial.latent_heat_J += ocean_weight * ocean_tile.latent_J_m2;
                     partial.ice_frozen_kg += ocean_weight * ocean_tile.frozen_kg_m2;
                     partial.ice_melted_kg += ocean_weight * ocean_tile.melted_kg_m2;
@@ -1692,6 +1728,22 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 ? total.band_temperature_K_m2[band] / total.band_area_m2[band]
                 : 0.0;
     }
+    for (std::size_t band = 0; band < total.land_band_m2.size(); ++band) {
+        diagnostics.land_zonal_mean_surface_temperature_K[band] =
+            total.land_band_m2[band] > 0.0 ? total.land_band_K_m2[band] / total.land_band_m2[band]
+                                           : 0.0;
+        diagnostics.ocean_zonal_mean_surface_temperature_K[band] =
+            total.ocean_band_m2[band] > 0.0
+                ? total.ocean_band_K_m2[band] / total.ocean_band_m2[band]
+                : 0.0;
+    }
+    diagnostics.land_absorbed_W = total.land_absorbed_W;
+    diagnostics.land_source_W = total.land_source_W;
+    diagnostics.land_emitted_W = total.land_emitted_W;
+    diagnostics.land_evaporation_W = total.land_evaporation_W;
+    diagnostics.land_melt_heat_J = total.land_melt_J;
+    diagnostics.land_storage_change_J = total.land_storage_change_J;
+    diagnostics.land_melt_kg_m2 = std::move(land_melt_kg_m2);
     diagnostics.transport_solve_s = transport_seconds;
     diagnostics.transport_fell_back = fell_back;
     if (coupled) {

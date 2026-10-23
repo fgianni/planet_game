@@ -1719,6 +1719,20 @@ int run_parity(const ReferenceOptions& options) {
         // dynamics moved).
         std::array<double, 17> dry_W_s{};
         std::array<double, 17> latent_W_s{};
+        // INV-04: land and ocean surface temperature by the same bands; the
+        // land tiles' budget (J); and the land's snowmelt (kg), split by
+        // whether the cell's land surface averaged below 273.15 K over the
+        // calendar month (sub-monthly melt) or not.
+        std::array<double, 18> land_band_K_s{};
+        std::array<double, 18> ocean_band_K_s{};
+        double land_absorbed_J = 0.0;
+        double land_source_J = 0.0;
+        double land_emitted_J = 0.0;
+        double land_evaporation_J = 0.0;
+        double land_melt_heat_J = 0.0;
+        double land_storage_J = 0.0;
+        double melt_cold_month_kg = 0.0;
+        double melt_warm_month_kg = 0.0;
     };
     const auto measure = [&](planetsim::SimulationMode mode) {
         planetsim::Scenario scenario;
@@ -1770,6 +1784,27 @@ int run_parity(const ReferenceOptions& options) {
                 (fractions.land_fraction[cell] * (1.0 - land_albedo) +
                  fractions.ocean_fraction[cell] * (1.0 - ocean_albedo));
         }
+        // Per cell, the calendar month's land melt (kg/m²) and land surface
+        // temperature × s, for the sub-monthly melt split.
+        std::vector<double> month_melt_kg_m2(mesh.cell_count(), 0.0);
+        std::vector<double> month_land_K_s(mesh.cell_count(), 0.0);
+        double month_s = 0.0;
+        planetsim::SimulationTick month_end =
+            planetsim::climate_substep_containing(run.tick(), run.parameters()).end_tick;
+        const auto close_month = [&] {
+            for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
+                const double kg = mesh.cells()[cell].area_m2 * fractions.land_fraction[cell] *
+                                  month_melt_kg_m2[cell];
+                if (month_s > 0.0 && month_land_K_s[cell] / month_s < 273.15) {
+                    record.melt_cold_month_kg += kg;
+                } else {
+                    record.melt_warm_month_kg += kg;
+                }
+                month_melt_kg_m2[cell] = 0.0;
+                month_land_K_s[cell] = 0.0;
+            }
+            month_s = 0.0;
+        };
         const auto start = std::chrono::steady_clock::now();
         const planetsim::SimulationTick end =
             run.tick() + static_cast<planetsim::SimulationTick>(std::llround(options.days * 1'440.0));
@@ -1829,6 +1864,29 @@ int run_parity(const ReferenceOptions& options) {
                 record.zonal_K_s[band] += step.zonal_mean_surface_temperature_K[band] * step.duration_s;
             }
             record.p2_K_s += step.p2_surface_temperature_K * step.duration_s;
+            for (std::size_t band = 0; band < record.land_band_K_s.size(); ++band) {
+                record.land_band_K_s[band] +=
+                    step.land_zonal_mean_surface_temperature_K[band] * step.duration_s;
+                record.ocean_band_K_s[band] +=
+                    step.ocean_zonal_mean_surface_temperature_K[band] * step.duration_s;
+            }
+            record.land_absorbed_J += step.land_absorbed_W * step.duration_s;
+            record.land_source_J += step.land_source_W * step.duration_s;
+            record.land_emitted_J += step.land_emitted_W * step.duration_s;
+            record.land_evaporation_J += step.land_evaporation_W * step.duration_s;
+            record.land_melt_heat_J += step.land_melt_heat_J;
+            record.land_storage_J += step.land_storage_change_J;
+            const auto& land_K = run.state().slow().land_surface_temperature_K;
+            for (std::size_t cell = 0; cell < step.land_melt_kg_m2.size(); ++cell) {
+                month_melt_kg_m2[cell] += step.land_melt_kg_m2[cell];
+                month_land_K_s[cell] += static_cast<double>(land_K[cell]) * step.duration_s;
+            }
+            month_s += step.duration_s;
+            if (run.tick() >= month_end) {
+                close_month();
+                month_end = planetsim::climate_substep_containing(run.tick(), run.parameters())
+                                .end_tick;
+            }
             for (std::size_t boundary = 0; boundary < record.dry_W_s.size(); ++boundary) {
                 if (reference && run.dynamics() != nullptr) {
                     record.dry_W_s[boundary] +=
@@ -1861,6 +1919,9 @@ int run_parity(const ReferenceOptions& options) {
                 record.worst_energy_ratio, step.closure_residual_J() / step.closure_gate_J());
             record.worst_water_ratio = std::max(
                 record.worst_water_ratio, step.water_cycle_residual_kg() / step.water_cycle_gate_kg());
+        }
+        if (month_s > 0.0) {
+            close_month();   // a partial last month
         }
         record.wall_s =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
@@ -1913,6 +1974,34 @@ int run_parity(const ReferenceOptions& options) {
         for (const double band_K_s : record.zonal_K_s) {
             std::cout << ' ' << std::setprecision(5) << band_K_s / record.seconds;
         }
+        std::cout << "\n  land_zonal_mean_K=";
+        for (const double band_K_s : record.land_band_K_s) {
+            std::cout << ' ' << std::setprecision(5) << band_K_s / record.seconds;
+        }
+        std::cout << "\n  ocean_zonal_mean_K=";
+        for (const double band_K_s : record.ocean_band_K_s) {
+            std::cout << ' ' << std::setprecision(5) << band_K_s / record.seconds;
+        }
+        // The land tiles' budget per m² of land: absorbed + source − emitted
+        // − evaporation − melt − storage should close to rounding.
+        const double land_s = land_area * record.seconds;
+        const double land_residual = record.land_absorbed_J + record.land_source_J -
+                                     record.land_emitted_J - record.land_evaporation_J -
+                                     record.land_melt_heat_J - record.land_storage_J;
+        std::cout << std::setprecision(6) << "\n  land_absorbed_W_m2=" << record.land_absorbed_J / land_s
+                  << " land_source_W_m2=" << record.land_source_J / land_s
+                  << " land_emitted_W_m2=" << record.land_emitted_J / land_s
+                  << " land_evaporation_W_m2=" << record.land_evaporation_J / land_s
+                  << " land_melt_W_m2=" << record.land_melt_heat_J / land_s
+                  << " land_storage_W_m2=" << record.land_storage_J / land_s
+                  << " land_budget_residual_W_m2=" << land_residual / land_s
+                  << " melt_m_yr=" << (record.melt_cold_month_kg + record.melt_warm_month_kg) /
+                                          (land_area * 1000.0) / record.seconds * 365.25 * 86'400.0
+                  << " melt_in_cold_months_share="
+                  << (record.melt_cold_month_kg + record.melt_warm_month_kg > 0.0
+                          ? record.melt_cold_month_kg /
+                                (record.melt_cold_month_kg + record.melt_warm_month_kg)
+                          : 0.0);
         std::cout << "\n  northward_dry_PW=";
         for (const double value : record.dry_W_s) {
             std::cout << ' ' << std::setprecision(3) << value / record.seconds * 1e-15;

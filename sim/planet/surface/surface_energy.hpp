@@ -11,6 +11,7 @@
 #include <array>
 #include <cstddef>
 #include <functional>
+#include <vector>
 
 namespace planetsim {
 
@@ -277,6 +278,20 @@ struct SurfaceEnergyDiagnostics {
     // Area- and tile-weighted surface temperature of the 10° bands from
     // 90° S (0 for a band with no area).
     std::array<double, 18> zonal_mean_surface_temperature_K{};
+    // INV-04, read-only: the same bands for each surface (0 where it has no
+    // area), and the land tiles' budget, Σ A f over the step: absorbed
+    // sunlight, the source received (ColumnStepResult::source_W_m2),
+    // emission, evaporation's latent heat, the heat melting took and the
+    // storage change; and each cell's melt, kg/m² (land tile).
+    std::array<double, 18> land_zonal_mean_surface_temperature_K{};
+    std::array<double, 18> ocean_zonal_mean_surface_temperature_K{};
+    double land_absorbed_W = 0.0;
+    double land_source_W = 0.0;
+    double land_emitted_W = 0.0;
+    double land_evaporation_W = 0.0;
+    double land_melt_heat_J = 0.0;
+    double land_storage_change_J = 0.0;
+    std::vector<double> land_melt_kg_m2;
     // The P2(sin φ) component of the area- and tile-weighted surface
     // temperature, Σ w T P2 / Σ w P2² (K); negative when the poles are cold.
     double p2_surface_temperature_K = 0.0;
