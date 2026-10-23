@@ -192,6 +192,10 @@ void advection_diffusion_source(const TransportGraph& graph, const AdvectionDiff
 struct CirculationTransport {
     bool active = false;
     AdvectionDiffusion transport;
+    // The azonal balance's layer mass fluxes, as `transport.outflow_kg_s`
+    // (kg/s per CSR entry, layer-major), which leaves them out (§17.6).
+    // Used only by INV-04's sensitivity tests of the humidity transport.
+    std::vector<double> azonal_outflow_kg_s;
     // Per fine cell: Φ_s of the layers' dry static energy (the winds'
     // orography, as the fluxes'; ADR-0011 §13).
     std::vector<double> surface_geopotential_m2_s2;

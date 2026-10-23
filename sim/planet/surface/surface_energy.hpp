@@ -71,6 +71,12 @@ struct SurfaceEnergyParameters {
     // consistency residual R_f takes ADR-0009's diffusive transport instead,
     // as a failed circulation month does (ADR-0011 §17); 0: never.
     double transport_fallback_residual_W_m2 = 0.0;
+    // INV-04 sensitivity tests of the humidity transport, off by default
+    // (not in any preset or manifest): the share of the azonal balance's
+    // mass fluxes that also carries the water (not the heat, ADR-0011
+    // §17.6), and a factor on the water's eddy exchange.
+    double humidity_azonal_share = 0.0;
+    double humidity_eddy_factor = 1.0;
 };
 
 // The bulk transfer coefficients of evaporation (ADR-0021 §4.3): the tiles'

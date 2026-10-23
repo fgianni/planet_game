@@ -616,9 +616,28 @@ struct CellSurface {
 // (ADR-0024 §4.3): L_v times the water its eddies brought, per unit area,
 // from the solution; antisymmetric per face, so Σ A E = 0 to rounding.
 [[nodiscard]] HumidityTransportDiagnostics transport_humidity(
-    const PlanetMesh& mesh, SlowState& slow, const AdvectionDiffusion& transport,
-    double gravity_m_s2, double dt_s, std::size_t worker_count,
-    std::vector<double>* eddy_latent_W_m2 = nullptr) {
+    const PlanetMesh& mesh, SlowState& slow, const CirculationTransport& circulation,
+    const SurfaceEnergyParameters& surface, double gravity_m_s2, double dt_s,
+    std::size_t worker_count, std::vector<double>* eddy_latent_W_m2 = nullptr) {
+    AdvectionDiffusion adjusted;
+    const bool sensitivity =
+        surface.humidity_azonal_share != 0.0 || surface.humidity_eddy_factor != 1.0;
+    if (sensitivity) {
+        adjusted = circulation.transport;
+        for (double& g : adjusted.conductance_W_K) {
+            g *= surface.humidity_eddy_factor;
+        }
+        if (surface.humidity_azonal_share != 0.0) {
+            if (circulation.azonal_outflow_kg_s.size() != adjusted.outflow_kg_s.size()) {
+                throw std::invalid_argument("the circulation has no azonal fluxes");
+            }
+            for (std::size_t k = 0; k < adjusted.outflow_kg_s.size(); ++k) {
+                adjusted.outflow_kg_s[k] +=
+                    surface.humidity_azonal_share * circulation.azonal_outflow_kg_s[k];
+            }
+        }
+    }
+    const AdvectionDiffusion& transport = sensitivity ? adjusted : circulation.transport;
     const std::vector<std::size_t>* group_map = nullptr;
     const TransportGraph& graph = agglomerated_transport_graph(mesh, group_map);
     const std::vector<std::size_t>& group_of_cell = *group_map;
@@ -830,7 +849,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             const auto q = slow.atmosphere_specific_humidity_kg_kg.layer(k);
             std::copy(q.begin(), q.end(), before.begin() + static_cast<std::ptrdiff_t>(k * cells));
         }
-        humidity_transport = transport_humidity(mesh, slow, circulation->transport,
+        humidity_transport = transport_humidity(mesh, slow, *circulation, surface,
                                                 surface_gravity_m_s2(parameters), dt_s,
                                                 worker_count,
                                                 moist_eddies ? &eddy_latent : nullptr);

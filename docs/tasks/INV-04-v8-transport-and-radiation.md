@@ -703,6 +703,48 @@ all-ocean groups):
   it the land's greenhouse.
 - Read-only: the L3 state hash and the tests are unchanged.
 
+## Sensitivity tests: more water for land does not warm it relative to the ocean (2026-10-23)
+
+Two off-by-default knobs on the humidity transport only (not in any
+preset or manifest): `SurfaceEnergyParameters::humidity_azonal_share`,
+the share of the azonal balance's mass fluxes that also carries the
+water (ADR-0011 §17.6 keeps them out of the heat), and
+`humidity_eddy_factor`, a factor on the water's eddy exchange. Both act
+through the spin-up. Climate mode, L4, ten-year spin-up, then three
+years (`./build/land_moisture_split_probe <share> <factor>`, 8 s each;
+log `build/inv04/humidity_sensitivity.log`). Ocean temperatures follow
+from the mean and land at 0.29 land.
+
+| Azonal share | Eddy factor | Mean (K) | Land (K) | Ocean (K) | Land − ocean (K) | Land air q (g/kg) | Latent to land (W/m²) |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 1 | 290.36 | 278.55 | 295.18 | −16.6 | 4.18 | 1.49 |
+| 0.1 | 1 | 295.30 | 283.55 | 300.10 | −16.6 | 6.72 | 0.93 |
+| 0.3 | 1 | 297.00 | 285.59 | 301.65 | −16.1 | 8.55 | 1.33 |
+| 1 | 1 | 297.47 | 286.95 | 301.76 | −14.8 | 9.79 | 2.27 |
+| 0 | 2 | 289.93 | 277.68 | 294.93 | −17.3 | 4.11 | 1.96 |
+| 0 | 4 | 289.49 | 277.15 | 294.53 | −17.4 | 4.06 | 2.35 |
+| 0 | 10 | 288.77 | 276.30 | 293.86 | −17.6 | 3.99 | 2.72 |
+| Reference mode | | 291.30 | 287.78 | 292.73 | −4.9 | | 23.3 |
+
+No fallback months in any run.
+
+- **The azonal flow's water warms the whole planet,** by 5–7 K: its
+  vertical fluxes lift vapour into the upper layers, a stronger
+  greenhouse everywhere. Land air becomes more than twice as humid, yet
+  land stays 15–17 K colder than the ocean (reference: 4.9 K). A refit of
+  the radiation would undo the global warming and leave the contrast.
+- **Stronger water eddies cool the planet slightly** and do not humidify
+  land air: the eddies' conductance follows the zonal model's
+  diffusivity, small in the tropics where 55 % of the land is, and at
+  0–30° N they take water from land.
+- **So the land's water is not the whole cause.** The land–ocean
+  contrast of the air (8.5–23 K in climate mode, 0–5.5 K in reference
+  mode, above) needs heat moved between land and ocean at the same
+  latitude too. Climate mode has no such transport: its mean flow is the
+  zonal-mean overturning (meridional only), its eddies act at the group
+  level, and within a group land and ocean exchange nothing. Reference
+  mode's zonal winds carry air across a continent in days.
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
@@ -761,8 +803,10 @@ were) before proposing an ADR.
    since ADR-0011 §17.6 it is the zonal-mean overturning alone; the
    eddies bring nine tenths of the 1.5 W/m².
 2. **Climate-only sensitivity tests** (seconds each at L4; off by
-   default): mixing heat and water within a transport group, and a
-   stronger humidity transport onto land. The target is reference
+   default): ~~a stronger humidity transport onto land~~ (done above: it
+   does not close the land–ocean contrast); next, heat and water moved
+   along latitude circles (the zonal-mean zonal wind's advection), and
+   mixing within a transport group. The target is reference
    land's numbers: about 23 W/m² of latent heat delivered, about 12 g/kg
    of equatorial humidity, and the cloud longwave about 40 W/m².
 3. **An ADR proposal** for whichever change works, then a refit and V8
