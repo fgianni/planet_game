@@ -101,6 +101,11 @@ over 250 years"):
   fit would need a refit.
 - **V5 passes:** one and four workers give the same state hash at L4.
 
+With one update a month (two solves, the first solve's last columns
+reused; INV-04, "One update a month"): L4's within-group contrast −0.4 K
+and V8's gap 0.460 K at 10.2 s; **L5 528.1 s (passes), L6 2 200.9 s
+(fails by 9 %)**; the equilibrium still 285.4 K.
+
 ## 5. Recommendation
 
 **Option 1** (or 2, which adds the water for consistency at no cost).
@@ -145,7 +150,9 @@ advection is the next candidate if V8 still fails after options 1–2.
 
 - ~~L5 and L6 at 250 years with option 1~~ (done, §4: over budget).
 - ~~V5 on one and four workers~~ (done, §4: passes).
-- A cheaper form of option 1, measured against V4.
+- A cheaper form of option 1, measured against V4: one update a month
+  (L6 9 % over); next, the second solve started from the first's
+  sources.
 
 ## 9. Tasks
 

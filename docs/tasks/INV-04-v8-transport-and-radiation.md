@@ -881,6 +881,28 @@ month.
   same means (log `build/inv04/group_mixing_determinism.log`; the probe
   now takes `PROBE_WORKERS` and prints the hash).
 
+### One update a month (2026-10-23)
+
+The prototype now does two solves, not three, with δ updated once
+between them, and without its own column pass: a converged solve's last
+response is at its last iterate, so its cells' θ_c and s_c are reused
+(the columns are solved again only after an unconverged solve). Off,
+it is bit-identical (L4: 290.361 K, as before). Logs
+`build/inv04/group_mixing_one_update_performance.log`.
+
+| Level | Mean (K) | Land − ocean (K) | Air within mixed groups (K) | Air between groups (K) | Precipitation (m/yr) | Fallback months | Wall (s) | Budget (s) |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 4 (ten years, then three) | 290.835 | −9.0 | −0.4 | −9.6 | 1.609 | 0 | 10.2 | |
+| 5 (250 years) | 285.363 | −8.7 | −0.1 | −8.0 | 1.451 | 0 | 528.1 | 607.5 |
+| 6 (250 years) | 285.376 | −8.3 | −0.1 | −7.0 | 1.448 | 0 | **2 200.9** | 2 025 |
+
+- One update does what three solves did: the within-group contrast is
+  −0.1 to −0.4 K, and V8's L4 gap would be 0.460 K.
+- **L5 passes its budget** (1.8 times its baseline); **L6 fails by 9 %**
+  (2.07 times INV-03's 1 061.1 s baseline, not rerun). The second solve
+  starts again from the floor, as every coupled solve does.
+- The equilibrium still cools 3 K (L5: 285.36 K against 288.38 K).
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
@@ -946,7 +968,9 @@ were) before proposing an ADR.
    within a transport group~~ (prototype above, chosen with the user:
    V8's gap 0.37–0.48 K without a refit); ~~its cost at L5 and L6~~
    (done above: 2.7–2.8 times the baselines, over both budgets, and
-   −3.2 K in equilibrium); next, a cheaper form, with the user. The target is reference
+   −3.2 K in equilibrium); a cheaper form, one update a month (done
+   above: L5 within budget, L6 9 % over); next, the second solve started
+   from the first's sources. The target is reference
    land's numbers: about 23 W/m² of latent heat delivered, about 12 g/kg
    of equatorial humidity, and the cloud longwave about 40 W/m².
 3. **An ADR proposal** for whichever change works, then a refit and V8

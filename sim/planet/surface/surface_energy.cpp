@@ -1299,25 +1299,35 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             // INV-04's heat_group_mixing: each cell's shift δ from its
             // group's source, held fixed through a coupled solve and updated
             // between solves, δ ← δ + m (θ* − θ_c) / s_c from the cells at
-            // H + δ (zero when off).
+            // H + δ (zero when off). A converged solve's last response is at
+            // its last iterate, so its cells' θ_c and s_c are used as they
+            // are; otherwise the columns are solved again at H + δ.
             std::vector<double> cell_shift(cells, 0.0);
             const double mixing = surface.heat_group_mixing;
-            const auto update_shift = [&](const Field2D<double>& source) {
+            const auto update_shift = [&](const Field2D<double>& source, bool converged) {
                 std::vector<double> theta(cells, missing);
                 std::vector<double> theta_slope(cells, missing);
-                for_each_deterministic_block(
-                    mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
-                        for (std::size_t cell = block.begin; cell < block.end; ++cell) {
-                            CellSurface cell_surface;
-                            const auto solved = solve_trial_column(
-                                cell, source[group_of_cell[cell]] + cell_shift[cell], cell_surface);
-                            if (solved) {
-                                theta[cell] = moist_eddies ? solved->moist_enthalpy_K : solved->theta_K;
-                                theta_slope[cell] = moist_eddies ? solved->moist_enthalpy_slope_K_m2_W
-                                                                 : solved->theta_slope_K_m2_W;
+                if (converged) {
+                    theta = cell_air;
+                    theta_slope = cell_slope;
+                } else {
+                    for_each_deterministic_block(
+                        mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+                            for (std::size_t cell = block.begin; cell < block.end; ++cell) {
+                                CellSurface cell_surface;
+                                const auto solved = solve_trial_column(
+                                    cell, source[group_of_cell[cell]] + cell_shift[cell],
+                                    cell_surface);
+                                if (solved) {
+                                    theta[cell] =
+                                        moist_eddies ? solved->moist_enthalpy_K : solved->theta_K;
+                                    theta_slope[cell] = moist_eddies
+                                                            ? solved->moist_enthalpy_slope_K_m2_W
+                                                            : solved->theta_slope_K_m2_W;
+                                }
                             }
-                        }
-                    });
+                        });
+                }
                 for (std::size_t group = 0; group < groups; ++group) {
                     double weighted = 0.0;
                     double weight = 0.0;
@@ -1447,17 +1457,19 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             coupled_settings.newton_tolerance_W_m2 = coupled_newton_tolerance_W_m2;
             // An inexact Newton: each linear solve to 1e-3 of its residual.
             coupled_settings.cg_relative_tolerance = 1e-3;
-            // With heat_group_mixing, three solves, δ updated after the first
-            // two; the last solve's δ is the one applied. A pass whose solve
-            // ends with a larger residual than the one before is undone.
-            const int passes = mixing != 0.0 ? 3 : 1;
+            // With heat_group_mixing, two solves, δ updated after the first;
+            // the last solve's δ is the one applied. A pass whose solve ends
+            // with a larger residual than the one before is undone.
+            const int passes = mixing != 0.0 ? 2 : 1;
             std::vector<double> previous_shift;
             AdvectionDiffusionResult previous_solve;
             for (int pass = 0; pass < passes; ++pass) {
                 if (pass > 0) {
                     previous_shift = cell_shift;
                     previous_solve = coupled_solve;
-                    update_shift(coupled_solve.source_W_m2);
+                    update_shift(coupled_solve.source_W_m2,
+                                 coupled_solve.consistency_residual_W_m2 <=
+                                     coupled_newton_tolerance_W_m2);
                 }
                 if (eddy_latent.empty()) {
                     coupled_solve = solve_implicit_advection_diffusion(
