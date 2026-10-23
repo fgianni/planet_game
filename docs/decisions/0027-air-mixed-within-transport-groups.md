@@ -1,6 +1,6 @@
 # ADR-0027 — The air mixed within the climate transport's groups
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-23, option 1 in its cheaper form, §4–§5)
 - **Date:** 2026-10-23
 - **Milestone:** P0, between M8 and M9 (investigation INV-04)
 - **Context documents:** `docs/tasks/INV-04-v8-transport-and-radiation.md`
@@ -166,6 +166,8 @@ advection is the next candidate if V8 still fails after options 1–2.
 ## 9. Tasks
 
 1. INV-04: §8's measurements, recorded.
-2. A decision with the user, then an implementation task (the
-   prototype's knob becomes the preset's, a unit test, the refit if
-   needed, V8).
+2. ~~A decision with the user~~ (accepted 2026-10-23: option 1, m = 1,
+   one update a month with the second solve started from the first's
+   sources). Next, the implementation task: the knob on in the
+   Earth-like preset, V2's unit test, the refit of τ_d and κ_v (V6), V8
+   (V3) and V9.

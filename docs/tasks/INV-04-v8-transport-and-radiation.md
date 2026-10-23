@@ -989,8 +989,9 @@ were) before proposing an ADR.
    (done above: 2.7–2.8 times the baselines, over both budgets, and
    −3.2 K in equilibrium); a cheaper form, one update a month (done
    above: L5 within budget), with the second solve started from the
-   first's sources (L6 within budget, 1 878.6 s); next, the refit for the
-   3 K cooler equilibrium. The target is reference
+   first's sources (L6 within budget, 1 878.6 s). **ADR-0027 accepted
+   (2026-10-23, option 1 in this form).** Next: its implementation task
+   (preset on, unit test, refit for the 3 K cooler equilibrium, V8, V9). The target is reference
    land's numbers: about 23 W/m² of latent heat delivered, about 12 g/kg
    of equatorial humidity, and the cloud longwave about 40 W/m².
 3. **An ADR proposal** for whichever change works, then a refit and V8
