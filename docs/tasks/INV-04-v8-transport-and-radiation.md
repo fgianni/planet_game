@@ -899,7 +899,9 @@ it is bit-identical (L4: 290.361 K, as before). Logs
 - One update does what three solves did: the within-group contrast is
   −0.1 to −0.4 K, and V8's L4 gap would be 0.460 K.
 - **L5 passes its budget** (1.8 times its baseline); **L6 fails by 9 %**
-  (2.07 times INV-03's 1 061.1 s baseline, not rerun). The second solve
+  (2.07 times INV-03's 1 061.1 s baseline, not rerun). The L6 time is an
+  upper bound: a Godot process using about seven cores ran through its
+  last 16 of 37 minutes; to be rerun on a quiet machine. The second solve
   starts again from the floor, as every coupled solve does.
 - The equilibrium still cools 3 K (L5: 285.36 K against 288.38 K).
 
