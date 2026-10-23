@@ -1251,6 +1251,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
         // Below this source a cell's mean surface temperature would fall under
         // 100 K; a group takes the highest floor of its cells.
         Field2D<double> floor(groups, -std::numeric_limits<double>::infinity());
+        std::vector<double> cell_floor_W_m2(cells, -std::numeric_limits<double>::infinity());
         for (std::size_t cell = 0; cell < cells && layers > 0U; ++cell) {
             // Under an atmosphere, the source at which the bottom layer,
             // which receives it (ADR-0010 §11), would balance at 100 K with
@@ -1265,6 +1266,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                 columns[cell],
                 std::span<const double>(layers_before.data() + cell * layers, layers), dt_s,
                 100.0, cell_surface);
+            cell_floor_W_m2[cell] = cell_floor;
             auto& group_floor = floor[group_of_cell[cell]];
             group_floor = std::max(group_floor, cell_floor);
         }
@@ -1294,6 +1296,65 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             }
             std::vector<double> cell_energy(layers * cells, 0.0);
             std::vector<double> cell_energy_slope(layers * cells, 0.0);
+            // INV-04's heat_group_mixing: each cell's shift δ from its
+            // group's source, held fixed through a coupled solve and updated
+            // between solves, δ ← δ + m (θ* − θ_c) / s_c from the cells at
+            // H + δ (zero when off).
+            std::vector<double> cell_shift(cells, 0.0);
+            const double mixing = surface.heat_group_mixing;
+            const auto update_shift = [&](const Field2D<double>& source) {
+                std::vector<double> theta(cells, missing);
+                std::vector<double> theta_slope(cells, missing);
+                for_each_deterministic_block(
+                    mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+                        for (std::size_t cell = block.begin; cell < block.end; ++cell) {
+                            CellSurface cell_surface;
+                            const auto solved = solve_trial_column(
+                                cell, source[group_of_cell[cell]] + cell_shift[cell], cell_surface);
+                            if (solved) {
+                                theta[cell] = moist_eddies ? solved->moist_enthalpy_K : solved->theta_K;
+                                theta_slope[cell] = moist_eddies ? solved->moist_enthalpy_slope_K_m2_W
+                                                                 : solved->theta_slope_K_m2_W;
+                            }
+                        }
+                    });
+                for (std::size_t group = 0; group < groups; ++group) {
+                    double weighted = 0.0;
+                    double weight = 0.0;
+                    for (std::size_t k = member_offset[group]; k < member_offset[group + 1U]; ++k) {
+                        const std::size_t cell = members[k];
+                        if (std::isfinite(theta[cell]) && theta_slope[cell] > 0.0) {
+                            const double w = mesh.cells()[cell].area_m2 / theta_slope[cell];
+                            weighted += w * theta[cell];
+                            weight += w;
+                        }
+                    }
+                    const double target = weight > 0.0 ? weighted / weight : 0.0;
+                    // The update, scaled by λ ≤ 1 (which keeps Σ A δ = 0) so
+                    // that no cell's source falls more than half way to its
+                    // floor.
+                    double scale = 1.0;
+                    for (std::size_t k = member_offset[group]; k < member_offset[group + 1U]; ++k) {
+                        const std::size_t cell = members[k];
+                        if (std::isfinite(theta[cell]) && theta_slope[cell] > 0.0) {
+                            const double change =
+                                mixing * (target - theta[cell]) / theta_slope[cell];
+                            const double room =
+                                source[group] + cell_shift[cell] - cell_floor_W_m2[cell];
+                            if (change < 0.0 && std::isfinite(room)) {
+                                scale = std::min(scale, std::max(0.0, 0.5 * room / -change));
+                            }
+                        }
+                    }
+                    for (std::size_t k = member_offset[group]; k < member_offset[group + 1U]; ++k) {
+                        const std::size_t cell = members[k];
+                        if (std::isfinite(theta[cell]) && theta_slope[cell] > 0.0) {
+                            cell_shift[cell] +=
+                                scale * mixing * (target - theta[cell]) / theta_slope[cell];
+                        }
+                    }
+                }
+            };
             const AdvectionResponse coupled_response =
                 [&](const Field2D<double>& source, Field2D<double>& mean, Field2D<double>& slope,
                     std::vector<double>& energy, std::vector<double>& energy_slope) {
@@ -1308,7 +1369,8 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                                 CellSurface cell_surface;
                                 const auto solved = solve_trial_column(
-                                    cell, source[group_of_cell[cell]], cell_surface);
+                                    cell, source[group_of_cell[cell]] + cell_shift[cell],
+                                    cell_surface);
                                 if (!solved) {
                                     cell_air[cell] = missing;
                                     cell_slope[cell] = missing;
@@ -1385,22 +1447,42 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             coupled_settings.newton_tolerance_W_m2 = coupled_newton_tolerance_W_m2;
             // An inexact Newton: each linear solve to 1e-3 of its residual.
             coupled_settings.cg_relative_tolerance = 1e-3;
-            if (eddy_latent.empty()) {
-                coupled_solve = solve_implicit_advection_diffusion(
-                    graph, circulation->transport, floor, coupled_response, coupled_settings,
-                    worker_count);
-            } else {
-                AdvectionDiffusion moist_transport = circulation->transport;
-                moist_transport.eddy_latent_W_m2 = eddy_latent;   // kept for the fallback
-                coupled_solve = solve_implicit_advection_diffusion(
-                    graph, moist_transport, floor, coupled_response, coupled_settings,
-                    worker_count);
+            // With heat_group_mixing, three solves, δ updated after the first
+            // two; the last solve's δ is the one applied. A pass whose solve
+            // ends with a larger residual than the one before is undone.
+            const int passes = mixing != 0.0 ? 3 : 1;
+            std::vector<double> previous_shift;
+            AdvectionDiffusionResult previous_solve;
+            for (int pass = 0; pass < passes; ++pass) {
+                if (pass > 0) {
+                    previous_shift = cell_shift;
+                    previous_solve = coupled_solve;
+                    update_shift(coupled_solve.source_W_m2);
+                }
+                if (eddy_latent.empty()) {
+                    coupled_solve = solve_implicit_advection_diffusion(
+                        graph, circulation->transport, floor, coupled_response, coupled_settings,
+                        worker_count);
+                } else {
+                    AdvectionDiffusion moist_transport = circulation->transport;
+                    moist_transport.eddy_latent_W_m2 = eddy_latent;   // kept for the fallback
+                    coupled_solve = solve_implicit_advection_diffusion(
+                        graph, moist_transport, floor, coupled_response, coupled_settings,
+                        worker_count);
+                }
+                if (pass > 0 && !(coupled_solve.consistency_residual_W_m2 <=
+                                  std::max(previous_solve.consistency_residual_W_m2,
+                                           coupled_newton_tolerance_W_m2))) {
+                    cell_shift = std::move(previous_shift);
+                    coupled_solve = std::move(previous_solve);
+                    break;
+                }
             }
             transport_seconds = std::chrono::duration<double>(
                                     std::chrono::steady_clock::now() - solve_start)
                                     .count();
             for (std::size_t cell = 0; cell < cells; ++cell) {
-                transport[cell] = coupled_solve.source_W_m2[group_of_cell[cell]];
+                transport[cell] = coupled_solve.source_W_m2[group_of_cell[cell]] + cell_shift[cell];
             }
             // ADR-0024 §9: an unconverged coupled month takes ADR-0009's
             // diffusive transport, as a failed circulation month does

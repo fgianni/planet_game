@@ -792,6 +792,58 @@ No fallback months in any run.
   That changes the transport's distribution of H (ADR-0009 §12) and the
   coupled solve's response, so it needs a decision before a prototype.
 
+## Heat mixed within the transport groups (2026-10-23)
+
+A prototype, off by default (`SurfaceEnergyParameters::heat_group_mixing`,
+m; coupled months only). A cell's source is its group's H plus a shift δ,
+held fixed through each coupled solve and updated between three solves:
+δ ← δ + λ m (θ* − θ_c) / s_c, with θ_c and s_c = dθ_c/dh the cell's
+column at H + δ (θ_c or, with moist eddies, T_m) and
+θ* = Σ A θ_c / s_c / Σ A / s_c, so Σ A δ = 0 and energy is unchanged.
+λ ≤ 1 keeps every cell's source at least half way above its own floor
+(its bottom layer at 100 K). A pass whose solve ends with a larger
+consistency residual than the one before is undone. At m = 1 a group's
+cells share one θ_c to first order.
+
+Two first versions failed and are not kept: recomputing δ inside every
+Newton response (24 Newton iterations a month, many months at the cap
+with residuals of 2–19 W/m²), and the fixed-point without the floor and
+undo (one month's solve diverged to 28 771 W/m² with the zonal advection
+on).
+
+Climate mode, L4, ten-year spin-up, then three years, as V8's climate
+half (the baseline reproduces it: 290.361 K, 1.610 m/yr). Reference mode
+does not use this transport and V8 spins each mode up on its own, so its
+291.295 K and 1.451 m/yr are unchanged; the V8 columns use them. Log
+`build/inv04/group_mixing_sensitivity.log`.
+
+| Zonal | Water mixing | Heat mixing | Mean (K) | Land (K) | Land − ocean (K) | Air within mixed groups (K) | Air between groups (K) | V8 gap (K) | Precipitation ratio | Newton (36 months) | Wall (s) |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 0 | 0 | 290.361 | 278.55 | −16.6 | −30.2 | −10.7 | 0.934 | 0.901 | 132 | 7.7 |
+| 0 | 0 | 0.5 | 290.927 | 284.39 | −9.2 | −1.3 | −9.6 | 0.368 | 0.901 | 141 | 13.6 |
+| 0 | 0 | 1 | 290.819 | 284.50 | −8.9 | −0.1 | −9.5 | 0.476 | 0.902 | 147 | 12.9 |
+| 0 | 1 | 1 | 290.906 | 284.53 | −9.0 | −0.5 | −9.5 | 0.389 | 0.905 | 151 | 12.0 |
+| 1 | 0 | 1 | 293.923 | 289.34 | −6.5 | −0.5 | −6.6 | −2.628 | 0.890 | 299 | 38.5 |
+| 1 | 1 | 1 | 293.959 | 289.39 | −6.4 | −0.7 | −6.6 | −2.664 | 0.888 | 306 | 39.9 |
+| Reference mode | | | 291.295 | 287.78 | −4.9 | | | | | | |
+
+Every month converges below 1e-4 W/m²; no fallback months; energy and
+water gates pass in every measured month.
+
+- **Mixing the heat within groups removes the within-group contrast**
+  (−30 to −0.1 K) and halves land's deficit against the ocean (−16.6 to
+  −8.9 K). The global mean hardly moves (+0.5 K), so **V8's gap falls
+  from 0.93 K to 0.37–0.48 K without a refit,** near its 0.3 K limit.
+- **The remaining land–ocean contrast is between groups** (−9.5 K);
+  the zonal wind's advection takes it to −6.6 K, but warms the planet
+  3 K, which would need a refit, and costs three times the Newton
+  iterations.
+- **The precipitation ratio does not move** (0.89–0.91): it is the
+  global evaporation, which the radiation sets, not where the water
+  goes.
+- **Cost at L4:** 1.7 times the baseline's wall time (two more coupled
+  solves and a column pass each month). L5 and L6 are measured below.
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
@@ -853,8 +905,9 @@ were) before proposing an ADR.
    default): ~~a stronger humidity transport onto land~~ (done above: it
    does not close the land–ocean contrast); ~~heat and water moved
    along latitude circles, and water mixed within a group~~ (done above:
-   together −16.6 to −11.1 K of reference mode's −4.9 K); next, needing a
-   decision: heat mixed within a transport group. The target is reference
+   together −16.6 to −11.1 K of reference mode's −4.9 K); ~~heat mixed
+   within a transport group~~ (prototype above, chosen with the user:
+   V8's gap 0.37–0.48 K without a refit); next, its cost at L5 and L6. The target is reference
    land's numbers: about 23 W/m² of latent heat delivered, about 12 g/kg
    of equatorial humidity, and the cloud longwave about 40 W/m².
 3. **An ADR proposal** for whichever change works, then a refit and V8

@@ -5,8 +5,10 @@
 // groups are all land (≥ 95 %), mixed, or all ocean (no land).
 // Optional arguments, the sensitivity tests (both through the spin-up):
 // SurfaceEnergyParameters::humidity_azonal_share, humidity_eddy_factor,
-// zonal_advection_share (heat and water), humidity_zonal_share and
-// humidity_group_mixing.
+// zonal_advection_share (heat and water), humidity_zonal_share,
+// humidity_group_mixing and heat_group_mixing. PROBE_LEVEL and
+// PROBE_SPIN_UP_YEARS change the level and spin-up (the land-group split
+// and the probe's printed band shares assume nothing about the level).
 #include "sim/planet/orbit/climate_calendar.hpp"
 #include "sim/planet/run/planet_run.hpp"
 #include "sim/planet/surface/heat_transport.hpp"
@@ -21,13 +23,17 @@ int main(int argc, char** argv) {
   const double zonal = argc > 3 ? std::atof(argv[3]) : 0.0;
   const double zonal_water = argc > 4 ? std::atof(argv[4]) : 0.0;
   const double mixing = argc > 5 ? std::atof(argv[5]) : 0.0;
+  const double heat_mixing = argc > 6 ? std::atof(argv[6]) : 0.0;
   Scenario sc; sc.subdivision = 4; sc.seed = 1; sc.atmosphere_layers = 3; sc.spin_up_years = 10;
+  if (const char* v = std::getenv("PROBE_LEVEL")) sc.subdivision = static_cast<std::uint32_t>(std::atoi(v));
+  if (const char* v = std::getenv("PROBE_SPIN_UP_YEARS")) sc.spin_up_years = std::atoi(v);
   PlanetRun run(sc, 16, ClimateCirculationUse::coupled, [&](SurfaceEnergyParameters& s) {
     s.humidity_azonal_share = share;
     s.humidity_eddy_factor = factor;
     s.zonal_advection_share = zonal;
     s.humidity_zonal_share = zonal_water;
     s.humidity_group_mixing = mixing;
+    s.heat_group_mixing = heat_mixing;
   });
   const auto& mesh = run.state().mesh();
   const auto& f = run.fractions();
@@ -51,6 +57,7 @@ int main(int argc, char** argv) {
   double bw[6]{}, btotal[6]{}, beddy[6]{};
   int months = 0, fallbacks = 0;
   double within = 0, within_w = 0, between = 0, between_w = 0;
+  int newton = 0, open_energy = 0, open_water = 0; double solve_s = 0, precipitation_kg = 0;
   double seconds = 0, mean_K = 0, land_K = 0, land_q = 0, land_area_s = 0;
   for (int m = 0; m < 36; ++m) {
     run.run_until(climate_substep_containing(run.tick(), run.parameters()).end_tick);
@@ -58,6 +65,11 @@ int main(int argc, char** argv) {
     seconds += d.duration_s; mean_K += d.duration_s * d.mean_surface_temperature_K;
     land_K += d.duration_s * d.land_mean_surface_temperature_K;
     fallbacks += d.transport_fell_back ? 1 : 0;
+    newton += d.transport_newton_iterations; solve_s += d.transport_solve_s;
+    precipitation_kg += d.precipitation_kg;
+    if (std::getenv("PROBE_MONTHS")) std::cerr << "month " << m << " newton " << d.transport_newton_iterations << " residual " << d.transport_consistency_W_m2 << "\n";
+    open_energy += d.closure_residual_J() > d.closure_gate_J() ? 1 : 0;
+    open_water += d.water_cycle_residual_kg() > d.water_cycle_gate_kg() ? 1 : 0;
     for (std::size_t c = 0; c < mesh.cell_count(); ++c) {
       const double a = mesh.cells()[c].area_m2 * f.land_fraction[c] * d.duration_s;
       land_area_s += a;
@@ -109,11 +121,17 @@ int main(int argc, char** argv) {
     }
   }
   std::cout << "azonal_share " << share << " eddy_factor " << factor << " zonal " << zonal
-            << " zonal_water " << zonal_water << " group_mixing " << mixing << " groups " << groups
+            << " zonal_water " << zonal_water << " group_mixing " << mixing << " heat_mixing " << heat_mixing << " groups " << groups
             << " months with moist eddies " << months << " fallback months " << fallbacks << "\n"
             << "mean_K " << mean_K / seconds << " land_K " << land_K / seconds << " land_air_q_g_kg "
             << 1000 * land_q / land_area_s << " land_minus_ocean_K "
-            << (land_K / seconds - (mean_K / seconds - 0.29 * land_K / seconds) / 0.71) << "\n";
+            << (land_K / seconds - (mean_K / seconds - 0.29 * land_K / seconds) / 0.71)
+            << " precipitation_m_yr "
+            << precipitation_kg / 1000.0 / (4.0 * std::numbers::pi * mesh.radius_m() * mesh.radius_m()) /
+                   (seconds / (365.25 * 86400.0))
+            << "\n";
+  std::cout << "measured months: newton " << newton << " transport_solve_s " << solve_s
+            << " energy_gate_failures " << open_energy << " water_gate_failures " << open_water << "\n";
   std::cout << "air land_minus_ocean_K within_mixed_groups " << within / within_w
             << " all_land_vs_all_ocean_groups_same_band " << between / between_w << "\n";
   const char* name[3] = {"all-land groups (land-weighted)", "mixed groups (land-weighted)",
