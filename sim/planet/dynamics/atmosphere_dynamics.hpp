@@ -12,6 +12,7 @@
 
 #include <array>
 #include <cstddef>
+#include <vector>
 
 namespace planetsim {
 
@@ -62,6 +63,10 @@ struct AtmosphereDynamicsDiagnostics {
     // left out.
     std::array<double, 17> northward_dry_W{};
     std::array<double, 17> northward_latent_W{};
+    // The same per cell (W/m²): each column's dry and latent change over
+    // the step, the heat the dynamics delivered to it.
+    std::vector<double> cell_dry_W_m2;
+    std::vector<double> cell_latent_W_m2;
 };
 
 class AtmosphereDynamics {

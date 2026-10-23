@@ -1733,6 +1733,19 @@ int run_parity(const ReferenceOptions& options) {
         double land_storage_J = 0.0;
         double melt_cold_month_kg = 0.0;
         double melt_warm_month_kg = 0.0;
+        // INV-04: over land and over ocean (each cell weighted by its land
+        // or ocean area), the bottom layer's temperature and humidity by
+        // band (× s), and globally the heat each mode's transport delivered
+        // (dry and latent), the cloud effects, precipitation and its
+        // convective part (J or kg; index 0 land, 1 ocean).
+        std::array<std::array<double, 18>, 2> air_K_s{};
+        std::array<std::array<double, 18>, 2> air_q_s{};
+        std::array<double, 2> dry_in_J{};
+        std::array<double, 2> latent_in_J{};
+        std::array<double, 2> cloud_lw_J{};
+        std::array<double, 2> cloud_sw_J{};
+        std::array<double, 2> rain_kg{};
+        std::array<double, 2> convective_rain_kg{};
     };
     const auto measure = [&](planetsim::SimulationMode mode) {
         planetsim::Scenario scenario;
@@ -1783,6 +1796,23 @@ int run_parity(const ReferenceOptions& options) {
             bare_absorbing_m2[cell] = mesh.cells()[cell].area_m2 *
                 (fractions.land_fraction[cell] * (1.0 - land_albedo) +
                  fractions.ocean_fraction[cell] * (1.0 - ocean_albedo));
+        }
+        // The land and ocean weights (A f) by cell, and their band sums.
+        std::array<std::vector<double>, 2> surface_m2{std::vector<double>(mesh.cell_count()),
+                                                       std::vector<double>(mesh.cell_count())};
+        std::array<std::array<double, 18>, 2> band_surface_m2{};
+        std::vector<std::size_t> band_of_cell(mesh.cell_count());
+        for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
+            const double latitude =
+                std::asin(std::clamp(mesh.cells()[cell].center_unit.z, -1.0, 1.0)) * 180.0 /
+                std::numbers::pi;
+            band_of_cell[cell] = static_cast<std::size_t>(
+                std::clamp(std::floor((latitude + 90.0) / 10.0), 0.0, 17.0));
+            surface_m2[0][cell] = mesh.cells()[cell].area_m2 * fractions.land_fraction[cell];
+            surface_m2[1][cell] = mesh.cells()[cell].area_m2 * fractions.ocean_fraction[cell];
+            for (std::size_t kind = 0; kind < 2; ++kind) {
+                band_surface_m2[kind][band_of_cell[cell]] += surface_m2[kind][cell];
+            }
         }
         // Per cell, the calendar month's land melt (kg/m²) and land surface
         // temperature × s, for the sub-monthly melt split.
@@ -1876,6 +1906,40 @@ int run_parity(const ReferenceOptions& options) {
             record.land_evaporation_J += step.land_evaporation_W * step.duration_s;
             record.land_melt_heat_J += step.land_melt_heat_J;
             record.land_storage_J += step.land_storage_change_J;
+            {
+                const auto& slow_after = run.state().slow();
+                const auto air = slow_after.atmosphere_temperature_K.layer(0);
+                const auto& forcing = run.state().forcing();
+                const bool dynamics = reference && run.dynamics() != nullptr;
+                const std::vector<double>& dry =
+                    dynamics ? run.dynamics()->last().cell_dry_W_m2 : step.cell_transport_W_m2;
+                const std::vector<double>& latent = dynamics
+                                                        ? run.dynamics()->last().cell_latent_W_m2
+                                                        : step.cell_latent_transport_W_m2;
+                for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
+                    const std::size_t band = band_of_cell[cell];
+                    const double q = slow_after.atmosphere_specific_humidity_kg_kg.layer_count() > 0U
+                                         ? slow_after.atmosphere_specific_humidity_kg_kg.layer(0)[cell]
+                                         : 0.0;
+                    for (std::size_t kind = 0; kind < 2; ++kind) {
+                        const double w = surface_m2[kind][cell];
+                        if (!(w > 0.0)) continue;
+                        record.air_K_s[kind][band] += w * air[cell] * step.duration_s;
+                        record.air_q_s[kind][band] += w * q * step.duration_s;
+                        if (cell < dry.size()) record.dry_in_J[kind] += w * dry[cell] * step.duration_s;
+                        if (cell < latent.size()) {
+                            record.latent_in_J[kind] += w * latent[cell] * step.duration_s;
+                        }
+                        record.cloud_lw_J[kind] +=
+                            w * forcing.cloud_longwave_effect_W_m2[cell] * step.duration_s;
+                        record.cloud_sw_J[kind] +=
+                            w * forcing.cloud_shortwave_effect_W_m2[cell] * step.duration_s;
+                        record.rain_kg[kind] += w * forcing.precipitation_kg_m2_s[cell] * step.duration_s;
+                        record.convective_rain_kg[kind] +=
+                            w * forcing.convective_precipitation_kg_m2_s[cell] * step.duration_s;
+                    }
+                }
+            }
             const auto& land_K = run.state().slow().land_surface_temperature_K;
             for (std::size_t cell = 0; cell < step.land_melt_kg_m2.size(); ++cell) {
                 month_melt_kg_m2[cell] += step.land_melt_kg_m2[cell];
@@ -2002,6 +2066,34 @@ int run_parity(const ReferenceOptions& options) {
                           ? record.melt_cold_month_kg /
                                 (record.melt_cold_month_kg + record.melt_warm_month_kg)
                           : 0.0);
+        const std::array<double, 2> kind_m2{land_area, area - land_area};
+        const char* const kind_name[2] = {"land", "ocean"};
+        for (std::size_t kind = 0; kind < 2; ++kind) {
+            std::cout << "\n  " << kind_name[kind] << "_air_K=";
+            for (std::size_t band = 0; band < 18; ++band) {
+                const double w = band_surface_m2[kind][band] * record.seconds;
+                std::cout << ' ' << std::setprecision(5) << (w > 0.0 ? record.air_K_s[kind][band] / w : 0.0);
+            }
+            std::cout << "\n  " << kind_name[kind] << "_air_q_g_kg=";
+            for (std::size_t band = 0; band < 18; ++band) {
+                const double w = band_surface_m2[kind][band] * record.seconds;
+                std::cout << ' ' << std::setprecision(4)
+                          << (w > 0.0 ? 1000.0 * record.air_q_s[kind][band] / w : 0.0);
+            }
+        }
+        std::cout << std::setprecision(6);
+        for (std::size_t kind = 0; kind < 2; ++kind) {
+            const double w = kind_m2[kind] * record.seconds;
+            const double rain = record.rain_kg[kind];
+            std::cout << "\n  " << kind_name[kind] << "_transport_dry_W_m2=" << record.dry_in_J[kind] / w
+                      << ' ' << kind_name[kind] << "_transport_latent_W_m2=" << record.latent_in_J[kind] / w
+                      << ' ' << kind_name[kind] << "_cre_lw_W_m2=" << record.cloud_lw_J[kind] / w
+                      << ' ' << kind_name[kind] << "_cre_sw_W_m2=" << record.cloud_sw_J[kind] / w
+                      << ' ' << kind_name[kind] << "_precipitation_m_yr="
+                      << rain / (1000.0 * kind_m2[kind]) / record.seconds * 365.25 * 86'400.0
+                      << ' ' << kind_name[kind] << "_convective_share="
+                      << (rain > 0.0 ? record.convective_rain_kg[kind] / rain : 0.0);
+        }
         std::cout << "\n  northward_dry_PW=";
         for (const double value : record.dry_W_s) {
             std::cout << ' ' << std::setprecision(3) << value / record.seconds * 1e-15;

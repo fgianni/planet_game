@@ -292,6 +292,11 @@ struct SurfaceEnergyDiagnostics {
     double land_melt_heat_J = 0.0;
     double land_storage_change_J = 0.0;
     std::vector<double> land_melt_kg_m2;
+    // Each cell's transport over the step (W/m², INV-04): the heat source H
+    // the climate transport applied, and the latent heat L_v of the water
+    // the humidity transport moved into it (zero in reference mode).
+    std::vector<double> cell_transport_W_m2;
+    std::vector<double> cell_latent_transport_W_m2;
     // The P2(sin φ) component of the area- and tile-weighted surface
     // temperature, Σ w T P2 / Σ w P2² (K); negative when the poles are cold.
     double p2_surface_temperature_K = 0.0;

@@ -251,6 +251,8 @@ void AtmosphereDynamics::step(PlanetState& state, double dt_s) {
     {
         std::array<double, 18> dry{};
         std::array<double, 18> latent{};
+        last_.cell_dry_W_m2.assign(cell_count, 0.0);
+        last_.cell_latent_W_m2.assign(cell_count, 0.0);
         const auto& t = state.slow().atmosphere_temperature_K;
         for (std::size_t i = 0; i < cell_count; ++i) {
             const double ps = state.slow().atmosphere_surface_pressure_Pa[i];
@@ -265,6 +267,9 @@ void AtmosphereDynamics::step(PlanetState& state, double dt_s) {
                 std::asin(std::clamp(cells[i].center_unit.z, -1.0, 1.0)) * 180.0 / std::numbers::pi;
             const auto band = static_cast<std::size_t>(
                 std::clamp(std::floor((latitude + 90.0) / 10.0), 0.0, 17.0));
+            last_.cell_dry_W_m2[i] = (sum - dry_before[i]) / dt_s;
+            last_.cell_latent_W_m2[i] =
+                (latent_heat_vaporisation_J_kg * vapour - latent_before[i]) / dt_s;
             dry[band] += cells[i].area_m2 * (sum - dry_before[i]) / dt_s;
             latent[band] +=
                 cells[i].area_m2 * (latent_heat_vaporisation_J_kg * vapour - latent_before[i]) / dt_s;

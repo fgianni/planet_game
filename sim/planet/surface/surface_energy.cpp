@@ -822,6 +822,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     };
     std::array<std::array<double, max_atmosphere_layer_count>, 6> transport_by_band{};
     std::array<double, 18> latent_delivered_W{};   // by 10° band from 90° S
+    std::vector<double> latent_delivered_W_m2(cells, 0.0);   // INV-04, per cell
     if (water && circulation != nullptr && circulation->active) {
         const std::size_t n = slow.atmosphere_layer_count();
         std::vector<double> before(n * cells);
@@ -846,6 +847,8 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                                              before[k * cells + cell]);
                 transport_by_band[band_of(cell)][k] += moved;
                 latent_delivered_W[band10] += latent_heat_vaporisation_J_kg * moved / dt_s;
+                latent_delivered_W_m2[cell] += latent_heat_vaporisation_J_kg * moved / dt_s /
+                                               mesh.cells()[cell].area_m2;
             }
         }
     }
@@ -1744,6 +1747,8 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.land_melt_heat_J = total.land_melt_J;
     diagnostics.land_storage_change_J = total.land_storage_change_J;
     diagnostics.land_melt_kg_m2 = std::move(land_melt_kg_m2);
+    diagnostics.cell_transport_W_m2.assign(transport.values().begin(), transport.values().end());
+    diagnostics.cell_latent_transport_W_m2 = std::move(latent_delivered_W_m2);
     diagnostics.transport_solve_s = transport_seconds;
     diagnostics.transport_fell_back = fell_back;
     if (coupled) {

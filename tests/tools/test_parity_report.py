@@ -24,6 +24,12 @@ def measure(executable: str, explicit_layers: bool) -> tuple[dict, dict]:
         assert block, result.stdout
         records[mode] = dict(re.findall(r"(\w+)=([^\s]+)", block[0]))
         # INV-04: land and ocean by 10° band, finite and in range.
+        for name in ("land_air_K", "ocean_air_K", "land_air_q_g_kg", "ocean_air_q_g_kg"):
+            values = re.search(rf"{name}=((?: [0-9.eE+\-]+)+)", block[0])
+            assert values, block[0]
+            numbers = [float(x) for x in values[1].split()]
+            assert len(numbers) == 18 and all(math.isfinite(x) and x >= 0 for x in numbers)
+            records[mode][name] = numbers
         for name in ("land_zonal_mean_K", "ocean_zonal_mean_K"):
             values = re.search(rf"{name}=((?: [0-9.eE+\-]+)+)", block[0])
             assert values, block[0]
@@ -47,6 +53,18 @@ def measure(executable: str, explicit_layers: bool) -> tuple[dict, dict]:
                    - number("clear_sky_absorbed_W_m2")) < 0.002
         assert abs(number("clear_sky_absorbed_W_m2") + number("cre_sw_W_m2")
                    - number("absorbed_W_m2")) < 0.002
+        # Climate mode's transport moves heat and water between land and
+        # ocean without creating either: the area-weighted sums vanish.
+        if mode == "climate":
+            land = number("land_fraction")
+            for part in ("dry", "latent"):
+                net = (land * number(f"land_transport_{part}_W_m2")
+                       + (1 - land) * number(f"ocean_transport_{part}_W_m2"))
+                scale = abs(land * number(f"land_transport_{part}_W_m2")) + 1e-9
+                assert abs(net) <= 1e-4 * scale + 1e-6, (part, net)
+        for kind in ("land", "ocean"):
+            assert 0 <= number(f"{kind}_convective_share") <= 1
+            assert number(f"{kind}_precipitation_m_yr") >= 0
         # The land tiles' budget closes, and the melt split is a share.
         assert abs(number("land_budget_residual_W_m2")) < 1e-6
         assert 0 <= number("melt_in_cold_months_share") <= 1
