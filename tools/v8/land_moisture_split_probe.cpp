@@ -9,6 +9,7 @@
 // humidity_group_mixing and heat_group_mixing. PROBE_LEVEL and
 // PROBE_SPIN_UP_YEARS change the level and spin-up (the land-group split
 // and the probe's printed band shares assume nothing about the level).
+// PROBE_WORKERS sets the worker count (16); the final state hash is printed.
 #include "sim/planet/orbit/climate_calendar.hpp"
 #include "sim/planet/run/planet_run.hpp"
 #include "sim/planet/surface/heat_transport.hpp"
@@ -27,7 +28,9 @@ int main(int argc, char** argv) {
   Scenario sc; sc.subdivision = 4; sc.seed = 1; sc.atmosphere_layers = 3; sc.spin_up_years = 10;
   if (const char* v = std::getenv("PROBE_LEVEL")) sc.subdivision = static_cast<std::uint32_t>(std::atoi(v));
   if (const char* v = std::getenv("PROBE_SPIN_UP_YEARS")) sc.spin_up_years = std::atoi(v);
-  PlanetRun run(sc, 16, ClimateCirculationUse::coupled, [&](SurfaceEnergyParameters& s) {
+  std::size_t workers = 16;
+  if (const char* v = std::getenv("PROBE_WORKERS")) workers = static_cast<std::size_t>(std::atoi(v));
+  PlanetRun run(sc, workers, ClimateCirculationUse::coupled, [&](SurfaceEnergyParameters& s) {
     s.humidity_azonal_share = share;
     s.humidity_eddy_factor = factor;
     s.zonal_advection_share = zonal;
@@ -131,7 +134,8 @@ int main(int argc, char** argv) {
                    (seconds / (365.25 * 86400.0))
             << "\n";
   std::cout << "measured months: newton " << newton << " transport_solve_s " << solve_s
-            << " energy_gate_failures " << open_energy << " water_gate_failures " << open_water << "\n";
+            << " energy_gate_failures " << open_energy << " water_gate_failures " << open_water
+            << " state_hash " << std::hex << run.state_hash() << std::dec << "\n";
   std::cout << "air land_minus_ocean_K within_mixed_groups " << within / within_w
             << " all_land_vs_all_ocean_groups_same_band " << between / between_w << "\n";
   const char* name[3] = {"all-land groups (land-weighted)", "mixed groups (land-weighted)",

@@ -84,15 +84,34 @@ this transport, so its 291.295 K and 1.451 m/yr stand):
 All months converge below 1e-4 W/m², with no fallback month, and the
 energy and water gates pass in every month.
 
-L5 and L6 (250 years, 16 workers) and worker determinism: §8, to be
-measured.
+At L5 and L6, 250 years, 16 workers, option 1 (INV-04, "At L5 and L6
+over 250 years"):
+
+| Level | Option 1 | Mean (K) | Land − ocean (K) | Air within mixed groups (K) | Fallback months | Wall (s) | Budget (s) |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 5 | off | 288.381 | −12.0 | −26.6 | 0 | 293.4 | 607.5 |
+| 5 | on | 285.213 | −8.7 | +0.1 | 0 | 804.7 | 607.5 |
+| 6 | on | 285.254 | −8.3 | +0.1 | 0 | 2 927.0 | 2 025 |
+
+- Option 1 as prototyped **fails V4**: 2.7 times L5's baseline and 2.8
+  times INV-03's L6 baseline (1 061.1 s). The cost is the two extra
+  column passes a month.
+- In equilibrium it **cools the planet 3.2 K** (the ocean 4.1 K): the
+  L4 three-year result (+0.5 K) is before the deep ocean responds. V3's
+  fit would need a refit.
+- **V5 passes:** one and four workers give the same state hash at L4.
 
 ## 5. Recommendation
 
 **Option 1** (or 2, which adds the water for consistency at no cost).
 It removes the within-group contrast, halves land's deficit, and moves
-V8's gap from 0.93 to about 0.4 K without a refit. m = 1 is the physical
-value, not a fit: the air of a group is one air.
+V8's gap from 0.93 to about 0.4 K at L4 after ten years. m = 1 is the
+physical value, not a fit: the air of a group is one air.
+
+**Not in its prototyped form:** it fails V4's budgets and cools the
+equilibrium planet 3.2 K (§4), so it needs a cheaper form (without two
+extra column passes a month) and a refit of V3's L4 fit. Choosing the
+form is the next decision.
 
 Option 3 is not recommended now: it warms the planet 3 K (a refit) and
 triples the Newton iterations. Between groups, the zonal wind's
@@ -103,10 +122,11 @@ advection is the next candidate if V8 still fails after options 1–2.
 - A group is one air: the mixing scale is the group's size (about 480 km
   at L5, 240 km at L6), so the remaining land–ocean contrast is between
   groups and depends on the level.
-- The step does two more coupled solves and a column pass each month
-  (1.7 times L4's wall time).
-- V3's L4 fit (287.984 K at 150 years) moves; a refit of τ_d and κ_v may
-  follow, measured, not assumed.
+- As prototyped, the step does two more coupled solves and column passes
+  each month (1.7 times L4's three-year wall time, 2.7–2.8 times L5's and
+  L6's 250-year runs).
+- V3's L4 fit (287.984 K at 150 years) moves: L5's equilibrium cools
+  3.2 K, so a refit of τ_d and κ_v follows.
 - PSNAP and field meanings are unchanged: the applied source per cell is
   a step-internal quantity.
 
@@ -123,8 +143,9 @@ advection is the next candidate if V8 still fails after options 1–2.
 
 ## 8. Open measurements
 
-- L5 and L6 at 250 years with option 1 (running, INV-04).
-- V5 on one and four workers.
+- ~~L5 and L6 at 250 years with option 1~~ (done, §4: over budget).
+- ~~V5 on one and four workers~~ (done, §4: passes).
+- A cheaper form of option 1, measured against V4.
 
 ## 9. Tasks
 

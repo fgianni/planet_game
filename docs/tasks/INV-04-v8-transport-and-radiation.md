@@ -844,6 +844,43 @@ water gates pass in every measured month.
 - **Cost at L4:** 1.7 times the baseline's wall time (two more coupled
   solves and a column pass each month). L5 and L6 are measured below.
 
+### At L5 and L6 over 250 years: cost, equilibrium, determinism (2026-10-23)
+
+V11's performance runs, climate mode, 250 years (247-year spin-up, then
+36 measured months), 16 workers, the probe with heat mixing m = 1 (log
+`build/inv04/group_mixing_performance.log`). The probe does not measure
+V11's column-convergence gates. INV-03's L6 baseline (1 061.1 s) was not
+rerun; L5's baseline here (293.4 s) is close to INV-03's 308.3 s.
+
+| Level | Heat mixing | Mean (K) | Land (K) | Ocean (K) | Land − ocean (K) | Air within mixed groups (K) | Air between groups (K) | Precipitation (m/yr) | Newton (36 months) | Fallback months | Wall (s) | Budget (s) |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 5 | 0 | 288.381 | 279.85 | 291.87 | −12.0 | −26.6 | −8.3 | 1.564 | 147 | 0 | 293.4 | 607.5 |
+| 5 | 1 | 285.213 | 279.07 | 287.72 | −8.7 | +0.1 | −8.0 | 1.446 | 177 | 0 | **804.7** | 607.5 |
+| 6 | 1 | 285.254 | 279.38 | 287.65 | −8.3 | +0.1 | −7.0 | 1.442 | 225 | 0 | **2 927.0** | 2 025 |
+
+(Ocean is from the mean and land with a 0.29 land share, as in the
+probe's land − ocean.) Energy and water gates pass in every measured
+month.
+
+- **Both performance runs fail their budgets:** 2.7 times L5's baseline
+  and 2.8 times INV-03's L6 baseline, against 1.7 times over L4's three
+  years (whose fixed setup cost dilutes the ratio). The extra cost is in
+  the two extra column passes, not the transport solve (7.6 s of 805 s
+  at L5's measured months).
+- **In equilibrium the mixing cools the planet 3.2 K** (L5: 288.38 to
+  285.21 K), almost all of it the ocean (−4.1 K); land cools 0.8 K. At
+  L4 after ten years it warmed 0.5 K: the deep ocean had not yet
+  responded. Warmer land air radiates more of the ocean's heat to space.
+  V3's L4 fit would move by about 3 K, so a refit would be needed, against
+  ADR-0027 §5's "without a refit".
+- **The within-group contrast is gone at every level** (+0.1 K), and the
+  between-group contrast shrinks with the group size (−8.0 K at L5,
+  −7.0 K at L6).
+- **V5 passes:** at L4 (ten-year spin-up, three years), one and four
+  workers give the same final state hash, `755f00c1b18534a6`, and the
+  same means (log `build/inv04/group_mixing_determinism.log`; the probe
+  now takes `PROBE_WORKERS` and prints the hash).
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
@@ -907,7 +944,9 @@ were) before proposing an ADR.
    along latitude circles, and water mixed within a group~~ (done above:
    together −16.6 to −11.1 K of reference mode's −4.9 K); ~~heat mixed
    within a transport group~~ (prototype above, chosen with the user:
-   V8's gap 0.37–0.48 K without a refit); next, its cost at L5 and L6. The target is reference
+   V8's gap 0.37–0.48 K without a refit); ~~its cost at L5 and L6~~
+   (done above: 2.7–2.8 times the baselines, over both budgets, and
+   −3.2 K in equilibrium); next, a cheaper form, with the user. The target is reference
    land's numbers: about 23 W/m² of latent heat delivered, about 12 g/kg
    of equatorial humidity, and the cloud longwave about 40 W/m².
 3. **An ADR proposal** for whichever change works, then a refit and V8
