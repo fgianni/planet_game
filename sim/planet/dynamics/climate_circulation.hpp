@@ -152,7 +152,8 @@ class ClimateCirculation {
                        const BalancedCirculationResult& azonal, CirculationState& outputs,
                        std::size_t worker_count) const;
     void write_transport(const ZonalCirculationSolution& zonal,
-                         const BalancedCirculationResult& azonal);
+                         const BalancedCirculationResult& azonal,
+                         const SurfaceEnergyParameters& surface);
 
     // Per CSR entry of the coarse graph: its coarse edge, the sign of the
     // edge's normal out of the entry's node, and the edge's latitude.

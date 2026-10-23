@@ -4,7 +4,9 @@
 // rest). Each transport group's delivery is weighted by the land in it;
 // groups are all land (≥ 95 %), mixed, or all ocean (no land).
 // Optional arguments, the sensitivity tests (both through the spin-up):
-// SurfaceEnergyParameters::humidity_azonal_share and humidity_eddy_factor.
+// SurfaceEnergyParameters::humidity_azonal_share, humidity_eddy_factor,
+// zonal_advection_share (heat and water), humidity_zonal_share and
+// humidity_group_mixing.
 #include "sim/planet/orbit/climate_calendar.hpp"
 #include "sim/planet/run/planet_run.hpp"
 #include "sim/planet/surface/heat_transport.hpp"
@@ -16,10 +18,16 @@ using namespace planetsim;
 int main(int argc, char** argv) {
   const double share = argc > 1 ? std::atof(argv[1]) : 0.0;
   const double factor = argc > 2 ? std::atof(argv[2]) : 1.0;
+  const double zonal = argc > 3 ? std::atof(argv[3]) : 0.0;
+  const double zonal_water = argc > 4 ? std::atof(argv[4]) : 0.0;
+  const double mixing = argc > 5 ? std::atof(argv[5]) : 0.0;
   Scenario sc; sc.subdivision = 4; sc.seed = 1; sc.atmosphere_layers = 3; sc.spin_up_years = 10;
   PlanetRun run(sc, 16, ClimateCirculationUse::coupled, [&](SurfaceEnergyParameters& s) {
     s.humidity_azonal_share = share;
     s.humidity_eddy_factor = factor;
+    s.zonal_advection_share = zonal;
+    s.humidity_zonal_share = zonal_water;
+    s.humidity_group_mixing = mixing;
   });
   const auto& mesh = run.state().mesh();
   const auto& f = run.fractions();
@@ -42,6 +50,7 @@ int main(int argc, char** argv) {
   double w[3]{}, total[3]{}, eddy[3]{};
   double bw[6]{}, btotal[6]{}, beddy[6]{};
   int months = 0, fallbacks = 0;
+  double within = 0, within_w = 0, between = 0, between_w = 0;
   double seconds = 0, mean_K = 0, land_K = 0, land_q = 0, land_area_s = 0;
   for (int m = 0; m < 36; ++m) {
     run.run_until(climate_substep_containing(run.tick(), run.parameters()).end_tick);
@@ -53,6 +62,32 @@ int main(int argc, char** argv) {
       const double a = mesh.cells()[c].area_m2 * f.land_fraction[c] * d.duration_s;
       land_area_s += a;
       land_q += a * run.state().slow().atmosphere_specific_humidity_kg_kg.layer(0)[c];
+    }
+    {
+      // Bottom-layer air: land cells against ocean cells (land fraction
+      // above 0.5 or below 0.5) within each mixed group, and all-land
+      // groups against all-ocean groups in the same 10° band.
+      const auto t = run.state().slow().atmosphere_temperature_K.layer(0);
+      std::vector<double> lw(groups, 0.0), lt(groups, 0.0), ow(groups, 0.0), ot(groups, 0.0);
+      for (std::size_t c = 0; c < mesh.cell_count(); ++c) {
+        const double a = mesh.cells()[c].area_m2;
+        if (f.land_fraction[c] > 0.5) { lw[(*map)[c]] += a; lt[(*map)[c]] += a * t[c]; }
+        else { ow[(*map)[c]] += a; ot[(*map)[c]] += a * t[c]; }
+      }
+      double bl[18]{}, blw[18]{}, bo[18]{}, bow[18]{};
+      for (std::size_t g = 0; g < groups; ++g) {
+        const double lat = group_lat[g] / graph.area_m2[g] * 180.0 / std::numbers::pi;
+        const auto b = static_cast<std::size_t>(std::clamp(std::floor((lat + 90.0) / 10.0), 0.0, 17.0));
+        if (lw[g] > 0 && ow[g] > 0) {
+          within_w += lw[g] * d.duration_s; within += lw[g] * d.duration_s * (lt[g] / lw[g] - ot[g] / ow[g]);
+        } else if (ow[g] == 0) { bl[b] += lt[g]; blw[b] += lw[g]; }
+        else if (group_land[g] == 0) { bo[b] += ot[g]; bow[b] += ow[g]; }
+      }
+      for (int b = 0; b < 18; ++b)
+        if (blw[b] > 0 && bow[b] > 0) {
+          between_w += blw[b] * d.duration_s;
+          between += blw[b] * d.duration_s * (bl[b] / blw[b] - bo[b] / bow[b]);
+        }
     }
     if (d.cell_eddy_latent_transport_W_m2.empty()) continue;
     ++months;
@@ -73,10 +108,14 @@ int main(int argc, char** argv) {
       bw[b] += lw; btotal[b] += lw * t; beddy[b] += lw * e[g];
     }
   }
-  std::cout << "azonal_share " << share << " eddy_factor " << factor << " groups " << groups
+  std::cout << "azonal_share " << share << " eddy_factor " << factor << " zonal " << zonal
+            << " zonal_water " << zonal_water << " group_mixing " << mixing << " groups " << groups
             << " months with moist eddies " << months << " fallback months " << fallbacks << "\n"
             << "mean_K " << mean_K / seconds << " land_K " << land_K / seconds << " land_air_q_g_kg "
-            << 1000 * land_q / land_area_s << "\n";
+            << 1000 * land_q / land_area_s << " land_minus_ocean_K "
+            << (land_K / seconds - (mean_K / seconds - 0.29 * land_K / seconds) / 0.71) << "\n";
+  std::cout << "air land_minus_ocean_K within_mixed_groups " << within / within_w
+            << " all_land_vs_all_ocean_groups_same_band " << between / between_w << "\n";
   const char* name[3] = {"all-land groups (land-weighted)", "mixed groups (land-weighted)",
                          "all-ocean groups (ocean-weighted)"};
   for (int k = 0; k < 3; ++k)

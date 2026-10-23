@@ -620,8 +620,10 @@ struct CellSurface {
     const SurfaceEnergyParameters& surface, double gravity_m_s2, double dt_s,
     std::size_t worker_count, std::vector<double>* eddy_latent_W_m2 = nullptr) {
     AdvectionDiffusion adjusted;
-    const bool sensitivity =
-        surface.humidity_azonal_share != 0.0 || surface.humidity_eddy_factor != 1.0;
+    const bool sensitivity = surface.humidity_azonal_share != 0.0 ||
+                             surface.humidity_group_mixing != 0.0 ||
+                             surface.humidity_eddy_factor != 1.0 ||
+                             surface.humidity_zonal_share != 0.0;
     if (sensitivity) {
         adjusted = circulation.transport;
         for (double& g : adjusted.conductance_W_K) {
@@ -634,6 +636,15 @@ struct CellSurface {
             for (std::size_t k = 0; k < adjusted.outflow_kg_s.size(); ++k) {
                 adjusted.outflow_kg_s[k] +=
                     surface.humidity_azonal_share * circulation.azonal_outflow_kg_s[k];
+            }
+        }
+        if (surface.humidity_zonal_share != 0.0) {
+            if (circulation.zonal_outflow_kg_s.size() != adjusted.outflow_kg_s.size()) {
+                throw std::invalid_argument("the circulation has no zonal fluxes");
+            }
+            for (std::size_t k = 0; k < adjusted.outflow_kg_s.size(); ++k) {
+                adjusted.outflow_kg_s[k] +=
+                    surface.humidity_zonal_share * circulation.zonal_outflow_kg_s[k];
             }
         }
     }
@@ -698,6 +709,9 @@ struct CellSurface {
             const std::size_t at = layer * groups + group;
             double& q = humidity.layer(layer)[cell];
             q = mean[at] > 0.0 ? q * (moved.tracer[at] / mean[at]) : moved.tracer[at];
+            if (surface.humidity_group_mixing != 0.0) {
+                q += surface.humidity_group_mixing * (moved.tracer[at] - q);
+            }
             after += mass * q;
         }
     }

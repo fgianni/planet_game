@@ -216,7 +216,8 @@ void ClimateCirculation::write_balanced_pressure(PlanetState& state, std::size_t
 }
 
 void ClimateCirculation::write_transport(const ZonalCirculationSolution& zonal,
-                                         const BalancedCirculationResult& azonal) {
+                                         const BalancedCirculationResult& azonal,
+                                         const SurfaceEnergyParameters& surface) {
     const TransportGraph& graph = balance_.graph();
     const PlanetMesh& coarse = balance_.coarse_mesh();
     const auto& p = zonal_model_.parameters();
@@ -261,6 +262,82 @@ void ClimateCirculation::write_transport(const ZonalCirculationSolution& zonal,
             }
         }
     }
+    // INV-04's sensitivity tests: the zonal-mean zonal wind's layer fluxes,
+    // divergence-free by construction. Each layer's streamfunction
+    // Ψ_l(φ) = ∫ μ̂ ū_l R dφ' from the south pole (ū linear between band
+    // centres, zero at the poles) is taken at the coarse cells' corners, and
+    // a cell's outflow across its edge q, between its corners q and q + 1
+    // (counter-clockwise), is Ψ(q + 1) − Ψ(q).
+    transport_.zonal_outflow_kg_s.clear();
+    if (surface.zonal_advection_share != 0.0 || surface.humidity_zonal_share != 0.0) {
+        double mass = 0.0;
+        double area = 0.0;
+        for (std::size_t a = 0; a < graph.size(); ++a) {
+            mass += graph.area_m2[a] * azonal.surface_pressure_Pa[a];
+            area += graph.area_m2[a];
+        }
+        const double layer_mass_kg_m2 = mass / (area * p.gravity_m_s2 * static_cast<double>(n));
+        constexpr std::size_t samples = 3601U;
+        const double pi = std::numbers::pi_v<double>;
+        const double step_rad = pi / static_cast<double>(samples - 1U);
+        std::vector<double> psi(n * samples, 0.0);
+        const auto wind = [&](std::size_t l, double latitude_deg) {
+            const auto& lat = zonal.latitude_deg;
+            if (latitude_deg <= lat.front()) {
+                return zonal.at_band(zonal.eastward_m_s, l, 0) * (latitude_deg + 90.0) /
+                       (lat.front() + 90.0);
+            }
+            if (latitude_deg >= lat.back()) {
+                return zonal.at_band(zonal.eastward_m_s, l, zonal.bands - 1U) *
+                       (90.0 - latitude_deg) / (90.0 - lat.back());
+            }
+            const auto upper = static_cast<std::size_t>(
+                std::upper_bound(lat.begin(), lat.end(), latitude_deg) - lat.begin());
+            const double t = (latitude_deg - lat[upper - 1U]) / (lat[upper] - lat[upper - 1U]);
+            return (1.0 - t) * zonal.at_band(zonal.eastward_m_s, l, upper - 1U) +
+                   t * zonal.at_band(zonal.eastward_m_s, l, upper);
+        };
+        const double radius = coarse.radius_m();
+        for (std::size_t l = 0; l < n; ++l) {
+            double previous = wind(l, -90.0);
+            for (std::size_t i = 1; i < samples; ++i) {
+                const double latitude_deg = -90.0 + 180.0 * static_cast<double>(i) /
+                                                        static_cast<double>(samples - 1U);
+                const double u = wind(l, latitude_deg);
+                psi[l * samples + i] = psi[l * samples + i - 1U] +
+                                       0.5 * (previous + u) * layer_mass_kg_m2 * radius * step_rad;
+                previous = u;
+            }
+        }
+        const auto psi_at = [&](std::size_t l, const Vec3d& corner) {
+            const double x = (latitude_rad(corner) + 0.5 * pi) / step_rad;
+            const auto i = static_cast<std::size_t>(
+                std::clamp(std::floor(x), 0.0, static_cast<double>(samples - 2U)));
+            const double t = x - static_cast<double>(i);
+            return (1.0 - t) * psi[l * samples + i] + t * psi[l * samples + i + 1U];
+        };
+        transport_.zonal_outflow_kg_s.assign(n * entries, 0.0);
+        const auto corners = coarse.corners_unit();
+        for (std::size_t a = 0; a < graph.size(); ++a) {
+            const auto cell_corners =
+                coarse.cell_corners(CellId{static_cast<CellId::value_type>(a)});
+            const std::size_t count = cell_corners.size();
+            for (std::size_t q = 0; q < count; ++q) {
+                const Vec3d& from = corners[cell_corners[q]];
+                const Vec3d& to = corners[cell_corners[(q + 1U) % count]];
+                const std::size_t k = graph.offset[a] + q;
+                for (std::size_t l = 0; l < n; ++l) {
+                    transport_.zonal_outflow_kg_s[l * entries + k] = psi_at(l, to) - psi_at(l, from);
+                }
+            }
+        }
+        if (surface.zonal_advection_share != 0.0) {
+            for (std::size_t k = 0; k < out.outflow_kg_s.size(); ++k) {
+                out.outflow_kg_s[k] +=
+                    surface.zonal_advection_share * transport_.zonal_outflow_kg_s[k];
+            }
+        }
+    }
     transport_.active = true;
 }
 
@@ -287,7 +364,7 @@ void ClimateCirculation::step(const PlanetState& state, const PlanetParameters& 
                                      worker_count);
         const auto balanced = clock::now();
         write_outputs(state, zonal, azonal, outputs, worker_count);
-        write_transport(zonal, azonal);
+        write_transport(zonal, azonal, surface);
         const auto written = clock::now();
         diagnostics_.heating_s += seconds(start, heated);
         diagnostics_.zonal_s += seconds(heated, solved);

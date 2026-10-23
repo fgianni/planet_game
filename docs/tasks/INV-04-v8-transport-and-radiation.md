@@ -745,6 +745,53 @@ No fallback months in any run.
   level, and within a group land and ocean exchange nothing. Reference
   mode's zonal winds carry air across a continent in days.
 
+## Sensitivity tests: the contrast sits inside the transport groups (2026-10-23)
+
+Three more off-by-default knobs (INV-04 only, not in any preset or
+manifest): `zonal_advection_share`, the zonal-mean zonal wind's layer
+fluxes added to the transport's for heat and water (divergence-free by
+construction: each layer's streamfunction Ψ_l(φ) = ∫ μ̂ ū_l R dφ' taken
+at the coarse cells' corners, the outflow across an edge the difference
+of its corners' Ψ); `humidity_zonal_share`, the same for the water only;
+and `humidity_group_mixing`, the share of each cell's humidity mixed to
+its group's after the transport (conserving the group's water). Same
+probe and runs as above (`./build/land_moisture_split_probe <azonal
+share> <eddy factor> <zonal> <zonal water> <group mixing>`, 8–10 s
+each). The probe now also reports the bottom-layer air of land cells
+(land fraction above 0.5) minus ocean cells within each mixed group, and
+of all-land minus all-ocean groups in the same 10° band.
+
+| Zonal (heat and water) | Zonal (water) | Group mixing (water) | Mean (K) | Land (K) | Land − ocean (K) | Air within mixed groups (K) | Air between groups (K) |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 0 | 0 | 290.36 | 278.55 | −16.6 | −30.2 | −10.7 |
+| 0.1 | 0 | 0 | 291.26 | 280.77 | −14.8 | −29.0 | −8.4 |
+| 1 | 0 | 0 | 292.63 | 283.25 | −13.2 | −25.0 | −7.2 |
+| 0 | 1 | 0 | 290.04 | 278.33 | −16.5 | | |
+| 0 | 0 | 1 | 289.87 | 279.56 | −14.5 | −21.1 | −10.5 |
+| 1 | 0 | 1 | 292.54 | 284.67 | −11.1 | −16.2 | −7.0 |
+| Reference mode | | | 291.30 | 287.78 | −4.9 | | |
+
+No fallback months in any run.
+
+- **Most of the contrast is inside the transport groups.** Within a mixed
+  group, land cells' bottom air is 30 K colder than its ocean cells', a
+  few hundred kilometres apart. Between all-land and all-ocean groups at
+  the same latitude it is 10.7 K. The transport applies one heat source
+  per m² to all of a group's cells (ADR-0009 §12) and scales each cell's
+  humidity by its group's change, so each fine cell's air stays in
+  balance with its own surface: nothing mixes air between neighbouring
+  cells of a group.
+- **The zonal wind's advection helps between groups** (−10.7 to −7.2 K;
+  land − ocean −16.6 to −13.2 K) and warms the planet 2.3 K. It solves
+  without fallback months.
+- **Mixing the water within groups** brings the within-group air
+  contrast from 30 to 21 K. With the zonal advection as well, land is
+  11.1 K colder than the ocean (reference 4.9 K).
+- **The rest needs the heat mixed within groups too:** each cell's share
+  of its group's source would depend on its air, not only on its area.
+  That changes the transport's distribution of H (ADR-0009 §12) and the
+  coupled solve's response, so it needs a decision before a prototype.
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
@@ -804,9 +851,10 @@ were) before proposing an ADR.
    eddies bring nine tenths of the 1.5 W/m².
 2. **Climate-only sensitivity tests** (seconds each at L4; off by
    default): ~~a stronger humidity transport onto land~~ (done above: it
-   does not close the land–ocean contrast); next, heat and water moved
-   along latitude circles (the zonal-mean zonal wind's advection), and
-   mixing within a transport group. The target is reference
+   does not close the land–ocean contrast); ~~heat and water moved
+   along latitude circles, and water mixed within a group~~ (done above:
+   together −16.6 to −11.1 K of reference mode's −4.9 K); next, needing a
+   decision: heat mixed within a transport group. The target is reference
    land's numbers: about 23 W/m² of latent heat delivered, about 12 g/kg
    of equatorial humidity, and the cloud longwave about 40 W/m².
 3. **An ADR proposal** for whichever change works, then a refit and V8

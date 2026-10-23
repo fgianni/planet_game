@@ -77,6 +77,13 @@ struct SurfaceEnergyParameters {
     // §17.6), and a factor on the water's eddy exchange.
     double humidity_azonal_share = 0.0;
     double humidity_eddy_factor = 1.0;
+    // The share of the zonal-mean zonal wind's fluxes added to the
+    // transport's, for heat and water alike, or for the water only.
+    double zonal_advection_share = 0.0;
+    double humidity_zonal_share = 0.0;
+    // The share m of each cell's humidity mixed to its group's after the
+    // transport: q ← (1 − m) q (c'/c̄) + m c' (conserves the group's water).
+    double humidity_group_mixing = 0.0;
 };
 
 // The bulk transfer coefficients of evaporation (ADR-0021 §4.3): the tiles'
