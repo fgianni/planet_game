@@ -160,8 +160,8 @@ advection is the next candidate if V8 still fails after options 1–2.
 - ~~V5 on one and four workers~~ (done, §4: passes).
 - ~~A cheaper form of option 1, measured against V4~~ (done, §4: L5
   528.1 s, L6 1 878.6 s).
-- The refit of τ_d and κ_v for the 3 K cooler equilibrium, then V8
-  and V9.
+- ~~The refit of τ_d and κ_v for the 3 K cooler equilibrium, then V8
+  and V9~~ (done, §11).
 
 ## 9. Tasks
 
@@ -170,4 +170,42 @@ advection is the next candidate if V8 still fails after options 1–2.
    one update a month with the second solve started from the first's
    sources). Next, the implementation task: the knob on in the
    Earth-like preset, V2's unit test, the refit of τ_d and κ_v (V6), V8
-   (V3) and V9.
+   (V3) and V9. Done 2026-10-24 (§11).
+
+## 10. Amendment: the column-convergence gate (accepted 2026-10-24)
+
+V11's performance runs and the snapshot-restart checks required every
+column of every month to converge (`unconverged_columns == 0`). On the
+refitted pair (§11), L6's first month leaves four warm ocean and coastal
+columns at 1.01–1.09 times the columns' 1e-10 W/m² tolerance, where the
+line search can no longer reduce the residual: the evaluation's
+rounding. Their largest correction is 8.3e-11 K and energy closes (an
+unconverged column is finished from its fluxes). The old pair has none
+at L6 month 0, with or without the mixing; the new pair has one without
+it.
+
+**Decision (with the user):** the gate is on the residual. A month fails
+if any column's residual exceeds **1e-9 W/m²**, ten times the tolerance
+and still a hundred times below what ADR-0007 V2's energy closure needs
+(about 1e-7 W/m²). The column solver and its tolerance are unchanged;
+`unconverged_columns` is still counted and printed.
+
+## 11. Implementation (2026-10-24)
+
+- `earth_like` sets `heat_group_mixing = 1`; `test_group_heat_mixing`
+  is V2 (at planet level, L3: off, one source per group exactly; on, the
+  transport sums to zero, the land − ocean air of mixed groups goes from
+  −11.3 to +0.4 K, 1 and 4 workers agree).
+- **V6:** τ_d = 1.147, κ_v = 0.005735 m²/kg (both × 1.0324): L4/150
+  287.985 K, cover 0.560, cloud SW −44.7 and LW +24.1 W/m², no fallback
+  month.
+- **V4:** L5/250 499.3 s (budget 607.5 s), 1 fallback month (was 3);
+  L6/250 1 812.5 s (budget 2 025 s), 3 fallback months (was 10). Energy
+  and water close in every month (V1).
+- **V3:** V8 at L4 over three years passes: −0.029 K (limit 0.3 K),
+  precipitation ratio 0.908 (±10 %). Reference land is still 2.7 K warmer
+  and its ocean 1.1 K colder, which cancel by area; climate land's air
+  stays dry (2.7 against 22.9 W/m² of latent heat delivered).
+- **V5:** the L6 snapshot restart reproduces all four monthly hashes on
+  four versus one workers, through two fallback months.
+- Details: INV-04, "ADR-0027 implemented".

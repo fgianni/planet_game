@@ -51,16 +51,20 @@ reference land 9.2 K warmer and its ocean 2.4 K colder. The earlier
 L3 measurement was 4.148 K. Its cause, found 2026-10-23: climate mode's
 land air is cold and dry because its transport brings almost no water to
 land (1.55 against reference mode's 23.3 W/m² of latent heat), which
-weakens the greenhouse over land. Most of the contrast is inside the
-transport's groups; ADR-0027 (accepted 2026-10-23) mixes each group's heat
-(prototype `heat_group_mixing`, still off in the preset; L5/250 528.1 s,
-L6/250 1,878.6 s; equilibrium 3 K cooler). Next: its implementation task
-(preset on, unit test, refit, V8, V9). INV-04's open tasks list the rest.
+weakens the greenhouse over land. Most of the contrast was inside the
+transport's groups; ADR-0027 (accepted 2026-10-23, implemented 2026-10-24)
+mixes each group's heat (`heat_group_mixing = 1` in the preset), with the
+radiation pair refitted to τ_d = 1.147, κ_v = 0.005735 m²/kg (L4/150
+287.985 K). **V8 now passes at L4:** −0.029 K, precipitation ratio 0.908;
+but reference land is still 2.7 K warmer and its ocean 1.1 K colder, which
+cancel, and climate land's air stays dry. V11: L5/250 499.3 s (1 fallback
+month), L6/250 1,812.5 s (3 fallback months); the column gate is now on
+the residual, 1e-9 W/m² (ADR-0027 §10). INV-04's open tasks list the rest.
 The accepted ADR-0024 §9 fallback is on in the Earth-like preset: a coupled
 month over 100 W/m² consistency residual uses the diffusive transport.
-With the refitted pair τ_d = 1.111, κ_v = 0.005555 m²/kg, the L4/150
-mean is 287.984 K, the L5/250 run takes 308.3 s, and the L6/250 run
-takes 1,061.1 s. Both performance runs pass their budget and column
+Before ADR-0027, with the pair τ_d = 1.111, κ_v = 0.005555 m²/kg, the
+L4/150 mean was 287.984 K, the L5/250 run took 308.3 s, and the L6/250
+run took 1,061.1 s. Both performance runs pass their budget and column
 convergence gates; L6 has 10 fallback months and no failed circulation
 months. Two-year L6 runs on one and four workers have the same hash
 through eight fallback months. An L4 PSNAP restart before the month-2

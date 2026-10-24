@@ -1080,8 +1080,11 @@ were) before proposing an ADR.
    −3.2 K in equilibrium); a cheaper form, one update a month (done
    above: L5 within budget), with the second solve started from the
    first's sources (L6 within budget, 1 878.6 s). **ADR-0027 accepted
-   (2026-10-23, option 1 in this form).** Next: its implementation task
-   (preset on, unit test, refit for the 3 K cooler equilibrium, V8, V9). The target is reference
+   (2026-10-23, option 1 in this form)** and implemented 2026-10-24
+   (above): V8 passes at L4 (−0.029 K, ratio 0.908), with the land–ocean
+   split reduced but cancelling (+2.7 K land, −1.1 K ocean). Next
+   candidates: water for land (2.7 against 22.9 W/m²), and the
+   precipitation ratio's 0.8 % margin. The target is reference
    land's numbers: about 23 W/m² of latent heat delivered, about 12 g/kg
    of equatorial humidity, and the cloud longwave about 40 W/m².
 3. **An ADR proposal** for whichever change works, then a refit and V8

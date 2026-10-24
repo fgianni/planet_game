@@ -28,6 +28,12 @@
 // --snapshot-restart-l6 checks ADR-0024 §9 V5 on the refitted L6 preset.
 namespace {
 
+// The column-convergence gate (ADR-0027 §10): a column fails above this
+// residual, ten times the columns' 1e-10 W/m² tolerance. A column that
+// ends just above the tolerance stops at its evaluation's rounding (L6's
+// first month on the 2026-10-24 refit: four at 1.01–1.09 times it).
+constexpr double column_gate_W_m2 = 1e-9;
+
 struct Result {
     std::uint64_t hash;
     double middle_vapour_kg_m2;
@@ -68,9 +74,10 @@ Result measure(planetsim::test::Context& test, std::size_t workers, bool moisten
         const auto& step = run.last_step();
         energy = std::max(energy, step.closure_residual_J() / step.closure_gate_J());
         water = std::max(water, step.water_cycle_residual_kg() / step.water_cycle_gate_kg());
-        PLANETSIM_EXPECT(test, step.unconverged_columns == 0U);
+        PLANETSIM_EXPECT(test, step.max_column_residual_W_m2 <= column_gate_W_m2);
         if (step.unconverged_columns != 0U) {
             std::cout << "unconverged_columns month=" << month << " count=" << step.unconverged_columns
+                      << " max_residual_W_m2=" << step.max_column_residual_W_m2
                       << " max_correction_K=" << step.max_column_correction_K
                       << " fell_back=" << (step.transport_fell_back ? 1 : 0)
                       << " consistency_W_m2=" << step.transport_consistency_W_m2 << std::endl;
@@ -173,7 +180,7 @@ void snapshot_restart_v5(planetsim::test::Context& test, std::uint32_t level = 4
         const double w = step.water_cycle_residual_kg() / step.water_cycle_gate_kg();
         PLANETSIM_EXPECT(test, std::isfinite(e) && e <= 1.0);
         PLANETSIM_EXPECT(test, std::isfinite(w) && w <= 1.0);
-        PLANETSIM_EXPECT(test, step.unconverged_columns == 0U);
+        PLANETSIM_EXPECT(test, step.max_column_residual_W_m2 <= column_gate_W_m2);
         energy = std::max(energy, e);
         water = std::max(water, w);
     };
