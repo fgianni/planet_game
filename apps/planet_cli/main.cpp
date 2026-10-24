@@ -1746,6 +1746,17 @@ int run_parity(const ReferenceOptions& options) {
         std::array<double, 2> cloud_sw_J{};
         std::array<double, 2> rain_kg{};
         std::array<double, 2> convective_rain_kg{};
+        // INV-04: 30° S–30° N, each layer's temperature and humidity over
+        // land and over ocean (× A f s), and the latent heating of each
+        // layer, L_v (condensation + convective drying − cloud and rain
+        // evaporation), J, in the tropics and globally (where Betts–Miller
+        // heats a column is its adjustment's, not its drying's, so for the
+        // layers this is the drying's split).
+        std::array<std::array<double, planetsim::max_atmosphere_layer_count>, 2> tropical_K_s{};
+        std::array<std::array<double, planetsim::max_atmosphere_layer_count>, 2> tropical_q_s{};
+        std::array<double, 2> tropical_m2_s{};
+        std::array<std::array<double, planetsim::max_atmosphere_layer_count>, 2> latent_heating_J{};
+        double sensible_J = 0.0;
     };
     const auto measure = [&](planetsim::SimulationMode mode) {
         planetsim::Scenario scenario;
@@ -1937,9 +1948,32 @@ int run_parity(const ReferenceOptions& options) {
                         record.rain_kg[kind] += w * forcing.precipitation_kg_m2_s[cell] * step.duration_s;
                         record.convective_rain_kg[kind] +=
                             w * forcing.convective_precipitation_kg_m2_s[cell] * step.duration_s;
+                        if (band >= 6U && band < 12U) {
+                            record.tropical_m2_s[kind] += w * step.duration_s;
+                            for (std::size_t layer = 0; layer < layers; ++layer) {
+                                record.tropical_K_s[kind][layer] += w * step.duration_s *
+                                    slow_after.atmosphere_temperature_K.layer(layer)[cell];
+                                record.tropical_q_s[kind][layer] += w * step.duration_s *
+                                    slow_after.atmosphere_specific_humidity_kg_kg.layer(layer)[cell];
+                            }
+                        }
                     }
                 }
             }
+            for (std::size_t band = 0; band < step.vapour_budget.size(); ++band) {
+                const auto& budget = step.vapour_budget[band];
+                for (std::size_t layer = 0; layer < layers; ++layer) {
+                    const double J = planetsim::latent_heat_vaporisation_J_kg *
+                                     (budget.condensation_kg[layer] + budget.convective_kg[layer] -
+                                      budget.cloud_evaporation_kg[layer] -
+                                      budget.rain_evaporation_kg[layer]);
+                    record.latent_heating_J[1][layer] += J;
+                    if (band == 2U || band == 3U) {
+                        record.latent_heating_J[0][layer] += J;
+                    }
+                }
+            }
+            record.sensible_J += step.sensible_heat_W * step.duration_s;
             const auto& land_K = run.state().slow().land_surface_temperature_K;
             for (std::size_t cell = 0; cell < step.land_melt_kg_m2.size(); ++cell) {
                 month_melt_kg_m2[cell] += step.land_melt_kg_m2[cell];
@@ -2094,6 +2128,38 @@ int run_parity(const ReferenceOptions& options) {
                       << ' ' << kind_name[kind] << "_convective_share="
                       << (rain > 0.0 ? record.convective_rain_kg[kind] / rain : 0.0);
         }
+        for (std::size_t kind = 0; kind < 2; ++kind) {
+            const double w = record.tropical_m2_s[kind];
+            std::cout << "\n  tropical_" << kind_name[kind] << "_layer_K=";
+            for (std::size_t layer = 0; layer < layers; ++layer) {
+                std::cout << ' ' << std::setprecision(5) << record.tropical_K_s[kind][layer] / w;
+            }
+            std::cout << ' ' << "tropical_" << kind_name[kind] << "_layer_q_g_kg=";
+            for (std::size_t layer = 0; layer < layers; ++layer) {
+                std::cout << ' ' << std::setprecision(4)
+                          << 1000.0 * record.tropical_q_s[kind][layer] / w;
+            }
+        }
+        std::cout << std::setprecision(5);
+        {
+            double tropical_m2 = 0.0;
+            for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
+                if (band_of_cell[cell] >= 6U && band_of_cell[cell] < 12U) {
+                    tropical_m2 += mesh.cells()[cell].area_m2;
+                }
+            }
+            const char* const region[2] = {"tropical", "global"};
+            const double region_m2[2] = {tropical_m2, area};
+            for (std::size_t r = 0; r < 2; ++r) {
+                std::cout << "\n  " << region[r] << "_latent_heating_W_m2_by_layer=";
+                for (std::size_t layer = 0; layer < layers; ++layer) {
+                    std::cout << ' '
+                              << record.latent_heating_J[r][layer] / region_m2[r] / record.seconds;
+                }
+            }
+            std::cout << " sensible_W_m2=" << record.sensible_J / area / record.seconds;
+        }
+        std::cout << std::setprecision(6);
         std::cout << "\n  northward_dry_PW=";
         for (const double value : record.dry_W_s) {
             std::cout << ' ' << std::setprecision(3) << value / record.seconds * 1e-15;

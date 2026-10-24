@@ -81,6 +81,10 @@ struct SurfaceEnergyParameters {
     // mean (their layer sum over N): the horizontal convergence without the
     // vertical overturning.
     double humidity_azonal_column_share = 0.0;
+    // A factor on the transport's eddy conductance (heat, and water through
+    // the same conductances) at faces within 30° of the equator, tapering
+    // linearly to 1 at 40°: the tropics' weak temperature gradients.
+    double tropical_eddy_factor = 1.0;
     // The share of the zonal-mean zonal wind's fluxes added to the
     // transport's, for heat and water alike, or for the water only.
     double zonal_advection_share = 0.0;

@@ -248,6 +248,11 @@ void ClimateCirculation::write_transport(const ZonalCirculationSolution& zonal,
                 0.0, interpolate_latitude(zonal.boundary_latitude_deg, diffusivity,
                                           face.latitude_deg));
             out.conductance_W_K[k] = p.heat_capacity_J_kg_K * column_mass * d * graph.weight[k];
+            if (surface.tropical_eddy_factor != 1.0) {
+                const double t =
+                    std::clamp((40.0 - std::abs(face.latitude_deg)) / 10.0, 0.0, 1.0);
+                out.conductance_W_K[k] *= 1.0 + t * (surface.tropical_eddy_factor - 1.0);
+            }
             // The overturning only (ADR-0011 §17.6): the azonal balance has no
             // thermodynamic equation, so its divergent flow is not bounded by
             // any heating and carries no heat.

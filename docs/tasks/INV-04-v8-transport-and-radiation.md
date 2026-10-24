@@ -1071,6 +1071,79 @@ No fallback month, and the energy and water gates pass, in every run.
   greenhouse 172.5 against 159.2 W/m²).
 - The state hash and the tests are unchanged (102 pass).
 
+## The cold air is the tropics' missing heat exchange (2026-10-25)
+
+V8 again at L4 (`planet_cli parity --subdivision 4 --seed 1 --layers 3
+--spin-up-years 10 --days 1096 --workers 20`, log
+`build/inv04air/v8_profiles.log`; both halves reproduce the earlier
+means), with two read-only additions to the report: each layer's
+temperature and humidity over land and ocean at 30° S–30° N, and the
+latent heating by layer (L_v times condensation and Betts–Miller's
+drying, less cloud and rain evaporation), in the tropics and globally,
+with the sensible heat.
+
+| 30° S–30° N, by layer | Climate | Reference |
+|---|---|---|
+| Ocean air (K) | 287.7 / 269.5 / 232.3 | 291.5 / 272.5 / 240.6 |
+| Land air (K) | 280.9 / 258.8 / 229.2 | 286.8 / 270.3 / 238.3 |
+| Land − ocean, middle layer (K) | −10.7 | −2.2 |
+| Ocean humidity (g/kg) | 10.9 / 4.8 / 0.44 | 14.8 / 6.7 / 1.04 |
+| Land humidity (g/kg) | 7.2 / 2.3 / 0.39 | 11.4 / 5.9 / 0.90 |
+| Latent heating (W/m²) | 154.7 / 7.5 / 0.5 | 67.6 / 57.7 / 13.5 |
+| Planet: layer means (K) | 276.9 / 253.7 / 224.7 | 280.6 / 264.7 / 235.6 |
+| Planet: sensible heat (W/m²) | 30.3 | 15.9 |
+
+- **Climate mode's whole troposphere is colder,** by 3.7, 10.9 and
+  10.9 K by layer, with a third less vapour (31 against 48 kg/m²); the
+  surface means agree because the fit gives it a larger greenhouse.
+- **Over tropical land the free troposphere is 10.7 K colder than over
+  the ocean** (reference mode: 2.2 K). Betts–Miller relaxes each
+  convecting column to the moist adiabat of its own bottom air, so a
+  cold bottom layer means a cold column, and nothing between groups ties
+  land's columns to the ocean's. Reference mode's resolved flow does, as
+  the real tropics do (weak temperature gradients: gravity waves, Walker
+  and monsoon circulations). Its condensation is spread through the
+  column; climate mode's drying sits in the bottom layer (for
+  Betts–Miller that is where it dries, not where it heats, so the
+  heating's split is not measured).
+- **The tropical eddy diffusivity is small:** the zonal model's D =
+  ℓ_h × eddy speed is 0.57–0.62e6 m²/s within 10° of the equator,
+  against 1.1–1.3e6 at 45–65° (annual mean after the ten-year spin-up).
+
+A new off-by-default knob (INV-04 only, in no preset or manifest):
+`SurfaceEnergyParameters::tropical_eddy_factor`, a factor on the
+transport's eddy conductance (heat, and water through the same
+conductances) at faces within 30° of the equator, tapering linearly to
+1 at 40°. Climate mode, L4, ten-year spin-up, then three years, the
+preset otherwise (`./build/land_moisture_split_probe 0 1 0 0 0 1 0
+<factor>`; logs `build/inv04w/trop*.log`):
+
+| Factor | Mean (K) | Land (K) | Land − ocean (K) | All-land vs all-ocean groups (K) | Land air q (g/kg) | Latent to land (W/m²) | Precipitation (m/yr) |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 (preset) | 292.09 | 285.91 | −8.7 | −9.5 | 5.02 | 2.73 | 1.621 |
+| 3 | 292.37 | 287.46 | −6.9 | −6.7 | 4.96 | 2.34 | 1.564 |
+| 10 | 292.83 | 289.06 | −5.3 | −4.3 | 5.04 | 2.03 | 1.485 |
+| 30 | 292.75 | 289.59 | −4.4 | −2.7 | 4.92 | 1.91 | 1.462 |
+| 100 | 292.55 | 289.80 | −3.9 | −1.7 | 4.76 | 1.81 | 1.459 |
+| Reference mode | 292.06 | 288.63 | −4.8 | | | 22.9 | 1.471 |
+
+No fallback month; the energy and water gates pass in every month; the
+Newton iterations are unchanged (111–127 against 116).
+
+- **The land–ocean split closes with heat, not water:** at ×10–30 the
+  split is reference mode's (−5.3 to −4.4 against −4.8 K) and so is the
+  precipitation (ratio 0.99–1.01 against 0.908 now). Land's air stays
+  as dry, and its delivered water falls: the contrast was the tropics'
+  heat all along, and the "dry land" a symptom of its cold air.
+- **It saturates:** ×30 and ×100 differ by 0.5 K in the split. A
+  physical value needs no fit: the groups (642 at L4, about 890 km apart)
+  exchanging their air within a day gives D ≈ L²/τ ≈ 9e6 m²/s, about
+  ×15. That scale depends on the level; a time scale for the whole
+  tropics would not.
+- **The mean warms 0.5–0.7 K,** so V3's fit would need a refit before
+  V8 (the gap would be −0.7 K now).
+- The state hash and the tests are unchanged.
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
@@ -1145,8 +1218,11 @@ were) before proposing an ADR.
    for land~~ (done 2026-10-24, "Water for land with the heat mixed"):
    no transport knob brings it without moistening the whole atmosphere;
    the deficit follows climate mode's colder bottom air and its weak
-   latent transport, over the ocean too. Next candidate: the
-   precipitation ratio's 0.8 % margin. The target is reference
+   latent transport, over the ocean too. ~~The cold air~~ (done
+   2026-10-25, "The cold air is the tropics' missing heat exchange"): a
+   stronger tropical eddy exchange closes the land–ocean split and the
+   precipitation ratio, with a 0.5–0.7 K warming to refit. Next: an ADR
+   proposal for the tropics' heat exchange. The target is reference
    land's numbers: about 23 W/m² of latent heat delivered, about 12 g/kg
    of equatorial humidity, and the cloud longwave about 40 W/m².
 3. **An ADR proposal** for whichever change works, then a refit and V8
