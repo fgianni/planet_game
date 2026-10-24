@@ -922,6 +922,91 @@ mixing off is bit-identical). On a quiet machine (log
   `24df5e7e191d1c2b`.
 - Energy and water gates pass in every measured month.
 
+## ADR-0027 implemented: the preset, its test, the refit (2026-10-24)
+
+- **The preset:** `earth_like` sets `heat_group_mixing = 1` (commit
+  `7d25e2c`).
+- **V2's test,** `test_group_heat_mixing` (L3, three coupled months):
+  off, one source per group exactly; on, the transport sums to zero
+  (1.6e-15 of Σ A |H|), energy and water close, the land − ocean bottom
+  air in mixed groups goes from −11.3 to +0.4 K, and 1 and 4 workers
+  give the same hash. Within a group the cells' sources differ by up to
+  1 239 W/m² (a day's exchange across an 11 K contrast is of that order).
+- **Three tests changed with it:** the snapshot's cloud cover is now
+  −expm1(Σ log1p(−f)), because trace clouds (f ~ 1e-17) rounded to zero
+  cover under a positive optical depth; `test_zonal_coupling` takes the
+  eddy-driven jet as the strongest local maximum in 37.5–67.5°, since the
+  northern subtropical jet's flank now reaches 37.5° (30.6 m/s; the jet is
+  at 57.5°, 25.4 m/s); the L4 snapshot-restart case keeps its month-2
+  fallback with mixing off (the mixing keeps no state across months).
+- **The refit (V6, commit `8fe3a48`):** L4/150 on the PlanetRun path
+  (`test_convective_moistening_run 4 150 16 <τ_d> <κ_v>`, log
+  `build/adr0027/refit.log`), both constants scaled together:
+
+| τ_d | κ_v (m²/kg) | Mean (K) | Cover | Cloud SW (W/m²) | Cloud LW (W/m²) | Fallback months |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1.111 | 0.005555 | 285.764 | 0.549 | −43.9 | 23.7 | 0 |
+| 1.16655 | 0.00583275 | 288.964 | 0.564 | −45.0 | 24.2 | 0 |
+| 1.149885 | 0.005749425 | 288.333 | 0.562 | −44.8 | 24.3 | 0 |
+| 1.145 | 0.005725 | 287.770 | 0.559 | −44.6 | 24.1 | 0 |
+| **1.147** | **0.005735** | **287.985** | 0.560 | −44.7 | 24.1 | 0 |
+
+  The mean is not linear in the scale (64 to 128 K per unit), as INV-03
+  found. V3 passes (±0.05 K) and V9's cloud targets pass.
+
+- **V11 on the refitted preset** (`test_convective_moistening_run <level>
+  250 16`, log `build/adr0027/v11_v8.log`):
+
+| Level | Wall (s) | Budget (s) | Fallback months | Capped months | Final-year mean (K) | Unconverged columns |
+|---:|---:|---:|---:|---:|---:|---:|
+| 5 | 499.3 | 607.5 | 1 (INV-03: 3) | 2 | 287.392 | 0 |
+| 6 | 1 812.5 | 2 025 | 3 (INV-03: 10) | 4 | 287.261 | **4 (month 0)** |
+
+  Energy and water gates pass (1.1e-5 / 1.5e-4 at L5, 1.4e-5 / 3.3e-4 at
+  L6); no failed circulation months. **L6 fails the column-convergence
+  gate in its first month:** four columns end above the 1e-10 W/m²
+  tolerance after 20 iterations, their largest correction 8.3e-11 K (the
+  energy closes: an unconverged column is finished from its fluxes). The
+  cause is the refitted pair, not the mixing (`tools/v8/column_convergence_probe.cpp`,
+  L6 month 0, a fallback month in all four cases):
+
+| Pair | Mixing | Unconverged columns | Largest correction (K) |
+|---|---:|---:|---:|
+| 1.147 / 0.005735 | on | 4 | 8.3e-11 |
+| 1.147 / 0.005735 | off | 1 | 7.7e-11 |
+| 1.111 / 0.005555 | on | 0 | 0 |
+| 1.111 / 0.005555 | off | 0 | 0 |
+
+- **V8 at L4 over three years passes** (ADR-0023 §16; `planet_cli parity
+  --subdivision 4 --seed 1 --layers 3 --spin-up-years 10 --days 1096
+  --workers 20`, same log):
+
+| | Climate | Reference | Before ADR-0027 (climate / reference) |
+|---|---:|---:|---:|
+| Surface, years 11–13 (K) | 292.088 | 292.059 | 290.359 / 291.295 |
+| Land / ocean (K) | 285.94 / 294.60 | 288.63 / 293.46 | 278.57 / 295.18, 287.78 / 292.73 |
+| Snow share of land / ice share of ocean | 0.219 / 0.084 | 0.159 / 0.089 | 0.275 / 0.058, 0.175 / 0.096 |
+| Precipitation (m/yr) | 1.620 | 1.471 | 1.610 / 1.451 |
+| Latent heat transported to land (W/m²) | 2.7 | 22.9 | 1.55 / 23.3 |
+| Cloud longwave over land (W/m²) | 23.3 | 40.2 | 19.5 / 40.2 |
+| P2 equator-to-pole (K) | 48.1 | 45.9 | 48.7 / 47.0 |
+| Top-of-atmosphere imbalance (W/m²) | −7.9 | −7.9 | −7.0 / −8.2 |
+
+  **Gap −0.029 K (limit 0.3 K), precipitation ratio 0.908 (±10 %): V8
+  passes.** But the land–ocean split remains: reference land is 2.7 K
+  warmer (was 9.2 K), its ocean 1.1 K colder (was 2.4 K); weighted by
+  area these are +0.78 and −0.81 K, which cancel. Climate land's air is
+  still dry (2.7 against 22.9 W/m² of latent heat delivered): the mixing
+  moved heat, not water. The precipitation ratio is 0.908, inside its
+  limit by 0.8 %.
+
+- **The L6 snapshot restart** (`--snapshot-restart-l6`, log
+  `build/adr0027/restart_l6.log`): a PSNAP at tick 43830 before the
+  month-1 fallback reproduces all four monthly hashes through ticks
+  87659–219146 with four versus one workers, through two fallback months
+  (1 and 3) and two non-fallback months; energy and water gates pass. Its
+  only failure is the same month-0 column-convergence gate.
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
