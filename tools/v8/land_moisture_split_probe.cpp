@@ -6,7 +6,8 @@
 // Optional arguments, the sensitivity tests (both through the spin-up):
 // SurfaceEnergyParameters::humidity_azonal_share, humidity_eddy_factor,
 // zonal_advection_share (heat and water), humidity_zonal_share,
-// humidity_group_mixing and heat_group_mixing. PROBE_LEVEL and
+// humidity_group_mixing, heat_group_mixing and
+// humidity_azonal_column_share. PROBE_LEVEL and
 // PROBE_SPIN_UP_YEARS change the level and spin-up (the land-group split
 // and the probe's printed band shares assume nothing about the level).
 // PROBE_WORKERS sets the worker count (16); the final state hash is printed.
@@ -25,6 +26,7 @@ int main(int argc, char** argv) {
   const double zonal_water = argc > 4 ? std::atof(argv[4]) : 0.0;
   const double mixing = argc > 5 ? std::atof(argv[5]) : 0.0;
   const double heat_mixing = argc > 6 ? std::atof(argv[6]) : 0.0;
+  const double column_share = argc > 7 ? std::atof(argv[7]) : 0.0;
   Scenario sc; sc.subdivision = 4; sc.seed = 1; sc.atmosphere_layers = 3; sc.spin_up_years = 10;
   if (const char* v = std::getenv("PROBE_LEVEL")) sc.subdivision = static_cast<std::uint32_t>(std::atoi(v));
   if (const char* v = std::getenv("PROBE_SPIN_UP_YEARS")) sc.spin_up_years = std::atoi(v);
@@ -37,6 +39,7 @@ int main(int argc, char** argv) {
     s.humidity_zonal_share = zonal_water;
     s.humidity_group_mixing = mixing;
     s.heat_group_mixing = heat_mixing;
+    s.humidity_azonal_column_share = column_share;
   });
   const auto& mesh = run.state().mesh();
   const auto& f = run.fractions();
@@ -124,7 +127,7 @@ int main(int argc, char** argv) {
     }
   }
   std::cout << "azonal_share " << share << " eddy_factor " << factor << " zonal " << zonal
-            << " zonal_water " << zonal_water << " group_mixing " << mixing << " heat_mixing " << heat_mixing << " groups " << groups
+            << " zonal_water " << zonal_water << " group_mixing " << mixing << " heat_mixing " << heat_mixing << " column_share " << column_share << " groups " << groups
             << " months with moist eddies " << months << " fallback months " << fallbacks << "\n"
             << "mean_K " << mean_K / seconds << " land_K " << land_K / seconds << " land_air_q_g_kg "
             << 1000 * land_q / land_area_s << " land_minus_ocean_K "
@@ -151,4 +154,15 @@ int main(int argc, char** argv) {
     std::cout << "band " << -90 + 30 * b << ".." << -60 + 30 * b << ": land share " << bw[b] / land_w
               << ", total " << btotal[b] / bw[b] << " W/m2, eddies " << beddy[b] / bw[b]
               << ", mean flow " << (btotal[b] - beddy[b]) / bw[b] << "\n";
+  // The last month's humidity by layer, area-weighted over the planet.
+  std::cout << "final q_g_kg by layer:";
+  for (std::size_t l = 0; l < run.state().slow().atmosphere_layer_count(); ++l) {
+    double qa = 0, aa = 0;
+    for (std::size_t c = 0; c < mesh.cell_count(); ++c) {
+      qa += mesh.cells()[c].area_m2 * run.state().slow().atmosphere_specific_humidity_kg_kg.layer(l)[c];
+      aa += mesh.cells()[c].area_m2;
+    }
+    std::cout << " " << 1000 * qa / aa;
+  }
+  std::cout << "\n";
 }

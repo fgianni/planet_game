@@ -1012,6 +1012,65 @@ mixing off is bit-identical). On a quiet machine (log
   (1 and 3) and two non-fallback months; energy and water gates pass. Its
   only failure is the same month-0 column-convergence gate.
 
+## Water for land with the heat mixed (2026-10-24)
+
+ADR-0027's preset (heat mixing on, τ_d = 1.147, κ_v = 0.005735 m²/kg),
+climate mode, L4, ten-year spin-up, then three years
+(`./build/land_moisture_split_probe <azonal share> <eddy factor> <zonal>
+<zonal water> <group mixing> 1 <azonal column share>`, about 18 s each;
+logs `build/inv04w/`). One knob is new, off by default and in no preset
+or manifest: `humidity_azonal_column_share`, the azonal balance's fluxes
+for the water with each layer carrying their column mean (the horizontal
+convergence without the vertical overturning). The probe now prints the
+last month's planet-mean humidity by layer.
+
+| Water carried by | Mean (K) | Land − ocean (K) | Land air q (g/kg) | Latent to land (W/m²) | q by layer (g/kg) |
+|---|---:|---:|---:|---:|---|
+| Preset | 292.09 | −8.7 | 5.02 | 2.73 | 6.63 / 2.35 / 0.28 |
+| Mixed within groups (ADR-0027 option 2) | 292.21 | −8.8 | 5.25 | 2.64 | |
+| Eddies ×10 | 291.20 | −8.4 | 4.22 | 5.33 | |
+| Zonal-mean zonal wind | 291.94 | −8.0 | 4.91 | 3.48 | |
+| Azonal, column mean | 292.19 | −7.9 | 4.96 | 4.02 | 6.30 / 2.09 / 0.27 |
+| Azonal, column mean, and zonal wind | 292.30 | −7.5 | 4.91 | 4.14 | 6.18 / 1.98 / 0.24 |
+| Azonal ×0.03 | 294.34 | −8.0 | 6.14 | 2.79 | 7.71 / 3.02 / 0.42 |
+| Azonal ×0.1 | 299.50 | −6.7 | 9.00 | 3.97 | 10.75 / 5.07 / 0.75 |
+| Azonal ×0.3 | 304.34 | −5.1 | 12.23 | 5.73 | 14.11 / 7.51 / 1.16 |
+| Azonal ×1 | 308.08 | −3.8 | 15.36 | 7.92 | 17.27 / 9.94 / 1.62 |
+| Reference mode (V8) | 292.06 | −4.8 | | 22.9 | |
+
+No fallback month, and the energy and water gates pass, in every run.
+
+- **None brings land the water reference mode's does.** Mixing the
+  water within groups changes nothing: what is missing comes from
+  between groups. The column-mean azonal flow and the zonal wind add
+  1.3–1.4 W/m² without moistening land's air.
+- **The azonal flow's water moistens the whole atmosphere,** not land:
+  its vertical fluxes lift vapour into the upper layers (at full share,
+  2.6, 4.2 and 5.8 times the preset's humidity in the three layers), and
+  even a 3 % share warms the planet 2.3 K while land's delivery is
+  unchanged. The land–ocean contrast closes with the warming, not with
+  the water. A refit would have to remove 16 K, so it is not a
+  candidate.
+- **V8's own fields put the deficit in the air and the latent
+  transport, over the ocean too** (`build/adr0027/v11_v8.log`): at
+  0–10° N the bottom air is 4.2 K colder over the ocean than reference
+  mode's (289.4 against 293.6 K) and 7.6 K colder over land (282.2
+  against 289.8 K), with sea-surface temperatures within 1 K, so it
+  holds less water (12.2 against 16.6 g/kg over the ocean, 7.8 against
+  12.6 over land). The latent transport is weak everywhere: poleward at
+  30–50° it is 0.34–0.57 PW against 1.49–2.50 PW, and at 10° S and 10° N
+  it goes poleward (−0.24 and +0.14 PW) where reference mode's
+  converges on the equator (+0.41 and −0.51 PW). 98 % of climate mode's
+  precipitation is convective (reference mode: 25 %). Land's
+  precipitation differs less than its delivery: 0.97 against
+  1.14 m/yr, with climate land evaporating more (68.1 against
+  61.9 W/m²).
+- So the land's water follows its air's temperature and the tropical
+  latent transport, not a missing horizontal path. The radiation
+  fit makes up the drier air with a larger dry optical depth (climate
+  greenhouse 172.5 against 159.2 W/m²).
+- The state hash and the tests are unchanged (102 pass).
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
@@ -1082,8 +1141,11 @@ were) before proposing an ADR.
    first's sources (L6 within budget, 1 878.6 s). **ADR-0027 accepted
    (2026-10-23, option 1 in this form)** and implemented 2026-10-24
    (above): V8 passes at L4 (−0.029 K, ratio 0.908), with the land–ocean
-   split reduced but cancelling (+2.7 K land, −1.1 K ocean). Next
-   candidates: water for land (2.7 against 22.9 W/m²), and the
+   split reduced but cancelling (+2.7 K land, −1.1 K ocean). ~~Water
+   for land~~ (done 2026-10-24, "Water for land with the heat mixed"):
+   no transport knob brings it without moistening the whole atmosphere;
+   the deficit follows climate mode's colder bottom air and its weak
+   latent transport, over the ocean too. Next candidate: the
    precipitation ratio's 0.8 % margin. The target is reference
    land's numbers: about 23 W/m² of latent heat delivered, about 12 g/kg
    of equatorial humidity, and the cloud longwave about 40 W/m².

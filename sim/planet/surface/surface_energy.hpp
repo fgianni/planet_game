@@ -77,6 +77,10 @@ struct SurfaceEnergyParameters {
     // §17.6), and a factor on the water's eddy exchange.
     double humidity_azonal_share = 0.0;
     double humidity_eddy_factor = 1.0;
+    // The azonal share as above, but each layer carrying the fluxes' column
+    // mean (their layer sum over N): the horizontal convergence without the
+    // vertical overturning.
+    double humidity_azonal_column_share = 0.0;
     // The share of the zonal-mean zonal wind's fluxes added to the
     // transport's, for heat and water alike, or for the water only.
     double zonal_advection_share = 0.0;

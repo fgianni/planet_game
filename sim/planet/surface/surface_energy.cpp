@@ -622,6 +622,7 @@ struct CellSurface {
     std::size_t worker_count, std::vector<double>* eddy_latent_W_m2 = nullptr) {
     AdvectionDiffusion adjusted;
     const bool sensitivity = surface.humidity_azonal_share != 0.0 ||
+                             surface.humidity_azonal_column_share != 0.0 ||
                              surface.humidity_group_mixing != 0.0 ||
                              surface.humidity_eddy_factor != 1.0 ||
                              surface.humidity_zonal_share != 0.0;
@@ -637,6 +638,24 @@ struct CellSurface {
             for (std::size_t k = 0; k < adjusted.outflow_kg_s.size(); ++k) {
                 adjusted.outflow_kg_s[k] +=
                     surface.humidity_azonal_share * circulation.azonal_outflow_kg_s[k];
+            }
+        }
+        if (surface.humidity_azonal_column_share != 0.0) {
+            if (circulation.azonal_outflow_kg_s.size() != adjusted.outflow_kg_s.size()) {
+                throw std::invalid_argument("the circulation has no azonal fluxes");
+            }
+            const std::size_t layers = adjusted.layers;
+            const std::size_t entries = adjusted.outflow_kg_s.size() / layers;
+            for (std::size_t k = 0; k < entries; ++k) {
+                double column = 0.0;
+                for (std::size_t layer = 0; layer < layers; ++layer) {
+                    column += circulation.azonal_outflow_kg_s[layer * entries + k];
+                }
+                for (std::size_t layer = 0; layer < layers; ++layer) {
+                    adjusted.outflow_kg_s[layer * entries + k] +=
+                        surface.humidity_azonal_column_share * column /
+                        static_cast<double>(layers);
+                }
             }
         }
         if (surface.humidity_zonal_share != 0.0) {
