@@ -1000,6 +1000,11 @@ mixing off is bit-identical). On a quiet machine (log
   moved heat, not water. The precipitation ratio is 0.908, inside its
   limit by 0.8 %.
 
+  The four columns (a temporary print, not kept) are warm ocean or
+  coastal cells (bottom air 307–310 K) that end at 1.01–1.09 times the
+  1e-10 W/m² tolerance after 11–20 iterations, where the line search can
+  no longer reduce the residual: they stop at the evaluation's rounding,
+  not on a physical failure.
 - **The L6 snapshot restart** (`--snapshot-restart-l6`, log
   `build/adr0027/restart_l6.log`): a PSNAP at tick 43830 before the
   month-1 fallback reproduces all four monthly hashes through ticks
