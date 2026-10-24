@@ -84,8 +84,9 @@ struct SurfaceEnergyParameters {
     // The share m of each cell's humidity mixed to its group's after the
     // transport: q ← (1 − m) q (c'/c̄) + m c' (conserves the group's water).
     double humidity_group_mixing = 0.0;
-    // The share m of the heat mixing within each transport group (coupled
-    // months only): a cell's source is its group's H plus
+    // ADR-0027: the share m of the heat mixing within each transport group
+    // (coupled months only; 1 in the Earth-like preset): a cell's source is
+    // its group's H plus
     // δ = m (θ* − θ_c) / s_c, with θ_c and s_c = dθ_c/dh the cell's column
     // at H and θ* = Σ A θ_c / s_c / Σ A / s_c, so Σ A δ = 0 and at m = 1
     // the group's cells share one θ_c to first order.

@@ -3,6 +3,7 @@
 #include "sim/core/scheduler/simulation_clock.hpp"
 #include "sim/planet/planet_state.hpp"
 
+#include <cmath>
 #include <cstddef>
 
 namespace planetsim {
@@ -47,11 +48,14 @@ StateSnapshot make_state_snapshot(const PlanetState& state, const SimulationCloc
         fraction.layer_count() > 0U && fraction.cell_count() == cells) {
         snapshot.cloud_cover.resize(cells);
         for (std::size_t cell = 0; cell < cells; ++cell) {
-            double clear = 1.0;
+            // 1 − Π(1 − f) as −expm1(Σ log1p(−f)), so that a column with a
+            // trace of cloud (f ~ 1e-17) keeps a positive cover, as its
+            // optical depth stays positive.
+            double log_clear = 0.0;
             for (std::size_t layer = 0; layer < fraction.layer_count(); ++layer) {
-                clear *= 1.0 - static_cast<double>(fraction.layer(layer)[cell]);
+                log_clear += std::log1p(-static_cast<double>(fraction.layer(layer)[cell]));
             }
-            snapshot.cloud_cover[cell] = static_cast<float>(1.0 - clear);
+            snapshot.cloud_cover[cell] = static_cast<float>(-std::expm1(log_clear));
         }
         copy_float(forcing.cloud_optical_depth, snapshot.cloud_optical_depth);
     }

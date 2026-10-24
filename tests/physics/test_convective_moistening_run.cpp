@@ -160,6 +160,9 @@ void snapshot_restart_v5(planetsim::test::Context& test, std::uint32_t level = 4
         if (level == 4U) {
             parameters.atmosphere.dry_optical_depth = prior_dry_depth;
             parameters.atmosphere.vapour_absorption_m2_kg = prior_vapour_absorption;
+            // Its month-2 fallback is without ADR-0027's mixing, which keeps
+            // no state across months (its shift starts at zero each month).
+            parameters.heat_group_mixing = 0.0;
         }
     };
     PlanetRun uninterrupted(scenario, 1U, ClimateCirculationUse::coupled, fit);
