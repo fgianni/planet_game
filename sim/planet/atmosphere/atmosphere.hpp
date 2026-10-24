@@ -105,9 +105,12 @@ inline constexpr double earth_like_longwave_optical_depth = 1.442;
 // 0.005557222476679688 m²/kg. Following ADR-0024 §9's fallback, the
 // 2026-10-21 INV-03 L4/150 PlanetRun measurement refit the shared scale to
 // τ_d = 1.111 and κ_v = 0.005555 m²/kg (287.984 K, seed 1, 4 workers).
+// ADR-0027's heat mixing cooled that pair's L4/150 mean to 285.764 K; the
+// 2026-10-24 refit, the same PlanetRun path on 16 workers, scales both by
+// 1.0324: τ_d = 1.147 and κ_v = 0.005735 m²/kg (287.985 K).
 // The cloud constants stay τ_a = 600 s, W_c = 0.05 kg/m², r_e = 18 µm.
-inline constexpr double earth_like_dry_optical_depth = 1.111;
-inline constexpr double earth_like_vapour_absorption_m2_kg = 0.005555;
+inline constexpr double earth_like_dry_optical_depth = 1.147;
+inline constexpr double earth_like_vapour_absorption_m2_kg = 0.005735;
 
 // dead_rock and aqua_planet: no atmosphere (experiments A and B,
 // specification §13.1). earth_like: three layers (design record §15.1) of
