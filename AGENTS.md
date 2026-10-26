@@ -36,20 +36,25 @@ Task documents in [`docs/tasks/README.md`](docs/tasks/README.md) state their
 scope, accepted decisions, acceptance criteria and current status.
 
 Current investigation: [INV-04](docs/tasks/INV-04-v8-transport-and-radiation.md),
-the remaining V8 gap. [INV-03](docs/tasks/INV-03-l6-startup-transport.md)
-completed the post-fallback refit and restart checks. ADR-0026 option 1
-(convective moistening) and ADR-0024 §9's diffusive fallback are enabled in
-the Earth-like preset. The fallback threshold is 100 W/m²; the refitted
-radiation pair is τ_d = 1.111 and κ_v = 0.005555 m²/kg. L4 calibration,
-L5/L6 budget and performance gates, and worker-count determinism pass.
-The L4 snapshot restart through a fallback passes using INV-02's radiation
-pair. The refitted L6 restart also passes: all four monthly hashes match
-with one worker uninterrupted versus four after restart, through three
-fallback months and the following non-fallback month (2026-10-22).
-The measured INV-02 temperature-parity gap remains 4.148 K against a 0.3 K
-limit, while precipitation passes at a 0.969 reference/climate ratio.
+the remaining mode and regional-transport gap. ADR-0027's within-group heat
+mixing is accepted and implemented in the Earth-like preset. The current
+radiation pair is τ_d = 1.147 and κ_v = 0.005735 m²/kg; ADR-0026 option 1
+(convective moistening) and ADR-0024 §9's diffusive fallback remain enabled.
+L4 calibration and the L5/L6 budget and performance gates pass. L4 V8 over
+three years now passes globally (reference minus climate −0.029 K;
+reference/climate precipitation 0.908), but land is still 2.7 K warmer and
+ocean 1.1 K colder in reference mode. The L6 restart reproduces four monthly
+hashes across one and four workers through two fallback months. INV-04's
+current next decision is an ADR proposal for tropical heat exchange: a
+stronger off-by-default eddy sensitivity closes the land–ocean split, but
+requires a refit and renewed parity checks. Do not treat global V8 agreement
+as regional parity.
 Changes to the fallback or nonlinear solve require an architecture decision.
 Do not implement M9 or later milestones unless explicitly requested.
+M8A (wind-driven cloud-water transport) is a proposed post-M8 follow-up in
+`docs/tasks/M8A-01-wind-driven-cloud-transport.md`; do not implement it before
+an architecture decision resolving ADR-0023 §8 is accepted. INV-04 remains
+the current investigation.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones under ADR-0018. It must never change a solver, a field's meaning

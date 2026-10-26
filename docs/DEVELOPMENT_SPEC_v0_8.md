@@ -1388,6 +1388,20 @@ Condensation, physical cloud water, latent atmospheric heating,
 precipitation and simplified cloud-radiation coupling. Godot renders
 authoritative cloud state.
 
+### M8A --- Wind-driven cloud transport (proposed follow-up)
+
+After INV-04, decide ADR-0023 §8's open question about cloud-water advection
+and, if accepted, transport existing layered cloud water with the atmospheric
+flow in both reference and climate modes. Water and energy budgets, replay,
+mode parity and performance must remain gated; the Godot cloud layer must draw
+the transported state rather than moving a cloud footprint independently.
+Wind-responsive motion of *sub-cell texture* is presentation-only and cannot
+substitute for the physical transport. Scope and acceptance are in
+[`docs/tasks/M8A-01-wind-driven-cloud-transport.md`](tasks/M8A-01-wind-driven-cloud-transport.md).
+M8 remains complete; M8A is not authorized for implementation until a new
+architecture decision resolving ADR-0023 §8 is accepted. It neither starts
+M9 nor changes the current INV-04 investigation.
+
 ### M9 --- Hydrology, rivers and lakes
 
 Soil moisture, infiltration, runoff, catchments, river discharge,

@@ -46,6 +46,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [INV-02](INV-02-moistening-refit-and-parity.md) | ADR-0026 option 1 in the Earth-like preset, the shared refit, V9 cloud targets and V8 measured again | Refit/V8 complete; L6 fallback accepted under ADR-0024 §9 |
 | [INV-03](INV-03-l6-startup-transport.md) | L6 startup transport; failed solver prototypes, accepted diffusive fallback, and post-fallback radiation refit | L4/L5/L6 calibration, budget, performance and worker-determinism checks pass; L4 and refitted L6 snapshot restarts through fallback months pass |
 | [INV-04](INV-04-v8-transport-and-radiation.md) | Current-preset V8 measurement, shortwave decomposition, transport sensitivity and timestep experiments; V8 at L4; the cause, climate mode's dry land | In progress; no solver or preset change |
+| [M8A-01](M8A-01-wind-driven-cloud-transport.md) | Proposed post-M8 milestone: wind-driven transport of layered cloud water in both modes, then truthful wind-coherent rendering | Proposed; after INV-04 and an accepted architecture decision; no implementation yet |
 | [R1-01](R1-01-presentation-library-and-channels.md) | Presentation library and semantic channels (ADR-0018; rendering track, parallel to M6) | Complete |
 | [R1-02](R1-02-style-packs-and-switching.md) | Godot style packs, recorded playback and instant switching (ADR-0018) | Complete |
 | [R1-03](R1-03-readability-harness.md) | Offscreen style readability gate and colour-vision checks (ADR-0018) | Complete |
@@ -60,6 +61,7 @@ criteria and what to report. `AGENTS.md` names the current task.
 | [R4-05](R4-05-precipitation-particles.md) | Bounded GPU-animated precipitation shafts (ADR-0018) | Complete |
 | [R4-06](R4-06-render-capture.md) | Deterministic live-frame screenshot capture and CI artifact (ADR-0018) | Complete |
 | [R1-04](R1-04-continuous-globe-camera-and-terrain-tiles.md) | Continuous Earth-viewer camera, altitude bands and streamed terrain tiles (ADR-0022) | Complete |
+| [R1-05](R1-05-coastline-lod-stability.md) | Proposed coastline-stable LOD: remove the filtered-to-detailed land/water jump under ADR-0022 | Proposed; architecture decision required before implementation |
 | [G1-01](G1-01-industrial-dawn-scaffold.md) | Vertical slice: Industrial Dawn scaffold, 1880–1980 in the GDScript prototype (`docs/VERTICAL_SLICE.md`) | Proposed |
 | [G1-02](G1-02-routes-as-data.md) | Vertical slice: capabilities and routes as data — coal, algae, dams, with counterweights | Proposed |
 | [G1-03](G1-03-cohorts-and-grievance.md) | Vertical slice: three cohorts, grievance, trust and protest | Proposed |
