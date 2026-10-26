@@ -82,6 +82,7 @@ add_planetsim_test(test_balanced_circulation physics/test_balanced_circulation.c
 add_planetsim_test(test_climate_circulation physics/test_climate_circulation.cpp)
 add_planetsim_test(test_coupled_transport physics/test_coupled_transport.cpp)
 add_planetsim_test(test_group_heat_mixing physics/test_group_heat_mixing.cpp)
+add_planetsim_test(test_equatorial_wave_exchange physics/test_equatorial_wave_exchange.cpp)
 add_planetsim_test(test_water_cycle physics/test_water_cycle.cpp)
 add_planetsim_test(test_water_transport physics/test_water_transport.cpp)
 add_planetsim_test(test_reference_water physics/test_reference_water.cpp)

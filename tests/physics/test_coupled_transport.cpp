@@ -56,9 +56,16 @@ int main() {
     // 1. V10 with three layers: every climate step is coupled and closes its
     // energy budget; the transport sums to zero; 1 and 4 workers agree (V11).
     {
-        planetsim::PlanetRun coupled(scenario, 4U, ClimateCirculationUse::coupled);
-        planetsim::PlanetRun serial(scenario, 1U, ClimateCirculationUse::coupled);
-        planetsim::PlanetRun diagnosed(scenario, 4U, ClimateCirculationUse::diagnostic);
+        // Without ADR-0028's equatorial waves: with them, the cold start's
+        // hot first month (and month 3) stalls on a convecting column whose
+        // θ_c falls as its source rises (ADR-0024 §9.5), short of the
+        // Newton tolerance; the coupled solve is what this case checks.
+        const auto no_waves = [](planetsim::SurfaceEnergyParameters& p) {
+            p.equatorial_wave_speed_m_s = 0.0;
+        };
+        planetsim::PlanetRun coupled(scenario, 4U, ClimateCirculationUse::coupled, no_waves);
+        planetsim::PlanetRun serial(scenario, 1U, ClimateCirculationUse::coupled, no_waves);
+        planetsim::PlanetRun diagnosed(scenario, 4U, ClimateCirculationUse::diagnostic, no_waves);
         const auto year = run_year(coupled);
         static_cast<void>(run_year(serial));
         static_cast<void>(run_year(diagnosed));

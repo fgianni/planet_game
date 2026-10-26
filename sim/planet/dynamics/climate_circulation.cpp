@@ -215,6 +215,17 @@ void ClimateCirculation::write_balanced_pressure(PlanetState& state, std::size_t
                  std::abs(result.energy_change_J) / result.energy_J);
 }
 
+double equatorial_wave_diffusivity_m2_s(double wave_speed_m_s, double rotation_rate_rad_s,
+                                        double radius_m, double latitude_deg) noexcept {
+    if (!(wave_speed_m_s > 0.0)) {
+        return 0.0;
+    }
+    const double beta = 2.0 * rotation_rate_rad_s / radius_m;
+    const double l_eq = std::sqrt(wave_speed_m_s / beta);
+    const double y = radius_m * latitude_deg * std::numbers::pi / 180.0 / l_eq;
+    return wave_speed_m_s * l_eq * std::exp(-0.5 * y * y);
+}
+
 void ClimateCirculation::write_transport(const ZonalCirculationSolution& zonal,
                                          const BalancedCirculationResult& azonal,
                                          const SurfaceEnergyParameters& surface) {
@@ -248,11 +259,9 @@ void ClimateCirculation::write_transport(const ZonalCirculationSolution& zonal,
                 0.0, interpolate_latitude(zonal.boundary_latitude_deg, diffusivity,
                                           face.latitude_deg));
             if (surface.equatorial_wave_speed_m_s > 0.0) {
-                const double c = surface.equatorial_wave_speed_m_s;
-                const double beta = 2.0 * p.rotation_rate_rad_s / p.radius_m;
-                const double l_eq = std::sqrt(c / beta);
-                const double y = p.radius_m * face.latitude_deg * std::numbers::pi / 180.0;
-                d += c * l_eq * std::exp(-0.5 * (y / l_eq) * (y / l_eq));
+                d += equatorial_wave_diffusivity_m2_s(surface.equatorial_wave_speed_m_s,
+                                                      p.rotation_rate_rad_s, p.radius_m,
+                                                      face.latitude_deg);
             }
             out.conductance_W_K[k] = p.heat_capacity_J_kg_K * column_mass * d * graph.weight[k];
             if (surface.tropical_eddy_factor != 1.0) {

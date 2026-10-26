@@ -53,6 +53,15 @@ namespace planetsim {
 //    from the land fraction as the balance's drag.
 // "Interpolated" means barycentrically from the three coarse cell centres
 // whose dual triangle holds the cell's centre.
+// ADR-0028: the equatorial waves' exchange, added to the transport's eddy
+// diffusivity at a face's latitude: D_w = c L_eq exp(−y²/(2 L_eq²)), with
+// L_eq = √(c/β) the equatorial deformation radius, β = 2Ω/a, and y = a φ
+// the distance from the equator (the Kelvin wave's meridional shape). Zero
+// for c ≤ 0.
+[[nodiscard]] double equatorial_wave_diffusivity_m2_s(double wave_speed_m_s,
+                                                      double rotation_rate_rad_s, double radius_m,
+                                                      double latitude_deg) noexcept;
+
 struct ClimateCirculationParameters {
     std::size_t bands = 36;   // the zonal model's bands (ADR-0011 §4.4 step 1)
     double orography_max_step_m = 800.0;   // ADR-0011 §13, as reference mode

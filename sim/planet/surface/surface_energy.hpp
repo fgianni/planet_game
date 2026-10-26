@@ -85,11 +85,6 @@ struct SurfaceEnergyParameters {
     // the same conductances) at faces within 30° of the equator, tapering
     // linearly to 1 at 40°: the tropics' weak temperature gradients.
     double tropical_eddy_factor = 1.0;
-    // The equatorial waves' exchange (0: none): c, a gravity-wave speed
-    // (m/s), adds D_w = c L_eq exp(−y²/(2 L_eq²)) to the eddy diffusivity,
-    // with L_eq = √(c/β) the equatorial deformation radius, β = 2Ω/a and y
-    // the distance from the equator (the Kelvin wave's meridional shape).
-    double equatorial_wave_speed_m_s = 0.0;
     // The share of the zonal-mean zonal wind's fluxes added to the
     // transport's, for heat and water alike, or for the water only.
     double zonal_advection_share = 0.0;
@@ -97,6 +92,11 @@ struct SurfaceEnergyParameters {
     // The share m of each cell's humidity mixed to its group's after the
     // transport: q ← (1 − m) q (c'/c̄) + m c' (conserves the group's water).
     double humidity_group_mixing = 0.0;
+    // ADR-0028: the equatorial waves' exchange, c the first baroclinic
+    // gravity-wave speed (m/s; 50 in the Earth-like preset, 0: none). The
+    // climate transport's eddy diffusivity gains D_w = c L_eq
+    // exp(−y²/(2 L_eq²)) (equatorial_wave_diffusivity_m2_s).
+    double equatorial_wave_speed_m_s = 0.0;
     // ADR-0027: the share m of the heat mixing within each transport group
     // (coupled months only; 1 in the Earth-like preset): a cell's source is
     // its group's H plus

@@ -48,6 +48,7 @@ SurfaceEnergyParameters surface_energy_parameters_for(PlanetPreset preset) noexc
         surface.water_cycle = true;   // ADR-0021, since the M7-07 refit
         surface.transport_fallback_residual_W_m2 = 100.0;   // ADR-0024 §9, R_f
         surface.heat_group_mixing = 1.0;                    // ADR-0027, m
+        surface.equatorial_wave_speed_m_s = 50.0;           // ADR-0028, c
         return surface;
     }
     }

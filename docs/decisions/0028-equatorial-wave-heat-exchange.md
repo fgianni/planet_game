@@ -1,6 +1,6 @@
 # ADR-0028 — The equatorial waves' heat exchange in the climate transport
 
-- **Status:** Proposed (2026-10-26)
+- **Status:** Accepted (2026-10-26, option 1, c = 50 m/s)
 - **Date:** 2026-10-26
 - **Milestone:** P0, between M8 and M9 (investigation INV-04)
 - **Context documents:** `docs/tasks/INV-04-v8-transport-and-radiation.md`
@@ -139,6 +139,25 @@ the Earth-like planet another 0.5 K before the refit).
 ## 9. Tasks
 
 1. INV-04: §5's measurements, recorded.
-2. A decision with the user.
+2. ~~A decision with the user~~ (accepted 2026-10-26: option 1,
+   c = 50 m/s).
 3. On acceptance: c in the Earth-like preset, V2's test, the refit (V6),
    V8 (V3), V11 (V4) and V5.
+
+## 10. Implementation (in progress, 2026-10-26)
+
+- `earth_like` sets `equatorial_wave_speed_m_s = 50`;
+  `equatorial_wave_diffusivity_m2_s` (`climate_circulation.hpp`) is the
+  formula, and `test_equatorial_wave_exchange` is V2 (the peak c L_eq,
+  e^(−1/2) at one L_eq north and south, zero for c = 0; at planet level,
+  L3, two months with c = 50 and 0 close energy and water, differ, and
+  agree on 1 and 4 workers).
+- **The cold start's first month is harder.** L3's cold-start year
+  (`test_coupled_transport`) stalls in months 0 and 3 at 51.9 and
+  4.3 W/m² after 30 Newton iterations (c = 0: 3–4 iterations): a
+  convecting column whose θ_c falls as its source rises (dθ_c/dh
+  = −0.063 K m²/W), ADR-0024 §9.5's kink. L4's cold start falls back in
+  month 0 (1 110 W/m²; c = 0 ends that month capped at 9.7 W/m²), then
+  converges in 4–5 iterations every month (c = 0: 3–30). That test's
+  first case, which checks the coupled solve, now runs without the
+  waves. V4 measures the fallback months at L5 and L6.
