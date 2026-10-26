@@ -244,9 +244,16 @@ void ClimateCirculation::write_transport(const ZonalCirculationSolution& zonal,
             const double column_mass =
                 0.5 * (azonal.surface_pressure_Pa[a] + azonal.surface_pressure_Pa[b]) /
                 p.gravity_m_s2;
-            const double d = std::max(
+            double d = std::max(
                 0.0, interpolate_latitude(zonal.boundary_latitude_deg, diffusivity,
                                           face.latitude_deg));
+            if (surface.equatorial_wave_speed_m_s > 0.0) {
+                const double c = surface.equatorial_wave_speed_m_s;
+                const double beta = 2.0 * p.rotation_rate_rad_s / p.radius_m;
+                const double l_eq = std::sqrt(c / beta);
+                const double y = p.radius_m * face.latitude_deg * std::numbers::pi / 180.0;
+                d += c * l_eq * std::exp(-0.5 * (y / l_eq) * (y / l_eq));
+            }
             out.conductance_W_K[k] = p.heat_capacity_J_kg_K * column_mass * d * graph.weight[k];
             if (surface.tropical_eddy_factor != 1.0) {
                 const double t =

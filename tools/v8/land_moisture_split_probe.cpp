@@ -7,7 +7,8 @@
 // SurfaceEnergyParameters::humidity_azonal_share, humidity_eddy_factor,
 // zonal_advection_share (heat and water), humidity_zonal_share,
 // humidity_group_mixing, heat_group_mixing and
-// humidity_azonal_column_share and tropical_eddy_factor. PROBE_LEVEL and
+// humidity_azonal_column_share, tropical_eddy_factor and
+// equatorial_wave_speed_m_s. PROBE_LEVEL and
 // PROBE_SPIN_UP_YEARS change the level and spin-up (the land-group split
 // and the probe's printed band shares assume nothing about the level).
 // PROBE_WORKERS sets the worker count (16); the final state hash is printed.
@@ -28,6 +29,7 @@ int main(int argc, char** argv) {
   const double heat_mixing = argc > 6 ? std::atof(argv[6]) : 0.0;
   const double column_share = argc > 7 ? std::atof(argv[7]) : 0.0;
   const double tropical = argc > 8 ? std::atof(argv[8]) : 1.0;
+  const double wave = argc > 9 ? std::atof(argv[9]) : 0.0;
   Scenario sc; sc.subdivision = 4; sc.seed = 1; sc.atmosphere_layers = 3; sc.spin_up_years = 10;
   if (const char* v = std::getenv("PROBE_LEVEL")) sc.subdivision = static_cast<std::uint32_t>(std::atoi(v));
   if (const char* v = std::getenv("PROBE_SPIN_UP_YEARS")) sc.spin_up_years = std::atoi(v);
@@ -42,6 +44,7 @@ int main(int argc, char** argv) {
     s.heat_group_mixing = heat_mixing;
     s.humidity_azonal_column_share = column_share;
     s.tropical_eddy_factor = tropical;
+    s.equatorial_wave_speed_m_s = wave;
   });
   const auto& mesh = run.state().mesh();
   const auto& f = run.fractions();
@@ -129,7 +132,7 @@ int main(int argc, char** argv) {
     }
   }
   std::cout << "azonal_share " << share << " eddy_factor " << factor << " zonal " << zonal
-            << " zonal_water " << zonal_water << " group_mixing " << mixing << " heat_mixing " << heat_mixing << " column_share " << column_share << " tropical_eddy " << tropical << " groups " << groups
+            << " zonal_water " << zonal_water << " group_mixing " << mixing << " heat_mixing " << heat_mixing << " column_share " << column_share << " tropical_eddy " << tropical << " wave_speed " << wave << " groups " << groups
             << " months with moist eddies " << months << " fallback months " << fallbacks << "\n"
             << "mean_K " << mean_K / seconds << " land_K " << land_K / seconds << " land_air_q_g_kg "
             << 1000 * land_q / land_area_s << " land_minus_ocean_K "

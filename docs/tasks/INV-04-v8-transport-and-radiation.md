@@ -1144,6 +1144,40 @@ Newton iterations are unchanged (111–127 against 116).
   V8 (the gap would be −0.7 K now).
 - The state hash and the tests are unchanged.
 
+## The equatorial waves' exchange (2026-10-26)
+
+A physical form of the tropical exchange, for ADR-0028 (proposed): a
+new off-by-default knob, `SurfaceEnergyParameters::equatorial_wave_speed_m_s`
+= c, adds D_w = c L_eq exp(−y²/(2 L_eq²)) to the eddy diffusivity at
+every face, with L_eq = √(c/β), β = 2Ω/a and y = a φ (the Kelvin wave's
+meridional shape). At c = 50 m/s, L_eq = 1 478 km and D_w = 7.4e7 m²/s
+at the equator. Climate mode, ten-year spin-up, then three years, the
+preset otherwise (`./build/land_moisture_split_probe 0 1 0 0 0 1 0 1
+<c>`, `PROBE_LEVEL=5` for L5; logs `build/inv04w/wave*.log`,
+`l5_wave*.log`):
+
+| Level | c (m/s) | Mean (K) | Land (K) | Land − ocean (K) | All-land vs all-ocean groups (K) | Precipitation (m/yr) |
+|---:|---:|---:|---:|---:|---:|---:|
+| 4 | 0 | 292.09 | 285.91 | −8.7 | −9.5 | 1.621 |
+| 4 | 30 | 291.71 | 288.16 | −5.0 | −3.5 | 1.502 |
+| 4 | 50 | 292.50 | 289.60 | −4.1 | −2.2 | 1.467 |
+| 4 | 62 | 293.04 | 290.46 | −3.6 | −1.7 | 1.459 |
+| 4 | 70 | 293.59 | 291.16 | −3.4 | −1.4 | 1.457 |
+| 5 | 0 | 292.08 | 286.44 | −8.0 | −7.8 | 1.639 |
+| 5 | 50 | 292.73 | 290.25 | −3.5 | −1.5 | 1.463 |
+| Reference mode (L4) | | 292.06 | 288.63 | −4.8 | | 1.471 |
+
+No fallback month; the energy and water gates pass; the Newton
+iterations are unchanged.
+
+- c = 50 m/s, the value usually quoted for Earth's first baroclinic
+  mode, gives reference mode's split (−4.1 against −4.8 K) and
+  precipitation (ratio 1.003), at L4 and L5 alike.
+- The model's own tropical stratification gives c = N H/π = 62–65 m/s
+  in both modes (H to the top layer's centre, from V8's tropical
+  profiles), which warms the planet 0.5 K more.
+- The state hash and the tests are unchanged.
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
@@ -1221,8 +1255,10 @@ were) before proposing an ADR.
    latent transport, over the ocean too. ~~The cold air~~ (done
    2026-10-25, "The cold air is the tropics' missing heat exchange"): a
    stronger tropical eddy exchange closes the land–ocean split and the
-   precipitation ratio, with a 0.5–0.7 K warming to refit. Next: an ADR
-   proposal for the tropics' heat exchange. The target is reference
+   precipitation ratio, with a 0.5–0.7 K warming to refit. **ADR-0028
+   proposed** (2026-10-26, "The equatorial waves' exchange"): D_w =
+   c L_eq exp(−y²/(2 L_eq²)), recommended c = 50 m/s; waiting for a
+   decision. The target is reference
    land's numbers: about 23 W/m² of latent heat delivered, about 12 g/kg
    of equatorial humidity, and the cloud longwave about 40 W/m².
 3. **An ADR proposal** for whichever change works, then a refit and V8
