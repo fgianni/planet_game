@@ -144,7 +144,7 @@ the Earth-like planet another 0.5 K before the refit).
 3. On acceptance: c in the Earth-like preset, V2's test, the refit (V6),
    V8 (V3), V11 (V4) and V5.
 
-## 10. Implementation (in progress, 2026-10-26)
+## 10. Implementation (complete, 2026-10-26)
 
 - `earth_like` sets `equatorial_wave_speed_m_s = 50`;
   `equatorial_wave_diffusivity_m2_s` (`climate_circulation.hpp`) is the
@@ -161,3 +161,46 @@ the Earth-like planet another 0.5 K before the refit).
   converges in 4–5 iterations every month (c = 0: 3–30). That test's
   first case, which checks the coupled solve, now runs without the
   waves. V4 measures the fallback months at L5 and L6.
+- **The refit (V6):** the pair scaled by 0.9265, τ_d = 1.062696 and
+  κ_v = 0.00531348 m²/kg, gives an L4/150 mean of 288.001 K. Cover is
+  0.519 (limit ≥ 0.5). The cloud shortwave is −41.1 W/m² and the
+  longwave +22.8 W/m². Every expectation passes. Logs:
+  `build/adr0028/refit_*.log`.
+- **V8 (V3), L4, ten-year spin-up then three years** (log
+  `build/adr0028/v8_v11.log`). It passes by agreement:
+
+  | | Climate | Reference | Difference |
+  |---|---:|---:|---:|
+  | Mean (K) | 290.403 | 290.257 | −0.146 |
+  | Land (K) | 287.011 | 286.623 | −0.39 |
+  | Ocean (K) | 291.789 | 291.742 | −0.05 |
+  | Precipitation (m/yr) | 1.430 | 1.424 | ratio 0.996 |
+
+  Land − ocean is −4.8 K in climate mode and −5.1 K in reference mode.
+  Land's air stays drier, as §7 expected. Its latent heat delivered is
+  1.7 against 23.0 W/m², and its tropical bottom-layer humidity 5.4
+  against 10.6 g/kg. The P2 equator-to-pole difference is 38.9 K
+  against 48.8 K.
+- **V11 (V4) stopped in month 0 at first.** L5, L6 and the L6 restart
+  all threw, because ADR-0024 §9's fallback failed after the coupled
+  solve diverged. ADR-0024 §9.6 (accepted 2026-10-26) fixes it: the
+  fallback restarts its columns from the step's start, and a fallback
+  that fails too moves no heat. Rerun on that code (log
+  `build/adr0028/v11_96.log`):
+
+  | Run | Wall (s) | Budget (s) | Fallback months | No-heat months | Energy / water (of gate) | Mean (K) |
+  |---|---:|---:|---:|---:|---|---:|
+  | L5/250 | 502.6 | 607.5 | 3 (months 0, 1, 3) | 0 | 1.0e-5 / 2.0e-4 | 287.50 |
+  | L6/250 | 1 803.7 | 2 025 | 4 (months 0, 2, 3, 29) | 1 (month 0) | 1.3e-5 / 4.1e-4 | 287.66 |
+
+  Both are within budget, with no failed circulation month and every
+  expectation passing. The fallback months rise from 1 to 3 at L5 and
+  from 3 to 4 at L6, but all except L6's month 29 fall in the cold
+  start's first year. V4's "no more fallback months than now" is
+  therefore met only after the first year.
+- **V5:** L6 restarts from a PSNAP at tick 87659, before month 2. Four
+  monthly hashes match through ticks 131488–262975, on one worker
+  uninterrupted against four after the restart. Two of those months
+  are fallback months. The final hash is `4544171262541673357`.
+  `test_fallback_restart` gives the same L6 first month on 4 and 16
+  workers.

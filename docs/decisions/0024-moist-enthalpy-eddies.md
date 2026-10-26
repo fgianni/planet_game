@@ -226,3 +226,46 @@ refitted preset, R_f = 100 W/m², ten years from the initial state:
 - **Not changed:** the 30-iteration cap, the coupled Newton's tolerance
   and the circulation itself.
 
+
+### 9.6 Amendment: the fallback restarts its columns, and a failed fallback moves no heat (accepted 2026-10-26 with the user, ADR-0028)
+
+**What fails.** With ADR-0028's equatorial waves in the preset, every
+V11 cold start (L5, L6 and the L6 restart) stops in month 0. The coupled
+solve diverges (L5: 63 083 W/m²; L6: 513 863 W/m²), and the fallback
+then fails too. Two defects in §9.2 cause this, though neither was hit
+before:
+- **The fallback's columns start from the coupled solve's last trials.**
+  Column guesses and warm starts are kept from one solve to the next.
+  After a diverged coupled solve they hold states far from the step's.
+  The fallback's diffusion then stalls: at L5 it ended at 58 011 W/m²
+  after 15 iterations, with a group at 441 K.
+- **The fallback's own residual is not checked.** Its last iterate's H
+  is applied whatever its consistency. A column cannot balance that H
+  (L5: −58 954 W/m²; L6: −247 087 W/m²), and the final column solve
+  throws.
+
+**Decision (amends §9.2's first decision).**
+1. **The fallback's columns restart from the step's start state.** Their
+   guesses and warm starts are reset before the diffusive solve. With
+   this alone, L5's month-0 fallback converges to 2e-9 W/m².
+2. **A fallback that does not converge either moves no heat that
+   month.** "Does not converge" means its consistency residual is above
+   R_f. In that case H = 0 everywhere, and the columns restart again.
+   - H = 0 sums to zero, so energy closes.
+   - The humidity transport has already moved the water, which carries
+     its latent energy.
+   - Every column balances h = 0.
+   - Such a month is reported (`transport_fallback_unconverged`) and
+     counted with the fallback months.
+3. **Determinism:** both depend on the state alone.
+
+**Validation.**
+- `test_fallback_restart`: L6's preset first month from the initial
+  state falls back. Its fallback does not converge, so it moves no heat.
+  Its columns converge (1.2e-10 W/m²), energy and water close (3.5e-7
+  and 9.7e-5 of their gates), and the hash is the same on 4 and 16
+  workers.
+- V11 and the L6 restart are rerun; results are in ADR-0028 §10.
+- A fallback that converged before now starts from other guesses, so
+  its month changes within the solve's tolerance. Hashes recorded
+  earlier, such as §9.4 V5's, are superseded by the reruns.

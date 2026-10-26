@@ -1183,6 +1183,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     // §17.1); otherwise ADR-0009's diffusion with D (§17.4).
     const bool coupled = circulation != nullptr && circulation->active && layers > 0U;
     bool fell_back = false;   // ADR-0024 §9
+    bool fallback_unconverged = false;   // ADR-0024 §9.6
     double transport_seconds = 0.0;
     if (coefficient > 0.0 || coupled) {
         const double conductance = coefficient * mesh.radius_m() * mesh.radius_m();
@@ -1526,13 +1527,31 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
             if (surface.transport_fallback_residual_W_m2 > 0.0 &&
                 coupled_solve.consistency_residual_W_m2 > surface.transport_fallback_residual_W_m2 &&
                 coefficient > 0.0) {
+                // §9.6: the fallback's columns start from the step's start,
+                // not from the coupled solve's last trials.
+                const auto restart_columns = [&] {
+                    layers_guess = layers_before;
+                    for (ColumnWarmStart& warm : warm_starts) {
+                        warm.valid = false;
+                    }
+                };
+                restart_columns();
                 solve = solve_implicit_transport(graph, conductance, floor, response, {},
                                                  worker_count,
                                                  eddy_latent.empty() ? nullptr : &eddy_latent);
-                for (std::size_t cell = 0; cell < cells; ++cell) {
-                    transport[cell] = solve.source_W_m2[group_of_cell[cell]];
-                }
                 fell_back = true;
+                if (solve.consistency_residual_W_m2 > surface.transport_fallback_residual_W_m2) {
+                    // §9.6: a fallback that does not converge either moves
+                    // no heat this month (H = 0 sums to zero; the water has
+                    // moved and carries its latent energy).
+                    restart_columns();
+                    std::fill(transport.values().begin(), transport.values().end(), 0.0);
+                    fallback_unconverged = true;
+                } else {
+                    for (std::size_t cell = 0; cell < cells; ++cell) {
+                        transport[cell] = solve.source_W_m2[group_of_cell[cell]];
+                    }
+                }
             }
         } else {
             const auto solve_start = std::chrono::steady_clock::now();
@@ -1909,6 +1928,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     }
     diagnostics.transport_solve_s = transport_seconds;
     diagnostics.transport_fell_back = fell_back;
+    diagnostics.transport_fallback_unconverged = fallback_unconverged;
     if (coupled) {
         diagnostics.transport_coupled = true;
         diagnostics.transport_cell_sum_W = coupled_solve.sum_W;

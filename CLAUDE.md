@@ -55,11 +55,18 @@ weakens the greenhouse over land. Most of the contrast was inside the
 transport's groups; ADR-0027 (accepted 2026-10-23, implemented 2026-10-24)
 mixes each group's heat (`heat_group_mixing = 1` in the preset), with the
 radiation pair refitted to τ_d = 1.147, κ_v = 0.005735 m²/kg (L4/150
-287.985 K). **V8 now passes at L4:** −0.029 K, precipitation ratio 0.908;
-but reference land is still 2.7 K warmer and its ocean 1.1 K colder, which
-cancel, and climate land's air stays dry. V11: L5/250 499.3 s (1 fallback
-month), L6/250 1,812.5 s (3 fallback months); the column gate is now on
-the residual, 1e-9 W/m² (ADR-0027 §10). INV-04's open tasks list the rest.
+287.985 K). ADR-0028 (accepted and implemented 2026-10-26) adds the
+equatorial waves' exchange to the eddy diffusivity (c = 50 m/s), with
+the pair refitted to τ_d = 1.062696, κ_v = 0.00531348 m²/kg (L4/150
+288.001 K). **V8 passes at L4 by agreement:** −0.146 K, precipitation
+ratio 0.996, land 0.39 K and ocean 0.05 K from reference mode; climate
+land's air stays dry (1.7 against 23.0 W/m² of latent heat). The waves'
+cold starts made ADR-0024 §9's fallback fail. ADR-0024 §9.6 (accepted
+2026-10-26) restarts the fallback's columns from the step's start, and a
+fallback that fails too moves no heat that month. V11: L5/250 502.6 s
+(3 fallback months), L6/250 1,803.7 s (4 fallback months, one with no
+heat); all but one are in the first year. The column gate is on the
+residual, 1e-9 W/m² (ADR-0027 §10). INV-04's open tasks list the rest.
 The accepted ADR-0024 §9 fallback is on in the Earth-like preset: a coupled
 month over 100 W/m² consistency residual uses the diffusive transport.
 Before ADR-0027, with the pair τ_d = 1.111, κ_v = 0.005555 m²/kg, the

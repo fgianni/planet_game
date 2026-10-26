@@ -69,6 +69,7 @@ Result measure(planetsim::test::Context& test, std::size_t workers, bool moisten
     double longwave_J = 0.0;
     std::vector<double> latent_J_m2(run.state().mesh().cell_count(), 0.0);
     int fallback_months = 0;   // ADR-0024 §9
+    int no_heat_months = 0;    // §9.6: the fallback failed too
     for (int month = 0; month < years * 12; ++month) {
         run.run_until(planetsim::climate_substep_containing(run.tick(), run.parameters()).end_tick);
         const auto& step = run.last_step();
@@ -84,8 +85,10 @@ Result measure(planetsim::test::Context& test, std::size_t workers, bool moisten
         }
         if (step.transport_fell_back) {
             ++fallback_months;
+            no_heat_months += step.transport_fallback_unconverged ? 1 : 0;
             std::cout << "transport_fallback month=" << month
-                      << " consistency_W_m2=" << step.transport_consistency_W_m2 << std::endl;
+                      << " consistency_W_m2=" << step.transport_consistency_W_m2
+                      << " no_heat=" << (step.transport_fallback_unconverged ? 1 : 0) << std::endl;
         }
         consistency = std::max(consistency, step.transport_consistency_W_m2);
         if (step.transport_newton_iterations >= 30) {
@@ -137,6 +140,7 @@ Result measure(planetsim::test::Context& test, std::size_t workers, bool moisten
               << " energy_gate_ratio=" << energy << " water_gate_ratio=" << water
               << " worst_transport_consistency_W_m2=" << consistency
               << " capped_months=" << capped_months << " fallback_months=" << fallback_months
+              << " no_heat_months=" << no_heat_months
               << " failed_circulation_months=" << run.circulation()->diagnostics().failed_months
               << " mean_K=" << mean << " cover=" << cover
               << " cre_sw_W_m2=" << sw << " cre_lw_W_m2=" << lw

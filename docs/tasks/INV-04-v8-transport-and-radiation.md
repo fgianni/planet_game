@@ -1178,6 +1178,39 @@ iterations are unchanged.
   profiles), which warms the planet 0.5 K more.
 - The state hash and the tests are unchanged.
 
+## ADR-0028 implemented: V8 by agreement, V11 with ADR-0024 §9.6 (2026-10-26)
+
+ADR-0028 was accepted with c = 50 m/s and is now in the preset. The
+radiation pair was refitted to τ_d = 1.062696 and κ_v =
+0.00531348 m²/kg (L4/150 288.001 K).
+
+**V8, L4, ten-year spin-up then three years** (`build/adr0028/v8_v11.log`):
+- The gap is −0.146 K and the precipitation ratio 0.996.
+- Land and ocean agree on their own: land is 287.01 against 286.62 K,
+  the ocean 291.79 against 291.74 K. They no longer cancel.
+- Climate land's air stays dry: 1.7 against 23.0 W/m² of latent heat
+  delivered.
+
+**V11 first stopped in its cold start's month 0** at L5, L6 and the L6
+restart:
+- The coupled solve diverged: 63 083 and 513 863 W/m².
+- ADR-0024 §9's fallback then failed. Its columns started from the
+  diverged trials' guesses, and its own residual was applied unchecked.
+  The final column solve threw at h = −5 802 to −247 087 W/m².
+- The fix is the ADR-0024 §9.6 amendment, chosen with the user: the
+  fallback restarts its columns from the step's start, and a fallback
+  that fails too moves no heat.
+
+**Rerun** (`build/adr0028/v11_96.log`):
+- L5/250: 502.6 s, 3 fallback months, all in year 1.
+- L6/250: 1 803.7 s, 4 fallback months. Month 0 moved no heat; months 0,
+  2 and 3 are in year 1, and month 29 is the fourth.
+- The L6 restart from tick 87659 matches four monthly hashes on one
+  worker against four.
+- Energy and water close, with no failed circulation month.
+
+ADR-0028 §10 has the tables.
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
@@ -1257,8 +1290,10 @@ were) before proposing an ADR.
    stronger tropical eddy exchange closes the land–ocean split and the
    precipitation ratio, with a 0.5–0.7 K warming to refit. **ADR-0028
    proposed** (2026-10-26, "The equatorial waves' exchange"): D_w =
-   c L_eq exp(−y²/(2 L_eq²)), recommended c = 50 m/s; waiting for a
-   decision. The target is reference
+   c L_eq exp(−y²/(2 L_eq²)); **accepted and implemented (2026-10-26,
+   c = 50 m/s, "ADR-0028 implemented")**: V8 passes by agreement (−0.146 K,
+   ratio 0.996, land 0.39 K and ocean 0.05 K from reference mode), with
+   ADR-0024 §9.6 for the cold start. Still open: land's water. The target is reference
    land's numbers: about 23 W/m² of latent heat delivered, about 12 g/kg
    of equatorial humidity, and the cloud longwave about 40 W/m².
 3. **An ADR proposal** for whichever change works, then a refit and V8

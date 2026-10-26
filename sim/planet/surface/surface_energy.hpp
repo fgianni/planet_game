@@ -218,6 +218,7 @@ struct SurfaceEnergyDiagnostics {
     double transport_consistency_W_m2 = 0.0;  // max |H − h| of the implicit solve
     int transport_newton_iterations = 0;
     bool transport_fell_back = false;   // ADR-0024 §9: the diffusive transport replaced it
+    bool transport_fallback_unconverged = false;   // §9.6: that too failed; no heat moved
     int transport_cg_iterations = 0;
     // The coupled transport (ADR-0011 §17.1): whether the circulation carried
     // the heat this step, and its eddy and advective parts (Σ A |H|).
