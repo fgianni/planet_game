@@ -11,9 +11,11 @@
 
 // The equatorial waves' exchange (ADR-0028 V2; INV-04): the diffusivity
 // D_w = c L_eq exp(−y²/(2 L_eq²)) with L_eq = √(c/β), and the Earth-like
-// planet in climate mode, L3, two coupled months from the initial state,
-// with c = 50 m/s (the preset) and c = 0: both close energy and water, they
-// differ, and the preset's run is the same for 1 and 4 workers.
+// planet in climate mode, L3, three months from the initial state, with
+// c = 50 m/s (the preset) and c = 0: both close energy and water, they
+// differ, and the preset's run is the same for 1 and 4 workers. The cold
+// start's hot first month may take ADR-0024 §9's fallback (the preset's
+// does, at 246 W/m²); the months after it are coupled.
 namespace {
 
 struct Record {
@@ -32,7 +34,7 @@ Record run(std::size_t workers, double wave_speed_m_s) {
                                     p.equatorial_wave_speed_m_s = wave_speed_m_s;
                                 });
     Record record;
-    for (int month = 0; month < 2; ++month) {
+    for (int month = 0; month < 3; ++month) {
         planet.run_until(
             planetsim::climate_substep_containing(planet.tick(), planet.parameters()).end_tick);
         const auto& step = planet.last_step();
@@ -78,7 +80,7 @@ int main() {
     const Record on = run(4U, 50.0);
     const Record serial = run(1U, 50.0);
     for (const Record* r : {&off, &on}) {
-        PLANETSIM_EXPECT(test, r->coupled_months == 2);
+        PLANETSIM_EXPECT(test, r->coupled_months >= 2);
         PLANETSIM_EXPECT(test, r->worst_imbalance <= 1e-9);
         PLANETSIM_EXPECT(test, r->worst_closure <= 1.0);
         PLANETSIM_EXPECT(test, r->worst_water <= 1.0);

@@ -108,9 +108,13 @@ inline constexpr double earth_like_longwave_optical_depth = 1.442;
 // ADR-0027's heat mixing cooled that pair's L4/150 mean to 285.764 K; the
 // 2026-10-24 refit, the same PlanetRun path on 16 workers, scales both by
 // 1.0324: τ_d = 1.147 and κ_v = 0.005735 m²/kg (287.985 K).
+// ADR-0028's equatorial waves warmed that pair's L4/150 mean to 289.918 K;
+// the 2026-10-26 refit (12 workers) scales both by 0.9265: τ_d = 1.062696
+// and κ_v = 0.00531348 m²/kg (288.001 K; ×0.925 gave 287.949 K, ×0.927
+// 288.013 K).
 // The cloud constants stay τ_a = 600 s, W_c = 0.05 kg/m², r_e = 18 µm.
-inline constexpr double earth_like_dry_optical_depth = 1.147;
-inline constexpr double earth_like_vapour_absorption_m2_kg = 0.005735;
+inline constexpr double earth_like_dry_optical_depth = 1.062696;
+inline constexpr double earth_like_vapour_absorption_m2_kg = 0.00531348;
 
 // dead_rock and aqua_planet: no atmosphere (experiments A and B,
 // specification §13.1). earth_like: three layers (design record §15.1) of

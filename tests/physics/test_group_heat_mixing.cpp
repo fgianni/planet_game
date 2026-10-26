@@ -35,6 +35,9 @@ Record run(std::size_t workers, double mixing) {
     planetsim::PlanetRun planet(scenario, workers, planetsim::ClimateCirculationUse::coupled,
                                 [=](planetsim::SurfaceEnergyParameters& p) {
                                     p.heat_group_mixing = mixing;
+                                    // Without ADR-0028's waves, whose cold
+                                    // start falls back in month 0.
+                                    p.equatorial_wave_speed_m_s = 0.0;
                                 });
     const auto& mesh = planet.state().mesh();
     const auto& fractions = planet.fractions();
