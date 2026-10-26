@@ -15,6 +15,7 @@
 #include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/variant/packed_color_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
+#include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/string.hpp>
@@ -120,11 +121,19 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     [[nodiscard]] bool poll_live_frame();
     [[nodiscard]] bool is_live_run_busy() const noexcept;
     [[nodiscard]] godot::String get_live_state_hash() const;
+    // Requests are validated on the main thread, submitted by the live
+    // worker at its next step boundary. No solver state is touched by UI.
+    [[nodiscard]] bool queue_live_solar_factor(double factor);
+    [[nodiscard]] godot::PackedStringArray take_live_events();
     [[nodiscard]] std::int64_t find_cell(const godot::Vector3& direction) const;
+    [[nodiscard]] std::int64_t find_coastal_cell(const godot::Vector3& direction) const;
+    [[nodiscard]] godot::Vector3 get_coastal_focus(const godot::Vector3& direction) const;
     // Distance from the centre, in planet radii, of the surface as drawn
     // (the displaced cell fans) along a direction: for camera collision.
     [[nodiscard]] double get_surface_radius(const godot::Vector3& direction) const;
     [[nodiscard]] godot::Vector3 get_cell_direction(std::int64_t cell) const;
+    [[nodiscard]] double get_cell_land_fraction(std::int64_t cell) const;
+    [[nodiscard]] double get_cell_elevation_m(std::int64_t cell) const;
     // R1-04: the streamed terrain tiles, for a camera at `position` (x, y, z
     // planet radii, double) looking along `forward` (x, y, z) within
     // `half_diagonal` radians. `tiles_weight` is the tiles' share across the
@@ -195,7 +204,7 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     godot::String preset_ = "earth_like";
 
     std::int64_t view_mode_ = view_style;
-    double relief_exaggeration_ = 25.0;
+    double relief_exaggeration_ = 25.0; // adjustable in Controls
     bool day_night_shading_ = true;
     bool clouds_visible_ = true;
     godot::MeshInstance3D* cloud_node_ = nullptr;
@@ -239,6 +248,8 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     std::int64_t live_pending_steps_ = 0;
     std::optional<StateSnapshot> live_snapshot_;
     std::string live_error_;
+    std::optional<double> live_solar_pending_;
+    std::vector<std::string> live_events_;
     std::atomic<std::uint64_t> live_state_hash_{0U};
     bool live_water_cycle_ = false;  // the live run's resolved water cycle
     std::atomic<bool> live_busy_{false};

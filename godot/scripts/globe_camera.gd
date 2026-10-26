@@ -84,6 +84,10 @@ func get_current_band() -> String:
 	return _band
 
 
+func planet_band_altitude_m() -> float:
+	return PLANET_REGION_CELLS * _cell_spacing_rad * RADIUS_M
+
+
 ## Each band's weight, summing to 1: across a band edge both are drawn.
 func get_band_weights() -> Dictionary:
 	return _band_weights
@@ -142,6 +146,17 @@ func drawn_exaggeration() -> float:
 
 func get_camera_position() -> Vector3:
 	return _vector(_camera_position)
+
+
+## Keep a capture flight from changing the player's focus, heading or tilt.
+func save_view() -> Dictionary:
+	return _view.duplicate(true)
+
+
+func restore_view(view: Dictionary) -> void:
+	_target = view.duplicate(true)
+	_view = view.duplicate(true)
+	_apply()
 
 
 func handle_input(event: InputEvent) -> bool:

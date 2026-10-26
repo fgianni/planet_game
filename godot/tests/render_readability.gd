@@ -46,6 +46,7 @@ func _run() -> void:
 				"baseline": baseline_name + ".ppm",
 				"changed": signal_name + ".ppm",
 			})
+		await _check_ocean_motion(style)
 
 	images.append_array(await _cloud_pairs(output_dir))
 
@@ -189,16 +190,20 @@ func _cloud_pairs(output_dir: String) -> Array[Dictionary]:
 		_cloud_material.set_shader_parameter("day_night", false)
 		_cloud_material.set_shader_parameter("cloud_radius", 1.002)
 		_cloud_material.set_shader_parameter("daylight_map", _constant_texture(Color(1.0, 0.0, 0.0, 1.0)))
+		_cloud_material.set_shader_parameter("cell_angular_size", 0.08 if style == "stylised" else 0.0175)
 		for cloud_case in [{"name": "clear_vs_overcast", "cover": 1.0, "thickness": 0.8},
 				{"name": "clear_vs_half_cloud", "cover": 0.5, "thickness": 0.4}]:
 			var baseline_name := "%s_%s_baseline" % [style, cloud_case.name]
 			var signal_name := "%s_%s_signal" % [style, cloud_case.name]
 			_cloud_shell.visible = false
 			await _capture(output_dir, baseline_name)
+			var clear_image := _viewport.get_texture().get_image()
 			_cloud_material.set_shader_parameter("cloud_cover_map", _constant_texture(Color(cloud_case.cover, 0.0, 0.0, 1.0)))
 			_cloud_material.set_shader_parameter("cloud_thickness_map", _constant_texture(Color(cloud_case.thickness, 0.0, 0.0, 1.0)))
 			_cloud_shell.visible = true
 			await _capture(output_dir, signal_name)
+			if style == "stylised" and cloud_case.name == "clear_vs_half_cloud":
+				_check_cloud_shape(clear_image, _viewport.get_texture().get_image())
 			pairs.append({
 				"style": style,
 				"signal": cloud_case.name,
@@ -241,10 +246,65 @@ func _cloud_pairs(output_dir: String) -> Array[Dictionary]:
 	return pairs
 
 
+func _check_cloud_shape(clear: Image, cloudy: Image) -> void:
+	# A resolved half-cover cloud needs both visible patches and clear gaps;
+	# a uniform veil passes a colour-difference gate but fails this check.
+	var bright := 0
+	var gaps := 0
+	for y in range(16, IMAGE_SIZE - 16):
+		for x in range(16, IMAGE_SIZE - 16):
+			var change := cloudy.get_pixel(x, y).get_luminance() - clear.get_pixel(x, y).get_luminance()
+			if change > 0.12:
+				bright += 1
+			if change < 0.03:
+				gaps += 1
+	assert(bright > 200 and gaps > 200,
+		"half-cloud cover became a uniform veil (%d patches, %d gaps)" % [bright, gaps])
+
+
 func _constant_texture(value: Color) -> ImageTexture:
 	var image := Image.create(2, 2, false, Image.FORMAT_RGBAF)
 	image.fill(value)
 	return ImageTexture.create_from_image(image)
+
+
+func _ocean_pixels(phase: float) -> PackedByteArray:
+	_material.set_shader_parameter("ocean_phase_offset", phase)
+	await process_frame
+	await process_frame
+	return _viewport.get_texture().get_image().get_data()
+
+
+func _check_ocean_motion(style: String) -> void:
+	# Fix time so only the deliberately changed phase may change the image.
+	_material.set_shader_parameter("ocean_motion_speed", 0.0)
+	_material.set_shader_parameter("cell_angular_size", 0.5)
+	_material.set_shader_parameter("detail_seed_texture", Vector3(4.1, 8.3, 2.7))
+	_material.set_shader_parameter("band_fade", 0.5)
+	var common := {"relief": -200.0, "daylight": 1.0, "known": 1.0,
+		"guessed": 0.0, "knowledge_age": 0.0, "classes": Color(1.0, 0.0, 0.0, 0.0),
+		"ice": 0.0, "snow": 0.0, "sea_ice": 0.0}
+	_apply_channels(common)
+	var first := await _ocean_pixels(0.0)
+	var next := await _ocean_pixels(2.0)
+	assert(first != next, "%s: open ocean did not animate" % style)
+	_material.set_shader_parameter("band_fade", 0.0)
+	assert(await _ocean_pixels(0.0) == await _ocean_pixels(2.0),
+		"%s: ocean bands reached the planet-scale view" % style)
+	_material.set_shader_parameter("band_fade", 0.5)
+	var land := common.duplicate()
+	land.classes = Color(0.0, 0.0, 0.0, 1.0)
+	_apply_channels(land)
+	assert(await _ocean_pixels(0.0) == await _ocean_pixels(2.0),
+		"%s: ocean motion changed land" % style)
+	var ice := common.duplicate()
+	ice.sea_ice = 1.0
+	_apply_channels(ice)
+	assert(await _ocean_pixels(0.0) == await _ocean_pixels(2.0),
+		"%s: ocean motion changed fully ice-covered water" % style)
+	_material.set_shader_parameter("ocean_motion_speed", 1.0)
+	_material.set_shader_parameter("ocean_phase_offset", 0.0)
+	_material.set_shader_parameter("band_fade", 0.0)
 
 
 func _apply_channels(values: Dictionary) -> void:

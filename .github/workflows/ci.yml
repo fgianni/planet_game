@@ -207,6 +207,13 @@ jobs:
             /tmp/planetsim-r1-ci.pframe
           xvfb-run -a ./godot4 --display-driver x11 --rendering-driver opengl3 \
             --audio-driver Dummy --path godot \
+            --script res://tests/test_climate_lab_ui.gd -- --subdivision=2
+          xvfb-run -a ./godot4 --display-driver x11 --rendering-driver opengl3 \
+            --audio-driver Dummy --path godot \
+            --script res://tests/test_climate_lab_capture.gd -- \
+            --subdivision=2 --output=/tmp/planetsim-ui-capture.png
+          xvfb-run -a ./godot4 --display-driver x11 --rendering-driver opengl3 \
+            --audio-driver Dummy --path godot \
             --script res://tests/test_r2_overlay.gd -- \
             /tmp/planetsim-r1-ci.pframe
           xvfb-run -a ./godot4 --display-driver x11 --rendering-driver opengl3 \

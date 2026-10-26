@@ -57,6 +57,9 @@ void fragment() {
 	// Sub-cell detail: none at planet scale, coverages at region scale.
 	vec3 direction = normalize(model_position);
 	float amount = detail_amount(direction);
+	// Waves belong to the region/local view, not the planet-scale map. The
+	// existing band handoff makes them fade in without moving the coastline.
+	float wave_amount = amount * smoothstep(0.0, 1.0, band_fade);
 	// On a terrain tile the coast follows the drawn surface.
 	float open_water = mix(detail_cover(classes.r, detail_uniform(direction, detail_seed_coast), amount),
 	                       detail_geometry_water(tile_surface.y), tile_surface.x);
@@ -69,9 +72,19 @@ void fragment() {
 
 	float highland = smoothstep(500.0, 4200.0, relief);
 	vec3 water = mix(vec3(0.03, 0.11, 0.27), vec3(0.08, 0.31, 0.54), smoothstep(-6000.0, 0.0, relief));
+	float ocean_motion = 0.0;
+	float ocean_ripple = 0.0;
+	if (open_water > 0.001 && wave_amount > 0.0 && floe < 1.0) {
+		ocean_motion = detail_ocean_motion(direction);
+		ocean_ripple = detail_ocean_ripple(direction);
+		water *= 1.0 + wave_amount * (1.0 - floe) *
+			(0.06 * ocean_motion + 0.04 * ocean_ripple);
+	}
 	vec3 rock = mix(vec3(0.36, 0.30, 0.28), vec3(0.68, 0.65, 0.60), highland);
-	vec3 sand = vec3(0.78, 0.64, 0.34);
-	vec3 soil = mix(vec3(0.25, 0.54, 0.20), vec3(0.52, 0.43, 0.20), highland);
+	// Before M10 there is no vegetation type: bare soil must not imply a
+	// continuous green forest, nor sand a uniformly bright desert.
+	vec3 sand = vec3(0.67, 0.58, 0.42);
+	vec3 soil = mix(vec3(0.37, 0.43, 0.27), vec3(0.52, 0.44, 0.31), highland);
 	vec3 ice = vec3(0.84, 0.94, 1.0);
 	vec3 ground = cover.x * rock + cover.y * sand + cover.z * soil + cover.w * ice;
 	vec3 base = mix(ground, water, open_water);
@@ -89,14 +102,15 @@ void fragment() {
 	}
 
 	// Fine relief on land at region scale (surface-gradient bump).
-	float bump = amount * (1.0 - open_water) * (0.002 + 0.006 * highland) * grain;
+	float bump = amount * ((1.0 - open_water) * (0.002 + 0.006 * highland) * grain
+		+ open_water * (1.0 - floe) * 0.00012 * wave_amount * ocean_motion);
 	vec3 dpdx = dFdx(VERTEX);
 	vec3 dpdy = dFdy(VERTEX);
 	vec3 r1 = cross(dpdy, NORMAL);
 	vec3 r2 = cross(NORMAL, dpdx);
 	float det = dot(dpdx, r1);
 	vec3 gradient = (dFdx(bump) * r1 + dFdy(bump) * r2) / max(abs(det), 1e-12) * sign(det);
-	NORMAL = normalize(NORMAL - gradient * 8.0);
+	NORMAL = normalize(NORMAL - gradient * 2.0);
 
 	float air_mass = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
 	base = mix(base, vec3(0.18, 0.55, 0.96), 0.38 * atmosphere * air_mass);

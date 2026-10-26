@@ -58,6 +58,7 @@ void fragment() {
 	// patches with fractal coasts, no texture.
 	vec3 direction = normalize(model_position);
 	float amount = detail_amount(direction);
+	float wave_amount = amount * smoothstep(0.0, 1.0, band_fade);
 	// On a terrain tile the coast follows the drawn surface.
 	float open_water = mix(detail_cover(classes.r, detail_uniform(direction, detail_seed_coast), amount),
 	                       detail_geometry_water(tile_surface.y), tile_surface.x);
@@ -69,6 +70,9 @@ void fragment() {
 
 	float contour = 0.5 + 0.5 * cos(relief * 0.0062831853);
 	vec3 water = vec3(0.14, 0.29, 0.40);
+	if (open_water > 0.001 && wave_amount > 0.0 && floe < 1.0) {
+		water *= 1.0 + 0.04 * wave_amount * (1.0 - floe) * detail_ocean_motion(direction);
+	}
 	vec3 rock = vec3(0.48, 0.45, 0.42);
 	vec3 sand = vec3(0.88, 0.78, 0.53);
 	vec3 soil = vec3(0.55, 0.62, 0.25);

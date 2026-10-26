@@ -34,13 +34,10 @@ void vertex() {
 	NORMAL = direction;
 }
 
-// Cloud features about this many per cell, the fBm's finer octaves adding
-// texture inside them: coherent cloud shapes a couple of cells across, so
-// the field has structure from orbit, where a cell is a few pixels. They
-// switch on between these cell sizes on screen.
-const float CLOUD_FEATURES_PER_CELL = 0.5;
-// The soft edge: a cloud fades over this much of the noise's range.
-const float CLOUD_EDGE = 0.16;
+// The field's coarse structures remain tied to cell cloud cover. Finer
+// fluctuations break their edges without creating cover in clear cells.
+const float CLOUD_FEATURES_PER_CELL = 0.65;
+const float CLOUD_EDGE = 0.065;
 const float CLOUD_START_PX = 1.5;
 const float CLOUD_FULL_PX = 5.0;
 // cloud_thickness = 1 − exp(−τ / 10) (ADR-0023 §4.8).
@@ -55,13 +52,16 @@ void fragment() {
 	float pixels = cell_angular_size / max(length(fwidth(unit)), 1e-7);
 	float amount = smoothstep(CLOUD_START_PX, CLOUD_FULL_PX, pixels);
 	vec3 coarse = unit * (CLOUD_FEATURES_PER_CELL / DETAIL_FEATURES_PER_CELL);
-	// Soft-edged cover: where the uniform noise lies below the cover, faded
-	// over CLOUD_EDGE. Its mean over an area stays the cover (the fade is
-	// symmetric), and at planet scale it is the cover itself.
+	// The rank field distributes the cell's fraction spatially. A smaller
+	// field perturbs the boundary and supplies bright cores and grey wisps;
+	// it does not seed a new cloud where cover or optical depth is zero.
 	float noise = detail_uniform(coarse, detail_seed_cloud);
-	float soft = smoothstep(noise - CLOUD_EDGE, noise + CLOUD_EDGE, cover);
-	float patch = mix(cover, soft * step(1e-4, cover), amount);
-	float billow = detail_field(coarse * 3.0, detail_seed_cloud + vec3(5.3, 1.1, 7.7));
+	float billow = detail_field(coarse * 4.0, detail_seed_cloud + vec3(5.3, 1.1, 7.7));
+	float boundary = noise + 0.28 * (billow - 0.44);
+	float edge = max(CLOUD_EDGE, fwidth(boundary));
+	float soft = smoothstep(boundary - edge, boundary + edge, cover);
+	float patch = mix(cover, soft, amount) * step(1e-4, cover);
+	patch = max(patch, step(1.0 - 1e-4, cover));
 	// Opacity is the cloud's reflectance, as the radiation computes it:
 	// R = (1 − g) τ / (2 + (1 − g) τ), τ from the thickness channel. Thin
 	// cloud is a veil, thick cloud nearly opaque.
@@ -70,8 +70,8 @@ void fragment() {
 	float reflectance = scaled / (2.0 + scaled);
 	// Preserve the established look at ordinary depths, but do not draw the
 	// opacity floor when the column has no optical depth at all.
-	float density = clamp(0.10 + 1.7 * reflectance, 0.0, 0.97) *
-		smoothstep(0.0, 0.02, thickness) * mix(1.0, 0.7 + 0.6 * billow, amount);
+	float density = clamp(0.04 + 2.8 * reflectance, 0.0, 0.97) *
+		smoothstep(0.0, 0.02, thickness) * mix(1.0, 0.94 + 0.12 * billow, amount);
 	float alpha = clamp(patch * density, 0.0, 0.97);
 	if (alpha <= 0.002) {
 		discard;
@@ -80,9 +80,9 @@ void fragment() {
 	vec3 camera = (inverse(MODEL_MATRIX) * vec4(CAMERA_POSITION_WORLD, 1.0)).xyz;
 	bool above = length(camera) > cloud_radius;
 	vec3 colour = above
-		? vec3(0.86, 0.88, 0.92) + vec3(0.13, 0.11, 0.08) * reflectance / 0.6
+		? vec3(0.92, 0.93, 0.95) + vec3(0.07, 0.06, 0.04) * reflectance / 0.6
 		: mix(vec3(0.95, 0.96, 0.98), vec3(0.50, 0.53, 0.58), clamp(reflectance / 0.6, 0.0, 1.0));
-	colour *= mix(0.93, 1.04, billow);
+	colour *= mix(0.93, 1.04, smoothstep(0.25, 0.65, billow));
 	if (day_night) {
 		colour *= mix(0.12, 1.0, smoothstep(0.0, 0.15, daylight));
 	}

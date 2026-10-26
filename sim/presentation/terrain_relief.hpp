@@ -39,8 +39,11 @@ namespace planetsim::presentation {
 // terrain) a cell's curve is flat at its mean elevation, the neutral
 // picture.
 
-inline constexpr double relief_features_per_cell = 3.0; // lowest octave, per cell spacing
-inline constexpr int relief_octaves = 14;               // down to metres at L6
+// The relief is a band-limited landscape, not new full-height bumps at every
+// zoom level. The finest octave is roughly a few hundred metres at L6;
+// finer tiles resolve this same surface rather than inventing new coasts.
+inline constexpr double relief_features_per_cell = 1.5; // lowest octave, per cell spacing
+inline constexpr int relief_octaves = 8;
 // The share of the cell barycentric weight over which a place hands over
 // from its cell's curve to its corners' (0: the cell mesh's linear blend).
 inline constexpr double relief_handover = 0.15;

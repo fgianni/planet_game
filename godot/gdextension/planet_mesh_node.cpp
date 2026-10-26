@@ -236,13 +236,25 @@ void PlanetMeshNode::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("is_live_run_busy"),
                                 &PlanetMeshNode::is_live_run_busy);
     godot::ClassDB::bind_method(godot::D_METHOD("get_live_state_hash"),
-                                &PlanetMeshNode::get_live_state_hash);
+                                 &PlanetMeshNode::get_live_state_hash);
+    godot::ClassDB::bind_method(godot::D_METHOD("queue_live_solar_factor", "factor"),
+                                &PlanetMeshNode::queue_live_solar_factor);
+    godot::ClassDB::bind_method(godot::D_METHOD("take_live_events"),
+                                &PlanetMeshNode::take_live_events);
     godot::ClassDB::bind_method(godot::D_METHOD("find_cell", "direction"),
-                                &PlanetMeshNode::find_cell);
+                                 &PlanetMeshNode::find_cell);
+    godot::ClassDB::bind_method(godot::D_METHOD("find_coastal_cell", "direction"),
+                                &PlanetMeshNode::find_coastal_cell);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_coastal_focus", "direction"),
+                                &PlanetMeshNode::get_coastal_focus);
     godot::ClassDB::bind_method(godot::D_METHOD("get_surface_radius", "direction"),
                                 &PlanetMeshNode::get_surface_radius);
     godot::ClassDB::bind_method(godot::D_METHOD("get_cell_direction", "cell"),
-                                &PlanetMeshNode::get_cell_direction);
+                                 &PlanetMeshNode::get_cell_direction);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_cell_land_fraction", "cell"),
+                                &PlanetMeshNode::get_cell_land_fraction);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_cell_elevation_m", "cell"),
+                                &PlanetMeshNode::get_cell_elevation_m);
     godot::ClassDB::bind_method(
         godot::D_METHOD("update_terrain_tiles", "position", "forward", "focal_px", "half_diagonal",
                         "tiles_weight", "exaggeration"),
@@ -771,6 +783,7 @@ void PlanetMeshNode::stop_live_run() {
         live_pending_steps_ = 0;
         live_snapshot_.reset();
         live_error_.clear();
+        live_solar_pending_.reset();
     }
     live_run_.reset();
     live_state_hash_.store(0U, std::memory_order_release);
@@ -830,8 +843,27 @@ godot::String PlanetMeshNode::get_live_state_hash() const {
     return godot::String(output.str().c_str());
 }
 
+bool PlanetMeshNode::queue_live_solar_factor(double factor) {
+    if (!live_run_ || !std::isfinite(factor) || factor <= 0.0 || factor > 10.0) return false;
+    const std::lock_guard lock(live_mutex_);
+    live_solar_pending_ = factor; // before the next step, the last UI request wins
+    return true;
+}
+
+godot::PackedStringArray PlanetMeshNode::take_live_events() {
+    std::vector<std::string> events;
+    {
+        const std::lock_guard lock(live_mutex_);
+        events.swap(live_events_);
+    }
+    godot::PackedStringArray result;
+    for (const auto& event : events) result.append(godot::String(event.c_str()));
+    return result;
+}
+
 void PlanetMeshNode::live_run_loop(std::stop_token stop_token) {
     for (;;) {
+        std::optional<double> solar;
         {
             std::unique_lock lock(live_mutex_);
             live_condition_.wait(lock, [&] {
@@ -841,9 +873,15 @@ void PlanetMeshNode::live_run_loop(std::stop_token stop_token) {
                 return;
             --live_pending_steps_;
             live_busy_.store(true, std::memory_order_release);
+            solar = std::exchange(live_solar_pending_, std::nullopt);
         }
         try {
             StateSnapshot snapshot;
+            if (solar) {
+                std::ostringstream payload;
+                payload << std::setprecision(17) << *solar;
+                live_run_->submit({live_run_->tick(), "user", std::string(run_command_set_solar_luminosity_factor), payload.str()});
+            }
             const SimulationTick boundary = live_run_->scheduler().next_step().end_tick;
             live_run_->run_until(boundary,
                                  [&snapshot](const StateSnapshot& frame) { snapshot = frame; });
@@ -851,11 +889,17 @@ void PlanetMeshNode::live_run_loop(std::stop_token stop_token) {
             {
                 std::lock_guard lock(live_mutex_);
                 live_snapshot_ = std::move(snapshot);
+                if (solar) {
+                    std::ostringstream message;
+                    message << "solar factor " << *solar << " applied at tick " << boundary;
+                    live_events_.push_back(message.str());
+                }
             }
             live_state_hash_.store(hash, std::memory_order_release);
         } catch (const std::exception& exception) {
             std::lock_guard lock(live_mutex_);
             live_error_ = exception.what();
+            live_events_.push_back(std::string("live step failed: ") + exception.what());
             live_pending_steps_ = 0;
         }
         live_busy_.store(false, std::memory_order_release);
@@ -894,10 +938,85 @@ std::int64_t PlanetMeshNode::find_cell(const godot::Vector3& direction) const {
     return static_cast<std::int64_t>(closest);
 }
 
+std::int64_t PlanetMeshNode::find_coastal_cell(const godot::Vector3& direction) const {
+    if (!mesh_ || terrain_.land_fraction.size() != mesh_->cell_count() ||
+        direction.length_squared() <= 0.0F) return -1;
+    const godot::Vector3 unit = direction.normalized();
+    std::int64_t closest = -1;
+    float closest_dot = -std::numeric_limits<float>::infinity();
+    for (const auto& cell : mesh_->cells()) {
+        const std::size_t index = cell.id.to_index();
+        const float land = terrain_.land_fraction[index];
+        if (land <= 0.02F || land >= 0.98F) continue;
+        const float alignment = unit.dot(to_godot(cell.center_unit));
+        if (alignment > closest_dot) {
+            closest_dot = alignment;
+            closest = static_cast<std::int64_t>(index);
+        }
+    }
+    return closest;
+}
+
+godot::Vector3 PlanetMeshNode::get_coastal_focus(const godot::Vector3& direction) const {
+    const std::int64_t index = find_coastal_cell(direction);
+    if (index < 0) return direction.length_squared() > 0.0F ? direction.normalized() : godot::Vector3{0, 0, 1};
+    const CellId cell{static_cast<std::uint32_t>(index)};
+    const Vec3d center = mesh_->cell(cell).center_unit;
+    const presentation::TerrainRelief relief(mesh_, terrain_, seed_);
+    const auto height = [&](const Vec3d& point) {
+        return relief.sample(point, cell).elevation_m - terrain_.sea_level_m;
+    };
+    const double center_height = height(center);
+    Vec3d best = center;
+    double best_alignment = -2.0;
+    const Vec3d wanted = normalized(Vec3d{direction.x, direction.y, direction.z});
+    for (const CornerIndex corner : mesh_->cell_corners(cell)) {
+        const Vec3d edge = mesh_->corners_unit()[corner];
+        Vec3d previous = center;
+        double before = center_height;
+        for (int step = 1; step <= 32; ++step) {
+            const double t = static_cast<double>(step) / 32.0;
+            const Vec3d current = normalized(center * (1.0 - t) + edge * t);
+            const double after = height(current);
+            if ((before <= 0.0) != (after <= 0.0)) {
+                Vec3d low = previous;
+                Vec3d high = current;
+                const bool low_water = before <= 0.0;
+                for (int refine = 0; refine < 28; ++refine) {
+                    const Vec3d mid = normalized(low + high);
+                    if ((height(mid) <= 0.0) == low_water) low = mid;
+                    else high = mid;
+                }
+                const Vec3d coast = normalized(low + high);
+                const double alignment = dot(coast, wanted);
+                if (alignment > best_alignment) {
+                    best = coast;
+                    best_alignment = alignment;
+                }
+            }
+            previous = current;
+            before = after;
+        }
+    }
+    return to_godot(best);
+}
+
 godot::Vector3 PlanetMeshNode::get_cell_direction(std::int64_t cell) const {
     if (!mesh_ || cell < 0 || static_cast<std::size_t>(cell) >= mesh_->cell_count())
         return {0.0F, 0.0F, 1.0F};
     return to_godot(mesh_->cell(CellId{static_cast<std::uint32_t>(cell)}).center_unit);
+}
+
+double PlanetMeshNode::get_cell_land_fraction(std::int64_t cell) const {
+    if (cell < 0 || static_cast<std::size_t>(cell) >= terrain_.land_fraction.size())
+        return std::numeric_limits<double>::quiet_NaN();
+    return terrain_.land_fraction[static_cast<std::size_t>(cell)];
+}
+
+double PlanetMeshNode::get_cell_elevation_m(std::int64_t cell) const {
+    if (cell < 0 || static_cast<std::size_t>(cell) >= terrain_.mean_elevation_m.size())
+        return std::numeric_limits<double>::quiet_NaN();
+    return terrain_.mean_elevation_m[static_cast<std::size_t>(cell)] - terrain_.sea_level_m;
 }
 
 void PlanetMeshNode::reset_terrain_tiles() {

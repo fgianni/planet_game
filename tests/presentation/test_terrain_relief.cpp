@@ -214,6 +214,40 @@ void check_absent_hypsometry(planetsim::test::Context& test, const Fixture& fixt
     PLANETSIM_EXPECT(test, flat);
 }
 
+// Refining tiles at walking altitude must reveal the same coast, rather than
+// adding another octave of mountain-height variation every few metres.
+void check_local_coast_stability(planetsim::test::Context& test, const Fixture& fixture,
+                                 const TerrainRelief& relief) {
+    const double step = 10.0 / fixture.mesh->radius_m();
+    double total_change_m = 0.0;
+    double largest_change_m = 0.0;
+    std::size_t count = 0;
+    for (std::size_t index = 0; index < fixture.mesh->cell_count(); index += 3U) {
+        const float* q = fixture.terrain.hypsometry_m.data() + index * planetsim::hypsometry_quantile_count;
+        if (q[0] >= fixture.terrain.sea_level_m || q[8] <= fixture.terrain.sea_level_m) continue;
+        const CellId cell{static_cast<std::uint32_t>(index)};
+        const Vec3d center = fixture.mesh->cell(cell).center_unit;
+        const Vec3d tangent = planetsim::normalized(planetsim::cross(center, Vec3d{0.0, 1.0, 0.0}));
+        // Several places in each coastal cell, well inside it, including
+        // slopes on both sides of its waterline.
+        for (int k = -3; k <= 3; ++k) {
+            const Vec3d direction = planetsim::normalized(center + tangent * (0.06 * k * relief.cell_spacing_rad()));
+            const double a = relief.sample(planetsim::normalized(direction - tangent * step), cell).elevation_m;
+            const double b = relief.sample(planetsim::normalized(direction + tangent * step), cell).elevation_m;
+            const double change = std::abs(a - b);
+            total_change_m += change;
+            largest_change_m = std::max(largest_change_m, change);
+            ++count;
+        }
+    }
+    const double mean_change_m = total_change_m / static_cast<double>(count);
+    std::cout << "coastal 20 m span: " << count << " samples, mean " << mean_change_m
+              << " m, maximum " << largest_change_m << " m\n";
+    PLANETSIM_EXPECT(test, count > 100U);
+    PLANETSIM_EXPECT(test, mean_change_m < 1.0);
+    PLANETSIM_EXPECT(test, largest_change_m < 10.0);
+}
+
 void check_speed(const TerrainRelief& relief) {
     const auto begin = std::chrono::steady_clock::now();
     CellId hint{0};
@@ -242,6 +276,7 @@ int main() {
     check_determinism(test, fixture, relief);
     check_continuity(test, fixture, relief);
     check_absent_hypsometry(test, fixture);
+    check_local_coast_stability(test, fixture, relief);
     check_speed(relief);
     return test.result();
 }

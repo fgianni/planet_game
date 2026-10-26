@@ -607,13 +607,47 @@ changes; their motion then runs in the GPU shader with no per-frame geometry
 upload. Both intensity colour and shaft size come from the same normalized
 physical precipitation channel.
 
-Press `F12` to save the current rendered frame in Godot's user-data directory
-(the absolute path is printed). For deterministic command-line capture, the
-client waits for the first live snapshot before saving and may then exit:
+Press `F12`, or use **Controls → Save clear view (PNG)**. These save under
+Godot's `user://captures/` directory; the absolute path appears in the Log
+and the console. The controls are hidden for the captured frame and restored
+afterwards. A neighbouring `.png.json` records the seed, preset, style, view,
+altitude, simulated day and live state hash for reproducing the image.
+**Controls → Capture orbit / coast / local** records three PNGs from the
+same focus and simulation instant in a `series_*` directory. It centres on
+the nearest rendered shore when the terrain has a mixed coastal cell; the
+Controls panel shows progress and offers Cancel. A per-image JSON records
+the exact focus, altitude band and whether terrain tiles were still streaming.
+
+For command-line capture to a path a tool can inspect, the client waits for
+the first live snapshot (if live) and for terrain tiles to settle before
+saving, and may then exit:
 
 ```bash
 godot4 --path godot -- --subdivision=4 --live=true --water=true --view=8 \
   --screenshot=/tmp/live-precipitation.png --quit-after-screenshot=true
+```
+
+Use a real rendering driver for screenshots: `--headless` uses Godot's dummy
+renderer and cannot supply an image. On an available X11 display, for example:
+
+```bash
+godot4 --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
+  --path godot -- --subdivision=4 --screenshot=/tmp/opencode/planet.png \
+  --quit-after-screenshot=true
+```
+
+For a like-for-like terrain comparison, pass `--distance=1.12` and
+`--relief-exaggeration=1` (or `8`, or the default `25`) while keeping the
+seed, subdivision, style, yaw and pitch fixed. This changes only the view.
+
+To inspect an actual cloud rather than a clear part of the starting planet,
+the diagnostic capture runs twelve live steps, reports the cell's cover and
+thickness, then looks at the cloudiest cell without altering cloud state:
+
+```bash
+godot4 --display-driver x11 --rendering-driver opengl3 --audio-driver Dummy \
+  --path godot --script res://tests/capture_cloud_focus.gd -- \
+  --subdivision=4 --steps=12 --output=/tmp/opencode/cloud-focus.png
 ```
 
 The Godot CI job runs this command under Mesa software rendering and retains

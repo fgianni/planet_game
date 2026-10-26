@@ -16,6 +16,9 @@ uniform vec3 detail_seed_land_mix = vec3(0.0);
 uniform vec3 detail_seed_snow = vec3(0.0);
 uniform vec3 detail_seed_sea_ice = vec3(0.0);
 uniform vec3 detail_seed_texture = vec3(0.0);
+// Visual motion only; no wave height, shoreline displacement or simulated current.
+uniform float ocean_motion_speed = 1.0;
+uniform float ocean_phase_offset = 0.0;
 
 const float DETAIL_FEATURES_PER_CELL = 4.0; // patches about a quarter of a cell across
 const int DETAIL_OCTAVES = 3;
@@ -79,6 +82,33 @@ float detail_uniform(vec3 direction, vec3 seed) {
 float detail_amount(vec3 direction) {
 	float pixels = cell_angular_size / max(length(fwidth(direction)), 1e-7);
 	return smoothstep(DETAIL_START_PX, DETAIL_FULL_PX, pixels);
+}
+
+// Two broad, crossing bands on the sphere. Sampling planet-centred direction
+// keeps the pattern continuous across tile boundaries and cube faces. Fade
+// out bands finer than a pixel instead of letting them shimmer from orbit.
+float detail_ocean_motion(vec3 direction) {
+	vec3 p = direction / cell_angular_size + detail_seed_texture;
+	float time = TIME * ocean_motion_speed + ocean_phase_offset;
+	float a = dot(p, vec3(19.0, 7.0, 11.0)) - 0.65 * time;
+	float b = dot(p, vec3(-8.0, 17.0, 13.0)) + 0.41 * time;
+	a += 0.65 * sin(0.31 * b);
+	b += 0.35 * sin(0.27 * a);
+	float aa = 1.0 - smoothstep(1.0, 3.0, fwidth(a));
+	float ab = 1.0 - smoothstep(1.0, 3.0, fwidth(b));
+	return 0.65 * aa * sin(a) + 0.35 * ab * sin(b);
+}
+
+// Small-scale, colour-only ripples. Their wavelength is below a kilometre
+// at L4–L6; derivative filtering removes them from distant views instead of
+// turning them into aliasing bands. The simulated sea surface does not move.
+float detail_ocean_ripple(vec3 direction) {
+	vec3 p = direction / cell_angular_size + detail_seed_texture;
+	float time = TIME * ocean_motion_speed + ocean_phase_offset;
+	float a = dot(p, vec3(900.0, 740.0, 500.0)) - 1.7 * time;
+	float b = dot(p, vec3(-610.0, 1010.0, 370.0)) + 1.2 * time;
+	float visible = 1.0 - smoothstep(1.0, 3.0, max(fwidth(a), fwidth(b)));
+	return visible * (0.65 * sin(a + 0.3 * sin(0.4 * b)) + 0.35 * sin(b));
 }
 
 // Drawn coverage of a fraction: the fraction itself at planet scale, and at
