@@ -81,10 +81,11 @@ origin, decimation) and human approval.
 - The 2080 Ti needs SF3D's kernels built without pip's build isolation
   (`--no-build-isolation`, `TORCH_CUDA_ARCH_LIST=7.5`); the 5070 Ti
   (Blackwell, compute capability 12.0) needs a CUDA 13 PyTorch and toolkit.
-- The 5070 Ti machine's driver was updated without a reboot (NVML
-  595.99 against the kernel module's 595.91): `nvidia-smi` fails, and
-  PyTorch's `expandable_segments` allocator, which calls NVML, fails too.
-  A reboot clears it.
+- The 5070 Ti machine's driver had been updated without a reboot (NVML
+  595.99 against the kernel module's 595.91): `nvidia-smi` failed, and so
+  did PyTorch's `expandable_segments` allocator, which calls NVML. After
+  the reboot (2026-10-29) both work: with it, 1 024 px takes 8.6 s at a
+  6.3 GB peak.
 - ComfyUI shares that GPU: `POST /free` with `unload_models` releases its
   memory before an SF3D run.
 - That machine's network needs its Aruba portal login: without it, HTTPS
