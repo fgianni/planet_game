@@ -1303,6 +1303,28 @@ were) before proposing an ADR.
   to land (1.55 against 23.3 W/m²); coastal land in mixed transport
   groups receives none.
 
+**Done on 2026-10-29:**
+- ADR-0029 (proposed): land's water in climate mode, with three options;
+  option A recommended (find why the tropical latent transport runs
+  poleward near the equator, as a measurement first);
+- option A's diagnostics (commit `aadfb4d`, read-only, the state hash
+  unchanged): each layer's mass and water flux across each latitude in
+  both modes (reference mode's from the fluxes its RK3 stage applies,
+  `EdgeFluxTotals`), and `planet_cli parity --climate-only 1`;
+- option A's climate half (above, "ADR-0029 option A"): a weak overturning
+  (at most 16 Sv in its bottom layer) over dry air (1.7 and 0.25 g/kg
+  above the bottom layer), so the eddies carry the latent heat.
+
+**Running at the end of 2026-10-29** (detached; logs in `build/inv04/`):
+- V8 at L5 under ADR-0023 §16.2 (`v8_L5_3yr.log`, started 09:48, about
+  12 h: L4's convergence, open task 6);
+- then, started by itself when that ends, V8 at L4 with option A's
+  diagnostics (`adr0029a_L4_v8.log`, about 3 h): reference mode's half of
+  the layer-by-layer comparison.
+
+Next: read both, compare the two modes layer by layer (option A), and
+record the L5 verdict.
+
 **V8 (this investigation), in order:**
 1. ~~**Which part of the climate transport fails to bring water to
    land.**~~ Done (above): the mean flow brings almost none, because

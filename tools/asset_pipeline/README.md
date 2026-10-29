@@ -1,4 +1,14 @@
-# AssetForge — Phase 1 prototype
+# AssetForge — prototype
+
+**Status (2026-10-29):** Phase 1 complete (specifications checked,
+behaviour validated, runtime and editor imports, reproducible builds,
+CTest). Phase 2's chain works (a FLUX.2 klein concept image, Stable Fast 3D
+on a remote GPU worker, a clean-up with a collision hull, provenance and
+human approval: `rock_granite_v1`, approved). Phase 3's proof of concept
+works (the five reference modules, the power chain laid out, assembled in
+Godot, re-assembled deterministically). A viewer shows them. Phase 4 is
+not started; the compile from assembly to network node waits for P1 and
+ADR-0031's acceptance.
 
 A first test of the AssetForge proposal
 (`docs/assetforge_document/ASSET_PIPELINE_SPEC.md`; ADR-0031, proposed).
