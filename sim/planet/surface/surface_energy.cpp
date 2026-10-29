@@ -704,6 +704,37 @@ struct CellSurface {
     }
     const TracerTransportResult moved =
         solve_implicit_tracer(graph, transport, layer_mass, mean, dt_s, 1e-12, 2'000, worker_count);
+    {
+        // INV-04: the fluxes across each latitude, each face counted once,
+        // from its group south of the latitude to the one north of it.
+        const PlanetMesh& coarse = agglomerated_mesh(mesh);
+        const std::size_t entries = graph.neighbour.size();
+        const double exchange_scale = 1.0 / (transport.heat_capacity_J_kg_K * n);
+        const auto latitude_deg = [&](std::size_t group) {
+            return std::asin(std::clamp(coarse.cells()[group].center_unit.z, -1.0, 1.0)) * 180.0 /
+                   std::numbers::pi;
+        };
+        for (std::size_t a = 0; a < groups; ++a) {
+            const double south = latitude_deg(a);
+            for (std::size_t k = graph.offset[a]; k < graph.offset[a + 1U]; ++k) {
+                const std::size_t b = graph.neighbour[k];
+                const double north = latitude_deg(b);
+                for (std::size_t boundary = 0; boundary < 17U; ++boundary) {
+                    const double phi = -80.0 + 10.0 * static_cast<double>(boundary);
+                    if (!(south < phi && north >= phi)) continue;
+                    for (std::size_t layer = 0; layer < layers; ++layer) {
+                        const double flux = transport.outflow_kg_s[layer * entries + k];
+                        const double ca = moved.tracer[layer * groups + a];
+                        const double cb = moved.tracer[layer * groups + b];
+                        d.northward_mass_kg_s[layer][boundary] += flux;
+                        d.northward_advected_water_kg_s[layer][boundary] += flux * (flux > 0.0 ? ca : cb);
+                        d.northward_eddy_water_kg_s[layer][boundary] +=
+                            transport.conductance_W_K[k] * exchange_scale * (ca - cb);
+                    }
+                }
+            }
+        }
+    }
     if (eddy_latent_W_m2 != nullptr) {
         // The tracer's eddy exchange, G / (c_p N) per layer (kg/s).
         const double exchange_scale = 1.0 / (transport.heat_capacity_J_kg_K * n);

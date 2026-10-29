@@ -191,7 +191,37 @@ void AtmosphereDynamics::step(PlanetState& state, double dt_s) {
         }
     }
     const double before = model_.diagnose(pe, worker_count_).energy_J();
-    last_.steps = model_.advance(pe, dt_s, parameters_.rule, worker_count_);
+    const std::size_t edge_count = mesh_->edge_count();
+    if (crossings_.empty()) {
+        const auto latitude = [&](std::size_t cell) {
+            return std::asin(std::clamp(cells[cell].center_unit.z, -1.0, 1.0)) * 180.0 /
+                   std::numbers::pi;
+        };
+        for (std::size_t e = 0; e < edge_count; ++e) {
+            const double first = latitude(mesh_->edges()[e].first_cell.to_index());
+            const double second = latitude(mesh_->edges()[e].second_cell.to_index());
+            for (std::size_t b = 0; b < 17U; ++b) {
+                const double phi = -80.0 + 10.0 * static_cast<double>(b);
+                if (first < phi && second >= phi) crossings_.push_back({e, b, 1.0});
+                if (second < phi && first >= phi) crossings_.push_back({e, b, -1.0});
+            }
+        }
+    }
+    flux_totals_.mass_kg_m.assign(n * edge_count, 0.0);
+    flux_totals_.vapour_kg_m.assign(n * edge_count, 0.0);
+    last_.steps = model_.advance(pe, dt_s, parameters_.rule, worker_count_, &flux_totals_);
+    last_.northward_mass_kg_s = {};
+    last_.northward_vapour_kg_s = {};
+    for (const Crossing& crossing : crossings_) {
+        const double length = mesh_->edges()[crossing.edge].length_m;
+        for (std::size_t k = 0; k < n; ++k) {
+            const std::size_t at = k * edge_count + crossing.edge;
+            last_.northward_mass_kg_s[k][crossing.boundary] +=
+                crossing.sign * flux_totals_.mass_kg_m[at] * length / dt_s;
+            last_.northward_vapour_kg_s[k][crossing.boundary] +=
+                crossing.sign * flux_totals_.vapour_kg_m[at] * length / dt_s;
+        }
+    }
     if (water) {
         double after = 0.0;
         last_.clipped_kg = 0.0;

@@ -67,6 +67,11 @@ struct AtmosphereDynamicsDiagnostics {
     // the step, the heat the dynamics delivered to it.
     std::vector<double> cell_dry_W_m2;
     std::vector<double> cell_latent_W_m2;
+    // ADR-0029 option A: each layer's northward mass and vapour flux (kg/s)
+    // across the same latitudes, from the edges between cells on either
+    // side, as the model applied them over the step (EdgeFluxTotals).
+    std::array<std::array<double, 17>, max_atmosphere_layer_count> northward_mass_kg_s{};
+    std::array<std::array<double, 17>, max_atmosphere_layer_count> northward_vapour_kg_s{};
 };
 
 class AtmosphereDynamics {
@@ -115,6 +120,15 @@ class AtmosphereDynamics {
     Field2D<double> dynamics_height_m_;  // the orography the winds see (§13)
     PrimitiveEquationModel model_;
     AtmosphereDynamicsDiagnostics last_;
+    // ADR-0029 option A: the step's edge fluxes, and the edges crossing each
+    // latitude (edge, boundary, +1 when the first cell is the southern one).
+    EdgeFluxTotals flux_totals_;
+    struct Crossing {
+        std::size_t edge;
+        std::size_t boundary;
+        double sign;
+    };
+    std::vector<Crossing> crossings_;
 };
 
 // Reference mode runs `dynamics` on every step after the processes already

@@ -35,6 +35,13 @@ struct HumidityTransportDiagnostics {
     double vapour_change_kg = 0.0;       // Σ after − Σ before: rounding
     double clipped_kg = 0.0;
     double column_divergence_kg_s = 0.0;   // max over groups of the fluxes'
+    // INV-04 (ADR-0029 option A), read-only: across 80° S, 70° S, ..., 80° N,
+    // each layer's northward flux through the faces whose groups straddle
+    // the latitude (kg/s): the circulation's mass, the water it carries
+    // upwind, and the water the eddies exchange, at the step's solution.
+    std::array<std::array<double, 17>, max_atmosphere_layer_count> northward_mass_kg_s{};
+    std::array<std::array<double, 17>, max_atmosphere_layer_count> northward_advected_water_kg_s{};
+    std::array<std::array<double, 17>, max_atmosphere_layer_count> northward_eddy_water_kg_s{};
 };
 
 struct SurfaceEnergyParameters {

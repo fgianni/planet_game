@@ -53,6 +53,31 @@ def measure(executable: str, explicit_layers: bool) -> tuple[dict, dict]:
                    - number("clear_sky_absorbed_W_m2")) < 0.002
         assert abs(number("clear_sky_absorbed_W_m2") + number("cre_sw_W_m2")
                    - number("absorbed_W_m2")) < 0.002
+        # ADR-0029 option A: the layers' fluxes. Each mode's column mass
+        # flux nearly cancels; reference mode's layer water adds up to its
+        # dynamics' latent transport (except at the equator, where a row of
+        # cells at |latitude| ~ 1e-16 falls on different sides).
+        def series(name):
+            found = re.search(rf"{name}=((?: [0-9.eE+\-]+)+)", block[0])
+            assert found, (name, block[0])
+            values = [float(x) for x in found[1].split()]
+            assert len(values) == 17 and all(math.isfinite(x) for x in values)
+            return values
+        layer_mass = [series(f"northward_mass_Sv_layer{k}") for k in range(3)]
+        layer_water = [series(f"northward_water_PW_layer{k}") for k in range(3)]
+        latent = series("northward_latent_PW")
+        for b in range(17):
+            column = sum(m[b] for m in layer_mass)
+            size = max(abs(m[b]) for m in layer_mass)
+            if mode == "climate":
+                assert abs(column) <= 0.006 * 3 * size + 0.01, (mode, b, column)
+            if mode == "reference" and b != 8:
+                # Three significant digits per printed value.
+                water = sum(w[b] for w in layer_water)
+                rounding = 0.006 * (sum(abs(w[b]) for w in layer_water) + abs(latent[b])) + 1e-3
+                assert abs(water - latent[b]) <= rounding, (b, water, latent[b])
+        for k in range(3):
+            assert all(0 <= x for x in series(f"boundary_q_g_kg_layer{k}"))
         # Climate mode's transport moves heat and water between land and
         # ocean without creating either: the area-weighted sums vanish.
         if mode == "climate":

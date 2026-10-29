@@ -213,7 +213,7 @@ void print_usage(std::ostream& output) {
               " [--lapse-rate K_PER_KM] [--orography-passes P | --orography-step M] [--workers W]"
               " [--zonal-csv FILE.csv]\n"
            << "  planet_cli parity [--subdivision LEVEL] [--seed N] [--layers N]"
-              " [--spin-up-years N] [--days D] [--workers W]\n"
+              " [--spin-up-years N] [--days D] [--workers W] [--climate-only 0|1]\n"
            << "  planet_cli reference [--subdivision LEVEL] [--seed N] [--layers N]"
               " [--spin-up-years N] [--days D] [--average-days D] [--workers W]"
               " [--zonal-csv FILE.csv]\n"
@@ -1537,6 +1537,7 @@ struct ReferenceOptions {
     std::size_t workers = 0;
     std::string zonal_csv;
     std::optional<bool> moist_convection;   // ADR-0023 §4.2; empty: the preset's
+    bool climate_only = false;   // parity: measure climate mode alone, no gate
 };
 
 [[nodiscard]] ReferenceOptions parse_reference_options(int argument_count, char** arguments) {
@@ -1568,6 +1569,11 @@ struct ReferenceOptions {
                 throw std::invalid_argument("--moist-convection takes 0 or 1");
             }
             options.moist_convection = value == "1";
+        } else if (argument == "--climate-only") {
+            if (value != "0" && value != "1") {
+                throw std::invalid_argument("--climate-only takes 0 or 1");
+            }
+            options.climate_only = value == "1";
         } else {
             throw std::invalid_argument("unknown reference option: " + std::string(argument));
         }
@@ -1757,6 +1763,20 @@ int run_parity(const ReferenceOptions& options) {
         std::array<double, 2> tropical_m2_s{};
         std::array<std::array<double, planetsim::max_atmosphere_layer_count>, 2> latent_heating_J{};
         double sensible_J = 0.0;
+        // ADR-0029 option A: across 80° S ... 80° N, each layer's northward
+        // mass and water flux (kg/s × s), the mean overturning's water (the
+        // mass flux times the band's mass-weighted humidity) and that
+        // humidity (× s). Climate mode: its humidity transport's own face
+        // fluxes between groups on either side; reference mode: the
+        // dynamics' edge fluxes between cells on either side, as its steps
+        // applied them. Both sum over a closed staircase, so a column's mass
+        // flux vanishes in the time mean.
+        using LayerBoundaries =
+            std::array<std::array<double, 17>, planetsim::max_atmosphere_layer_count>;
+        LayerBoundaries mass_flux_s{};
+        LayerBoundaries water_flux_s{};
+        LayerBoundaries mean_water_flux_s{};
+        LayerBoundaries boundary_q_s{};
     };
     const auto measure = [&](planetsim::SimulationMode mode) {
         planetsim::Scenario scenario;
@@ -1974,6 +1994,52 @@ int run_parity(const ReferenceOptions& options) {
                 }
             }
             record.sensible_J += step.sensible_heat_W * step.duration_s;
+            {
+                // ADR-0029 option A: the humidity within ±5° of each latitude.
+                const auto& slow_now = run.state().slow();
+                const double gravity = planetsim::surface_gravity_m_s2(run.parameters());
+                const bool dynamics_fluxes = reference && run.dynamics() != nullptr;
+                std::vector<double> latitude_deg(mesh.cell_count());
+                for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
+                    latitude_deg[cell] =
+                        std::asin(std::clamp(mesh.cells()[cell].center_unit.z, -1.0, 1.0)) *
+                        180.0 / std::numbers::pi;
+                }
+                for (std::size_t layer = 0; layer < layers; ++layer) {
+                    std::array<double, 17> mass{};
+                    std::array<double, 17> water{};
+                    std::array<double, 17> air{};
+                    std::array<double, 17> vapour{};
+                    const auto q = slow_now.atmosphere_specific_humidity_kg_kg.layer(layer);
+                    for (std::size_t cell = 0; cell < mesh.cell_count(); ++cell) {
+                        const double boundary_index = std::round((latitude_deg[cell] + 80.0) / 10.0);
+                        if (boundary_index < 0.0 || boundary_index > 16.0) continue;
+                        const auto boundary = static_cast<std::size_t>(boundary_index);
+                        const double m = mesh.cells()[cell].area_m2 *
+                                         slow_now.atmosphere_surface_pressure_Pa[cell] /
+                                         (gravity * static_cast<double>(layers));
+                        air[boundary] += m;
+                        vapour[boundary] += m * q[cell];
+                    }
+                    if (dynamics_fluxes) {
+                        mass = run.dynamics()->last().northward_mass_kg_s[layer];
+                        water = run.dynamics()->last().northward_vapour_kg_s[layer];
+                    } else {
+                        mass = step.humidity_transport.northward_mass_kg_s[layer];
+                        for (std::size_t b = 0; b < 17U; ++b) {
+                            water[b] = step.humidity_transport.northward_advected_water_kg_s[layer][b] +
+                                       step.humidity_transport.northward_eddy_water_kg_s[layer][b];
+                        }
+                    }
+                    for (std::size_t b = 0; b < 17U; ++b) {
+                        const double q_mean = air[b] > 0.0 ? vapour[b] / air[b] : 0.0;
+                        record.mass_flux_s[layer][b] += mass[b] * step.duration_s;
+                        record.water_flux_s[layer][b] += water[b] * step.duration_s;
+                        record.mean_water_flux_s[layer][b] += mass[b] * q_mean * step.duration_s;
+                        record.boundary_q_s[layer][b] += q_mean * step.duration_s;
+                    }
+                }
+            }
             const auto& land_K = run.state().slow().land_surface_temperature_K;
             for (std::size_t cell = 0; cell < step.land_melt_kg_m2.size(); ++cell) {
                 month_melt_kg_m2[cell] += step.land_melt_kg_m2[cell];
@@ -2160,6 +2226,23 @@ int run_parity(const ReferenceOptions& options) {
             std::cout << " sensible_W_m2=" << record.sensible_J / area / record.seconds;
         }
         std::cout << std::setprecision(6);
+        // ADR-0029 option A, by layer from the bottom: mass in Sv (1e9 kg/s),
+        // water as its latent heat in PW, and humidity in g/kg.
+        for (std::size_t layer = 0; layer < layers; ++layer) {
+            const auto print = [&](const char* name, const std::array<double, 17>& values,
+                                   double scale) {
+                std::cout << "\n  " << name << "_layer" << layer << '=';
+                for (const double value : values) {
+                    std::cout << ' ' << std::setprecision(3) << value / record.seconds * scale;
+                }
+            };
+            print("northward_mass_Sv", record.mass_flux_s[layer], 1e-9);
+            print("northward_water_PW", record.water_flux_s[layer],
+                  planetsim::latent_heat_vaporisation_J_kg * 1e-15);
+            print("northward_mean_water_PW", record.mean_water_flux_s[layer],
+                  planetsim::latent_heat_vaporisation_J_kg * 1e-15);
+            print("boundary_q_g_kg", record.boundary_q_s[layer], 1e3);
+        }
         std::cout << "\n  northward_dry_PW=";
         for (const double value : record.dry_W_s) {
             std::cout << ' ' << std::setprecision(3) << value / record.seconds * 1e-15;
@@ -2172,6 +2255,11 @@ int run_parity(const ReferenceOptions& options) {
         return record;
     };
     const Record climate = measure(planetsim::SimulationMode::climate);
+    if (options.climate_only) {
+        // A diagnostic of climate mode alone (INV-04); V8 needs both modes.
+        std::cout << "parity climate_only=1 gate=none" << std::endl;
+        return 0;
+    }
     const Record reference = measure(planetsim::SimulationMode::reference);
     const double temperature_difference = reference.temperature_K_s / reference.seconds -
                                           climate.temperature_K_s / climate.seconds;

@@ -217,7 +217,8 @@ void PrimitiveEquationModel::temperatures(const PrimitiveEquationState& state,
 
 void PrimitiveEquationModel::tendency(const PrimitiveEquationState& state,
                                       PrimitiveEquationState& rate,
-                                      std::size_t worker_count) const {
+                                      std::size_t worker_count, EdgeFluxTotals* totals,
+                                      double weight) const {
     const auto& mesh = *mesh_;
     const auto& grid = *grid_;
     const std::size_t n = parameters_.layer_count;
@@ -250,6 +251,11 @@ void PrimitiveEquationModel::tendency(const PrimitiveEquationState& state,
                 }
             }
         });
+    if (totals != nullptr) {
+        for (std::size_t i = 0; i < n * edges; ++i) {
+            totals->mass_kg_m[i] += weight * flux[i];
+        }
+    }
     std::vector<double> flux_divergence(n * cells);
     std::vector<double> vertical_flux((n + 1U) * cells, 0.0);   // W_m, upward
     std::vector<double> interface_theta((n + 1U) * cells, 0.0); // θ̃_m
@@ -341,6 +347,11 @@ void PrimitiveEquationModel::tendency(const PrimitiveEquationState& state,
                     }
                 }
             });
+        if (totals != nullptr) {
+            for (std::size_t i = 0; i < n * edges; ++i) {
+                totals->vapour_kg_m[i] += weight * humidity_flux[i];
+            }
+        }
         for_each_deterministic_block(
             mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
                 for (std::size_t i = block.begin; i < block.end; ++i) {
@@ -586,7 +597,7 @@ void PrimitiveEquationModel::tendency(const PrimitiveEquationState& state,
 }
 
 void PrimitiveEquationModel::step(PrimitiveEquationState& state, double dt_s,
-                                  std::size_t worker_count) const {
+                                  std::size_t worker_count, EdgeFluxTotals* totals) const {
     if (!(dt_s > 0.0) || !std::isfinite(dt_s)) {
         throw std::invalid_argument("a dynamics step must be positive and finite");
     }
@@ -626,17 +637,18 @@ void PrimitiveEquationModel::step(PrimitiveEquationState& state, double dt_s,
     combine(dt_s / 3.0, stage);
     tendency(stage, rate, worker_count);
     combine(dt_s / 2.0, stage);
-    tendency(stage, rate, worker_count);
+    tendency(stage, rate, worker_count, totals, dt_s);   // the rate that updates the state
     combine(dt_s, state);
 }
 
 std::size_t PrimitiveEquationModel::advance(PrimitiveEquationState& state, double span_s,
                                             const SubstepRule& rule,
-                                            std::size_t worker_count) const {
+                                            std::size_t worker_count,
+                                            EdgeFluxTotals* totals) const {
     const std::size_t steps = substep_count(*mesh_, span_s, rule);
     const double dt = span_s / static_cast<double>(steps);
     for (std::size_t index = 0; index < steps; ++index) {
-        step(state, dt, worker_count);
+        step(state, dt, worker_count, totals);
         double max_wind = 0.0;
         for (std::size_t k = 0; k < parameters_.layer_count; ++k) {
             for (const double value : state.normal_velocity_m_s.layer(k)) {

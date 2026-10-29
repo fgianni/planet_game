@@ -67,6 +67,15 @@ struct PrimitiveEquationDiagnostics {
     }
 };
 
+// INV-04 (ADR-0029 option A), read-only: the time integral of the edge
+// fluxes the steps applied, per unit edge length (layer-major, layers ×
+// edges): the mass F_k = μ̂ u_k and the vapour F_k q_up, times dt, from the
+// RK3 stage whose rate updates the state. Sized and zeroed by the caller.
+struct EdgeFluxTotals {
+    std::vector<double> mass_kg_m;
+    std::vector<double> vapour_kg_m;
+};
+
 class PrimitiveEquationModel {
   public:
     // `surface_height_m` is z_s at the cells (Φ_s = g z_s). The mesh and
@@ -95,15 +104,18 @@ class PrimitiveEquationModel {
     void temperatures(const PrimitiveEquationState& state, Field3D<double>& temperature_K,
                       std::size_t worker_count = 1U) const;
 
+    // `totals`, if given, receives `weight` times this tendency's edge fluxes.
     void tendency(const PrimitiveEquationState& state, PrimitiveEquationState& rate,
-                  std::size_t worker_count = 1U) const;
+                  std::size_t worker_count = 1U, EdgeFluxTotals* totals = nullptr,
+                  double weight = 0.0) const;
 
-    void step(PrimitiveEquationState& state, double dt_s, std::size_t worker_count = 1U) const;
+    void step(PrimitiveEquationState& state, double dt_s, std::size_t worker_count = 1U,
+              EdgeFluxTotals* totals = nullptr) const;
 
     // substep_count(span, rule) RK3 steps; throws std::runtime_error if the
     // wind exceeds rule.max_wind_m_s. Returns the number of steps.
     std::size_t advance(PrimitiveEquationState& state, double span_s, const SubstepRule& rule,
-                        std::size_t worker_count = 1U) const;
+                        std::size_t worker_count = 1U, EdgeFluxTotals* totals = nullptr) const;
 
     [[nodiscard]] PrimitiveEquationDiagnostics diagnose(const PrimitiveEquationState& state,
                                                         std::size_t worker_count = 1U) const;
