@@ -21,6 +21,7 @@ and provenance, and a preview image. About 13 s on the development machine.
 | `assets/specifications/electric_generator.json` | The specification: dimensions, typed ports with positions and directions, the rotor's animation (pivot, axis, cycle), material slots and budgets |
 | `generators/blender/machine_generator.py` | Builds the asset in Blender from the specification; exports GLB, manifest and provenance. Nothing random, nothing timed |
 | `generators/blender/render_preview.py` | A Cycles (CPU) preview for people; outside the reproducibility check |
+| `validators/check_spec.py` | Checks a specification before Blender runs (standard library only): the schema and type, `lower_snake` ids, the port types' vocabulary (`mechanical_power`, `electrical_power`, `fluid`, `heat`, `item`, `data`), `PORT_*`/`MAT_*`/`ANIM_*` names, unit directions, ports on the bounding box's surface, unique ids, budgets, a generated mesh pinned by its hash |
 | `validators/validate_asset.py` | Reads the GLB directly (standard library only): 25 checks |
 | `godot/import_check.gd` | Loads the GLB at runtime in a throwaway project; checks ports and animation; drives them from a mock state frame (`tests/generator_state.json`) |
 | `cli/build_asset.py` | Runs the steps; `--reproducible` builds twice and compares the bytes |
@@ -163,4 +164,9 @@ is pending.
   Hunyuan3D-2.1's licence excludes the EU.
 - **Phases 3 and 4:** factory assembly, routing, and the compile from
   assembly to network node (ADR-0031 §3: PlanetSim's, not Godot's).
-- **CI:** Blender is not in CI; these checks run by hand for now.
+- **CI:** CTest runs `assetforge_specifications` everywhere (the
+  specifications pass, and eight broken copies fail with the expected
+  messages). `assetforge_generator_build` (the generator built, validated
+  and rebuilt byte-identically, checked in Godot when `ASSETFORGE_GODOT`
+  names a binary) is added only where Blender is installed; CI has
+  neither Blender nor the rock's generated sources.

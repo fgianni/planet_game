@@ -134,6 +134,31 @@ if(PLANETSIM_BUILD_TESTS)
                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/test_parity_report.py"
                     "$<TARGET_FILE:planet_cli>"
         )
+        # AssetForge (tools/asset_pipeline): the specifications always; a
+        # procedural build, validated and rebuilt byte-identically, only
+        # where Blender is installed (and checked in Godot when
+        # ASSETFORGE_GODOT names a Godot 4 binary). CI has neither.
+        add_test(
+            NAME assetforge_specifications
+            COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/test_assetforge_specs.py"
+        )
+        find_program(ASSETFORGE_BLENDER blender)
+        set(ASSETFORGE_GODOT "" CACHE FILEPATH "A Godot 4 binary for AssetForge's import check")
+        if(ASSETFORGE_BLENDER)
+            set(assetforge_godot_args "")
+            if(ASSETFORGE_GODOT)
+                set(assetforge_godot_args --godot "${ASSETFORGE_GODOT}")
+            endif()
+            add_test(
+                NAME assetforge_generator_build
+                COMMAND "${Python3_EXECUTABLE}"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/tools/asset_pipeline/cli/build_asset.py"
+                        --spec "${CMAKE_CURRENT_SOURCE_DIR}/assets/specifications/electric_generator.json"
+                        --blender "${ASSETFORGE_BLENDER}" --out "${CMAKE_CURRENT_BINARY_DIR}/assetforge"
+                        --reproducible ${assetforge_godot_args}
+            )
+        endif()
     endif()
     add_subdirectory(tests)
     add_test(
