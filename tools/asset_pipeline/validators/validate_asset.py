@@ -183,12 +183,16 @@ def validate(spec_path, directory):
         error = distance(outward, normalised(to_gltf(port["direction"])))
         check(f"port {port['node']} direction", error <= DIRECTION_TOLERANCE, f"error {error:.2e}")
 
-    # The meshes' world bounds against the specified dimensions.
+    # The meshes' world bounds against the specified dimensions (the
+    # collision shape is not drawn, so it is left out).
+    collision_suffix = spec.get("collision", {}).get("node_suffix")
     low = [math.inf] * 3
     high = [-math.inf] * 3
     triangles = 0
     for index, node in enumerate(nodes):
         if "mesh" not in node:
+            continue
+        if collision_suffix and node.get("name", "").endswith(collision_suffix):
             continue
         translation, rotation, scale = world[index]
         for primitive in document["meshes"][node["mesh"]]["primitives"]:
@@ -219,6 +223,29 @@ def validate(spec_path, directory):
         check("footprint centred", offset <= 0.01, f"{offset * 1000:.1f} mm off the origin")
     check("origin at the base", abs(low[1]) <= POSITION_TOLERANCE_M, f"lowest y {low[1]:.4f} m")
     check("triangle budget", triangles <= spec["budgets"]["max_triangles"], f"{triangles} triangles")
+
+    # The collision shape: present, within its budget of distinct points,
+    # and enclosing the drawn mesh (to 1 % of its size).
+    if collision_suffix:
+        index = by_name.get(asset + collision_suffix)
+        check(f"collision {asset + collision_suffix} exists", index is not None)
+        if index is not None:
+            translation, rotation, scale = world[index]
+            points = set()
+            for primitive in document["meshes"][nodes[index]["mesh"]]["primitives"]:
+                check("collision has no material", "material" not in primitive)
+                for local in accessor_floats(document, binary, primitive["attributes"]["POSITION"]):
+                    moved = q_rotate(rotation, [local[i] * scale[i] for i in range(3)])
+                    points.add(tuple(round(translation[i] + moved[i], 6) for i in range(3)))
+            check("collision point budget", len(points) <= spec["collision"]["max_vertices"],
+                  f"{len(points)} distinct points")
+            hull_low = [min(p[i] for p in points) for i in range(3)]
+            hull_high = [max(p[i] for p in points) for i in range(3)]
+            slack = 0.01 * max(size)
+            inside = all(hull_low[i] <= low[i] + slack and hull_high[i] >= high[i] - slack
+                         for i in range(3))
+            check("collision encloses the mesh", inside,
+                  f"hull {[round(c, 3) for c in hull_low]}..{[round(c, 3) for c in hull_high]}")
 
     # Materials.
     materials = [m.get("name") for m in document.get("materials", [])]

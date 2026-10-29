@@ -5,10 +5,12 @@ extends SceneTree
 ## as PlanetSim's frames would: the rotor's speed and the heat tint.
 ##
 ##   godot --headless --path PROJECT --script import_check.gd -- \
-##       ASSET.glb ASSET.manifest.json SPEC.json STATE.json
+##       ASSET.glb ASSET.manifest.json SPEC.json STATE.json [editor]
 ##
-## Runtime loading (GLTFDocument) needs no editor import, so no project's
-## files change. Exits 1 if a check fails.
+## By default the GLB is loaded at runtime (GLTFDocument), which ignores
+## Godot's import hints. With "editor", ASSET.glb is a res:// path already
+## imported into PROJECT (godot --headless --import), as the game ships
+## assets, and the collision shape is checked too. Exits 1 if a check fails.
 
 var _failed := 0
 var _passed := 0
@@ -28,22 +30,32 @@ func _read_json(path: String) -> Variant:
 
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
-	if args.size() != 4:
-		push_error("usage: -- ASSET.glb MANIFEST.json SPEC.json STATE.json")
+	if args.size() != 4 and not (args.size() == 5 and args[4] == "editor"):
+		push_error("usage: -- ASSET.glb MANIFEST.json SPEC.json STATE.json [editor]")
 		quit(2)
 		return
 	var manifest: Dictionary = _read_json(args[1])
 	var spec: Dictionary = _read_json(args[2])
 	var state: Dictionary = _read_json(args[3])
 
-	var document := GLTFDocument.new()
-	var gltf := GLTFState.new()
-	var error := document.append_from_file(args[0], gltf)
-	_check("GLB loads", error == OK, error_string(error))
-	if error != OK:
-		quit(1)
-		return
-	var scene := document.generate_scene(gltf)
+	var editor := args.size() == 5
+	var scene: Node
+	if editor:
+		var packed := load(args[0]) as PackedScene
+		_check("imported scene loads", packed != null, args[0])
+		if packed == null:
+			quit(1)
+			return
+		scene = packed.instantiate()
+	else:
+		var document := GLTFDocument.new()
+		var gltf := GLTFState.new()
+		var error := document.append_from_file(args[0], gltf)
+		_check("GLB loads", error == OK, error_string(error))
+		if error != OK:
+			quit(1)
+			return
+		scene = document.generate_scene(gltf)
 	root.add_child(scene)
 	# The root joins the tree with the main loop: wait for its first frame.
 	await process_frame
@@ -79,12 +91,27 @@ func _initialize() -> void:
 		var slot_name: String = manifest["materials"][slot]
 		_check("material %s present" % slot_name, materials.has(slot_name))
 
+	# The collision shape, which only the editor import builds from the
+	# node's suffix: a body with a convex shape and no drawn mesh.
+	if manifest.has("collision") and editor:
+		var shapes := scene.find_children("*", "CollisionShape3D", true, false)
+		var convex := shapes.filter(func(n): return (n as CollisionShape3D).shape is ConvexPolygonShape3D)
+		_check("collision shape is convex", shapes.size() == 1 and convex.size() == 1,
+			"%d shapes, %d convex" % [shapes.size(), convex.size()])
+		_check("collision under a physics body",
+			shapes.size() == 1 and shapes[0].get_parent() is PhysicsBody3D)
+		var drawn := scene.find_children(manifest["collision"]["node"], "MeshInstance3D", true, false)
+		_check("collision is not drawn", drawn.is_empty())
+
 	# A decorative asset: its height, from the meshes' bounds.
 	if manifest.has("height_m"):
 		var bounds := AABB()
 		var first := true
 		for mesh_instance in scene.find_children("*", "MeshInstance3D", true, false):
 			var instance := mesh_instance as MeshInstance3D
+			# At runtime the collision node arrives as a mesh: not drawn in the game.
+			if manifest.has("collision") and instance.name == manifest["collision"]["node"]:
+				continue
 			var box := instance.global_transform * instance.get_aabb()
 			bounds = box if first else bounds.merge(box)
 			first = false

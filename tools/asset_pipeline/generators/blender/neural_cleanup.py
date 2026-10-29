@@ -18,6 +18,7 @@ import json
 import os
 import sys
 
+import bmesh
 import bpy
 from mathutils import Vector
 
@@ -34,6 +35,13 @@ def arguments():
 def sha256(path):
     with open(path, "rb") as stream:
         return hashlib.sha256(stream.read()).hexdigest()
+
+
+def hull_leftovers(result):
+    """The points convex_hull left inside or unused, each once, in order."""
+    points = [g for g in result["geom_interior"] + result["geom_unused"]
+              if isinstance(g, bmesh.types.BMVert)]
+    return list(dict.fromkeys(points))
 
 
 def main():
@@ -98,6 +106,38 @@ def main():
             factor = limit / max(width, height)
             image.scale(round(width * factor), round(height * factor))
 
+    # The collision shape: the convex hull of the visual mesh, reduced to
+    # its vertex budget. Godot's import turns a node named with the
+    # suffix into a body with a convex shape (and no visual mesh).
+    collision = spec.get("collision")
+    if collision:
+        hull_mesh = bpy.data.meshes.new(spec["id"] + collision["node_suffix"])
+        work = bmesh.new()
+        for vertex in rock.data.vertices:
+            work.verts.new(vertex.co)
+        result = bmesh.ops.convex_hull(work, input=work.verts)
+        # Drop interior points and the hull's unused geometry.
+        bmesh.ops.delete(work, geom=hull_leftovers(result), context="VERTS")
+        work.to_mesh(hull_mesh)
+        work.free()
+        hull = bpy.data.objects.new(hull_mesh.name, hull_mesh)
+        bpy.context.scene.collection.objects.link(hull)
+        if len(hull_mesh.vertices) > collision["max_vertices"]:
+            bpy.ops.object.select_all(action="DESELECT")
+            hull.select_set(True)
+            bpy.context.view_layer.objects.active = hull
+            modifier = hull.modifiers.new("reduce", "DECIMATE")
+            modifier.decimate_type = "COLLAPSE"
+            modifier.ratio = 0.9 * collision["max_vertices"] / len(hull_mesh.vertices)
+            bpy.ops.object.modifier_apply(modifier=modifier.name)
+            # Collapsing moves points inwards: the hull of what is left.
+            work = bmesh.new()
+            work.from_mesh(hull_mesh)
+            result = bmesh.ops.convex_hull(work, input=work.verts)
+            bmesh.ops.delete(work, geom=hull_leftovers(result), context="VERTS")
+            work.to_mesh(hull_mesh)
+            work.free()
+
     os.makedirs(args.out, exist_ok=True)
     glb = os.path.join(args.out, spec["id"] + ".glb")
     bpy.ops.export_scene.gltf(filepath=glb, export_format="GLB", export_yup=True,
@@ -112,6 +152,9 @@ def main():
         "ports": [],
         "animations": {},
     }
+    if collision:
+        manifest["collision"] = {"shape": collision["shape"],
+                                 "node": spec["id"] + collision["node_suffix"]}
     with open(os.path.join(args.out, spec["id"] + ".manifest.json"), "w") as stream:
         json.dump(manifest, stream, indent=2, sort_keys=True)
         stream.write("\n")

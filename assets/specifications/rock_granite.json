@@ -26,5 +26,10 @@
     "max_triangles": 5000,
     "max_materials": 1,
     "max_texture_px": 1024
+  },
+  "collision": {
+    "shape": "convex",
+    "node_suffix": "-convcolonly",
+    "max_vertices": 64
   }
 }

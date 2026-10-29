@@ -91,10 +91,21 @@ specification:
   (script hash, Blender version), with both licences and
   `"approval": "pending human review"`.
 
+**The collision shape** (2026-10-29): the convex hull of the drawn mesh,
+reduced to at most 64 points, exported as `<id>-convcolonly`. Godot's
+editor import turns that suffix into a physics body with a
+`ConvexPolygonShape3D` and no drawn mesh; its runtime loader ignores the
+hint (checked with a probe), so the game must ship assets through the
+editor import. The rock's hull has 59 points and encloses the mesh.
+
 The validator's decorative profile (height, footprint centred, origin at
 the base, triangle, material and texture budgets read from the embedded
-JPEG headers, licences and the chain) passes 14 checks; the Godot check
-(materials, height, standing on the origin) passes 4. The clean-up is
+JPEG headers, licences and the chain) passes 18 checks with the collision
+shape's four. The Godot check runs **both ways in**, each in a throwaway
+project: loaded at runtime (rock 4 checks, generator 18) and imported by
+the editor, as the game ships assets (rock 7, with the collision body;
+generator 18: the ports' typed extras and the rotor's animation survive
+the import). The clean-up is
 byte-reproducible from the same SF3D mesh; SF3D itself is not run by the
 pipeline, so the mesh is pinned by its hash rather than rebuilt.
 
@@ -123,13 +134,10 @@ python3 tools/asset_pipeline/cli/build_asset.py \
 
 ## Not yet tested
 
-- **The editor import path:** Godot's scene import (`.import` files,
-  import hints such as `-col` colliders), as the game would ship assets.
-  Runtime loading was used here, so no project file changes.
-- **LODs and collision shapes,** and the triangle and draw-call budgets on
-  real scenes.
-- **The rest of Phase 2:** a collision shape for decorative assets,
-  running SF3D from the pipeline (it is run by hand, its output pinned by
+- **The import path on CI's Godot 4.2.2:** checked on 4.7.2 only; whether
+  4.2 imports glTF extras as node metadata is unverified.
+- **LODs,** and the triangle and draw-call budgets on real scenes.
+- **The rest of Phase 2:** running SF3D from the pipeline (it is run by hand, its output pinned by
   hash), a human-approval step, and other models for better quality. TRELLIS.2
   needs 24 GB officially and its project page excludes commercial use;
   Hunyuan3D-2.1's licence excludes the EU.

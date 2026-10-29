@@ -53,20 +53,36 @@ def blender_build(blender, spec, out):
 
 
 def godot_check(godot, out, spec, asset):
-    # A throwaway project: runtime loading needs no editor import, and no
-    # repository project changes.
-    with tempfile.TemporaryDirectory() as project:
-        with open(os.path.join(project, "project.godot"), "w") as stream:
-            stream.write('config_version=5\n\n[application]\nconfig/name="assetforge_check"\n')
-        shutil.copy(GODOT_CHECK, project)
-        result = subprocess.run(
-            [godot, "--headless", "--path", project, "--script", "import_check.gd", "--",
-             os.path.join(out, asset + ".glb"), os.path.join(out, asset + ".manifest.json"),
-             spec, STATE], capture_output=True, text=True)
-    lines = [line for line in result.stdout.splitlines()
-             if line.startswith(("PASS", "FAIL", "assetforge"))]
-    print("\n".join(lines))
-    return result.returncode == 0
+    """Both ways into Godot, each in a throwaway project (no repository
+    project changes): loaded at runtime, and imported by the editor as the
+    game ships assets (which applies the import hints)."""
+    ok = True
+    for mode in ("runtime", "editor"):
+        with tempfile.TemporaryDirectory() as project:
+            with open(os.path.join(project, "project.godot"), "w") as stream:
+                stream.write('config_version=5\n\n[application]\nconfig/name="assetforge_check"\n')
+            shutil.copy(GODOT_CHECK, project)
+            glb = os.path.join(out, asset + ".glb")
+            extra = []
+            if mode == "editor":
+                shutil.copy(glb, project)
+                imported = subprocess.run([godot, "--headless", "--path", project, "--import"],
+                                          capture_output=True, text=True)
+                if imported.returncode != 0:
+                    print(f"FAIL editor import: {imported.stderr[-2000:]}")
+                    ok = False
+                    continue
+                glb = "res://" + asset + ".glb"
+                extra = ["editor"]
+            result = subprocess.run(
+                [godot, "--headless", "--path", project, "--script", "import_check.gd", "--",
+                 glb, os.path.join(out, asset + ".manifest.json"), spec, STATE, *extra],
+                capture_output=True, text=True)
+        lines = [line for line in result.stdout.splitlines()
+                 if line.startswith(("PASS", "FAIL", "assetforge"))]
+        print(f"-- {mode}\n" + "\n".join(lines))
+        ok &= result.returncode == 0
+    return ok
 
 
 def main():
