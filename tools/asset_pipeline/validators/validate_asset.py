@@ -4,7 +4,7 @@
 Checks a built asset against its specification, reading the GLB directly
 (no Blender, no third-party packages):
 
-    validate_asset.py SPEC.json DIR
+    validate_asset.py SPEC.json DIR [--require-approval]
 
 DIR holds <id>.glb, <id>.manifest.json and <id>.provenance.json. Prints one
 line per check and exits 1 if any fails.
@@ -137,7 +137,7 @@ def normalised(v):
     return [c / n for c in v]
 
 
-def validate(spec_path, directory):
+def validate(spec_path, directory, require_approval=False):
     spec = json.load(open(spec_path))
     asset = spec["id"]
     glb_path = os.path.join(directory, asset + ".glb")
@@ -262,6 +262,15 @@ def validate(spec_path, directory):
               all(provenance["licences"]), f"{provenance.get('licences')}")
         check("provenance chain", [step.get("step") for step in provenance.get("chain", [])] ==
               ["concept image", "image to 3D", "clean-up"])
+        if require_approval:
+            # A person approved exactly these bytes (approve_asset.py).
+            root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+            path = os.path.join(root, "assets/approvals", asset + ".json")
+            approval = json.load(open(path)) if os.path.exists(path) else {}
+            check("human approval", approval.get("decision") == "approved" and
+                  approval.get("geometry_sha256") == provenance["geometry_sha256"],
+                  f"{approval.get('decision', 'none')} by {approval.get('reviewer', 'nobody')}"
+                  f"{'' if approval.get('geometry_sha256') in (None, provenance['geometry_sha256']) else ', for other bytes'}")
 
     # Animations: the action exists, turns its node about the axis through
     # the pivot, and returns to its start after the cycle.
@@ -317,7 +326,9 @@ def validate(spec_path, directory):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
+    flags = [a for a in sys.argv[1:] if a.startswith("--")]
+    paths = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if len(paths) != 2 or set(flags) - {"--require-approval"}:
         print(__doc__)
         sys.exit(2)
-    sys.exit(0 if validate(sys.argv[1], sys.argv[2]) else 1)
+    sys.exit(0 if validate(paths[0], paths[1], "--require-approval" in flags) else 1)

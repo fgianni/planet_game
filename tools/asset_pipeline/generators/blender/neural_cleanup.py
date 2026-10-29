@@ -159,21 +159,25 @@ def main():
         json.dump(manifest, stream, indent=2, sort_keys=True)
         stream.write("\n")
     concept = json.load(open(os.path.join(root, spec["source"]["concept_provenance"])))
+    # The image-to-3D step's own record (sf3d_remote.py), which must be of
+    # this mesh, from this concept image.
+    image_to_3d = json.load(open(os.path.join(root, spec["source"]["image_to_3d_provenance"])))
+    if image_to_3d["output_sha256"] != spec["source"]["mesh_sha256"] or \
+            image_to_3d["input_image_sha256"] != concept["image_sha256"]:
+        raise SystemExit("assetforge: the image-to-3D record does not match the mesh and image")
     provenance = {
         "asset": spec["id"],
         "specification": os.path.relpath(args.spec, root),
         "specification_sha256": sha256(args.spec),
         "chain": [
             {"step": "concept image", **concept},
-            {"step": "image to 3D", **spec["source"]["image_to_3d"],
-             "input_image_sha256": concept["image_sha256"],
-             "output_sha256": spec["source"]["mesh_sha256"]},
+            image_to_3d,
             {"step": "clean-up", "generator": os.path.relpath(__file__, root),
              "generator_sha256": sha256(__file__), "blender": bpy.app.version_string,
              "commit": args.commit},
         ],
         "geometry_sha256": sha256(glb),
-        "licences": [concept["licence"], spec["source"]["image_to_3d"]["licence"]],
+        "licences": [concept["licence"], image_to_3d["licence"]],
         "approval": "pending human review: a neural candidate",
     }
     with open(os.path.join(args.out, spec["id"] + ".provenance.json"), "w") as stream:

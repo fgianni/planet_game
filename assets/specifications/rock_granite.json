@@ -7,17 +7,10 @@
   "units": "metres, Blender axes (+Z up); the exporter writes glTF (+Y up)",
   "height_m": 1.0,
   "source": {
-    "mesh": "assets/generated/rock_granite_v1/sf3d_5070ti_2048/mesh.glb",
-    "mesh_sha256": "eb1f573fbf9f4f255ea24aee9eb3bbfa97e9129f12417cf027fd927a72a162df",
+    "mesh": "assets/generated/rock_granite_v1/sf3d_remote_a/mesh.glb",
+    "mesh_sha256": "58160867eb6023f8764f62d7e9b74fdb87c7ef8fcb47ed3b0454b09adc448e4b",
     "concept_provenance": "assets/generated/rock_granite_v1/concept.provenance.json",
-    "image_to_3d": {
-      "model": "stabilityai/stable-fast-3d",
-      "model_revision": "f0c9a8ffd62cb1bbc8a7a53c9f87a0be1b6be778",
-      "code_revision": "ff21fc4",
-      "licence": "Stability AI Community License (commercial use up to USD 1 M annual revenue)",
-      "texture_resolution_px": 2048,
-      "gpu": "NVIDIA GeForce RTX 5070 Ti"
-    }
+    "image_to_3d_provenance": "assets/generated/rock_granite_v1/sf3d_remote_a/mesh.provenance.json"
   },
   "materials": {
     "surface": "MAT_ROCK_GRANITE"

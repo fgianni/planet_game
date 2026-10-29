@@ -116,6 +116,26 @@ python3 tools/asset_pipeline/cli/build_asset.py \
     --reproducible --preview
 ```
 
+**SF3D from the pipeline** (`generators/image_to_3d/sf3d_remote.py`): a
+replaceable GPU worker (proposal §8). The client asks the ComfyUI server
+sharing the GPU to unload its models, copies the image and the worker
+(`sf3d_worker.py`, kept here) over SSH, runs it in SF3D's environment on
+the 5070 Ti machine, fetches the mesh and writes the step's provenance
+(model and code revisions, licence, GPU, PyTorch, time, peak memory, the
+input's and output's hashes). 7.1 s and 8.6 GiB at 2 048 px. The clean-up
+reads that record and checks it against the mesh and the concept image.
+
+**SF3D is not reproducible:** two runs on the same image gave different
+bytes. So the specification pins the generated mesh by its hash:
+generation is a one-off, and everything after it rebuilds exactly.
+
+**Human approval** (`cli/approve_asset.py`): a person's decision on
+exactly the bytes they reviewed, written to `assets/approvals/<id>.json`
+(tracked), with the asset's, preview's and specification's hashes. The
+validator's `--require-approval` fails without an approval of the current
+geometry, so a rebuild with different bytes needs a new review. The rock
+is pending.
+
 **Setup notes:**
 - The 2080 Ti needs SF3D's kernels built without pip's build isolation
   (`--no-build-isolation`, `TORCH_CUDA_ARCH_LIST=7.5`); the 5070 Ti
@@ -137,8 +157,8 @@ python3 tools/asset_pipeline/cli/build_asset.py \
 - **The import path on CI's Godot 4.2.2:** checked on 4.7.2 only; whether
   4.2 imports glTF extras as node metadata is unverified.
 - **LODs,** and the triangle and draw-call budgets on real scenes.
-- **The rest of Phase 2:** running SF3D from the pipeline (it is run by hand, its output pinned by
-  hash), a human-approval step, and other models for better quality. TRELLIS.2
+- **The rest of Phase 2:** better quality (other inputs or models), and
+  CI's approval gate for shipped assets. TRELLIS.2
   needs 24 GB officially and its project page excludes commercial use;
   Hunyuan3D-2.1's licence excludes the EU.
 - **Phases 3 and 4:** factory assembly, routing, and the compile from
