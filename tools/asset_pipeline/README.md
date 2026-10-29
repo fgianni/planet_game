@@ -48,6 +48,50 @@ Tools: Blender 5.2.2 LTS, Godot 4.7.2, Python 3.10.
     speed too. Validators should check behaviour, not only that the
     named parts exist.
 
+## Phase 2, a first neural test (2026-10-29)
+
+A decorative rock, image to mesh, outside the repository's code paths
+(outputs in `assets/generated/rock_granite_v1/`, not tracked).
+
+**The concept image:** `generators/comfyui/text_to_image.py` asks a ComfyUI
+server (here over an SSH tunnel to the RTX 5070 Ti machine) for an image
+from FLUX.2 [klein] 4B (Apache 2.0: the only FLUX.2 model licensed for
+commercial use), with the Qwen3 4B text encoder, 4 steps, a fixed seed,
+and writes a provenance record. 98 s cold, including loading the model.
+
+**Image to 3D: Stable Fast 3D** (Stability AI Community Licence: commercial
+use allowed up to USD 1 M annual revenue; the weights are gated on Hugging
+Face). Installed in its own virtual environment outside the repository, on
+each machine:
+
+| GPU | PyTorch | Texture | Time | Peak GPU memory |
+|---|---|---|---|---|
+| RTX 2080 Ti, 11 GB | 2.4.1, CUDA 12.4 | 1 024 px | 17.6 s | 10.8 GB (fits only with `expandable_segments`) |
+| RTX 5070 Ti, 16 GB | 2.14.1, CUDA 13.0 | 1 024 px | 6.9 s | 7.0 GB |
+| RTX 5070 Ti, 16 GB | 2.14.1, CUDA 13.0 | 2 048 px | 7.3 s | 8.9 GB |
+
+The output is a valid GLB (about 40 000 triangles, base colour and normal
+maps, one roughness value), but the quality is limited: the faceted rock
+became a smooth egg, the delighting washes the colours out, and the sides
+the image does not show are invented with a repetitive pattern. As the
+proposal says, neural meshes are candidates: they need a clean-up (scale,
+origin, decimation) and human approval.
+
+**Setup notes:**
+- The 2080 Ti needs SF3D's kernels built without pip's build isolation
+  (`--no-build-isolation`, `TORCH_CUDA_ARCH_LIST=7.5`); the 5070 Ti
+  (Blackwell, compute capability 12.0) needs a CUDA 13 PyTorch and toolkit.
+- The 5070 Ti machine's driver was updated without a reboot (NVML
+  595.99 against the kernel module's 595.91): `nvidia-smi` fails, and
+  PyTorch's `expandable_segments` allocator, which calls NVML, fails too.
+  A reboot clears it.
+- ComfyUI shares that GPU: `POST /free` with `unload_models` releases its
+  memory before an SF3D run.
+- That machine's network needs its Aruba portal login: without it, HTTPS
+  is intercepted (a `securelogin.arubanetworks.com` certificate) and pip
+  and git fail certificate checks. Never work around that by disabling
+  verification.
+
 ## Not yet tested
 
 - **The editor import path:** Godot's scene import (`.import` files,
@@ -55,10 +99,10 @@ Tools: Blender 5.2.2 LTS, Godot 4.7.2, Python 3.10.
   Runtime loading was used here, so no project file changes.
 - **LODs and collision shapes,** and the triangle and draw-call budgets on
   real scenes.
-- **AssetForge Phase 2, the neural backends.** This machine has two RTX
-  2080 Ti with 11 GB each, not the RTX 4070 Ti the document assumes; the
-  neural models' memory needs and licences (Hunyuan3D-2.1 excludes the
-  EU; TRELLIS.2 is research and non-commercial) must be checked first.
+- **The rest of Phase 2:** the clean-up of a neural mesh for the game, a
+  validator profile for decorative assets, and other models. TRELLIS.2
+  needs 24 GB officially and its project page excludes commercial use;
+  Hunyuan3D-2.1's licence excludes the EU.
 - **Phases 3 and 4:** factory assembly, routing, and the compile from
   assembly to network node (ADR-0031 §3: PlanetSim's, not Godot's).
 - **CI:** Blender is not in CI; these checks run by hand for now.

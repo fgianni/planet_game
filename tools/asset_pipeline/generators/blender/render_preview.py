@@ -41,8 +41,8 @@ def main():
     camera.rotation_euler = (centre - camera.location).to_track_quat("-Z", "Y").to_euler()
     scene.camera = camera
 
-    for name, energy, rotation in (("key", 4.0, (math.radians(50), 0, math.radians(-30))),
-                                   ("fill", 1.5, (math.radians(70), 0, math.radians(140)))):
+    for name, energy, rotation in (("key", 2.5, (math.radians(50), 0, math.radians(-30))),
+                                   ("fill", 0.8, (math.radians(70), 0, math.radians(140)))):
         light = bpy.data.objects.new(name, bpy.data.lights.new(name, "SUN"))
         light.data.energy = energy
         light.rotation_euler = rotation
@@ -50,7 +50,7 @@ def main():
     world = bpy.data.worlds.new("world")
     world.use_nodes = True
     world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.6, 0.65, 0.7, 1.0)
-    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.6
+    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.35
     scene.world = world
 
     scene.render.engine = "CYCLES"
