@@ -1,0 +1,10 @@
+{
+  "asset": "rock_granite_v1",
+  "date": "2026-10-29",
+  "decision": "approved",
+  "geometry_sha256": "ef99ad10f4cbb16f310ef0a8a9184c14e8f4c7ce20ea560101cf36ed6415f5c3",
+  "note": "Approved by the user in the session of 2026-10-29 after the preview review; quality limited (smooth shape, pale texture) but acceptable as a background rock.",
+  "preview_sha256": "64ddb2c868dc21b5fa4d49a698c1404a77203b476c430c48edab6d3c15785577",
+  "reviewer": "fred",
+  "specification_sha256": "c64fee530c728e448cfecb61e9b1fab391b8b071a9de900ba4ef316987d96852"
+}
