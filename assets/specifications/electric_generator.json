@@ -1,0 +1,58 @@
+{
+  "schema": "assetforge.machine/0.1",
+  "id": "generator_electric_v1",
+  "type": "machine",
+  "generator": "machine_generator",
+  "description": "An electric generator: a housing around a stator and a horizontal rotor, with cooling fins, a mechanical input shaft, an electrical output box and a coolant inlet.",
+  "units": "metres, Blender axes (+Z up); the exporter writes glTF (+Y up)",
+  "dimensions_m": [2.0, 1.5, 1.8],
+  "parameters": {
+    "seed": 1,
+    "fin_count": 10,
+    "rotor_radius_m": 0.45,
+    "rotor_length_m": 1.6
+  },
+  "components": ["housing", "stator", "rotor", "cooling_fins", "terminal_box", "coolant_inlet"],
+  "ports": [
+    {
+      "id": "mechanical_input",
+      "type": "mechanical_power",
+      "node": "PORT_MECH_IN",
+      "position_m": [-1.0, 0.0, 0.8],
+      "direction": [-1.0, 0.0, 0.0]
+    },
+    {
+      "id": "electric_output",
+      "type": "electrical_power",
+      "node": "PORT_ELEC_OUT",
+      "position_m": [0.6, 0.0, 1.8],
+      "direction": [0.0, 0.0, 1.0]
+    },
+    {
+      "id": "coolant_input",
+      "type": "fluid",
+      "node": "PORT_COOLANT_IN",
+      "position_m": [0.3, -0.75, 0.35],
+      "direction": [0.0, -1.0, 0.0]
+    }
+  ],
+  "animations": {
+    "rotor_speed": {
+      "action": "ANIM_ROTOR",
+      "node": "rotor",
+      "pivot_m": [0.0, 0.0, 0.8],
+      "axis": [1.0, 0.0, 0.0],
+      "turns_per_cycle": 1,
+      "cycle_s": 1.0
+    }
+  },
+  "materials": {
+    "housing": "MAT_HOUSING",
+    "rotor": "MAT_ROTOR",
+    "heat": "MAT_HEAT"
+  },
+  "budgets": {
+    "max_triangles": 20000,
+    "max_materials": 4
+  }
+}

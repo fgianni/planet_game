@@ -81,3 +81,6 @@ Testing/
 # Restricted-licence assets live in a private repository (ADR-0018 §11)
 /godot/assets/restricted/
 __pycache__/
+
+# AssetForge build outputs (tools/asset_pipeline/cli/build_asset.py)
+/assets/generated/

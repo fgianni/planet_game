@@ -1,0 +1,6 @@
+{
+  "asset": "generator_electric_v1",
+  "note": "A mock PlanetSim state frame for the import check: the values a binding maps to visuals.",
+  "rotor_speed_rpm": 1500.0,
+  "temperature_K": 360.0
+}
