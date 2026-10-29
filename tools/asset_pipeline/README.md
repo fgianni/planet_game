@@ -26,6 +26,12 @@ and provenance, and a preview image. About 13 s on the development machine.
 | `godot/import_check.gd` | Loads the GLB in a throwaway project, at runtime and through the editor import; checks ports, materials, collision and animations; drives each animation from a mock state frame (`tests/state_frames.json`) |
 | `cli/build_asset.py` | Runs the steps; `--reproducible` builds twice and compares the bytes |
 
+**To look at them in Godot:** `cli/viewer.py --godot PATH --launch` builds a
+throwaway project in `assets/generated/viewer/` (after `assemble.py`) and
+opens it: the assembled plant, every animation running from its state
+frame, then each asset on its own (Tab / Shift+Tab; drag to orbit, wheel to
+zoom, space to pause). `-- --selftest` builds every view headless.
+
 ## What the first run showed (2026-10-29)
 
 Tools: Blender 5.2.2 LTS, Godot 4.7.2, Python 3.10.
