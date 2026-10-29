@@ -24,7 +24,11 @@ import tempfile
 print = functools.partial(print, flush=True)   # in order with the subprocesses' output
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-GENERATOR = os.path.join(ROOT, "tools/asset_pipeline/generators/blender/machine_generator.py")
+# The specification's "generator" names its Blender script.
+GENERATORS = {
+    "machine_generator": os.path.join(ROOT, "tools/asset_pipeline/generators/blender/machine_generator.py"),
+    "neural_cleanup": os.path.join(ROOT, "tools/asset_pipeline/generators/blender/neural_cleanup.py"),
+}
 PREVIEW = os.path.join(ROOT, "tools/asset_pipeline/generators/blender/render_preview.py")
 VALIDATOR = os.path.join(ROOT, "tools/asset_pipeline/validators/validate_asset.py")
 GODOT_CHECK = os.path.join(ROOT, "tools/asset_pipeline/godot/import_check.gd")
@@ -38,7 +42,8 @@ def commit():
 
 
 def blender_build(blender, spec, out):
-    result = subprocess.run([blender, "-b", "--factory-startup", "--python", GENERATOR, "--",
+    script = GENERATORS[json.load(open(spec))["generator"]]
+    result = subprocess.run([blender, "-b", "--factory-startup", "--python", script, "--",
                              "--spec", spec, "--out", out, "--commit", commit()],
                             capture_output=True, text=True)
     if result.returncode != 0 or "assetforge: wrote" not in result.stdout:

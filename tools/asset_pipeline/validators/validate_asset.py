@@ -63,6 +63,23 @@ def accessor_floats(document, binary, index):
             for i in range(accessor["count"])]
 
 
+def image_size(document, binary, image):
+    """(width, height) of an embedded PNG or JPEG, from its header."""
+    view = document["bufferViews"][image["bufferView"]]
+    data = binary[view.get("byteOffset", 0):view.get("byteOffset", 0) + view["byteLength"]]
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return struct.unpack(">II", data[16:24])
+    if data[:2] == b"\xff\xd8":
+        at = 2
+        while at < len(data):
+            marker, length = data[at + 1], struct.unpack(">H", data[at + 2:at + 4])[0]
+            if marker in (0xC0, 0xC1, 0xC2):   # start of frame: height, then width
+                height, width = struct.unpack(">HH", data[at + 5:at + 9])
+                return width, height
+            at += 2 + length
+    raise ValueError("an embedded image is neither PNG nor JPEG")
+
+
 # Quaternions are (x, y, z, w), as in glTF.
 def q_multiply(a, b):
     ax, ay, az, aw = a
@@ -144,12 +161,12 @@ def validate(spec_path, directory):
     # The manifest matches the specification it came from.
     check("manifest id", manifest["id"] == asset)
     check("manifest ports", [(p["id"], p["type"], p["node"]) for p in manifest["ports"]] ==
-          [(p["id"], p["type"], p["node"]) for p in spec["ports"]])
+          [(p["id"], p["type"], p["node"]) for p in spec.get("ports", [])])
     check("provenance geometry hash",
           provenance["geometry_sha256"] == hashlib.sha256(open(glb_path, "rb").read()).hexdigest())
 
     # Ports: present, typed, placed and pointing as specified.
-    for port in spec["ports"]:
+    for port in spec.get("ports", []):
         index = by_name.get(port["node"])
         if index is None:
             check(f"port {port['node']} exists", False)
@@ -189,10 +206,17 @@ def validate(spec_path, directory):
                 else accessor["count"]
             triangles += count // 3
     size = [high[i] - low[i] for i in range(3)]
-    wanted = [abs(c) for c in to_gltf(spec["dimensions_m"])]
-    worst = max(abs(size[i] - wanted[i]) / wanted[i] for i in range(3))
-    check("dimensions", worst <= DIMENSION_TOLERANCE,
-          f"{[round(c, 3) for c in size]} against {wanted} (glTF axes)")
+    if "dimensions_m" in spec:
+        wanted = [abs(c) for c in to_gltf(spec["dimensions_m"])]
+        worst = max(abs(size[i] - wanted[i]) / wanted[i] for i in range(3))
+        check("dimensions", worst <= DIMENSION_TOLERANCE,
+              f"{[round(c, 3) for c in size]} against {wanted} (glTF axes)")
+    else:
+        # A decorative asset: its height, and its footprint centred on the origin.
+        error = abs(size[1] - spec["height_m"]) / spec["height_m"]
+        check("height", error <= DIMENSION_TOLERANCE, f"{size[1]:.3f} m against {spec['height_m']} m")
+        offset = math.hypot((low[0] + high[0]) / 2, (low[2] + high[2]) / 2)
+        check("footprint centred", offset <= 0.01, f"{offset * 1000:.1f} mm off the origin")
     check("origin at the base", abs(low[1]) <= POSITION_TOLERANCE_M, f"lowest y {low[1]:.4f} m")
     check("triangle budget", triangles <= spec["budgets"]["max_triangles"], f"{triangles} triangles")
 
@@ -201,10 +225,20 @@ def validate(spec_path, directory):
     check("material slots", all(name in materials for name in spec["materials"].values()),
           f"{materials}")
     check("material budget", len(materials) <= spec["budgets"]["max_materials"])
+    if "max_texture_px" in spec["budgets"]:
+        sizes = [image_size(document, binary, image) for image in document.get("images", [])]
+        check("texture budget", all(max(size) <= spec["budgets"]["max_texture_px"] for size in sizes),
+              f"{sizes}")
+    if spec["type"] == "decorative":
+        # A neural candidate carries its licences and its chain of steps.
+        check("provenance licences", bool(provenance.get("licences")) and
+              all(provenance["licences"]), f"{provenance.get('licences')}")
+        check("provenance chain", [step.get("step") for step in provenance.get("chain", [])] ==
+              ["concept image", "image to 3D", "clean-up"])
 
     # Animations: the action exists, turns its node about the axis through
     # the pivot, and returns to its start after the cycle.
-    for key, animation in spec["animations"].items():
+    for key, animation in spec.get("animations", {}).items():
         found = [a for a in document.get("animations", []) if a.get("name") == animation["action"]]
         if not found:
             check(f"animation {animation['action']} exists", False)

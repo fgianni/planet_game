@@ -77,6 +77,34 @@ the image does not show are invented with a repetitive pattern. As the
 proposal says, neural meshes are candidates: they need a clean-up (scale,
 origin, decimation) and human approval.
 
+**The clean-up for the game** (`generators/blender/neural_cleanup.py`,
+specification `assets/specifications/rock_granite.json`, type
+`decorative`). From the SF3D mesh, checked against its hash in the
+specification:
+- one object, its origin at the base centre, scaled to 1.0 m tall;
+- decimated from 39 648 to 4 749 triangles (budget 5 000), with no visible
+  loss next to SF3D's original;
+- textures downsized from 2 048 to 1 024 px; one material, named
+  `MAT_ROCK_GRANITE`; 378 KB, against SF3D's 1.8 MB;
+- a provenance chain: the concept image (model, licence, prompt, seed),
+  image to 3D (model and code revisions, licence, GPU) and the clean-up
+  (script hash, Blender version), with both licences and
+  `"approval": "pending human review"`.
+
+The validator's decorative profile (height, footprint centred, origin at
+the base, triangle, material and texture budgets read from the embedded
+JPEG headers, licences and the chain) passes 14 checks; the Godot check
+(materials, height, standing on the origin) passes 4. The clean-up is
+byte-reproducible from the same SF3D mesh; SF3D itself is not run by the
+pipeline, so the mesh is pinned by its hash rather than rebuilt.
+
+```bash
+python3 tools/asset_pipeline/cli/build_asset.py \
+    --spec assets/specifications/rock_granite.json \
+    --blender /snap/bin/blender --godot ../../Godot_v4.7.2-stable_linux.x86_64 \
+    --reproducible --preview
+```
+
 **Setup notes:**
 - The 2080 Ti needs SF3D's kernels built without pip's build isolation
   (`--no-build-isolation`, `TORCH_CUDA_ARCH_LIST=7.5`); the 5070 Ti
@@ -100,8 +128,9 @@ origin, decimation) and human approval.
   Runtime loading was used here, so no project file changes.
 - **LODs and collision shapes,** and the triangle and draw-call budgets on
   real scenes.
-- **The rest of Phase 2:** the clean-up of a neural mesh for the game, a
-  validator profile for decorative assets, and other models. TRELLIS.2
+- **The rest of Phase 2:** a collision shape for decorative assets,
+  running SF3D from the pipeline (it is run by hand, its output pinned by
+  hash), a human-approval step, and other models for better quality. TRELLIS.2
   needs 24 GB officially and its project page excludes commercial use;
   Hunyuan3D-2.1's licence excludes the EU.
 - **Phases 3 and 4:** factory assembly, routing, and the compile from

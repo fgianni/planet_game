@@ -67,54 +67,87 @@ func _initialize() -> void:
 		var distance := node.global_position.distance_to(expected)
 		_check("port %s position" % port["node"], distance < 1e-3, "%.2f mm" % (distance * 1000.0))
 
-	# The rotor's animation, driven from the state frame.
-	var players := scene.find_children("*", "AnimationPlayer", true, false)
-	_check("one AnimationPlayer", players.size() == 1)
-	if players.size() != 1:
-		quit(1)
-		return
-	var player := players[0] as AnimationPlayer
-	var animation_spec: Dictionary = spec["animations"]["rotor_speed"]
-	var action: String = manifest["animations"]["rotor_speed"]
-	_check("animation %s present" % action, player.has_animation(action), str(player.get_animation_list()))
-	if not player.has_animation(action):
-		quit(1)
-		return
-	player.get_animation(action).loop_mode = Animation.LOOP_LINEAR
-	var rotor := scene.find_child(animation_spec["node"], true, false) as Node3D
-	# The binding: playback speed is the state's turns per second over the
-	# animation's own.
-	var turns_per_second: float = state["rotor_speed_rpm"] / 60.0
-	var cycle_turns_per_second: float = animation_spec["turns_per_cycle"] / animation_spec["cycle_s"]
-	player.speed_scale = turns_per_second / cycle_turns_per_second
-	player.play(action)
-	var dt := 0.01   # at 1 500 rpm, a quarter turn
-	player.advance(dt)
-	var expected_angle := fposmod(TAU * turns_per_second * dt, TAU)
-	var axis := Vector3(animation_spec["axis"][0], animation_spec["axis"][2], -animation_spec["axis"][1])
-	var turned := rotor.quaternion
-	var angle := fposmod(turned.get_angle() * signf(turned.get_axis().dot(axis)), TAU)
-	var angle_error := absf(angle - expected_angle)
-	_check("rotor follows the state's speed", angle_error < 1e-3,
-		"%.4f rad against %.4f rad" % [angle, expected_angle])
-
-	# The heat tint: the material slot exists and takes the state's value.
-	var heat_name: String = manifest["materials"]["heat"]
-	var heat: StandardMaterial3D = null
+	# Every material slot of the manifest is on a surface.
+	var materials := {}
 	for mesh_instance in scene.find_children("*", "MeshInstance3D", true, false):
 		var mesh := (mesh_instance as MeshInstance3D).mesh
 		for surface in mesh.get_surface_count():
 			var material := mesh.surface_get_material(surface)
-			if material != null and material.resource_name == heat_name:
-				heat = material as StandardMaterial3D
-	_check("material %s present" % heat_name, heat != null)
-	if heat != null:
-		# 300 K and below: no glow; 400 K: full (an illustrative mapping).
-		var glow := clampf((state["temperature_K"] - 300.0) / 100.0, 0.0, 1.0)
-		heat.emission_enabled = true
-		heat.emission_energy_multiplier = glow
-		_check("heat tint follows the state", is_equal_approx(heat.emission_energy_multiplier, glow),
-			"%.2f at %.0f K" % [glow, state["temperature_K"]])
+			if material != null:
+				materials[material.resource_name] = material
+	for slot in manifest["materials"]:
+		var slot_name: String = manifest["materials"][slot]
+		_check("material %s present" % slot_name, materials.has(slot_name))
 
+	# A decorative asset: its height, from the meshes' bounds.
+	if manifest.has("height_m"):
+		var bounds := AABB()
+		var first := true
+		for mesh_instance in scene.find_children("*", "MeshInstance3D", true, false):
+			var instance := mesh_instance as MeshInstance3D
+			var box := instance.global_transform * instance.get_aabb()
+			bounds = box if first else bounds.merge(box)
+			first = false
+		var height: float = manifest["height_m"]
+		_check("height", absf(bounds.size.y - height) <= 0.02 * height,
+			"%.3f m against %.3f m" % [bounds.size.y, height])
+		_check("standing on the origin", absf(bounds.position.y) <= 1e-3,
+			"lowest %.4f m" % bounds.position.y)
+
+	if manifest["animations"].has("rotor_speed"):
+		# The rotor's animation, driven from the state frame.
+		var players := scene.find_children("*", "AnimationPlayer", true, false)
+		_check("one AnimationPlayer", players.size() == 1)
+		if players.size() != 1:
+				_finish(manifest)
+				return
+		var player := players[0] as AnimationPlayer
+		var animation_spec: Dictionary = spec["animations"]["rotor_speed"]
+		var action: String = manifest["animations"]["rotor_speed"]
+		_check("animation %s present" % action, player.has_animation(action), str(player.get_animation_list()))
+		if not player.has_animation(action):
+				_finish(manifest)
+				return
+		player.get_animation(action).loop_mode = Animation.LOOP_LINEAR
+		var rotor := scene.find_child(animation_spec["node"], true, false) as Node3D
+		# The binding: playback speed is the state's turns per second over the
+		# animation's own.
+		var turns_per_second: float = state["rotor_speed_rpm"] / 60.0
+		var cycle_turns_per_second: float = animation_spec["turns_per_cycle"] / animation_spec["cycle_s"]
+		player.speed_scale = turns_per_second / cycle_turns_per_second
+		player.play(action)
+		var dt := 0.01   # at 1 500 rpm, a quarter turn
+		player.advance(dt)
+		var expected_angle := fposmod(TAU * turns_per_second * dt, TAU)
+		var axis := Vector3(animation_spec["axis"][0], animation_spec["axis"][2], -animation_spec["axis"][1])
+		var turned := rotor.quaternion
+		var angle := fposmod(turned.get_angle() * signf(turned.get_axis().dot(axis)), TAU)
+		var angle_error := absf(angle - expected_angle)
+		_check("rotor follows the state's speed", angle_error < 1e-3,
+			"%.4f rad against %.4f rad" % [angle, expected_angle])
+
+	if manifest["materials"].has("heat"):
+		# The heat tint: the material slot exists and takes the state's value.
+		var heat_name: String = manifest["materials"]["heat"]
+		var heat: StandardMaterial3D = null
+		for mesh_instance in scene.find_children("*", "MeshInstance3D", true, false):
+			var mesh := (mesh_instance as MeshInstance3D).mesh
+			for surface in mesh.get_surface_count():
+				var material := mesh.surface_get_material(surface)
+				if material != null and material.resource_name == heat_name:
+					heat = material as StandardMaterial3D
+		_check("material %s present" % heat_name, heat != null)
+		if heat != null:
+			# 300 K and below: no glow; 400 K: full (an illustrative mapping).
+			var glow := clampf((state["temperature_K"] - 300.0) / 100.0, 0.0, 1.0)
+			heat.emission_enabled = true
+			heat.emission_energy_multiplier = glow
+			_check("heat tint follows the state", is_equal_approx(heat.emission_energy_multiplier, glow),
+				"%.2f at %.0f K" % [glow, state["temperature_K"]])
+
+	_finish(manifest)
+
+
+func _finish(manifest: Dictionary) -> void:
 	print("assetforge godot %s: %d passed, %d failed" % [manifest["id"], _passed, _failed])
 	quit(1 if _failed > 0 else 0)
