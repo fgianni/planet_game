@@ -1240,7 +1240,7 @@ land into the circulation's mean flow and its eddies, then run cheap
 climate-only sensitivity tests (off by default, as INV-03's prototypes
 were) before proposing an ADR.
 
-## Open tasks (updated 2026-10-23)
+## Open tasks (updated 2026-10-29)
 
 **Done since the first list (2026-10-22):**
 - the 20-year spin-up: the gap grows to 4.719 K, as climate mode keeps
@@ -1296,10 +1296,12 @@ were) before proposing an ADR.
    ADR-0024 §9.6 for the cold start. Still open: land's water. The target is reference
    land's numbers: about 23 W/m² of latent heat delivered, about 12 g/kg
    of equatorial humidity, and the cloud longwave about 40 W/m².
-3. **An ADR proposal** for whichever change works, then a refit and V8
-   again (about 3 h at L4).
-4. **The precipitation ratio, 0.901,** at the edge of its ±10 % limit:
-   expected to move with the land's water.
+3. ~~**An ADR proposal** for whichever change works, then a refit and V8
+   again.~~ Done: ADR-0027 (heat mixed within the groups) and ADR-0028
+   (the equatorial waves' exchange), each with its refit; V8 passes at
+   L4 by agreement.
+4. ~~**The precipitation ratio, 0.901,** at the edge of its ±10 %
+   limit.~~ Done: 0.996 under ADR-0028.
 5. **The drift (ADR-0023 §16.3):** both modes are still cooling with the
    deep ocean after ten years. If it decides the gap, the option is a
    shared, spun-up deep ocean as the start, by amending ADR-0023 §15.
