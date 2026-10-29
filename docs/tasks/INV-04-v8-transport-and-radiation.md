@@ -1211,6 +1211,46 @@ restart:
 
 ADR-0028 §10 has the tables.
 
+## ADR-0029 option A: each layer's fluxes, the climate half (2026-10-29)
+
+Diagnostics only (commit `aadfb4d`; the state hash equals a clean build of
+HEAD). Across each latitude and per layer: climate mode sums its humidity
+transport's own face fluxes between the groups either side; reference
+mode accumulates the dynamics' applied edge fluxes (`EdgeFluxTotals`).
+Over 30 L3 days reference mode's layer sums equal its own latent
+transport to all printed digits, except at the equator: a row of cells at
+|latitude| ~ 1e-16 falls on different sides of the two partitions.
+`planet_cli parity --climate-only 1` runs climate mode alone.
+
+**Climate mode, L4, the current preset, ten-year spin-up then three years**
+(`build/inv04/adr0029a_L4_climate.log`, 31 s). Layers from the bottom;
+northward positive:
+
+| Latitude | 30S | 20S | 10S | 0 | 10N | 20N | 30N |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Bottom layer's mass flux (Sv) | −0.73 | +7.98 | −4.00 | −15.5 | −13.1 | −9.80 | −2.55 |
+| Middle layer's (Sv) | −0.73 | −6.05 | +4.07 | +12.4 | +7.90 | +6.38 | +1.19 |
+| Top layer's (Sv) | −1.37 | −1.93 | −0.07 | +3.09 | +5.20 | +3.42 | +1.36 |
+| Bottom layer's humidity (g/kg) | 5.89 | 6.07 | 6.17 | 6.22 | 6.27 | 6.30 | 6.17 |
+| Middle / top layer's humidity (g/kg) | 1.50 / 0.25 | 1.64 / 0.25 | 1.68 / 0.26 | 1.69 / 0.25 | 1.71 / 0.26 | 1.70 / 0.25 | 1.59 / 0.25 |
+| Water, all layers (PW) | −0.31 | −0.24 | −0.16 | −0.00 | +0.11 | +0.22 | +0.35 |
+| of which the mean overturning's (PW) | +0.03 | +0.10 | −0.04 | −0.19 | −0.17 | −0.13 | −0.03 |
+
+- **The overturning is weak.** Its bottom-layer mass flux is at most
+  16 Sv, against roughly 80–100 Sv for each of Earth's annual-mean
+  Hadley cells. Its lower branch runs south from 30° N across the
+  equator, and the southern cell's converges near 15° S.
+- **The tropical air is dry above the bottom layer,** with 1.7 and
+  0.25 g/kg in the middle and top layers. The tropical latent heating is
+  all in the bottom layer (136.6, 2.1 and 0.0 W/m² by layer): the water
+  rains out where it is evaporated.
+- **So the overturning carries little water:** at most 0.19 PW, at the
+  equator. The poleward latent transport (at most 0.44 PW, at 30–40° N)
+  is the eddies'.
+
+Reference mode's half follows from the L4 run queued after the L5 V8
+run (`build/inv04/adr0029a_L4_v8.log`).
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
