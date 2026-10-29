@@ -1,0 +1,8 @@
+{
+  "note": "A mock PlanetSim state frame for the assembled power chain, per module of the blueprint (ADR-0031: PlanetSim will publish these).",
+  "reactor": {"shaft_speed_rpm": 1500.0, "temperature_K": 390.0},
+  "generator": {"rotor_speed_rpm": 1500.0, "temperature_K": 345.0},
+  "feed_pump": {"pump_speed_rpm": 2900.0},
+  "feed_tank": {"fill_fraction": 0.4},
+  "cooler": {"fan_speed_rpm": 900.0}
+}

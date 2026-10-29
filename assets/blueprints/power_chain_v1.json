@@ -1,0 +1,27 @@
+{
+  "schema": "assetforge.blueprint/0.1",
+  "id": "power_chain_v1",
+  "description": "The proposal's first end-to-end proof of concept (§9): a feed tank and pump supply a reactor whose turbine drives a generator; a cooler serves both, and the generator powers the pump and the cooler. A functional blueprint only: PlanetSim will own what it computes (ADR-0031); here a mock state frame drives the visuals.",
+  "root": "reactor",
+  "modules": [
+    {"id": "reactor", "asset": "reactor_vessel"},
+    {"id": "generator", "asset": "electric_generator"},
+    {"id": "feed_pump", "asset": "pump_centrifugal"},
+    {"id": "feed_tank", "asset": "tank_fluid"},
+    {"id": "cooler", "asset": "cooler_fan"}
+  ],
+  "connections": [
+    {"from": "reactor.shaft_output", "to": "generator.mechanical_input"},
+    {"from": "feed_pump.discharge", "to": "reactor.feed"},
+    {"from": "feed_tank.fluid_output", "to": "feed_pump.suction"},
+    {"from": "cooler.coolant_output_a", "to": "reactor.coolant_input"},
+    {"from": "cooler.coolant_output_b", "to": "generator.coolant_input"},
+    {"from": "generator.electric_output", "to": "feed_pump.power"},
+    {"from": "generator.electric_output", "to": "cooler.power"}
+  ],
+  "parameters": {
+    "spacing_m": 1.5,
+    "clearance_m": 0.4,
+    "stub_m": 0.3
+  }
+}

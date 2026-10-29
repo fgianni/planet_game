@@ -143,6 +143,11 @@ if(PLANETSIM_BUILD_TESTS)
             COMMAND "${Python3_EXECUTABLE}"
                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/test_assetforge_specs.py"
         )
+        add_test(
+            NAME assetforge_layout
+            COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/test_assetforge_layout.py"
+        )
         find_program(ASSETFORGE_BLENDER blender)
         set(ASSETFORGE_GODOT "" CACHE FILEPATH "A Godot 4 binary for AssetForge's import check")
         if(ASSETFORGE_BLENDER)

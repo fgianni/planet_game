@@ -83,6 +83,41 @@ checks each, Godot 10–18 each way) and rebuild byte-identically.
   caps hid them. The previews caught it. Review the previews, as for the
   neural assets.
 
+## Phase 3, the proof of concept (2026-10-29)
+
+The proposal's first end-to-end proof of concept (§9), visual only: the
+functional summary stays PlanetSim's (ADR-0031), so a mock state frame
+drives it.
+
+```bash
+python3 tools/asset_pipeline/cli/assemble.py --blueprint assets/blueprints/power_chain_v1.json \
+    --godot ../../Godot_v4.7.2-stable_linux.x86_64 --blender /snap/bin/blender \
+    --vary spacing_m=2.5 --preview
+```
+
+- **The blueprint** (`assets/blueprints/power_chain_v1.json`): five
+  modules and seven port-to-port connections (tank → pump → reactor → shaft
+  → generator; the cooler serving the reactor and the generator; the
+  generator powering the pump and the cooler), and its parameters.
+- **The layout** (`assembly/layout.py`, standard library only): the root at
+  the origin; a shaft is a rigid mate (coaxial, facing); each other module
+  tries the four quarter turns, is pushed outward until it clears the
+  placed ones, and the cheapest wins; routes leave each port by a stub and
+  run along the axes or over the top, the shortest one that crosses no
+  module. Port types must match. A blueprint that cannot be built is
+  reported impossible, not invented.
+- **The assembly in Godot** (`godot/assembly_check.gd`): the modules from
+  their editor-imported GLBs, the pipes and cables built, every route
+  checked to start and end on the imported ports (0.00 mm), the shaft
+  mated (gap 0.00 mm, facing −1), every animation driven from one plant
+  state frame (`tests/plant_state.json`): 20 checks.
+- **Deterministic re-assembly:** the layout changes with `spacing_m=2.5`
+  and stays feasible (another digest); laid out again as given, it gives
+  the same bytes and the same assembly digest. About 23 s in all.
+- **A limit seen in the preview:** the cooler faces the reactor, so its
+  pipe to the generator loops over the top (12 m). The placement cost
+  compares port distances, not the routes they need.
+
 ## Phase 2, a first neural test (2026-10-29)
 
 A decorative rock, image to mesh, outside the repository's code paths
@@ -196,11 +231,14 @@ is pending.
   CI's approval gate for shipped assets. TRELLIS.2
   needs 24 GB officially and its project page excludes commercial use;
   Hunyuan3D-2.1's licence excludes the EU.
-- **Phases 3 and 4:** factory assembly, routing, and the compile from
-  assembly to network node (ADR-0031 §3: PlanetSim's, not Godot's).
+- **Beyond the proof of concept:** placement costs from the routes
+  themselves, routes that avoid each other, and the compile from assembly
+  to network node (ADR-0031 §3: PlanetSim's, not Godot's, from P1).
+  Phase 4 (batch generation, searchable previews, caching) is untouched.
 - **CI:** CTest runs `assetforge_specifications` everywhere (the
   specifications pass, and eight broken copies fail with the expected
-  messages). `assetforge_build_<module>` for the five machines (built,
+  messages) and `assetforge_layout` (the power chain feasible and
+  deterministic, a varied parameter, two impossible blueprints caught). `assetforge_build_<module>` for the five machines (built,
   validated and rebuilt byte-identically, checked in Godot when
   `ASSETFORGE_GODOT` names a binary) is added only where Blender is
   installed; CI has neither Blender nor the rock's generated sources.
