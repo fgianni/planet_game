@@ -1,0 +1,74 @@
+{
+  "schema": "assetforge.machine/0.1",
+  "id": "tank_fluid_v1",
+  "type": "machine",
+  "family": "tank",
+  "generator": "machine_generator",
+  "description": "A fluid storage tank: shell with a domed head on a base plate, an outlet pipe, and a sight glass whose float shows the fill level.",
+  "units": "metres, Blender axes (+Z up); the exporter writes glTF (+Y up)",
+  "dimensions_m": [
+    1.8,
+    1.8,
+    2.6
+  ],
+  "parameters": {
+    "seed": 1
+  },
+  "components": [
+    "base",
+    "shell",
+    "head",
+    "outlet",
+    "sight_glass",
+    "level_float"
+  ],
+  "ports": [
+    {
+      "id": "fluid_output",
+      "type": "fluid",
+      "node": "PORT_FLUID_OUT",
+      "position_m": [
+        0.9,
+        0.0,
+        0.35
+      ],
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "animations": {
+    "level": {
+      "action": "ANIM_LEVEL",
+      "node": "level_float",
+      "kind": "position",
+      "pivot_m": [
+        0.0,
+        -0.85,
+        0.45
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "travel_m": 1.6,
+      "cycle_s": 1.0,
+      "binding": {
+        "state": "fill_fraction",
+        "kind": "position"
+      }
+    }
+  },
+  "materials": {
+    "shell": "MAT_TANK_SHELL",
+    "glass": "MAT_GLASS",
+    "float": "MAT_FLOAT"
+  },
+  "budgets": {
+    "max_triangles": 20000,
+    "max_materials": 4
+  }
+}

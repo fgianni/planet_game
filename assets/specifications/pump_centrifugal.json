@@ -1,0 +1,104 @@
+{
+  "schema": "assetforge.machine/0.1",
+  "id": "pump_centrifugal_v1",
+  "type": "machine",
+  "family": "pump",
+  "generator": "machine_generator",
+  "description": "A centrifugal pump: motor on a base plate, volute with suction and discharge pipes, terminal box, and the motor's cooling fan.",
+  "units": "metres, Blender axes (+Z up); the exporter writes glTF (+Y up)",
+  "dimensions_m": [
+    1.4,
+    0.8,
+    0.9
+  ],
+  "parameters": {
+    "seed": 1
+  },
+  "components": [
+    "base",
+    "motor",
+    "volute",
+    "suction",
+    "discharge",
+    "terminal_box",
+    "motor_fan"
+  ],
+  "ports": [
+    {
+      "id": "suction",
+      "type": "fluid",
+      "node": "PORT_FLUID_IN",
+      "position_m": [
+        0.7,
+        0.0,
+        0.45
+      ],
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": "discharge",
+      "type": "fluid",
+      "node": "PORT_FLUID_OUT",
+      "position_m": [
+        0.35,
+        0.0,
+        0.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "id": "power",
+      "type": "electrical_power",
+      "node": "PORT_ELEC_IN",
+      "position_m": [
+        -0.3,
+        -0.4,
+        0.45
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ]
+    }
+  ],
+  "animations": {
+    "speed": {
+      "action": "ANIM_FAN",
+      "node": "motor_fan",
+      "kind": "rotation",
+      "pivot_m": [
+        -0.67,
+        0.0,
+        0.45
+      ],
+      "axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "turns_per_cycle": 1,
+      "cycle_s": 1.0,
+      "binding": {
+        "state": "pump_speed_rpm",
+        "kind": "speed_rpm"
+      }
+    }
+  },
+  "materials": {
+    "body": "MAT_PUMP_BODY",
+    "shaft": "MAT_SHAFT"
+  },
+  "budgets": {
+    "max_triangles": 20000,
+    "max_materials": 4
+  }
+}

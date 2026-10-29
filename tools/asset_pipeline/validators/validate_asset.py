@@ -137,6 +137,38 @@ def normalised(v):
     return [c / n for c in v]
 
 
+def check_movement(check, document, binary, animation_json, target, animation, world):
+    """A "position" animation (a level gauge): its node moves travel_m along
+    the axis over the cycle, linearly and off the axis not at all, starting
+    at the pivot. Its place is set from the state, not played."""
+    name = animation["action"]
+    channels = [c for c in animation_json["channels"]
+                if c["target"].get("node") == target and c["target"]["path"] == "translation"]
+    check(f"animation {name} moves {animation['node']}", len(channels) == 1)
+    if not channels:
+        return
+    sampler = animation_json["samplers"][channels[0]["sampler"]]
+    times = [t[0] for t in accessor_floats(document, binary, sampler["input"])]
+    places = accessor_floats(document, binary, sampler["output"])
+    check(f"animation {name} cycle", abs(times[-1] - times[0] - animation["cycle_s"]) <= 1e-4,
+          f"{times[-1] - times[0]:.4f} s")
+    axis = normalised(to_gltf(animation["axis"]))
+    worst_off = 0.0
+    worst_linear = 0.0
+    for time, place in zip(times, places):
+        moved = [place[i] - places[0][i] for i in range(3)]
+        along = sum(moved[i] * axis[i] for i in range(3))
+        worst_off = max(worst_off, distance(moved, [along * axis[i] for i in range(3)]))
+        wanted = animation["travel_m"] * (time - times[0]) / animation["cycle_s"]
+        worst_linear = max(worst_linear, abs(along - wanted))
+    check(f"animation {name} axis", worst_off <= 1e-4, f"off axis {worst_off:.2e} m")
+    check(f"animation {name} linear travel", worst_linear <= 1e-4,
+          f"largest error {worst_linear:.2e} m over {len(times)} samples, {animation['travel_m']} m")
+    error = distance(world[target][0], to_gltf(animation["pivot_m"]))
+    check(f"animation {name} starts at the pivot", error <= POSITION_TOLERANCE_M,
+          f"{error * 1000:.2f} mm from the specification")
+
+
 def validate(spec_path, directory, require_approval=False):
     spec = json.load(open(spec_path))
     asset = spec["id"]
@@ -280,6 +312,9 @@ def validate(spec_path, directory, require_approval=False):
             check(f"animation {animation['action']} exists", False)
             continue
         target = by_name.get(animation["node"])
+        if animation.get("kind", "rotation") == "position":
+            check_movement(check, document, binary, found[0], target, animation, world)
+            continue
         channels = [c for c in found[0]["channels"]
                     if c["target"].get("node") == target and c["target"]["path"] == "rotation"]
         check(f"animation {animation['action']} rotates {animation['node']}", len(channels) == 1)

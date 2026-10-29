@@ -1,0 +1,9 @@
+{
+  "note": "Mock PlanetSim state frames, one per asset, for the Godot import check: the values a binding maps to visuals. In the game PlanetSim publishes them (ADR-0031); here they are fixed.",
+  "generator_electric_v1": {"rotor_speed_rpm": 1500.0, "temperature_K": 360.0},
+  "tank_fluid_v1": {"fill_fraction": 0.65},
+  "pump_centrifugal_v1": {"pump_speed_rpm": 2900.0},
+  "reactor_vessel_v1": {"shaft_speed_rpm": 1500.0, "temperature_K": 380.0},
+  "cooler_fan_v1": {"fan_speed_rpm": 900.0},
+  "rock_granite_v1": {}
+}

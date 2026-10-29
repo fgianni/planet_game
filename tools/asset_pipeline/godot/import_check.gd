@@ -36,7 +36,9 @@ func _initialize() -> void:
 		return
 	var manifest: Dictionary = _read_json(args[1])
 	var spec: Dictionary = _read_json(args[2])
-	var state: Dictionary = _read_json(args[3])
+	# A state frame per asset (tests/state_frames.json): the values a binding maps to visuals.
+	var frames: Dictionary = _read_json(args[3])
+	var state: Dictionary = frames.get(manifest["id"], {})
 
 	var editor := args.size() == 5
 	var scene: Node
@@ -121,37 +123,20 @@ func _initialize() -> void:
 		_check("standing on the origin", absf(bounds.position.y) <= 1e-3,
 			"lowest %.4f m" % bounds.position.y)
 
-	if manifest["animations"].has("rotor_speed"):
-		# The rotor's animation, driven from the state frame.
+	# Each animation, driven through its binding from the state frame: a
+	# rotation's playback speed is the state's turns per second over the
+	# animation's own; a position animation is set, not played, at the
+	# state's fraction of its travel.
+	var animations: Dictionary = spec.get("animations", {})
+	if not animations.is_empty():
 		var players := scene.find_children("*", "AnimationPlayer", true, false)
 		_check("one AnimationPlayer", players.size() == 1)
 		if players.size() != 1:
-				_finish(manifest)
-				return
+			_finish(manifest)
+			return
 		var player := players[0] as AnimationPlayer
-		var animation_spec: Dictionary = spec["animations"]["rotor_speed"]
-		var action: String = manifest["animations"]["rotor_speed"]
-		_check("animation %s present" % action, player.has_animation(action), str(player.get_animation_list()))
-		if not player.has_animation(action):
-				_finish(manifest)
-				return
-		player.get_animation(action).loop_mode = Animation.LOOP_LINEAR
-		var rotor := scene.find_child(animation_spec["node"], true, false) as Node3D
-		# The binding: playback speed is the state's turns per second over the
-		# animation's own.
-		var turns_per_second: float = state["rotor_speed_rpm"] / 60.0
-		var cycle_turns_per_second: float = animation_spec["turns_per_cycle"] / animation_spec["cycle_s"]
-		player.speed_scale = turns_per_second / cycle_turns_per_second
-		player.play(action)
-		var dt := 0.01   # at 1 500 rpm, a quarter turn
-		player.advance(dt)
-		var expected_angle := fposmod(TAU * turns_per_second * dt, TAU)
-		var axis := Vector3(animation_spec["axis"][0], animation_spec["axis"][2], -animation_spec["axis"][1])
-		var turned := rotor.quaternion
-		var angle := fposmod(turned.get_angle() * signf(turned.get_axis().dot(axis)), TAU)
-		var angle_error := absf(angle - expected_angle)
-		_check("rotor follows the state's speed", angle_error < 1e-3,
-			"%.4f rad against %.4f rad" % [angle, expected_angle])
+		for key in animations:
+			_check_animation(scene, player, animations[key], state)
 
 	if manifest["materials"].has("heat"):
 		# The heat tint: the material slot exists and takes the state's value.
@@ -173,6 +158,44 @@ func _initialize() -> void:
 				"%.2f at %.0f K" % [glow, state["temperature_K"]])
 
 	_finish(manifest)
+
+
+func _check_animation(scene: Node, player: AnimationPlayer, animation: Dictionary,
+		state: Dictionary) -> void:
+	var action: String = animation["action"]
+	_check("animation %s present" % action, player.has_animation(action), str(player.get_animation_list()))
+	if not player.has_animation(action):
+		return
+	var binding: Dictionary = animation.get("binding", {"state": "rotor_speed_rpm", "kind": "speed_rpm"})
+	var value: float = state[binding["state"]]
+	var node := scene.find_child(animation["node"], true, false) as Node3D
+	# Blender (x, y, z) is glTF and Godot (x, z, -y).
+	var axis := Vector3(animation["axis"][0], animation["axis"][2], -animation["axis"][1])
+	if animation.get("kind", "rotation") == "position":
+		var fraction := clampf(value, 0.0, 1.0)
+		player.speed_scale = 1.0
+		player.play(action)
+		player.seek(fraction * float(animation["cycle_s"]), true)
+		player.pause()
+		var pivot := Vector3(animation["pivot_m"][0], animation["pivot_m"][2], -animation["pivot_m"][1])
+		var moved := (node.global_position - pivot).dot(axis)
+		var expected := fraction * float(animation["travel_m"])
+		_check("%s follows the state's %s" % [animation["node"], binding["state"]],
+			absf(moved - expected) < 1e-3, "%.4f m against %.4f m" % [moved, expected])
+		return
+	player.get_animation(action).loop_mode = Animation.LOOP_LINEAR
+	var turns_per_second := value / 60.0
+	var cycle_turns_per_second: float = float(animation["turns_per_cycle"]) / float(animation["cycle_s"])
+	player.speed_scale = turns_per_second / cycle_turns_per_second
+	player.play(action)
+	player.seek(0.0, true)
+	var dt := 0.01
+	player.advance(dt)
+	var expected_angle := fposmod(TAU * turns_per_second * dt, TAU)
+	var turned := node.quaternion
+	var angle := fposmod(turned.get_angle() * signf(turned.get_axis().dot(axis)), TAU)
+	_check("%s follows the state's %s" % [animation["node"], binding["state"]],
+		absf(angle - expected_angle) < 1e-3, "%.4f rad against %.4f rad" % [angle, expected_angle])
 
 
 func _finish(manifest: Dictionary) -> void:

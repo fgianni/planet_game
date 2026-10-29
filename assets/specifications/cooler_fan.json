@@ -1,0 +1,124 @@
+{
+  "schema": "assetforge.machine/0.1",
+  "id": "cooler_fan_v1",
+  "type": "machine",
+  "family": "cooler",
+  "generator": "machine_generator",
+  "description": "A dry cooler: a cabinet with two fans on top, a power inlet and two coolant outlets.",
+  "units": "metres, Blender axes (+Z up); the exporter writes glTF (+Y up)",
+  "dimensions_m": [
+    2.0,
+    1.2,
+    1.6
+  ],
+  "parameters": {
+    "seed": 1
+  },
+  "components": [
+    "cabinet",
+    "shrouds",
+    "fan_a",
+    "fan_b",
+    "power_inlet",
+    "outlets"
+  ],
+  "ports": [
+    {
+      "id": "power",
+      "type": "electrical_power",
+      "node": "PORT_ELEC_IN",
+      "position_m": [
+        -1.0,
+        0.0,
+        0.3
+      ],
+      "direction": [
+        -1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": "coolant_output_a",
+      "type": "fluid",
+      "node": "PORT_COOLANT_OUT_A",
+      "position_m": [
+        1.0,
+        -0.3,
+        0.4
+      ],
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": "coolant_output_b",
+      "type": "fluid",
+      "node": "PORT_COOLANT_OUT_B",
+      "position_m": [
+        1.0,
+        0.3,
+        0.4
+      ],
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "animations": {
+    "fan_a": {
+      "action": "ANIM_FAN_A",
+      "node": "fan_a",
+      "kind": "rotation",
+      "pivot_m": [
+        -0.5,
+        0.0,
+        1.55
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "turns_per_cycle": 1,
+      "cycle_s": 1.0,
+      "binding": {
+        "state": "fan_speed_rpm",
+        "kind": "speed_rpm"
+      }
+    },
+    "fan_b": {
+      "action": "ANIM_FAN_B",
+      "node": "fan_b",
+      "kind": "rotation",
+      "pivot_m": [
+        0.5,
+        0.0,
+        1.55
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "turns_per_cycle": 1,
+      "cycle_s": 1.0,
+      "binding": {
+        "state": "fan_speed_rpm",
+        "kind": "speed_rpm"
+      }
+    }
+  },
+  "materials": {
+    "cabinet": "MAT_COOLER",
+    "fan": "MAT_FAN"
+  },
+  "budgets": {
+    "max_triangles": 20000,
+    "max_materials": 4
+  }
+}

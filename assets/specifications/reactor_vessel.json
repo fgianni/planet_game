@@ -1,0 +1,106 @@
+{
+  "schema": "assetforge.machine/0.1",
+  "id": "reactor_vessel_v1",
+  "type": "machine",
+  "family": "reactor",
+  "generator": "machine_generator",
+  "description": "A reactor: vessel with a domed head and heat bands on a skirt, feed and coolant nozzles, and a turbine driving the output shaft.",
+  "units": "metres, Blender axes (+Z up); the exporter writes glTF (+Y up)",
+  "dimensions_m": [
+    2.0,
+    2.0,
+    3.0
+  ],
+  "parameters": {
+    "seed": 1
+  },
+  "components": [
+    "skirt",
+    "vessel",
+    "head",
+    "heat_bands",
+    "feed",
+    "coolant",
+    "turbine",
+    "output_shaft"
+  ],
+  "ports": [
+    {
+      "id": "feed",
+      "type": "fluid",
+      "node": "PORT_FEED_IN",
+      "position_m": [
+        -1.0,
+        0.0,
+        0.8
+      ],
+      "direction": [
+        -1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": "coolant_input",
+      "type": "fluid",
+      "node": "PORT_COOLANT_IN",
+      "position_m": [
+        0.0,
+        1.0,
+        1.6
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "id": "shaft_output",
+      "type": "mechanical_power",
+      "node": "PORT_SHAFT_OUT",
+      "position_m": [
+        1.0,
+        0.0,
+        0.8
+      ],
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "animations": {
+    "speed": {
+      "action": "ANIM_SHAFT",
+      "node": "output_shaft",
+      "kind": "rotation",
+      "pivot_m": [
+        0.96,
+        0.0,
+        0.8
+      ],
+      "axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "turns_per_cycle": 1,
+      "cycle_s": 1.0,
+      "binding": {
+        "state": "shaft_speed_rpm",
+        "kind": "speed_rpm"
+      }
+    }
+  },
+  "materials": {
+    "vessel": "MAT_VESSEL",
+    "heat": "MAT_REACTOR_HEAT",
+    "shaft": "MAT_SHAFT"
+  },
+  "budgets": {
+    "max_triangles": 20000,
+    "max_materials": 4
+  }
+}

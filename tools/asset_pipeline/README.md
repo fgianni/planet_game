@@ -23,7 +23,7 @@ and provenance, and a preview image. About 13 s on the development machine.
 | `generators/blender/render_preview.py` | A Cycles (CPU) preview for people; outside the reproducibility check |
 | `validators/check_spec.py` | Checks a specification before Blender runs (standard library only): the schema and type, `lower_snake` ids, the port types' vocabulary (`mechanical_power`, `electrical_power`, `fluid`, `heat`, `item`, `data`), `PORT_*`/`MAT_*`/`ANIM_*` names, unit directions, ports on the bounding box's surface, unique ids, budgets, a generated mesh pinned by its hash |
 | `validators/validate_asset.py` | Reads the GLB directly (standard library only): 25 checks |
-| `godot/import_check.gd` | Loads the GLB at runtime in a throwaway project; checks ports and animation; drives them from a mock state frame (`tests/generator_state.json`) |
+| `godot/import_check.gd` | Loads the GLB in a throwaway project, at runtime and through the editor import; checks ports, materials, collision and animations; drives each animation from a mock state frame (`tests/state_frames.json`) |
 | `cli/build_asset.py` | Runs the steps; `--reproducible` builds twice and compares the bytes |
 
 ## What the first run showed (2026-10-29)
@@ -48,6 +48,40 @@ Tools: Blender 5.2.2 LTS, Godot 4.7.2, Python 3.10.
     axis, cycle and loop. The validator now checks a constant angular
     speed too. Validators should check behaviour, not only that the
     named parts exist.
+
+## The five reference modules (2026-10-29)
+
+The proposal's tank, pump, reactor, generator and cooler (§9), procedural,
+each from its specification (`assets/specifications/<name>.json`), built
+by `machine_generator.py`'s builder for its `family`:
+
+| Module | Ports | Animation and its binding |
+|---|---|---|
+| `tank_fluid_v1` | fluid out | the sight glass's float, **position**: `fill_fraction` sets it on its 1.6 m travel |
+| `pump_centrifugal_v1` | fluid in, fluid out, electrical in | the motor fan, **rotation**: `pump_speed_rpm` |
+| `reactor_vessel_v1` | feed in, coolant in, mechanical out | the output shaft: `shaft_speed_rpm`; heat bands tinted by `temperature_K` |
+| `generator_electric_v1` | mechanical in, electrical out, coolant in | the rotor: `rotor_speed_rpm`; fins tinted by `temperature_K` |
+| `cooler_fan_v1` | electrical in, two coolant outs | two fans: `fan_speed_rpm` |
+
+The ports chain them (tank → pump → reactor → shaft → generator, the cooler
+serving both); their shaft heights match (0.8 m). Each animation declares
+its `kind` and `binding`; the validator checks a position animation's
+linear travel along its axis from its pivot, and the Godot check drives
+every animation from a mock state frame per asset
+(`tests/state_frames.json`), both ways in. All pass (validator 18–31
+checks each, Godot 10–18 each way) and rebuild byte-identically.
+
+**Two lessons:**
+- **The exporter's triangle order is not reproducible** for meshes made by
+  edit-mode operations (the tank's and reactor's domes): the same
+  triangles, in a different order. The generator now rewrites each index
+  buffer in a canonical order after export (each triangle rotated to its
+  smallest index, which keeps its winding, then sorted). The geometry is
+  unchanged.
+- **The checks cannot see what a person sees:** the cooler's fans passed
+  every check (present, turning at the state's speed) while closed shroud
+  caps hid them. The previews caught it. Review the previews, as for the
+  neural assets.
 
 ## Phase 2, a first neural test (2026-10-29)
 
@@ -166,7 +200,7 @@ is pending.
   assembly to network node (ADR-0031 §3: PlanetSim's, not Godot's).
 - **CI:** CTest runs `assetforge_specifications` everywhere (the
   specifications pass, and eight broken copies fail with the expected
-  messages). `assetforge_generator_build` (the generator built, validated
-  and rebuilt byte-identically, checked in Godot when `ASSETFORGE_GODOT`
-  names a binary) is added only where Blender is installed; CI has
-  neither Blender nor the rock's generated sources.
+  messages). `assetforge_build_<module>` for the five machines (built,
+  validated and rebuilt byte-identically, checked in Godot when
+  `ASSETFORGE_GODOT` names a binary) is added only where Blender is
+  installed; CI has neither Blender nor the rock's generated sources.

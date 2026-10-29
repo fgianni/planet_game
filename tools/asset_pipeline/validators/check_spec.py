@@ -22,6 +22,7 @@ PORT_NODE = re.compile(r"^PORT_[A-Z0-9_]+$")
 MATERIAL = re.compile(r"^MAT_[A-Z0-9_]+$")
 ANIMATION = re.compile(r"^ANIM_[A-Z0-9_]+$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+FAMILIES = {"generator", "tank", "pump", "reactor", "cooler"}
 
 
 def number(value):
@@ -93,7 +94,21 @@ def check(spec):
                            abs(position[2]) <= tolerance or abs(position[2] - height) <= tolerance)
                 need(on_face, f"port {name}: position_m must lie on the bounding box's surface, "
                               "where a connection can reach it")
+        need(spec.get("family", "generator") in FAMILIES,
+             f"family must be one of {sorted(FAMILIES)}")
         for key, animation in spec.get("animations", {}).items():
+            kind = animation.get("kind", "rotation")
+            need(kind in ("rotation", "position"), f"animation {key}: kind must be rotation or position")
+            if kind == "position":
+                need(number(animation.get("travel_m")) and animation["travel_m"] > 0,
+                     f"animation {key}: a position animation needs a positive travel_m")
+            else:
+                need(isinstance(animation.get("turns_per_cycle"), int) and animation["turns_per_cycle"] > 0,
+                     f"animation {key}: turns_per_cycle must be a positive integer")
+            binding = animation.get("binding", {"state": "rotor_speed_rpm", "kind": "speed_rpm"})
+            need(isinstance(binding.get("state"), str) and
+                 binding.get("kind") == ("position" if kind == "position" else "speed_rpm"),
+                 f"animation {key}: binding must name a state and match the kind")
             need(isinstance(animation.get("action"), str) and ANIMATION.match(animation["action"]),
                  f"animation {key}: action must be ANIM_UPPER_SNAKE")
             need(vector(animation.get("pivot_m")), f"animation {key}: pivot_m must be three numbers")

@@ -134,8 +134,8 @@ if(PLANETSIM_BUILD_TESTS)
                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/test_parity_report.py"
                     "$<TARGET_FILE:planet_cli>"
         )
-        # AssetForge (tools/asset_pipeline): the specifications always; a
-        # procedural build, validated and rebuilt byte-identically, only
+        # AssetForge (tools/asset_pipeline): the specifications always; the
+        # procedural builds, validated and rebuilt byte-identically, only
         # where Blender is installed (and checked in Godot when
         # ASSETFORGE_GODOT names a Godot 4 binary). CI has neither.
         add_test(
@@ -150,14 +150,18 @@ if(PLANETSIM_BUILD_TESTS)
             if(ASSETFORGE_GODOT)
                 set(assetforge_godot_args --godot "${ASSETFORGE_GODOT}")
             endif()
-            add_test(
-                NAME assetforge_generator_build
-                COMMAND "${Python3_EXECUTABLE}"
-                        "${CMAKE_CURRENT_SOURCE_DIR}/tools/asset_pipeline/cli/build_asset.py"
-                        --spec "${CMAKE_CURRENT_SOURCE_DIR}/assets/specifications/electric_generator.json"
-                        --blender "${ASSETFORGE_BLENDER}" --out "${CMAKE_CURRENT_BINARY_DIR}/assetforge"
-                        --reproducible ${assetforge_godot_args}
-            )
+            # The procedural machines (the rock needs its generated sources).
+            foreach(assetforge_machine electric_generator tank_fluid pump_centrifugal
+                    reactor_vessel cooler_fan)
+                add_test(
+                    NAME assetforge_build_${assetforge_machine}
+                    COMMAND "${Python3_EXECUTABLE}"
+                            "${CMAKE_CURRENT_SOURCE_DIR}/tools/asset_pipeline/cli/build_asset.py"
+                            --spec "${CMAKE_CURRENT_SOURCE_DIR}/assets/specifications/${assetforge_machine}.json"
+                            --blender "${ASSETFORGE_BLENDER}" --out "${CMAKE_CURRENT_BINARY_DIR}/assetforge"
+                            --reproducible ${assetforge_godot_args}
+                )
+            endforeach()
         endif()
     endif()
     add_subdirectory(tests)

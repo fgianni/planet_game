@@ -33,7 +33,7 @@ PREVIEW = os.path.join(ROOT, "tools/asset_pipeline/generators/blender/render_pre
 VALIDATOR = os.path.join(ROOT, "tools/asset_pipeline/validators/validate_asset.py")
 CHECK_SPEC = os.path.join(ROOT, "tools/asset_pipeline/validators/check_spec.py")
 GODOT_CHECK = os.path.join(ROOT, "tools/asset_pipeline/godot/import_check.gd")
-STATE = os.path.join(ROOT, "tools/asset_pipeline/tests/generator_state.json")
+STATE = os.path.join(ROOT, "tools/asset_pipeline/tests/state_frames.json")
 
 
 def commit():
