@@ -1,6 +1,7 @@
 # ADR-0028 — The equatorial waves' heat exchange in the climate transport
 
-- **Status:** Accepted (2026-10-26, option 1, c = 50 m/s)
+- **Status:** Accepted (2026-10-26, option 1, c = 50 m/s); amended
+  2026-10-30 with the user (§11: c = 25 m/s)
 - **Date:** 2026-10-26
 - **Milestone:** P0, between M8 and M9 (investigation INV-04)
 - **Context documents:** `docs/tasks/INV-04-v8-transport-and-radiation.md`
@@ -204,3 +205,75 @@ the Earth-like planet another 0.5 K before the refit).
   are fallback months. The final hash is `4544171262541673357`.
   `test_fallback_restart` gives the same L6 first month on 4 and 16
   workers.
+
+## 11. Amendment: c = 25 m/s (accepted 2026-10-30 with the user, investigation INV-04)
+
+**11.1 Why.** INV-04's option A (ADR-0029) and its column sweep measured
+what c = 50 m/s costs (climate mode, L4, ten-year spin-up then three
+years; `tools/v8/climate_column_probe.cpp`):
+- **The waves cool the tropical air and suppress the Hadley overturning.**
+  At the same sea-surface temperature, climate mode's tropical air is
+  9–12 K colder than reference mode's, and its bottom-layer mass flux at
+  10° S / 10° N is −4 / −13 Sv against reference mode's +52 / −36 Sv.
+  Their diffusion exports the tropics' heat in the overturning's place.
+- **They flatten the planet's temperature gradient:** the P2
+  equator-to-pole difference is 38.9 K against reference mode's 48.8 K.
+  V8's pass at c = 50 is partly a compensation.
+
+**11.2 The measurements** (reference mode, which has no waves, from V8
+at L4 on 2026-10-30: 290.26 K; land 286.62, ocean 291.74, land − ocean
+−5.12 K; P2 48.8 K; 1.424 m/yr; bottom-layer mass flux +51.9 / −36.0 Sv;
+tropical bottom air 290.4 K). Before any refit:
+
+| c (m/s) | Global (K) | Land − ocean (K) | P2 (K) | Rain (m/yr) | Mass flux 10° S / 10° N (Sv) | Tropical bottom air (K) |
+|---|---:|---:|---:|---:|---|---:|
+| 50 | 290.40 | −4.79 | 38.9 | 1.43 | −3.9 / −12.9 | 281.1 |
+| 37.5 | 289.85 | −5.12 | 43.8 | 1.45 | −2.9 / −15.5 | 282.0 |
+| **25** | **289.45** | **−5.84** | **47.5** | **1.48** | **−0.1 / −18.2** | **283.1** |
+| 12.5 | 289.21 | −7.33 | 50.6 | 1.54 | +9.0 / −19.6 | 284.4 |
+| 0 | 289.10 | −9.52 | 50.9 | 1.59 | +18.2 / −17.5 | 285.7 |
+
+**11.3 Decision.** c = 25 m/s in the Earth-like preset. It brings the
+P2 equator-to-pole difference to within 1.3 K of reference mode's (the
+waves' purpose: the tropics' heat exchange, not V8's land–ocean split),
+and the northern Hadley branch converges again, at the cost of a land
+1.3 K colder (land − ocean −5.8 against −5.1 K).
+
+**11.4 Consequences.**
+- **V8 is expected to fail:** before the refit, the global gap is about
+  +0.8 K (reference minus climate). The pass at c = 50 rested on the
+  compensation in §11.1. The result is recorded as a known limitation
+  with ADR-0029's, not tuned away.
+- **What remains is not the waves':** with them off, the tropical air is
+  still 4–5 K colder than reference mode's and the overturning half as
+  strong; climate mode's rain is 99 % Betts–Miller's from its bottom
+  layer, reference mode's 79 % from resolved ascent aloft (INV-04,
+  "The remaining 4–5 K").
+- PSNAP and field meanings are unchanged; the radiation pair is refitted
+  (V6), as for every change of the climate.
+
+**11.5 Validation:** §8's V1–V6 again: the refit to 288 K at L4/150
+(V6), V8 at L4 (V3, recorded whether it passes or not), V11 at L5 and
+L6 (V4), and V5.
+
+**11.6 Implementation (2026-10-30).**
+- c = 25 m/s in the Earth-like preset; V2's test runs it as the preset.
+- **The refit (V6):** c = 25 cooled the L4/150 mean to 286.093 K; τ_d and
+  κ_v scaled by 1.0632 give τ_d = 1.1298584 and κ_v = 0.0056492919 m²/kg
+  and 288.009 K (×1.073 gave 288.296 K). The L4/150 acceptance test
+  passes: cover 0.538, cloud effects −42.6 / +22.4 W/m², one fallback
+  month, energy and water within their gates.
+- **Two tests pinned to the configuration they exercise:**
+  `test_fallback_restart` (ADR-0024 §9.6's no-heat first month at L6) and
+  the L4 snapshot restart in `test_convective_moistening_run` (its
+  month-2 fallback) now set c = 50 m/s (and, for the first, the previous
+  pair): §11's preset takes other paths through those months.
+- **`test_zonal_coupling`'s jet window** compared the bands' centres
+  exactly with 37.5°, but the centre is 37.499999999999979°; with c = 25
+  the northern winter jet is a single merged one at that band
+  (31.3 m/s). The window now allows for the rounding.
+- The suite passes (111). The L3 two-year state hash is
+  `d4ccd25158c01ed7`.
+- **Still to run:** V8 at L4 (V3) and V11 at L5 and L6 (V4), on the RTX
+  5070 Ti machine's P-cores once the L5 V8 run there ends.
+

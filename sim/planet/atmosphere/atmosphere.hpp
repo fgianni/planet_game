@@ -112,9 +112,13 @@ inline constexpr double earth_like_longwave_optical_depth = 1.442;
 // the 2026-10-26 refit (12 workers) scales both by 0.9265: τ_d = 1.062696
 // and κ_v = 0.00531348 m²/kg (288.001 K; ×0.925 gave 287.949 K, ×0.927
 // 288.013 K).
+// ADR-0028 §11's c = 25 m/s cooled that pair's L4/150 mean to 286.093 K;
+// the 2026-10-30 refit (the same PlanetRun path, 16 workers) scales both
+// by 1.0632: τ_d = 1.1298584 and κ_v = 0.0056492919 m²/kg (288.009 K;
+// ×1.073 gave 288.296 K).
 // The cloud constants stay τ_a = 600 s, W_c = 0.05 kg/m², r_e = 18 µm.
-inline constexpr double earth_like_dry_optical_depth = 1.062696;
-inline constexpr double earth_like_vapour_absorption_m2_kg = 0.00531348;
+inline constexpr double earth_like_dry_optical_depth = 1.1298583872;
+inline constexpr double earth_like_vapour_absorption_m2_kg = 0.005649291936;
 
 // dead_rock and aqua_planet: no atmosphere (experiments A and B,
 // specification §13.1). earth_like: three layers (design record §15.1) of

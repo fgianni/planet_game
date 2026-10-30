@@ -111,14 +111,16 @@ int main() {
     // physics the southern summer's is, 32 against 26 m/s; task M8-05), and
     // its flank may reach into the range (with ADR-0027's mixing the
     // northern one is 30.6 m/s at 37.5°, the eddy-driven jet 25.4 m/s at
-    // 57.5°).
+    // 57.5°). With ADR-0028 §11's c = 25 m/s the northern winter jet is a
+    // single merged one at 37.5° (31.3 m/s). The window's edges allow for the
+    // bands' centres in floating point (37.499999999999979°).
     const auto u = [&](std::size_t j) { return solution.at_band(solution.eastward_m_s, top, j); };
     for (const bool north : {false, true}) {
         std::size_t jet = bands;
         for (std::size_t j = 1; j + 1 < bands; ++j) {
             const double latitude = solution.latitude_deg[j];
-            if ((latitude > 0.0) == north && std::abs(latitude) >= 37.5 &&
-                std::abs(latitude) <= 67.5 && u(j) >= u(j - 1) && u(j) >= u(j + 1) &&
+            if ((latitude > 0.0) == north && std::abs(latitude) >= 37.5 - 1e-9 &&
+                std::abs(latitude) <= 67.5 + 1e-9 && u(j) >= u(j - 1) && u(j) >= u(j + 1) &&
                 (jet == bands || u(j) > u(jet))) {
                 jet = j;
             }

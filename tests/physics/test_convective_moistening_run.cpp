@@ -174,6 +174,9 @@ void snapshot_restart_v5(planetsim::test::Context& test, std::uint32_t level = 4
             // Its month-2 fallback is without ADR-0027's mixing, which keeps
             // no state across months (its shift starts at zero each month).
             parameters.heat_group_mixing = 0.0;
+            // ... and with ADR-0028's c = 50 m/s, as it was established
+            // (its §11 preset, 25 m/s, takes no fallback in month 2).
+            parameters.equatorial_wave_speed_m_s = 50.0;
         }
     };
     PlanetRun uninterrupted(scenario, 1U, ClimateCirculationUse::coupled, fit);

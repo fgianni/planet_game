@@ -12,7 +12,9 @@
 // state, whose coupled transport diverges and whose diffusive fallback,
 // restarted from the step's start, does not converge either. The month
 // moves no heat; its columns converge, energy and water close, and the
-// month is the same for 4 and 16 workers.
+// month is the same for 4 and 16 workers. Pinned to the configuration it
+// was established with (ADR-0028 §10: c = 50 m/s and its radiation pair):
+// §11's preset takes another path through its first month.
 namespace {
 
 struct Record {
@@ -28,7 +30,12 @@ struct Record {
 Record first_month(std::size_t workers) {
     planetsim::Scenario scenario;
     scenario.subdivision = 6;
-    planetsim::PlanetRun planet(scenario, workers, planetsim::ClimateCirculationUse::coupled);
+    planetsim::PlanetRun planet(scenario, workers, planetsim::ClimateCirculationUse::coupled,
+                                [](planetsim::SurfaceEnergyParameters& p) {
+                                    p.equatorial_wave_speed_m_s = 50.0;
+                                    p.atmosphere.dry_optical_depth = 1.062696;
+                                    p.atmosphere.vapour_absorption_m2_kg = 0.00531348;
+                                });
     planet.run_until(
         planetsim::climate_substep_containing(planet.tick(), planet.parameters()).end_tick);
     const auto& step = planet.last_step();

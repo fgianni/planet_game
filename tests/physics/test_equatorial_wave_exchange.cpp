@@ -12,7 +12,7 @@
 // The equatorial waves' exchange (ADR-0028 V2; INV-04): the diffusivity
 // D_w = c L_eq exp(−y²/(2 L_eq²)) with L_eq = √(c/β), and the Earth-like
 // planet in climate mode, L3, three months from the initial state, with
-// c = 50 m/s (the preset) and c = 0: both close energy and water, they
+// c = 25 m/s (the preset, ADR-0028 §11) and c = 0: both close energy and water, they
 // differ, and the preset's run is the same for 1 and 4 workers. The cold
 // start's hot first month may take ADR-0024 §9's fallback (the preset's
 // does, at 246 W/m²); the months after it are coupled.
@@ -77,8 +77,8 @@ int main() {
     PLANETSIM_EXPECT(test, planetsim::equatorial_wave_diffusivity_m2_s(0.0, omega, radius, 0.0) == 0.0);
 
     const Record off = run(4U, 0.0);
-    const Record on = run(4U, 50.0);
-    const Record serial = run(1U, 50.0);
+    const Record on = run(4U, 25.0);
+    const Record serial = run(1U, 25.0);
     for (const Record* r : {&off, &on}) {
         PLANETSIM_EXPECT(test, r->coupled_months >= 2);
         PLANETSIM_EXPECT(test, r->worst_imbalance <= 1e-9);

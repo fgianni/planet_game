@@ -65,6 +65,7 @@ int main(int argc, char** argv) {
     for (const auto& cell : mesh.cells()) area += cell.area_m2;
     const double g = surface_gravity_m_s2(run.parameters());
     double seconds = 0.0, surface = 0.0, sensible = 0.0, land_latent = 0.0, land_s = 0.0;
+    double land_K = 0.0, ocean_K = 0.0, rain_kg = 0.0, p2 = 0.0;
     double mass_10s = 0.0, mass_10n = 0.0, tropical = 0.0;
     double layer_K[3] = {}, layer_q[3] = {};
     for (int month = 0; month < 36; ++month) {
@@ -74,6 +75,10 @@ int main(int argc, char** argv) {
         const auto& slow = run.state().slow();
         seconds += dt;
         surface += step.mean_surface_temperature_K * dt;
+        land_K += step.land_mean_surface_temperature_K * dt;
+        ocean_K += step.ocean_mean_surface_temperature_K * dt;
+        rain_kg += step.precipitation_kg;
+        p2 += step.p2_surface_temperature_K * dt;
         sensible += step.sensible_heat_W / area * dt;
         mass_10s += step.humidity_transport.northward_mass_kg_s[0][7] * dt;
         mass_10n += step.humidity_transport.northward_mass_kg_s[0][9] * dt;
@@ -96,7 +101,9 @@ int main(int argc, char** argv) {
     }
     std::cout.setf(std::ios::fixed);
     std::cout.precision(2);
-    std::cout << "surface " << surface / seconds << " K | tropical ocean air";
+    std::cout << "surface " << surface / seconds << " K (land " << land_K / seconds << ", ocean "
+              << ocean_K / seconds << ", P2 " << -1.5 * p2 / seconds << ") | rain "
+              << rain_kg / (area * 1000.0) / seconds * 365.25 * 86400.0 << " m/yr | tropical ocean air";
     for (int k = 0; k < 3; ++k) std::cout << ' ' << layer_K[k] / tropical;
     std::cout << " K, q";
     for (int k = 0; k < 3; ++k) std::cout << ' ' << 1000.0 * layer_q[k] / tropical;
