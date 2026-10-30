@@ -132,3 +132,12 @@ off by default) of whether more water and condensation aloft strengthen
 the overturning and bring land its water; its result decides between an
 amendment to ADR-0026 and options B and C here.
 
+**The column sweep (2026-10-30, INV-04).** The climate air's coldness is
+not set by Betts–Miller's RH_bm, the surface–air exchange or the radiation
+split (2–3 K at most). ADR-0028's equatorial waves are the largest single
+cause: without them the tropical air warms 2–7 K, holds 45–110 % more water
+and the Hadley overturning converges on the equator (+18 / −17 Sv at
+10° S / 10° N, against −4 / −13 with them); land's water rises only from
+1.7 to 2.4 W/m², still a tenth of reference mode's. A remaining 4–5 K and
+half the overturning have another cause.
+

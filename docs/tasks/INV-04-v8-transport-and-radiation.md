@@ -1279,6 +1279,46 @@ this machine's L3 state hash). It reproduces ADR-0028's V8 exactly
   missing horizontal path. That is ADR-0026's ground (option 1, moistening,
   accepted; option 3, convection carrying water up, not taken).
 
+**Why the climate air is cold: a sweep (2026-10-30).** At the same
+sea-surface temperature, climate mode's tropical air is about 10 K colder
+than reference mode's at every height (ocean, 30° S–30° N: 281.1 / 259.0 /
+229.6 K against 290.4 / 271.4 / 239.9 K), which halves its saturation
+humidity; its sensible heat flux is 36.8 against 15.5 W/m² with the same
+exchange coefficient. Climate mode only, L4, ten-year spin-up then three
+years, one setting changed
+([`tools/v8/climate_column_probe.cpp`](../../tools/v8/climate_column_probe.cpp),
+about 20 s a run; the baseline reproduces V8's climate half):
+
+| Setting | Tropical ocean air (K) | q (g/kg) | Bottom mass flux 10° S / 10° N (Sv) | Latent to land (W/m²) | Surface (K) |
+|---|---|---|---|---|---:|
+| Preset | 281.1 / 259.0 / 229.6 | 6.51 / 1.76 / 0.25 | −3.9 / −12.9 | 1.68 | 290.40 |
+| RH_bm 0.6 | 282.1 / 259.5 / 229.6 | 5.24 / 1.38 / 0.22 | −3.7 / −13.2 | 1.29 | 289.68 |
+| RH_bm 0.95 | 280.6 / 258.6 / 229.5 | 7.32 / 2.02 / 0.26 | −4.2 / −12.6 | 1.93 | 290.92 |
+| Air exchange 5 W/m²/K | 280.0 / 257.2 / 228.8 | 6.02 / 1.49 / 0.21 | −3.9 / −12.6 | 1.49 | 289.73 |
+| Air exchange 20 W/m²/K | 282.7 / 261.6 / 230.7 | 7.32 / 2.23 / 0.30 | −5.4 / −11.4 | 1.96 | 291.74 |
+| τ_d × 0.8 | 277.7 / 253.6 / 228.3 | 5.12 / 1.06 / 0.17 | −2.4 / −13.5 | 1.32 | 285.88 |
+| κ_v × 1.5 | 281.5 / 259.6 / 229.6 | 6.70 / 1.87 / 0.25 | −4.6 / −12.6 | 1.72 | 291.06 |
+| **Equatorial waves off** (ADR-0028) | **285.7 / 266.3 / 231.7** | **9.39 / 3.67 / 0.41** | **+18.2 / −17.5** | 2.38 | 289.10 |
+| Group heat mixing off (ADR-0027) | 282.2 / 260.7 / 230.0 | 7.18 / 2.20 / 0.31 | −1.0 / −13.1 | 0.67 | 290.62 |
+| Both off | 286.7 / 268.1 / 232.3 | 10.30 / 4.37 / 0.45 | +29.2 / −16.8 | 1.45 | 288.95 |
+| Waves 100 m/s | 279.2 / 255.9 / 228.2 | 5.68 / 1.32 / 0.20 | −7.6 / −5.2 | 0.93 | 293.25 |
+| *Reference mode (V8)* | *290.4 / 271.4 / 239.9* | *13.87 / 6.21 / 0.97* | *+51.9 / −36.0* | *23.0* | |
+
+- **The convection and radiation settings move the air 2–3 K at most**
+  and leave the overturning as it is.
+- **ADR-0028's equatorial waves cool the tropical air and suppress the
+  Hadley overturning:** off, the air warms 4.6 / 7.3 / 2.1 K, holds 45–110 %
+  more water, and the bottom layer converges on the equator (+18 / −17 Sv);
+  doubled, the overturning nearly vanishes. Their diffusion exports the
+  tropics' heat in the overturning's place, weakening the heating contrast
+  that drives the balanced circulation.
+- **Not the whole gap:** without the waves (and the group mixing) the air
+  is still 4–5 K colder than reference mode's, the overturning about half
+  as strong, and land receives a tenth of its water.
+- ADR-0028 brought V8's land and ocean into agreement partly by replacing
+  the circulation with diffusion. Whether to amend it is a decision for
+  the user, with V8 measured again either way.
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
