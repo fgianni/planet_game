@@ -4,7 +4,8 @@
 //
 //   climate_column_probe [rh_bm=X] [air_exchange=X] [dry_depth_scale=X]
 //                        [vapour_scale=X] [wave_speed=X] [group_mixing=X]
-//                        [tropical_eddy=X]
+//                        [tropical_eddy=X] [humidity_eddy=X]
+//                        [cloud_path=X] [cloud_kappa_scale=X]
 //
 // Prints the three years' means: the tropical (30° S–30° N) ocean's layer
 // temperatures and humidity, the bottom layer's mass flux at 10° S and
@@ -24,7 +25,8 @@ using namespace planetsim;
 
 int main(int argc, char** argv) {
     double rh_bm = -1.0, exchange = -1.0, dry_scale = 1.0, vapour_scale = 1.0;
-    double wave_speed = -1.0, group_mixing = -1.0, tropical_eddy = -1.0;
+    double wave_speed = -1.0, group_mixing = -1.0, tropical_eddy = -1.0, humidity_eddy = -1.0;
+    double cloud_path = -1.0, cloud_kappa_scale = 1.0;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         const auto value = [&](const char* key) { return std::atof(arg.substr(std::string(key).size() + 1).c_str()); };
@@ -35,6 +37,9 @@ int main(int argc, char** argv) {
         else if (arg.rfind("wave_speed=", 0) == 0) wave_speed = value("wave_speed");
         else if (arg.rfind("group_mixing=", 0) == 0) group_mixing = value("group_mixing");
         else if (arg.rfind("tropical_eddy=", 0) == 0) tropical_eddy = value("tropical_eddy");
+        else if (arg.rfind("humidity_eddy=", 0) == 0) humidity_eddy = value("humidity_eddy");
+        else if (arg.rfind("cloud_path=", 0) == 0) cloud_path = value("cloud_path");
+        else if (arg.rfind("cloud_kappa_scale=", 0) == 0) cloud_kappa_scale = value("cloud_kappa_scale");
         else { std::cerr << "unknown setting " << arg << "\n"; return 2; }
     }
     Scenario scenario;
@@ -50,6 +55,9 @@ int main(int argc, char** argv) {
         if (wave_speed >= 0.0) p.equatorial_wave_speed_m_s = wave_speed;
         if (group_mixing >= 0.0) p.heat_group_mixing = group_mixing;
         if (tropical_eddy >= 0.0) p.tropical_eddy_factor = tropical_eddy;
+        if (humidity_eddy >= 0.0) p.humidity_eddy_factor = humidity_eddy;
+        if (cloud_path >= 0.0) p.atmosphere.cloud_in_cloud_water_path_kg_m2 = cloud_path;
+        p.atmosphere.cloud_longwave_absorption_m2_kg *= cloud_kappa_scale;
     });
     const auto& mesh = run.state().mesh();
     const auto& fractions = run.fractions();

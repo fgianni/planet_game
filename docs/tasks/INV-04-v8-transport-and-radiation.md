@@ -1319,6 +1319,38 @@ about 20 s a run; the baseline reproduces V8's climate half):
   the circulation with diffusion. Whether to amend it is a decision for
   the user, with V8 measured again either way.
 
+**The remaining 4–5 K (2026-10-30, option 2 with the user).** With the
+waves off as the base, nothing tested closes it:
+
+| Change (waves off) | Tropical ocean air (K) | Bottom mass flux 10° S / 10° N (Sv) |
+|---|---|---|
+| None | 285.7 / 266.3 / 231.7 | +18.2 / −17.5 |
+| Humidity eddies × 2 / × 4 | 285.1 / 265.4 / 231.9; 284.6 / 264.4 / 232.1 | +16.9 / −15.7; +14.5 / −14.3 |
+| Parcel humidity × 1.3 / × 1.6 (a prototype, removed) | 285.7 / 266.4 / 231.7 (unchanged) | +18.2 / −17.5 |
+| Parcel humidity × 1.3, + 1 K | 285.3 / 267.6 / 231.7 | +17.5 / −17.1 |
+| In-cloud water path 0.025 kg/m² | 284.7 / 264.9 / 231.2 | +20.9 / −16.4 |
+| *Reference mode* | *290.4 / 271.4 / 239.9* | *+51.9 / −36.0* |
+
+- **Where the energy leaves the tropics:** both modes export the same
+  total (3.25 PW at 30° N), but reference mode 57 % of it as water vapour,
+  climate mode 11 % (0.36 PW): climate mode takes its export out of the
+  tropical air as dry heat. Stronger humidity eddies carry more water to
+  land (up to 4.0 W/m²) but dry the tropics further.
+- **The Betts–Miller parcel's start is not it:** climate mode's bottom
+  layer is already near saturation (about 87 %), so a moister parcel is
+  capped at once; a warmer one moves about 1 K from the bottom layer to
+  the middle. The prototype setting was removed; the default state hash
+  is unchanged.
+- **Clouds are a lever on the whole climate,** not on the tropical air: a
+  thinner in-cloud path cools it; tripling the clouds' longwave
+  absorption gives a 320 K planet, which needs a refit to compare.
+- **What remains looks structural:** climate mode has no resolved ascent
+  beyond its weak overturning, so 99 % of its rain is Betts–Miller's,
+  released from the bottom layer, while reference mode rains 79 % from
+  resolved ascent, its latent heat released aloft (45 + 11 W/m² in its
+  middle and top layers, against 2). That is the monthly column's
+  architecture, not a coefficient.
+
 ## Next decision
 
 The gap is a land and cryosphere gap (above), with the high-cloud
