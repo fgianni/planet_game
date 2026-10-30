@@ -1248,8 +1248,36 @@ northward positive:
   equator. The poleward latent transport (at most 0.44 PW, at 30–40° N)
   is the eddies'.
 
-Reference mode's half follows from the L4 run queued after the L5 V8
-run (`build/inv04/adr0029a_L4_v8.log`).
+**Both modes (2026-10-30)**, V8 at L4 under ADR-0023 §16.2 with these
+diagnostics, run on the RTX 5070 Ti machine's P-cores
+(`build/inv04/adr0029a_L4_v8.log`, 1 h 30 min; the same build reproduces
+this machine's L3 state hash). It reproduces ADR-0028's V8 exactly
+(−0.146 K, ratio 0.996). Three-year means:
+
+| | Reference | Climate |
+|---|---|---|
+| Bottom layer's mass flux at 10° S / 0 / 10° N (Sv) | +51.9 / +20.0 / −36.0 | −4.0 / −15.5 / −13.1 |
+| Humidity by layer at the equator (g/kg) | 14.5 / 6.77 / 0.91 | 6.22 / 1.69 / 0.25 |
+| Tropical condensation by layer (W/m², the drying's split) | 66.6 / 56.3 / 12.3 | 136.6 / 2.1 / 0.0 |
+| Latent transport at 10° S / 10° N (PW) | +0.37 / −0.51 | −0.14 / +0.10 |
+| Of which the bottom layer's mean flow (PW) | +1.73 / −1.31 | −0.06 / −0.21 |
+| Poleward latent transport at 30° N / 40° N (PW) | 1.84 / 2.50 | 0.36 / 0.44 |
+| Latent heat delivered to land (W/m²) | 23.0 | 1.67 |
+
+- **Nothing runs the wrong way by a defect:** the transport carries what
+  its air holds. Climate mode's latent transport diverges from the equator
+  because its overturning hardly converges there.
+- **Climate mode's water stays in the bottom layer:** all its tropical
+  condensation is there, against half of reference mode's; its middle and
+  top layers hold a quarter of reference mode's vapour.
+- **Its Hadley overturning is 4–10 times weaker** at 10° S and 10° N, and
+  its lower branch at 10° S points away from the equator.
+- The two may cause each other (latent heat released low drives a weak
+  overturning; a weak overturning lifts little water); this measurement
+  does not separate them. Option A's answer: the deficit is in the climate
+  column's vertical moisture and the overturning it drives, not in a
+  missing horizontal path. That is ADR-0026's ground (option 1, moistening,
+  accepted; option 3, convection carrying water up, not taken).
 
 ## Next decision
 

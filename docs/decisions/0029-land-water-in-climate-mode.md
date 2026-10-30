@@ -116,3 +116,19 @@ shows the overturning is right, B or C is decided with that evidence.
   amendment or a new ADR, with its refit and V8.
 - The deep ocean's drift (ADR-0023 §16.3), and V8 at L5 (the run in
   progress on 2026-10-29).
+
+## 6. Option A measured (2026-10-30)
+
+INV-04 ("ADR-0029 option A: each layer's fluxes", both modes at L4):
+nothing in the climate transport runs the wrong way by a defect. Climate
+mode's water stays in its bottom layer (all its tropical condensation
+there, against half of reference mode's; a quarter of reference mode's
+vapour above it), and its Hadley overturning is 4–10 times weaker, its
+lower branch hardly converging on the equator. So the latent transport has
+little water to carry and diverges from the equator. The deficit lies in
+the climate column's vertical moisture and the overturning it drives:
+ADR-0026's ground. The next step is a climate-only test (seconds at L4,
+off by default) of whether more water and condensation aloft strengthen
+the overturning and bring land its water; its result decides between an
+amendment to ADR-0026 and options B and C here.
+
