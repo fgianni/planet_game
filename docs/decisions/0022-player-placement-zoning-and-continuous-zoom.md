@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-10; revised 2026-10-11 (the three camera scales become altitude bands of one continuous view, §4.8); revised 2026-10-13 after review (detail is a function of position, §4.9; the history slider's data, §4.8)
 - **Accepted:** 2026-10-13 (the presentation parts may start now, as task R1-04; the command and state parts still wait for ADR-0012 and ADR-0014)
-- **Amended:** 2026-10-14 — §4.8 precision: camera-relative rendering, from the R1-04 step 0 spike; 2026-10-15 — §4.9 terrain and V4: curves hand over to the corners, so the terrain has no steps at cell edges
+- **Amended:** 2026-10-14 — §4.8 precision: camera-relative rendering, from the R1-04 step 0 spike; 2026-10-15 — §4.9 terrain and V4: curves hand over to the corners, so the terrain has no steps at cell edges; 2026-11-02 — ADR-0030 selects a shared coastline across terrain LODs, with implementation validation still open and the existing tile code unchanged
 - **Milestone:** none in P0. The presentation parts may be prototyped on the rendering track (R5, R8) against synthetic frames; the command and state parts must not be implemented before ADR-0012 (society state and regions) and ADR-0014 (player commands) are accepted.
 - **Context documents:** Design Record v1.4 §8.4 (the player's identity), §42.5 (camera scales), §42.6 (civilization on the planet), §42.8 (staging events), §46.2 (what we avoid from Civ), §46.8 (player levers as government); `docs/DEVELOPMENT_SPEC_v0_8.md` §9.10, §18.1, §26.1 items 5 and 7, §31.2, §31.5–§31.7
 - **Related:** ADR-0005 (sub-cell hypsometry), ADR-0012 and ADR-0014 (reserved, not yet written), ADR-0018 (presentation boundary, channels, presentation RNG), ADR-0019 (reserved: fog of knowledge)

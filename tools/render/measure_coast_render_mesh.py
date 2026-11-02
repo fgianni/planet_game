@@ -31,14 +31,35 @@ def compare(a, b, region):
                 if difference.any() else 0.0,
                 beyond_one_px=int((difference & (distance > 1)).sum()),
                 components=count, components_at_least_four=int((sizes >= 4).sum()),
-                max_component_px=int(sizes.max()) if sizes.size else 0)
+                 max_component_px=int(sizes.max()) if sizes.size else 0)
+
+
+def face_pair_metrics(same, same_visible, mixed, mixed_visible):
+    common = ndimage.binary_erosion(same_visible & mixed_visible, iterations=2)
+    return dict(visible_same=int(same_visible.sum()),
+                visible_mixed=int(mixed_visible.sum()),
+                visible_xor=int((same_visible ^ mixed_visible).sum()),
+                common_interior=int(common.sum()),
+                water=compare(same, mixed, common))
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("prefix")
+    parser.add_argument("--face-pair", action="store_true",
+                        help="compare complete same-level and mixed-level opposite-face meshes")
     args = parser.parse_args()
     import glob
+    if args.face_pair:
+        poses = sorted(glob.glob(args.prefix + "-*-face-same.png"))
+        if not poses:
+            parser.error("no face-pair renders found")
+        for same_path in poses:
+            stem = same_path.removesuffix("-face-same.png")
+            same, sv = read(same_path)
+            mixed, mv = read(stem + "-face-mixed.png")
+            print(stem, face_pair_metrics(same, sv, mixed, mv))
+        return
     poses = sorted(glob.glob(args.prefix + "-*-parent.png"))
     if not poses:
         parser.error("no parent renders found")

@@ -22,7 +22,7 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0018 | [Presentation boundary, semantic channels and style packs](0018-presentation-channels-and-style-packs.md) | Accepted (amendment §11 proposed 2026-10-12, revised 2026-10-14) | 2026-10-04 |
 | 0020 | [The planet's read contract: published snapshots, field descriptors, accumulators, regions and the observation interface](0020-planet-read-contract.md) | Proposed | — |
 | 0021 | [Water vapour, evaporation, the land bucket and saturation rainout](0021-water-vapour-evaporation-and-rainout.md) | Accepted | 2026-10-09 |
-| 0022 | [Player placement, zoning and a continuous Earth-viewer camera](0022-player-placement-zoning-and-continuous-zoom.md) | Accepted (amended 2026-10-14: camera-relative rendering; 2026-10-15: terrain hands over at cell edges, V4) | 2026-10-13 |
+| 0022 | [Player placement, zoning and a continuous Earth-viewer camera](0022-player-placement-zoning-and-continuous-zoom.md) | Accepted (amended 2026-10-14: camera-relative rendering; 2026-10-15: terrain hands over at cell edges, V4; 2026-11-02: coastline-LOD contract by ADR-0030, not implemented) | 2026-10-13 |
 | 0023 | [Cloud water, moist convection, precipitation and cloud radiation](0023-clouds-moist-convection-and-precipitation.md) | Accepted | 2026-10-16 |
 | 0024 | [The climate transport's eddies driven by moist enthalpy](0024-moist-enthalpy-eddies.md) | Accepted (amended 2026-10-21, §9: the unconverged month's fallback) | 2026-10-18 |
 | 0025 | [Where the clouds are: sub-grid condensation, the eddies' variance and convective anvils](0025-cloud-distribution.md) | Accepted (amended 2026-10-19, §11–§13; 2026-10-20, §14: M8 closed with §4.1–§4.3 and §11 off) | 2026-10-19 |
@@ -30,7 +30,7 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0027 | [The air mixed within the climate transport's groups](0027-air-mixed-within-transport-groups.md) | Accepted | 2026-10-23 |
 | 0028 | [The equatorial waves' heat exchange in the climate transport](0028-equatorial-wave-heat-exchange.md) | Accepted (c = 50 m/s) | 2026-10-26 |
 | 0029 | [Land's water in climate mode](0029-land-water-in-climate-mode.md) | Proposed | 2026-10-29 |
-| 0030 | [A shared coastline for terrain LOD](0030-coastline-stable-terrain-lod.md) | Proposed; feasibility gate before acceptance | — |
+| 0030 | [A shared coastline for terrain LOD](0030-coastline-stable-terrain-lod.md) | Accepted direction; pre-acceptance gate expressly waived, implementation gates open | 2026-11-02 |
 | 0031 | [Factories: engineered assemblies that compile to network nodes](0031-factories-engineered-then-network-nodes.md) | Proposed; not before P1 | 2026-10-29 |
 
 Records cite the design record by version and section (for example "Design

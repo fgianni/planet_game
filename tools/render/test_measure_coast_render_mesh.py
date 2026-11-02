@@ -1,7 +1,7 @@
 import unittest
 
 import numpy as np
-from measure_coast_render_mesh import compare
+from measure_coast_render_mesh import compare, face_pair_metrics
 
 
 class MeasureCoastRenderMeshTest(unittest.TestCase):
@@ -18,6 +18,15 @@ class MeasureCoastRenderMeshTest(unittest.TestCase):
         self.assertEqual(result["pixels"], 16)
         self.assertEqual(result["components_at_least_four"], 1)
         self.assertEqual(result["max_component_px"], 16)
+
+    def test_face_pair_reports_missing_footprint_separately(self):
+        visible = np.ones((16, 16), dtype=bool)
+        incomplete = visible.copy()
+        incomplete[:, :4] = False
+        coast = visible.copy()
+        result = face_pair_metrics(coast, visible, coast, incomplete)
+        self.assertEqual(result["visible_xor"], 64)
+        self.assertEqual(result["water"]["pixels"], 0)
 
 
 if __name__ == "__main__":

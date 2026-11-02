@@ -1,8 +1,11 @@
 # ADR-0030 — A shared coastline for terrain LOD
 
-- **Status:** proposed (2026-10-29); not accepted or implemented
-- **Amends on acceptance:** ADR-0022 §4.8–4.9. Independently sampled coarse
-  tiles currently disagree with detailed relief between shared vertices.
+- **Status:** accepted 2026-11-02 by explicit decision; not implemented.
+  The pre-acceptance feasibility prerequisite was expressly waived; the
+  validation gates below were **not** waived for implementation or completion.
+- **Amends:** ADR-0022 §4.8–4.9's terrain-LOD coastline contract. Independently
+  sampled coarse tiles currently disagree with detailed relief between shared
+  vertices. The existing renderer remains unchanged until validation passes.
 - **Scope:** presentation terrain geometry only. No solver, terrain-field
   meaning, sea-level semantics, `VisualFrame` channel, PSNAP or simulation
   state change.
@@ -29,7 +32,7 @@ Moving the threshold, changing a colour ramp, or cross-fading unrelated
 coastlines does not make the shore stable. A relief hierarchy with
 geomorphing would remove the sudden pop but still move the coast during zoom.
 
-## Proposed decision
+## Decision
 
 1. The **canonical visible shoreline** is the sea-level contour of the
    existing detailed, position-keyed `TerrainRelief::sample()` field:
@@ -67,7 +70,14 @@ handoff. It does not mandate a fixed-resolution global raster or require
 high-frequency relief everywhere on a coarse tile. A binary shader mask
 alone is insufficient if land and water geometry still disagree.
 
-## Feasibility gate before acceptance
+## Implementation and completion gates (not yet passed)
+
+Acceptance records the architectural choice of a shared georeferenced coast
+over geomorphing. At the user's express direction on 2026-11-02, the measured
+feasibility gate was waived **only as a prerequisite to accepting this ADR**.
+It was not declared passed. The following remain binding before changing the
+production terrain LOD or claiming R1-05 complete; a failed cost or shoreline
+gate requires revisiting this decision rather than weakening the criterion.
 
 - First spike a bounded, crack-free representation (for example, a lazily
   generated contour with clipped coastal triangles). Extend
@@ -78,8 +88,8 @@ alone is insufficient if land and water geometry still disagree.
   metres, and the contour approximation error.
 - Script a frozen coastal focus crossing every tile handoff in both
   directions, including cell mesh to root/coarse tiles. Compare the drawn coast to the canonical contour in world
-  metres and screen pixels at planet, region and local altitude. **Proposed
-  screen-space gate (selected for further prototyping 2026-10-29):** after
+  metres and screen pixels at planet, region and local altitude. **Screen-space
+  implementation gate (selected 2026-10-29):** after
   antialiasing, no shoreline handoff moves a resolvable boundary by over
   one pixel at the same camera pose; no island or inlet with a projected
   area of at least four pixels may appear/disappear solely with LOD. At
@@ -93,18 +103,24 @@ alone is insufficient if land and water geometry still disagree.
   render-does-not-change-state checks. Check every relief band and day/night.
 - Measure tile generation, cache bytes, and p50/p95/p99 frame times during
   the L6 flight. Retain the 512-tile cache and p95 < 16.7 ms (60 fps) gate.
-  Proposed extra memory ceiling: 64 MiB of cached coastal constraints at L6,
+  Extra memory ceiling: 64 MiB of cached coastal constraints at L6,
   beyond R1-04's measured ~243 MB tile vertex cache. If this cannot be met,
   return to the architecture choice; do not weaken the shoreline or V4 gate.
 
 ## Consequences and unresolved implementation detail
 
+The experiment notes below retain their original chronology. Earlier
+"proposed" or "do not accept" conclusions describe what those individual
+probes established **before** the explicit 2026-11-02 acceptance waiver;
+none constitutes validation of a production implementation.
+
 - Coastal generation/cache work increases; inland and deep-ocean tiles stay
   on the cheaper path. Subpixel shore detail may be filtered at orbit but
   must not shift the georeferenced boundary.
 - The contour extraction method, strip width and tessellation error bound
-  need the measured spike. This proposal does **not** authorize changing
-  `tile_filtered_cells` or R1-04 tile code before acceptance.
+  need the measured spike. Accepting the architecture alone does **not**
+  authorize changing `tile_filtered_cells` or R1-04 tile code before the
+  implementation gates pass.
 - An initial 1D transect spike (R1-05, 2026-10-29) rules out a simple fixed
   coarse raster: at 64 samples over 0.6 cell, 8/78 reference crossings at
   L4 and 6/60 at L6 are missed. It is not a 2D seam or performance proof;
@@ -113,8 +129,8 @@ alone is insufficient if land and water geometry still disagree.
   also does not meet the proposed no-flip gate: at a 256² grid and 50 m
   height-error trigger, independent checks find 114/65370 wrong-side points
   at L4 and 19/65485 at L6. Same-level edge samples agree exactly, but no
-  clipped geometry or mixed-level seam was tested. Do not accept this ADR
-  on the strength of those shared edge samples alone.
+  clipped geometry or mixed-level seam was tested. Those shared edge samples
+  alone do not validate an implementation.
 - Shader audit (2026-10-29) finds an independent cell-mesh water mask at the
   planet–region handoff. A viable spike must include the cell-mesh colour
   and geometry transition as well as tile–tile handoffs. The current 2D
@@ -183,7 +199,7 @@ alone is insufficient if land and water geometry still disagree.
   triangle-list vertices cost roughly 15--16 KB per tested edge. It is not
   integrated with actual tiles or skirts; rendered cracks, normals, all-face
   coverage, planet-band geometry and global cache cost remain untested.
-  Shared *boundary* samples alone cannot accept this ADR.
+  Shared *boundary* samples alone do not validate an implementation.
 - An independent all-face audit over two seeds, L4/L6 and all 24 oriented
   cube-face edges finds no mismatched canonical boundary samples, crossings
   or three-face corners. In contrast, the probe-only fixed atlas's opposite
@@ -249,5 +265,80 @@ alone is insufficient if land and water geometry still disagree.
   certify subpixel cracks, normals, skirts, all faces or the planet band.
   The coarse-to-adaptive jump and the twice-fine misses above remain, so
   this does not clear the feasibility gate.
-- Future water-extent semantics remain R5 work. This proposal changes only
+- A probe-only independently generated adaptive parent and four children
+  using the same georeferenced coastal lattice (but different off-coast
+  triangle sizes) give zero interior water-mask handoff changes at six L4/L6
+  fixed poses, flat and raised, on one seed and two face-0 patches. All
+  66,564 paired sample positions, heights and classifications agree per
+  level. A twice-fine sampled reference still finds 49--428 changed pixels
+  at L6 and 58--385 at L4, including isolated points over one pixel from
+  its contour. Parent/children generation costs 0.20/0.52 s locally at
+  L4/L6 (excluding initialization, GPU upload/render); mesh size is not yet
+  within a measured global cache budget. This is meaningful handoff evidence,
+  but cannot clear the implementation gates before wider face/seed,
+  planet-band, styles, raised seam and cost validation.
+- Further independent child-edge auditing finds 9/19 mismatched subdivisions
+  on the two original L4/L6 patches and up to 46 on a sampled seed-42
+  face-4 corner patch. The maximum sampled raised-vertex-to-opposite-chord
+  gap is 14.23 m (a geometric proxy, not a rendered crack measurement).
+  Matching canonical samples and zero *interior water-mask* handoff pixels
+  therefore do not satisfy the mesh-conformity requirement. Independently
+  selected coastal halos need a boundary ownership/stitch rule; the ADR
+  was still proposed at the time. The selected-patch audit is not all-face
+  coverage.
+- A probe-only full fine-boundary control gives zero sampled edge-vertex
+  mismatches on four child seams and the parent/children outer perimeter in
+  eight selected L4/L6 cases, versus up to 46 internal and 269 outer
+  mismatches without it. Raised fixed-pose water and visibility masks agree
+  on three rerendered coastal pairs. The control adds about 186--207 KB of
+  probe vertices per sampled parent-plus-four-children group, even for an
+  all-dry patch. It is not a measured 512-tile cache solution, a complete
+  raised-edge incidence or face-corner test, or acceptance of this ADR.
+- A more selective two-sided canonical edge-strip probe (radius eight samples,
+  full fine edges at cube-face borders) gives zero sampled child/parent
+  boundary-vertex mismatches on eight selected patches and zero same-face
+  neighbour mismatches in five selected checks. Three raised patch pairs have
+  zero fixed-pose common-pixel mask and visibility differences. It adds
+  4,488/4,746 triangle-list vertices to the original L4/L6 groups versus
+  12,138/11,646 for full-edge stitching; local L6 generation rises from
+  ~0.54 to ~0.68--0.73 s. This is a probe-only heuristic, not an accepted
+  sparse contour, cross-face/mixed-level geometry proof or cache budget.
+- A later clipped-edge audit compares ordered wet/dry boundary intervals,
+  interpolated coast crossings and exported float32 3D endpoints, rather than
+  just canonical vertex presence. In five pinned L4/L6 cases, baseline
+  parent/child meshes disagree on up to 217 child-seam and 590 outer-perimeter
+  intervals; the sparse and full-edge controls have zero interval mismatches,
+  zero boundary-coverage errors and matching endpoint positions in those
+  same-build local cases. This does not establish cross-face and corner
+  topology, rendered neighbouring-tile cracks, normals/skirts, contour
+  fidelity or cache/frame performance.
+- The independently generated sparse probe has also compared actual clipped
+  wet/dry segments and float32 endpoints across all 24 oriented cube-face
+  edges at one L4 midpoint tile per edge (seed 42): zero mismatches over
+  6,146 segments, but only two sampled shoreline crossings. Four additional
+  corner-adjacent oriented edges have eight crossings and zero mismatches.
+  A subsequent mixed-level audit independently generates two finer tiles on
+  the opposite face for each sampled edge. Their combined clipped intervals
+  and float32 endpoints also match the coarse tile in the 24-edge sweep and
+  selected L4/L6 corner/boundary cases, with zero boundary-coverage errors.
+  Both audits use deliberately full-fine face edges. The sparse coastal
+  sampling (two crossings in the midpoint sweep) does not prove a full-coast,
+  three-face-junction or rendered seam gate, nor does it clear the zoom,
+  fidelity, style, cache or frame-cost gates.
+- A five-position-per-oriented-face-edge L4 sweep (seed 42, 120 tile cases)
+  adds coastal coverage: 168 oriented edge comparisons including corner
+  repeats, 166 sampled shoreline crossings, and zero same/mixed-level
+  clipped-interval or float-endpoint mismatches. Twenty of 24 oriented edge
+  sweeps include a crossing; the repeated crossings are not unique coast
+  features. This remains a geometry-only sample and does not close any
+  rendered, zoom, fidelity or cost gate.
+- In two seed-42 L4 raised, unshaded opposite-face pair renders, same-level
+  versus four finer opposite-face tiles have zero water-mask differences in
+  the common interior and zero visible-mask XOR at three fixed poses each.
+  An initial export of only the two children touching the edge differed by
+  11,261 silhouette pixels at a far corner pose; exporting the full four-tile
+  footprint removes that probe artifact. These renders do not prove the
+  absence of subpixel cracks, three-face continuity, normal/skirt integrity,
+  contour fidelity, zoom parity or either style gate.
+- Future water-extent semantics remain R5 work. This decision changes only
   the presentation of today's static sea-level boundary.
