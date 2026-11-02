@@ -25,6 +25,7 @@ The rules:
   no module is taken.
 """
 
+import heapq
 import json
 import math
 import os
@@ -98,10 +99,15 @@ def segment_hits_box(p, q, box):
     return True
 
 
-def find_route(start, start_dir, end, end_dir, obstacles, stub, top):
+LIFTS = (0.3, 0.6, 0.9, 1.2)   # m: a route may rise this much to pass over another
+
+
+def find_route(start, start_dir, end, end_dir, obstacles, stub, top, routes_in_way=()):
     """The shortest right-angle route between two ports that crosses no
     obstacle box: out of each port by a stub, then along the axes in any
-    order, or up to `top` and over. (length, path), or None."""
+    order, or up by a lift, across and down, or up to `top` and over.
+    `routes_in_way` are boxes around routes already laid, which no leg,
+    stubs included, may cross. (length, path), or None."""
     s = add(start, scale(start_dir, stub))
     e = add(end, scale(end_dir, stub))
     candidates = []
@@ -113,14 +119,15 @@ def find_route(start, start_dir, end, end_dir, obstacles, stub, top):
                 current[axis] = e[axis]
                 points.append(tuple(current))
         candidates.append(points)
-    for order in ((0, 1), (1, 0)):
-        points = [s, (s[0], s[1], top)]
-        current = [s[0], s[1], top]
-        for axis in order:
-            current[axis] = e[axis]
-            points.append(tuple(current))
-        points.append(e)
-        candidates.append(points)
+    for height in [max(s[2], e[2]) + lift for lift in LIFTS] + [top]:
+        for order in ((0, 1), (1, 0)):
+            points = [s, (s[0], s[1], height)]
+            current = [s[0], s[1], height]
+            for axis in order:
+                current[axis] = e[axis]
+                points.append(tuple(current))
+            points.append(e)
+            candidates.append(points)
     best = None
     for points in candidates:
         path = [start] + points + ([e] if points[-1] != e else []) + [end]
@@ -131,10 +138,123 @@ def find_route(start, start_dir, end, end_dir, obstacles, stub, top):
         legs = list(zip(path[1:-2], path[2:-1]))
         if any(segment_hits_box(p, q, box) for p, q in legs for box in obstacles):
             continue
+        if any(segment_hits_box(p, q, box) for p, q in zip(path, path[1:]) for box in routes_in_way):
+            continue
         length = sum(math.dist(p, q) for p, q in zip(path, path[1:]))
         if best is None or length < best[0] - 1e-9:
             best = (length, path)
     return best
+
+
+ROUTE_CLEARANCE_M = 0.05   # between two routes' surfaces
+BEND_COST_M = 0.25         # a grid route's cost per bend, in metres
+
+
+def grid_route(start, start_dir, end, end_dir, obstacles, stub, top, routes_in_way=()):
+    """The fallback when find_route's shapes are all blocked: an A* search
+    on the Hanan grid (the coordinates where the ports, the obstacles' faces
+    and the lift heights lie), along the axes, minimising length plus a cost
+    per bend. Deterministic. (length, path), or None."""
+    s = clean(add(start, scale(start_dir, stub)))
+    e = clean(add(end, scale(end_dir, stub)))
+    blocked = list(obstacles) + list(routes_in_way)
+    gap = 0.02
+    coordinates = []
+    for axis in range(3):
+        values = {s[axis], e[axis]}
+        for low, high in blocked:
+            values.update((round(low[axis] - gap, 6), round(high[axis] + gap, 6)))
+        if axis == 2:
+            values.update(round(max(s[2], e[2]) + lift, 6) for lift in LIFTS)
+            values.add(round(top, 6))
+            values = {v for v in values if v >= 0.0}
+        coordinates.append(sorted(values))
+    index = [{v: i for i, v in enumerate(c)} for c in coordinates]
+    start_node = tuple(index[a][s[a]] for a in range(3))
+    end_node = tuple(index[a][e[a]] for a in range(3))
+
+    def point(node):
+        return tuple(coordinates[a][node[a]] for a in range(3))
+
+    def heuristic(node):
+        return sum(abs(point(node)[a] - e[a]) for a in range(3))
+
+    counter = 0
+    frontier = [(heuristic(start_node), 0.0, counter, start_node, -1)]
+    best = {(start_node, -1): 0.0}
+    came = {}
+    while frontier:
+        _, cost, _, node, direction = heapq.heappop(frontier)
+        if node == end_node:
+            path = [point(node)]
+            key = (node, direction)
+            while key in came:
+                key = came[key]
+                path.append(point(key[0]))
+            path.reverse()
+            simple = [path[0]]
+            for i in range(1, len(path) - 1):
+                a, b, c = simple[-1], path[i], path[i + 1]
+                if sum(1 for k in range(3) if abs(a[k] - c[k]) > 1e-9) > 1:
+                    simple.append(b)
+            simple.append(path[-1])
+            full = [clean(start)] + simple + [clean(end)]
+            full = [p for i, p in enumerate(full) if i == 0 or p != full[i - 1]]
+            return (sum(math.dist(p, q) for p, q in zip(full, full[1:])), full)
+        if cost > best.get((node, direction), math.inf) + 1e-12:
+            continue
+        here = point(node)
+        for axis in range(3):
+            for step in (-1, 1):
+                i = node[axis] + step
+                if not 0 <= i < len(coordinates[axis]):
+                    continue
+                neighbour = tuple(i if a == axis else node[a] for a in range(3))
+                there = point(neighbour)
+                if any(segment_hits_box(here, there, box) for box in blocked):
+                    continue
+                move = 2 * axis + (step > 0)
+                new_cost = cost + abs(there[axis] - here[axis]) + (
+                    BEND_COST_M if direction not in (-1, move) else 0.0)
+                key = (neighbour, move)
+                if new_cost < best.get(key, math.inf) - 1e-12:
+                    best[key] = new_cost
+                    came[key] = (node, direction)
+                    counter += 1
+                    heapq.heappush(frontier, (new_cost + heuristic(neighbour), new_cost, counter,
+                                              neighbour, move))
+    return None
+
+
+def leg_box(p, q, margin):
+    """The box around a route's leg p→q, grown by `margin`."""
+    return (tuple(min(p[i], q[i]) - margin for i in range(3)),
+            tuple(max(p[i], q[i]) + margin for i in range(3)))
+
+
+def shares_end(route, start, end):
+    """Whether a laid route leaves or reaches one of these ports: routes from
+    one port form a bundle and may run together there."""
+    ends = (tuple(route["points"][0]), tuple(route["points"][-1]))
+    return any(math.dist(point, other) < 1e-6 for point in (start, end) for other in ends)
+
+
+def routes_clear(routes):
+    """The pairs of routes whose legs come closer than the clearance (bundles
+    from one port excepted): none in a feasible layout."""
+    clashes = []
+    for i, a in enumerate(routes):
+        for b in routes[i + 1:]:
+            if "shaft" in (a["medium"], b["medium"]):
+                continue
+            if shares_end(b, tuple(a["points"][0]), tuple(a["points"][-1])):
+                continue
+            margin = a["radius_m"] + b["radius_m"] + ROUTE_CLEARANCE_M - 1e-6
+            if any(segment_hits_box(p, q, leg_box(r, t, margin))
+                   for p, q in zip(a["points"], a["points"][1:])
+                   for r, t in zip(b["points"], b["points"][1:])):
+                clashes.append(f"{a['connection']} / {b['connection']}")
+    return clashes
 
 
 def resolve(blueprint, modules):
@@ -256,6 +376,16 @@ def route(modules, connections, parameters):
     stub = parameters["stub_m"]
     obstacles = {m.id: m.box(margin=0.02) for m in modules.values()}
     top = max(b[1][2] for b in obstacles.values()) + 0.3
+    # Every port's stub is reserved before any route is laid, so that no
+    # route passes where another must leave its port.
+    stubs = []
+    for a, a_port, b, b_port in connections:
+        kind = a.ports[a_port]["type"]
+        if kind == "mechanical_power" or kind not in MEDIA:
+            continue
+        for module, port in ((a, a_port), (b, b_port)):
+            point, direction = module.port_world(port)
+            stubs.append((point, add(point, scale(direction, stub)), MEDIA[kind][1]))
     for a, a_port, b, b_port in connections:
         kind_a, kind_b = a.ports[a_port]["type"], b.ports[b_port]["type"]
         name = f"{a.id}.{a_port} -> {b.id}.{b_port}"
@@ -273,7 +403,16 @@ def route(modules, connections, parameters):
                            "points": [list(clean(start))], "length_m": 0.0})
             continue
         medium, radius = MEDIA[kind_a]
-        best = find_route(start, start_dir, end, end_dir, list(obstacles.values()), stub, top)
+        in_way = [leg_box(p, q, other["radius_m"] + radius + ROUTE_CLEARANCE_M)
+                  for other in routes if other["medium"] != "shaft" and
+                  not shares_end(other, start, end)
+                  for p, q in zip(other["points"], other["points"][1:])]
+        in_way += [leg_box(p, q, r + radius + ROUTE_CLEARANCE_M) for p, q, r in stubs
+                   if math.dist(p, start) > 1e-6 and math.dist(p, end) > 1e-6]
+        best = find_route(start, start_dir, end, end_dir, list(obstacles.values()), stub, top, in_way)
+        if best is None:
+            best = grid_route(start, start_dir, end, end_dir, list(obstacles.values()), stub, top,
+                              in_way)
         if best is None:
             errors.append(f"{name}: no route clears the modules")
             continue
@@ -295,6 +434,7 @@ def layout(blueprint, overrides):
     overlaps = [f"{a.id} / {b.id}" for i, a in enumerate(placed) for b in placed[i + 1:]
                 if boxes_overlap(a.box(), b.box())]
     errors += [f"modules overlap: {pair}" for pair in overlaps]
+    errors += [f"routes cross: {pair}" for pair in routes_clear(routes)]
     return {
         "blueprint": blueprint["id"],
         "parameters": parameters,

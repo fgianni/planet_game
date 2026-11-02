@@ -138,9 +138,17 @@ python3 tools/asset_pipeline/cli/assemble.py --blueprint assets/blueprints/power
   cooler's pipe to the generator from 12.0 m over the top to 7.2 m around
   the reactor's skirt. The assembly passes as before (20 checks, the
   parameter change and the same digest again).
-- **A limit seen in the new preview:** routes avoid the modules but not
-  each other: near the reactor the pump's pipe and the cooler's two
-  cross. Each module is placed greedily, in the blueprint's order.
+- **Routes that avoid each other (2026-11-02):** routes are laid in the
+  blueprint's order, each laid one an obstacle for the later ones (both
+  radii plus 5 cm); routes from one port form a bundle. Every port's stub
+  is reserved before any route is laid. Candidates may rise 0.3–1.2 m to
+  pass over another route; when every fixed shape is blocked, an A*
+  search on the Hanan grid (the ports', obstacles' and lift heights'
+  coordinates; length plus 0.25 m a bend) finds one. A feasible layout
+  has no clash (`routes_clear`). The power chain's one clash (the
+  cooler's first pipe through the second's exit) is gone at the same
+  30.6 m: that pipe now rises to 1.6 m before crossing. Modules are still
+  placed greedily, in the blueprint's order.
 
 ## Phase 2, a first neural test (2026-10-29)
 
@@ -255,14 +263,14 @@ is pending.
   CI's approval gate for shipped assets. TRELLIS.2
   needs 24 GB officially and its project page excludes commercial use;
   Hunyuan3D-2.1's licence excludes the EU.
-- **Beyond the proof of concept:** routes that avoid each other, a
-  placement that is not greedy, and the compile from assembly
+- **Beyond the proof of concept:** a placement that is not greedy, and the compile from assembly
   to network node (ADR-0031 §3: PlanetSim's, not Godot's, from P1).
   Phase 4 (batch generation, searchable previews, caching) is untouched.
 - **CI:** CTest runs `assetforge_specifications` everywhere (the
   specifications pass, and eight broken copies fail with the expected
-  messages) and `assetforge_layout` (the power chain feasible and
-  deterministic, a varied parameter, two impossible blueprints caught). `assetforge_build_<module>` for the five machines (built,
+  messages) and `assetforge_layout` (the power chain feasible, its routes
+  clear of each other, deterministic, a varied parameter, a grid route
+  through a gapped wall, two impossible blueprints caught). `assetforge_build_<module>` for the five machines (built,
   validated and rebuilt byte-identically, checked in Godot when
   `ASSETFORGE_GODOT` names a binary) is added only where Blender is
   installed; CI has neither Blender nor the rock's generated sources.

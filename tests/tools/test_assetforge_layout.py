@@ -22,6 +22,10 @@ def main():
     shafts = [r for r in first["routes"] if r["medium"] == "shaft"]
     assert len(shafts) == 1 and shafts[0]["length_m"] == 0.0
     assert len(first["routes"]) == len(blueprint["connections"])
+    # Routes keep clear of each other (bundles from one port excepted).
+    assert layout.routes_clear(first["routes"]) == [], layout.routes_clear(first["routes"])
+    for r in first["routes"]:
+        assert r["medium"] == "shaft" or len(r["points"]) >= 3, r
 
     varied = layout.layout(blueprint, {"spacing_m": 2.5})
     assert varied["feasible"] and varied["modules"] != first["modules"]
@@ -37,7 +41,18 @@ def main():
     broken["modules"].append({"id": "spare_pump", "asset": "pump_centrifugal"})
     result = layout.layout(broken, {})
     assert not result["feasible"] and any("not connected" in e for e in result["errors"]), result["errors"]
-    print("assetforge layout: feasible, deterministic, varied, and two impossible blueprints caught")
+    # The grid search where every fixed shape is blocked: a wall taller
+    # than the routes' ceiling, with one gap at y = 2.
+    wall = [((1.5, -5.0, 0.0), (2.5, 1.5, 5.0)), ((1.5, 2.5, 0.0), (2.5, 5.0, 5.0))]
+    start, end = (0.0, 0.0, 0.5), (4.0, 0.0, 0.5)
+    assert layout.find_route(start, (1, 0, 0), end, (-1, 0, 0), wall, 0.3, 3.0) is None
+    found = layout.grid_route(start, (1, 0, 0), end, (-1, 0, 0), wall, 0.3, 3.0)
+    assert found is not None, "the grid search finds the gap"
+    path = found[1]
+    assert not any(layout.segment_hits_box(p, q, box) for p, q in zip(path, path[1:]) for box in wall)
+    assert any(1.5 <= p[1] <= 2.5 for p in path), path
+    assert found == layout.grid_route(start, (1, 0, 0), end, (-1, 0, 0), wall, 0.3, 3.0)
+    print("assetforge layout: feasible, clear routes, deterministic, varied, a grid route through a gap, and two impossible blueprints caught")
 
 
 if __name__ == "__main__":
