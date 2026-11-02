@@ -43,6 +43,16 @@ opens it: the assembled plant, every animation running from its state
 frame, then each asset on its own (Tab / Shift+Tab; drag to orbit, wheel to
 zoom, space to pause). `-- --selftest` builds every view headless.
 
+**Generated sources live in Git LFS** (2026-11-02, decided with the
+user): what a neural asset is built from (its concept image and its
+image-to-3D mesh, with their provenance records) goes in
+`assets/sources/neural/<id>/`; `.gitattributes` sends the binaries there
+(`.glb`, `.png`, `.jpg`, `.blend`, …) to LFS and keeps the JSON records in
+ordinary git. The specification pins each source by its SHA-256, which is
+also its LFS object id. A fresh clone fetches them and rebuilds the rock
+byte-identically. Build outputs stay in `assets/generated/` (ignored).
+Git LFS must be installed to clone with the sources (`git lfs install`).
+
 ## What the first run showed (2026-10-29)
 
 Tools: Blender 5.2.2 LTS, Godot 4.7.2, Python 3.10.
