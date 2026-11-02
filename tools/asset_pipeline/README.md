@@ -130,9 +130,17 @@ python3 tools/asset_pipeline/cli/assemble.py --blueprint assets/blueprints/power
 - **Deterministic re-assembly:** the layout changes with `spacing_m=2.5`
   and stays feasible (another digest); laid out again as given, it gives
   the same bytes and the same assembly digest. About 23 s in all.
-- **A limit seen in the preview:** the cooler faces the reactor, so its
-  pipe to the generator loops over the top (12 m). The placement cost
-  compares port distances, not the routes they need.
+- **Route-aware placement (2026-11-02):** each candidate (four quarter
+  turns, each shifted 0, ±1 and ±2 m along the anchor's face) is scored
+  by the real routes its connections to placed modules would take, with
+  the router the final layout uses (`find_route`); a candidate with no
+  route is excluded. The pipework falls from 33.9 to 30.6 m, and the
+  cooler's pipe to the generator from 12.0 m over the top to 7.2 m around
+  the reactor's skirt. The assembly passes as before (20 checks, the
+  parameter change and the same digest again).
+- **A limit seen in the new preview:** routes avoid the modules but not
+  each other: near the reactor the pump's pipe and the cooler's two
+  cross. Each module is placed greedily, in the blueprint's order.
 
 ## Phase 2, a first neural test (2026-10-29)
 
@@ -247,8 +255,8 @@ is pending.
   CI's approval gate for shipped assets. TRELLIS.2
   needs 24 GB officially and its project page excludes commercial use;
   Hunyuan3D-2.1's licence excludes the EU.
-- **Beyond the proof of concept:** placement costs from the routes
-  themselves, routes that avoid each other, and the compile from assembly
+- **Beyond the proof of concept:** routes that avoid each other, a
+  placement that is not greedy, and the compile from assembly
   to network node (ADR-0031 §3: PlanetSim's, not Godot's, from P1).
   Phase 4 (batch generation, searchable previews, caching) is untouched.
 - **CI:** CTest runs `assetforge_specifications` everywhere (the

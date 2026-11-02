@@ -98,6 +98,45 @@ def segment_hits_box(p, q, box):
     return True
 
 
+def find_route(start, start_dir, end, end_dir, obstacles, stub, top):
+    """The shortest right-angle route between two ports that crosses no
+    obstacle box: out of each port by a stub, then along the axes in any
+    order, or up to `top` and over. (length, path), or None."""
+    s = add(start, scale(start_dir, stub))
+    e = add(end, scale(end_dir, stub))
+    candidates = []
+    for order in ((0, 1, 2), (0, 2, 1), (1, 0, 2), (1, 2, 0), (2, 0, 1), (2, 1, 0)):
+        points = [s]
+        current = list(s)
+        for axis in order:
+            if abs(current[axis] - e[axis]) > 1e-9:
+                current[axis] = e[axis]
+                points.append(tuple(current))
+        candidates.append(points)
+    for order in ((0, 1), (1, 0)):
+        points = [s, (s[0], s[1], top)]
+        current = [s[0], s[1], top]
+        for axis in order:
+            current[axis] = e[axis]
+            points.append(tuple(current))
+        points.append(e)
+        candidates.append(points)
+    best = None
+    for points in candidates:
+        path = [start] + points + ([e] if points[-1] != e else []) + [end]
+        path = [clean(p) for p in path]
+        path = [p for i, p in enumerate(path) if i == 0 or p != path[i - 1]]
+        # The stubs leave and enter their own modules; every other leg must
+        # cross no module.
+        legs = list(zip(path[1:-2], path[2:-1]))
+        if any(segment_hits_box(p, q, box) for p, q in legs for box in obstacles):
+            continue
+        length = sum(math.dist(p, q) for p, q in zip(path, path[1:]))
+        if best is None or length < best[0] - 1e-9:
+            best = (length, path)
+    return best
+
+
 def resolve(blueprint, modules):
     connections = []
     for c in blueprint["connections"]:
@@ -107,8 +146,39 @@ def resolve(blueprint, modules):
     return connections
 
 
+SHIFTS = (0.0, 1.0, -1.0, 2.0, -2.0)   # sideways along the anchor's face, m
+
+
+def placement_cost(new, yaw, position, connections, placed, centre, parameters, top):
+    """A candidate's cost: the length of the real routes its connections to
+    placed modules would take (None if one has no route), plus a penalty
+    for its ports to modules not yet placed that face the plant."""
+    obstacles = [m.box(margin=0.02) for m in placed] + [new.box(yaw, position, 0.02)]
+    cost = 0.0
+    for c_a, c_ap, c_b, c_bp in connections:
+        if new not in (c_a, c_b):
+            continue
+        other, other_port, mine = (c_b, c_bp, c_ap) if c_a is new else (c_a, c_ap, c_bp)
+        mine_point, mine_dir = new.port_world(mine, yaw, position)
+        if other in placed:
+            if new.ports[mine]["type"] == "mechanical_power":
+                continue
+            other_point, other_dir = other.port_world(other_port)
+            found = find_route(mine_point, mine_dir, other_point, other_dir, obstacles,
+                               parameters["stub_m"], top)
+            if found is None:
+                return None
+            cost += found[0]
+        else:
+            towards = sub(centre, mine_point)
+            cost += 2.0 * max(0.0, sum(mine_dir[i] * towards[i] for i in range(2)))
+    return cost
+
+
 def place(blueprint, modules, connections, parameters):
     errors = []
+    # Routes go over the tallest module (the same height as the final routes').
+    top = max(m.spec["dimensions_m"][2] for m in modules.values()) + 0.02 + 0.3
     root = modules[blueprint["root"]]
     root.yaw, root.position = 0, (0.0, 0.0, 0.0)
     placed = [root]
@@ -149,34 +219,25 @@ def place(blueprint, modules, connections, parameters):
                 outward = (direction[0], direction[1], 0.0)
                 if abs(outward[0]) + abs(outward[1]) < 1e-9:
                     outward = (1.0, 0.0, 0.0)
+                across = (-outward[1], outward[0], 0.0)
                 centre = plant_centre()
                 best = None
                 for yaw in YAWS:
-                    q = rotate(new.ports[new_port]["position_m"], yaw)
-                    target = add(point, scale(outward, spacing))
-                    position = (target[0] - q[0], target[1] - q[1], 0.0)
-                    steps = 0
-                    while not clear_of_placed(new, yaw, position) and steps < 200:
-                        position = add(position, scale(outward, 0.25))
-                        steps += 1
-                    position = clean(position)
-                    if steps >= 200:
-                        continue
-                    # The cost: its connections to placed modules, and its free
-                    # ports facing the plant.
-                    cost = 0.0
-                    for c_a, c_ap, c_b, c_bp in connections:
-                        if new in (c_a, c_b):
-                            other, other_port, mine = (c_b, c_bp, c_ap) if c_a is new else (c_a, c_ap, c_bp)
-                            mine_point, mine_dir = new.port_world(mine, yaw, position)
-                            if other in placed:
-                                other_point = other.port_world(other_port)[0]
-                                cost += sum(abs(mine_point[i] - other_point[i]) for i in range(3))
-                            else:
-                                towards = sub(centre, mine_point)
-                                cost += 2.0 * max(0.0, sum(mine_dir[i] * towards[i] for i in range(2)))
-                    if best is None or cost < best[0] - 1e-9:
-                        best = (cost, yaw, position)
+                    for shift in SHIFTS:
+                        q = rotate(new.ports[new_port]["position_m"], yaw)
+                        target = add(add(point, scale(outward, spacing)), scale(across, shift))
+                        position = (target[0] - q[0], target[1] - q[1], 0.0)
+                        steps = 0
+                        while not clear_of_placed(new, yaw, position) and steps < 200:
+                            position = add(position, scale(outward, 0.25))
+                            steps += 1
+                        position = clean(position)
+                        if steps >= 200:
+                            continue
+                        cost = placement_cost(new, yaw, position, connections, placed, centre,
+                                              parameters, top)
+                        if cost is not None and (best is None or cost < best[0] - 1e-9):
+                            best = (cost, yaw, position)
                 if best is None:
                     errors.append(f"no clear place for {new.id} beside {anchor.id}")
                     return errors
@@ -212,40 +273,7 @@ def route(modules, connections, parameters):
                            "points": [list(clean(start))], "length_m": 0.0})
             continue
         medium, radius = MEDIA[kind_a]
-        s = add(start, scale(start_dir, stub))
-        e = add(end, scale(end_dir, stub))
-        candidates = []
-        orders = [(0, 1, 2), (0, 2, 1), (1, 0, 2), (1, 2, 0), (2, 0, 1), (2, 1, 0)]
-        for order in orders:
-            points = [s]
-            current = list(s)
-            for axis in order:
-                if abs(current[axis] - e[axis]) > 1e-9:
-                    current[axis] = e[axis]
-                    points.append(tuple(current))
-            candidates.append(points)
-        for order in ((0, 1), (1, 0)):
-            points = [s, (s[0], s[1], top)]
-            current = [s[0], s[1], top]
-            for axis in order:
-                current[axis] = e[axis]
-                points.append(tuple(current))
-            points.append(e)
-            candidates.append(points)
-        best = None
-        for points in candidates:
-            path = [start] + points + ([e] if points[-1] != e else []) + [end]
-            path = [clean(p) for p in path]
-            path = [p for i, p in enumerate(path) if i == 0 or p != path[i - 1]]
-            # The stubs leave and enter their own modules; every other leg
-            # must cross no module.
-            legs = list(zip(path[1:-2], path[2:-1]))
-            blocked = any(segment_hits_box(p, q, box) for p, q in legs for box in obstacles.values())
-            if blocked:
-                continue
-            length = sum(math.dist(p, q) for p, q in zip(path, path[1:]))
-            if best is None or length < best[0] - 1e-9:
-                best = (length, path)
+        best = find_route(start, start_dir, end, end_dir, list(obstacles.values()), stub, top)
         if best is None:
             errors.append(f"{name}: no route clears the modules")
             continue
