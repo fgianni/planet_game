@@ -1441,6 +1441,21 @@ machine's P-cores after this machine froze on 2026-10-29
   i9-14900KS) is open.
 - The tropical air's coldness and land's water deficit are the same at
   L4 and L5: they are not a resolution effect.
+- **Where reference mode changes from L4 to L5** (the same preset, from
+  the two logs): **not in the tropics,** whose bands from 25° S to 25° N
+  agree within 1 K (297–304 K), but **poleward of about 40°,** growing to
+  −9 to −12 K over 65–85°. With it: more sea ice (0.107 → 0.153 of the
+  ocean; its reflection 7.3 → 11.1 W/m²) and snow (0.19 → 0.22 of land), a
+  weaker greenhouse (150 → 137 W/m²), less cloud (0.38 → 0.33; cloud
+  longwave 38.8 → 35.5 W/m²), the same total poleward transport at 60° N
+  (3.4 → 3.3 PW) but more of it dry and less latent, a weaker overturning
+  (+52 / −36 → +37 / −20 Sv at 10° S / 10° N), more resolved rain
+  (convective share 0.21 → 0.08), and both still drifting (top of
+  atmosphere −8.8 and −9.6 W/m²).
+- So reference mode's resolution dependence is a high-latitude and
+  cryosphere one (an ice–albedo response, perhaps with a faster drift),
+  not a tropical one: INV-04's tropical findings at L4 stand. For L6:
+  the polar bands, sea ice, cloud cover and the drift.
 
 **Running at the end of 2026-10-29** (detached; logs in `build/inv04/`):
 - V8 at L5 under ADR-0023 §16.2 (`v8_L5_3yr.log`, started 09:48, about
