@@ -199,5 +199,55 @@ alone is insufficient if land and water geometry still disagree.
   within-face corner texels (each is shared by two pinned edges). This
   thought experiment does not render or resolve the corner owner or
   transition from edge to interior.
+- A probe-only offscreen geometry raster at one face-0 coast per L4/L6
+  gives zero interior parent/four-child water-mask changes at three fixed
+  poses each. This is expected from their shared georeferenced sampling
+  lattice, not proof of fidelity: a one-level-denser relief mesh differs
+  by 125--1005 pixels per pose, including pixels more than one pixel from
+  the fine coast at close range. It does not test production styles,
+  planet-band handoff, mixed-level seams or frame/memory cost. The proposed
+  screen-space gate remains unmet.
+- Rendered face-0 mixed-level ribbons at the known 6-versus-4 crossing
+  edges preserve fine-side boundary heights and crossings but change the
+  rasterised inland coast: at L6, 87/344/1378 mask pixels change at three
+  progressively closer fixed poses, with 37/241/1171 more than one pixel
+  from the ribbon boundary. The ribbon is not closer overall to the
+  independently sampled fine-side reference. The tested two-column
+  edge-only stitch fails the proposed screen-space gate; shared boundary
+  points alone are insufficient. This is a flat-sphere footprint probe,
+  not raised geometry, production styles, or a whole-globe performance run.
+- A fine-interior sensitivity at those edges improves agreement with a
+  fine reference as the band grows, but the transition to coarse geometry
+  moves to its far edge. At L6, 2/4 fine columns still leave 2329/935
+  different pixels at the closest pose (1954/849 farther than one pixel
+  from the fine coast). Their far edges have 1/2 water-class flips at odd
+  samples against the coarse interpolation. Eight columns match by using
+  the fine mesh for the entire tested right patch, not by proving a bounded
+  hand-back. A contour-aware transition is still required.
+- Adding a second clipped ribbon to hand the fine band back to the coarse
+  interior improves one L6 close-pose comparison (four columns: 935 → 78
+  different pixels versus a fine reference), but 42 remain over one pixel
+  from that reference; medium and far poses still differ by 759 and 177
+  pixels. L4 at its medium pose becomes worse than the plain join. Wider
+  bands that appear exact at close range crop the unresolved outer join.
+  This is a flat-sphere local test, not a solved contour hierarchy or an
+  accepted implementation.
+- Refining only mixed-sign coarse squares (26/256 at a sampled L6 seam,
+  or 67/256 with a one-square halo) matches a same-lattice fine reference
+  in flat fixed-pose masks with 774/1512 extra local triangle-list vertices.
+  This is **not** LOD handoff parity: the ordinary coarse source still
+  changes 355--2862 pixels against that adaptive patch across the three
+  L6 poses. The halo leaves 35 raised-terrain T-junction edges with up to
+  11 m midpoint/chord gaps (39 and 53 m at L4). A twice-fine sampled
+  reference still differs by 117--1095 L6 pixels. Neither the topology,
+  coast fidelity nor production performance gate is met.
+- A two-pass probe now splits coarse-square edges against refined neighbours.
+  Exported L4/L6 local patches share all 39/35 tested transition midpoints
+  in both triangle lists (the unstitched control has zero coarse-side uses).
+  Raised, unexaggerated renders show no *interior* water-mask difference
+  from the same-lattice fine reference at six poses, but this does not
+  certify subpixel cracks, normals, skirts, all faces or the planet band.
+  The coarse-to-adaptive jump and the twice-fine misses above remain, so
+  this does not clear the feasibility gate.
 - Future water-extent semantics remain R5 work. This proposal changes only
   the presentation of today's static sea-level boundary.

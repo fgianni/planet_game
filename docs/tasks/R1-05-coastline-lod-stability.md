@@ -388,6 +388,205 @@ Pinning an edge without a deterministic corner owner and a measured
 transition to the interior merely moves the seam problem; it does not
 establish a crack-free colour or geometry solution.
 
+### Offscreen clipped-geometry raster probe (2026-10-30)
+
+`tools/render/coast_render_mesh_spike.cpp` exports an L4 or L6 face-0 coastal
+tile as independently built parent and four-child clipped triangle lists.
+Both use the same 128-step-per-parent georeferenced lattice (children take
+every second one of their 128 steps); a separate child mesh samples *every*
+child step as a finer detailed-relief reference. `godot/tests/
+probe_coast_render_mesh.gd` draws the three in an unshaded 512² offscreen
+viewport at the **same** camera pose; the comparison script excludes a
+two-pixel outer silhouette. Seed 20260928, parent keys 0/4/7/0 and
+0/6/16/0, OpenGL 3.3, RTX 2080 Ti:
+
+| Mesh | Camera height (radii) | Common interior px | Parent–children different px | Parent–fine different px | Fine difference >1 px from fine coast | Largest mismatch component px |
+|---|---:|---:|---:|---:|---:|---:|
+| L4 | 0.15 | 59,415 | 0 | 155 | 0 | 6 |
+| L4 | 0.08 | 199,633 | 0 | 441 | 2 | 22 |
+| L4 | 0.04 | 258,064 | 0 | 954 | 81 | 67 |
+| L6 | 0.04 | 52,578 | 0 | 125 | 0 | 4 |
+| L6 | 0.02 | 191,350 | 0 | 538 | 1 | 14 |
+| L6 | 0.01 | 258,064 | 0 | 1,005 | 49 | 58 |
+
+The parent and children happen to rasterise identically at these poses;
+they share the same sampled lattice, so this is **not an independent coast
+fidelity result**. The fine mesh is a one-level-denser *sampled relief*
+reference, not a converged mathematical contour. Its mismatches include
+antialiasing and refined triangulation; connected mismatch components are
+not automatically whole islands or inlets. At the close poses the coarse
+classifier visibly exceeds the proposed one-pixel fidelity tolerance.
+These probes have no planet-cell handoff, mixed-LOD ribbon, cube-face joins,
+texture atlas, either production style, zoom flight, or cost measurement.
+The raster gate and ADR-0030 acceptance therefore remain open; no production
+tile implementation is authorized by this result.
+
+### Rendered mixed-level ribbon (2026-10-30)
+
+The same exporter accepts a `seam` argument. It uses the independently
+sampled face-0 fine/coarse edges previously measured at 6 versus 4 linear
+crossings (L4 fine tile 11/10, L6 55/0). Its three outputs are fine-left
+with ordinary coarse-right (baseline), fine-left with a
+three-triangles-per-two-steps stitched coarse-right (candidate), and
+fine-left with fine-right (reference). The strip is
+eight fine grid columns wide on each side; the ribbon occupies the first
+two columns to the right. This experiment draws *both* classes on the same
+sphere, deliberately suppressing vertical relief to isolate the rasterised
+coast footprint. Same unshaded 512² offscreen renderer and fixed poses:
+
+| Mesh | Height (radii) | Baseline–ribbon changed px | >1 px from ribbon coast | Ribbon–fine changed px | >1 px from fine coast |
+|---|---:|---:|---:|---:|---:|
+| L4 | 0.02 | 9 | 0 | 72 | 0 |
+| L4 | 0.01 | 46 | 0 | 290 | 15 |
+| L4 | 0.005 | 169 | 0 | 682 | 250 |
+| L6 | 0.005 | 87 | 37 | 378 | 189 |
+| L6 | 0.0025 | 344 | 241 | 1,580 | 1,153 |
+| L6 | 0.00125 | 1,378 | 1,171 | 3,216 | 2,681 |
+
+The independent boundary heights match to within 1e-6 m and the ribbon
+preserves the six fine-edge crossings, but that **does not** constrain the
+shoreline through its two-column interior. Its different diagonals and
+unsampled relief change resolvable raster pixels, particularly at L6;
+the stitched result is not closer overall to this fine reference. Distance
+here is pixel-centre distance to a binary-mask boundary, not a tracked
+contour displacement, and connected differences are not proof of whole
+islands. This ribbon is a **failed rendering candidate** under the proposed
+screen-space gate. An edge-only stitched strip cannot be adopted without an
+interior contour/transition constraint and a new rendered test. Real raised
+terrain, normals, skirts, all-face joins, planet handoff, and zoom still
+need independent validation.
+
+### Fine interior strip-width sensitivity (2026-10-30)
+
+The exporter also has `seam2`, `seam4` and `seam8` probe modes: they replace
+the first 2/4/8 fine columns of the right-hand coarse side with independently
+sampled fine triangles, then return to the original coarse grid. `seam8`
+is **the entire tested right-hand patch** and therefore reproduces the fine
+reference by construction; it does not demonstrate a bounded transition.
+The same L6 fixed poses give:
+
+| Fine columns | Additional triangle-list vertices vs coarse baseline (L6) | Candidate–fine px at heights 0.005 / 0.0025 / 0.00125 | >1 px from fine coast at closest pose |
+|---|---:|---:|---:|
+| 2 | 1,242 | 322 / 1,357 / 2,329 | 1,954 |
+| 4 | 2,490 | 237 / 1,015 / 935 | 849 |
+| 8 (all visible right patch) | 4,914 | 0 / 0 / 0 | 0 |
+
+At L4 the extra vertices are 1,242 / 2,478 / 4,974; candidate–fine
+differences at heights 0.02 / 0.01 / 0.005 are 59 / 226 / 436 for width
+2, 29 / 111 / 0 for width 4, and 0 throughout for width 8. The width-4
+zero at the closest pose is **camera cropping**: the unresolved outer
+transition lies outside that viewport, not evidence it is solved. At L6,
+the far-side width-2/4 edges each have 1/2 odd water-class flips relative
+to coarse interpolation, respectively, even though this flat-sphere raster
+has no changed visible-background pixels at the sampled poses. Its
+maximal fine-midpoint/coarse-chord geometric gap is ~0.12 m (L4 ~1.64 m);
+raised relief can be worse. These are local counts, not global memory or
+frame costs. Even where a fine band reduces reference error, swapping from
+the baseline to it still changes resolvable pixels. A safe hand-back needs
+a contour-aware, topologically matched *far* boundary as well as the near
+edge; merely widening a uniform fine band moves the unresolved seam.
+
+### Second-ribbon hand-back experiment (2026-10-30)
+
+`seam2b`, `seam4b` and `seam6b` keep the near edge and 2/4/6 interior
+columns on the fine lattice, then insert a clipped, three-triangle ribbon
+from their **far** fine edge to the next coarse grid column. The remaining
+right-hand columns stay coarse. The far ribbon uses fine sampled heights
+along its near edge and coarse sampled heights at its outer edge; it is a
+local topological match, not an independent canonical contour guarantee.
+At the same L6 poses, candidate versus fine reference:
+
+| Fine columns + far ribbon | Extra triangle-list vertices vs coarse baseline | Different px at heights 0.005 / 0.0025 / 0.00125 | >1 px from fine coast, closest pose |
+|---|---:|---:|---:|
+| 2 | 1,452 | 339 / 1,404 / 2,522 | 2,149 |
+| 4 | 2,676 | 177 / 759 / 78 | 42 |
+| 6 | 3,906 | 126 / 547 / 0 | 0 (outer transition cropped) |
+
+The four-column far ribbon improves the closest-pose L6 difference from
+935 to 78 pixels versus a plain fine-to-coarse join, but the remaining
+pixels span x=475..511 on the 512² image, at the far side of the visible
+patch, and **42** are over one pixel from the fine contour. At the medium
+pose 759 pixels still differ (567 deeper than one pixel). The width-6
+zero at the closest pose is again camera cropping: at 0.005/0.0025 radii
+its outer ribbon differs by 126/547 pixels. The baseline-to-candidate
+handoff is also not stable: width 4 changes 202/819/2,784 pixels at the
+three L6 poses, with 68/516/2,263 farther than one pixel from the candidate
+coast. This is not an acceptable replacement of the baseline.
+
+L4 width 4 differs from the fine reference by 46/173/0 pixels at
+0.02/0.01/0.005 radii (the last zero is cropped); at the middle pose it is
+**worse** than the plain join's 111 pixels, and 43 differences are deeper
+than one pixel. No foreground-background differences were detected in
+these flat-sphere renders, but subpixel gaps, raised-terrain occlusion,
+normals and skirts remain untested. These small-patch vertex counts are not
+a global cache or frame-time measurement. A near/far ribbon improves one
+local pose but does **not** provide a stable georeferenced coast: the
+coarse interior still misses relief between its samples. Further work
+requires a contour-aware *interior* hierarchy and broader fixed-pose tests,
+not acceptance of ADR-0030 on this partial result.
+
+### Coast-following adaptive squares (2026-10-30)
+
+`adaptive0` refines a coarse 2×2 fine-sample square if its nine sampled
+heights include both signs; `adaptive1` additionally refines the one-square
+neighbourhood (including diagonals). At the same two face-0 mixed-level
+patches, the **flat** unshaded renders match the one-level-fine reference
+in all six fixed poses, while requiring fewer vertices than a full fine
+right patch:
+
+| Mesh | Coastal / total coarse squares | Refined squares (no halo / halo) | Extra vertices (no halo / halo) vs coarse baseline | Refined/coarse T-junctions (no halo / halo) | Max raised midpoint/chord gap (no halo / halo) |
+|---|---:|---:|---:|---:|---:|
+| L4 | 35 / 256 | 35 / 88 | 996 / 1,950 | 53 / 39 | 113 / 53 m |
+| L6 | 26 / 256 | 26 / 67 | 774 / 1,512 | 42 / 35 | 13 / 11 m |
+
+These gaps compare the independently sampled **raised** midpoint with
+the unsplit coarse chord at every refined/unrefined edge; there are zero
+midpoint water-class flips in this limited audit. The raster probe flattens
+both land and water onto the sphere, so its zero changed-background pixels
+do **not** establish a crack-free raised terrain. Transition edges still
+need matching tessellation, normals and skirts. Nor has the coarse **source**
+been replaced: the baseline-to-adaptive L6 masks change 355/1490/2862
+interior pixels at heights 0.005/0.0025/0.00125 radii (L4: 65/244/513).
+That is a resolvable handoff, not parity between LODs.
+
+The zero comparison is also against a reference built on **the same fine
+lattice**. A separate independently sampled twice-fine right patch still
+differs from `adaptive1` by 117/468/1095 pixels at the three L6 poses
+(7/146/605 over one pixel from its contour), and 50/197/431 at L4
+(0/1/110 over one pixel). This does not prove that the twice-fine mesh is
+the converged mathematical contour; it establishes that the zero at the
+previous resolution is not a fidelity result. A usable scheme must share
+the adaptive coast across *both* LOD representations, handle T-junctions
+in raised geometry, and pass multi-seed, all-face, zoom and cost gates.
+
+### Conforming adaptive-edge probe (2026-10-30)
+
+`adaptive1s` replaces a uniform coarse square adjoining a refined square
+with a centre fan whose boundary includes the neighbour's sampled midpoint;
+`adaptive1sr` draws the same mesh at its true positive relief (unexaggerated)
+instead of flattening it. An exporter invariant checks that each transition
+midpoint is emitted by **both** refined and coarse triangle lists. It caught
+an initial one-pass neighbour-ownership bug: refinement decisions must be
+completed for the whole patch *before* any transition geometry is emitted.
+The corrected two-pass probe checks 39/35 transition edges at L4/L6;
+minimum midpoint uses are 3 fine and 2 coarse, versus zero coarse uses in
+the unstitched control. The unsplit raised midpoint/chord gaps on these
+edges were up to 53/11 m. This checks vertex sharing at the local patch
+edges, **not** normals, skirts, entire mesh edge incidence, or cube-face
+corners. It adds 315 (L4) / 279 (L6) triangle-list vertices over the
+corresponding unstitched one-halo adaptive patch (2,265/1,791 over the
+ordinary coarse baseline).
+
+At the earlier six fixed poses the conforming mesh has zero *interior*
+water-mask differences against the same-lattice fine reference with both
+flat and raised geometry. Raised L6 visibility masks disagree at 12 and 4
+pixels at the two wider poses, located on the patch silhouette; none at the
+closest pose. That is **not** a whole-scene crack or frame-cost test.
+Neither the coarse-to-adaptive water-mask jump (355/1490/2862 L6 pixels)
+nor the twice-fine reference misses (117/468/1095 at L6) is resolved.
+ADR-0030 stays proposed: this is a local mesh-conformity result, not a
+coastline-stable production LOD.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and
