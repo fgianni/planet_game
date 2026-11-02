@@ -7,8 +7,8 @@ on a remote GPU worker, a clean-up with a collision hull, provenance and
 human approval: `rock_granite_v1`, approved). Phase 3's proof of concept
 works (the five reference modules, the power chain laid out, assembled in
 Godot, re-assembled deterministically). A viewer shows them. Phase 4:
-batch builds with a cache and a searchable catalogue (2026-11-02); an LOD
-check remains open; the compile from assembly to network node waits for P1 and
+batch builds with a cache, a searchable catalogue and an LOD check
+(2026-11-02); the compile from assembly to network node waits for P1 and
 ADR-0031's acceptance.
 
 A first test of the AssetForge proposal
@@ -183,10 +183,15 @@ python3 tools/asset_pipeline/cli/catalogue.py   # assets/generated/catalogue/ind
   provenance and preview: type, status, validator and Godot results,
   approval, size, triangles, file size, ports, animations and their
   bindings, materials and licences; a search box filters on all of them.
-- **LODs: a policy, not yet a check.** Godot's editor import generates
-  mesh LODs by default; the assets keep their triangle budgets. No public
-  API reports an imported mesh's LOD count at runtime, so no check claims
-  it; a real one remains open.
+- **LODs, checked (2026-11-02).** Godot's editor import generates mesh
+  LODs; `RenderingServer.mesh_get_surface()` returns them even headless
+  (a first note here said no API reports them: wrong). The policy, in the
+  Godot check's editor path: every drawn surface of 300 triangles or more
+  has at least one LOD, its coarsest at most 60 % of its triangles. All
+  pass: the machines' surfaces fall to 1–15 % over 3–5 LODs (reactor 924
+  → 16, tank 740 → 66, generator fins 1 880 → 320); the rock to 56 % over
+  one (4 750 → 2 654: a neural mesh's irregular surface simplifies less);
+  the cooler has no surface that large.
 
 ## Phase 2, a first neural test (2026-10-29)
 
@@ -303,7 +308,7 @@ is pending.
   Hunyuan3D-2.1's licence excludes the EU.
 - **Beyond the proof of concept:** a placement that is not greedy, and the compile from assembly
   to network node (ADR-0031 §3: PlanetSim's, not Godot's, from P1).
-  Phase 4's LOD check is open.
+  Phase 4 is done.
 - **CI:** CTest runs `assetforge_specifications` everywhere (the
   specifications pass, and eight broken copies fail with the expected
   messages) and `assetforge_layout` (the power chain feasible, its routes

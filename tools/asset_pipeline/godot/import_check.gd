@@ -12,6 +12,10 @@ extends SceneTree
 ## imported into PROJECT (godot --headless --import), as the game ships
 ## assets, and the collision shape is checked too. Exits 1 if a check fails.
 
+# The LOD policy's thresholds (AssetForge README, Phase 4).
+const LOD_MIN_TRIANGLES := 300
+const LOD_MAX_SHARE := 0.6
+
 var _failed := 0
 var _passed := 0
 
@@ -104,6 +108,35 @@ func _initialize() -> void:
 			shapes.size() == 1 and shapes[0].get_parent() is PhysicsBody3D)
 		var drawn := scene.find_children(manifest["collision"]["node"], "MeshInstance3D", true, false)
 		_check("collision is not drawn", drawn.is_empty())
+
+	# The LOD policy (editor import only, which generates them): every drawn
+	# surface of LOD_MIN_TRIANGLES or more has at least one LOD, the coarsest
+	# at most LOD_MAX_SHARE of its triangles.
+	if editor:
+		var checked := 0
+		var details := PackedStringArray()
+		var lod_ok := true
+		for mesh_instance in scene.find_children("*", "MeshInstance3D", true, false):
+			var instance := mesh_instance as MeshInstance3D
+			if manifest.has("collision") and instance.name == manifest["collision"]["node"]:
+				continue
+			var mesh := instance.mesh
+			for surface in mesh.get_surface_count():
+				var data: Dictionary = RenderingServer.mesh_get_surface(mesh.get_rid(), surface)
+				var triangles: int = mesh.surface_get_array_index_len(surface) / 3
+				if triangles < LOD_MIN_TRIANGLES:
+					continue
+				checked += 1
+				var lods: Array = data.get("lods", [])
+				var index_bytes := 2 if int(data.get("vertex_count", 0)) <= 65535 else 4
+				var coarsest := triangles
+				for lod in lods:
+					coarsest = mini(coarsest, (lod["index_data"] as PackedByteArray).size() / index_bytes / 3)
+				var good := lods.size() >= 1 and coarsest <= LOD_MAX_SHARE * triangles
+				lod_ok = lod_ok and good
+				details.append("%s: %d → %d (%d LODs)" % [instance.name, triangles, coarsest, lods.size()])
+		_check("LODs on surfaces of %d+ triangles" % LOD_MIN_TRIANGLES, lod_ok,
+			("%d checked: " % checked) + ", ".join(details) if checked > 0 else "none that large")
 
 	# A decorative asset: its height, from the meshes' bounds.
 	if manifest.has("height_m"):
