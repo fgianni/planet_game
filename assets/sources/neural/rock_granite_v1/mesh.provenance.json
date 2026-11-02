@@ -1,0 +1,15 @@
+{
+  "code_revision": "ff21fc4",
+  "gpu": "NVIDIA GeForce RTX 5070 Ti",
+  "host": "fred@192.168.31.25",
+  "input_image_sha256": "01b8ad6287133d5df43d9534ebfae5480c0f5989bd9c8d4df4676f06cbac7317",
+  "licence": "Stability AI Community License (commercial use up to USD 1 M annual revenue)",
+  "model": "stabilityai/stable-fast-3d",
+  "model_revision": "f0c9a8ffd62cb1bbc8a7a53c9f87a0be1b6be778",
+  "output_sha256": "58160867eb6023f8764f62d7e9b74fdb87c7ef8fcb47ed3b0454b09adc448e4b",
+  "peak_gpu_memory_gib": 8.64,
+  "seconds": 7.1,
+  "step": "image to 3D",
+  "texture_resolution_px": 2048,
+  "torch": "2.14.1+cu130"
+}

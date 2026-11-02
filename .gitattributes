@@ -1,0 +1,12 @@
+# AssetForge's generated sources (assets/sources/): binaries in Git LFS; the
+# provenance records (JSON) stay in ordinary git, readable and diffable.
+assets/sources/**/*.glb filter=lfs diff=lfs merge=lfs -text
+assets/sources/**/*.gltf filter=lfs diff=lfs merge=lfs -text
+assets/sources/**/*.png filter=lfs diff=lfs merge=lfs -text
+assets/sources/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+assets/sources/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
+assets/sources/**/*.webp filter=lfs diff=lfs merge=lfs -text
+assets/sources/**/*.exr filter=lfs diff=lfs merge=lfs -text
+assets/sources/**/*.blend filter=lfs diff=lfs merge=lfs -text
+assets/sources/**/*.fbx filter=lfs diff=lfs merge=lfs -text
+assets/sources/**/*.obj filter=lfs diff=lfs merge=lfs -text

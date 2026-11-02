@@ -1,0 +1,21 @@
+{
+  "image_sha256": "01b8ad6287133d5df43d9534ebfae5480c0f5989bd9c8d4df4676f06cbac7317",
+  "licence": "Apache-2.0 (FLUX.2 [klein] 4B, Black Forest Labs)",
+  "model": "flux-2-klein-4b.safetensors",
+  "prompt": "A single weathered granite boulder, about one metre tall, rounded with a few sharp facets, grey with lichen patches, the whole object fully visible and centred, three-quarter view from slightly above, plain flat light-grey studio background, soft even lighting, no shadow on the ground, no other objects, product photograph",
+  "sampler": "euler, Flux2Scheduler, BasicGuider",
+  "seconds": 97.6,
+  "seed": 20261029,
+  "server": {
+    "comfyui": "0.39.0",
+    "devices": [
+      "cuda:0 NVIDIA GeForce RTX 5070 Ti : cudaMallocAsync"
+    ]
+  },
+  "size_px": 1024,
+  "stage": "concept image",
+  "steps": 4,
+  "text_encoder": "qwen_3_4b.safetensors",
+  "vae": "flux2-vae.safetensors",
+  "workflow_sha256": "1f9f3cd75bf45681814d52c0bd82e16eb4da088a7458411a120a0326420b6210"
+}
