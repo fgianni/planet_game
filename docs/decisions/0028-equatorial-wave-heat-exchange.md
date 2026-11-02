@@ -274,6 +274,30 @@ L6 (V4), and V5.
   (31.3 m/s). The window now allows for the rounding.
 - The suite passes (111). The L3 two-year state hash is
   `d4ccd25158c01ed7`.
-- **Still to run:** V8 at L4 (V3) and V11 at L5 and L6 (V4), on the RTX
-  5070 Ti machine's P-cores once the L5 V8 run there ends.
+- **V8 at L4 (V3), 2026-10-30** (RTX 5070 Ti machine, P-cores, the same
+  build bits; `build/adr0028s11/v8_L4_c25.log`, 82 min): **fails, as
+  expected**: reference minus climate +0.473 K (limit 0.3 K), precipitation
+  ratio 0.970 (passes). Recorded, not tuned.
+
+  | | Climate | Reference |
+  |---|---:|---:|
+  | Mean (K) | 291.19 | 291.66 |
+  | Land / ocean (K) | 287.37 / 292.75 | 288.22 / 293.07 |
+  | Land − ocean (K) | −5.38 | −4.85 |
+  | P2 equator-to-pole (K) | **45.8** | **46.5** |
+  | Rain (m/yr) | 1.505 | 1.460 |
+  | Tropical ocean air (K) | 284.4 / 264.2 / 231.1 | 291.2 / 272.2 / 240.4 |
+  | Bottom mass flux 10° S / 10° N (Sv) | −1.0 / −17.5 | +48.1 / −34.3 |
+  | Latent heat to land (W/m²) | 2.03 | 23.29 |
+
+  The P2 difference now agrees within 0.7 K (against 38.9 / 48.8 K at
+  c = 50); the tropical air stays 7–9 K colder and land's water a tenth,
+  the structural part (INV-04, "The remaining 4–5 K").
+- **V11 (V4), 2026-10-30,** on the i9-14900KS's P-cores
+  (`build/adr0028s11/v11_L5.log`, `v11_L6.log`): every expectation passes.
+  L5/250 412 s (budget 607.5 s), 1 fallback month; L6/250 1 542 s (budget
+  2 025 s), 3 fallback months, none with no heat; no failed circulation
+  month; energy 1.1e-5 / 1.3e-5 and water 1.7e-4 / 3.7e-4 of their gates;
+  means 287.43 / 287.47 K. The budgets were set on the i9-9900K
+  development machine, so these times are not a pass there.
 

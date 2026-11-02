@@ -1415,6 +1415,33 @@ were) before proposing an ADR.
   (at most 16 Sv in its bottom layer) over dry air (1.7 and 0.25 g/kg
   above the bottom layer), so the eddies carry the latent heat.
 
+**V8 at L5 (2026-10-30), ADR-0028 at c = 50:** run on the RTX 5070 Ti
+machine's P-cores after this machine froze on 2026-10-29
+(`build/inv04/v8_L5_3yr.log`; the frozen run's partial log is kept).
+**It fails: reference minus climate −3.195 K, precipitation ratio 0.975.**
+
+| | Climate L4 | Climate L5 | Reference L4 | Reference L5 |
+|---|---:|---:|---:|---:|
+| Mean (K) | 290.40 | 290.70 | 290.26 | **287.50** |
+| Land / ocean (K) | 287.01 / 291.79 | 287.77 / 291.89 | 286.62 / 291.74 | 284.78 / 288.61 |
+| P2 equator-to-pole (K) | 38.9 | 38.8 | 48.8 | **60.1** |
+| Rain (m/yr) | 1.430 | 1.425 | 1.424 | 1.389 |
+| Tropical ocean air (K) | 281.1 / 259.0 / 229.6 | 281.2 / 259.2 / 229.6 | 290.4 / 271.4 / 239.9 | 290.1 / 272.7 / 242.6 |
+| Bottom mass flux 10° S / 10° N (Sv) | −4.0 / −13.1 | −1.4 / −15.1 | +51.9 / −36.0 | +37.0 / −19.9 |
+| Latent heat to land (W/m²) | 1.67 | 1.74 | 23.00 | 23.19 |
+
+- **Reference mode is not converged between L4 and L5:** 2.8 K colder,
+  its equator-to-pole difference 48.8 → 60.1 K (Earth's is about 42 K).
+  Climate mode, whose transport is parameterised, hardly changes.
+- So V8's verdict depends on the level: the L4 pass at c = 50 was partly
+  an L4 result. ADR-0023 §16 chose L4 as the lowest level at which the
+  reference dynamics' contrast is near Earth's and climate mode's; L5
+  contradicts that its contrast is settled there. Whether L6 settles it
+  (reference mode at L6 costs about 4 times L5's, some 2 days on the
+  i9-14900KS) is open.
+- The tropical air's coldness and land's water deficit are the same at
+  L4 and L5: they are not a resolution effect.
+
 **Running at the end of 2026-10-29** (detached; logs in `build/inv04/`):
 - V8 at L5 under ADR-0023 §16.2 (`v8_L5_3yr.log`, started 09:48, about
   12 h: L4's convergence, open task 6);

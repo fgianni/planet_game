@@ -702,3 +702,13 @@ V8 fails: 0.936 K against 0.3 K, and a reference/climate precipitation
 ratio of 0.901 against ±10 %. The three-year means are within 0.15 K
 of §16.1's one-year L4 values (0.924 K, 0.901), so the year-to-year
 spread is not what fails the gate.
+
+**16.5 V8 at L5 (2026-10-30, INV-04).** The same protocol at L5 (the
+preset of 2026-10-29: ADR-0028 at c = 50 m/s) fails: reference minus
+climate −3.195 K, precipitation ratio 0.975. Reference mode at L5 is 2.8 K
+colder than at L4 and its P2 equator-to-pole difference rises from 48.8
+to 60.1 K, while climate mode hardly changes (290.70 against 290.40 K). So
+§16.2's L4 is not where the reference dynamics' climate has settled, and
+V8 at L4 is a level-dependent measure. A decision on V8's level (L5, L6
+or an extrapolation) is open.
+
