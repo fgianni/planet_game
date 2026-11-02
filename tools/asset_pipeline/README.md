@@ -6,8 +6,9 @@ CTest). Phase 2's chain works (a FLUX.2 klein concept image, Stable Fast 3D
 on a remote GPU worker, a clean-up with a collision hull, provenance and
 human approval: `rock_granite_v1`, approved). Phase 3's proof of concept
 works (the five reference modules, the power chain laid out, assembled in
-Godot, re-assembled deterministically). A viewer shows them. Phase 4 is
-not started; the compile from assembly to network node waits for P1 and
+Godot, re-assembled deterministically). A viewer shows them. Phase 4:
+batch builds with a cache and a searchable catalogue (2026-11-02); an LOD
+check remains open; the compile from assembly to network node waits for P1 and
 ADR-0031's acceptance.
 
 A first test of the AssetForge proposal
@@ -150,6 +151,33 @@ python3 tools/asset_pipeline/cli/assemble.py --blueprint assets/blueprints/power
   30.6 m: that pipe now rises to 1.6 m before crossing. Modules are still
   placed greedily, in the blueprint's order.
 
+## Phase 4, batch builds and a catalogue (2026-11-02)
+
+```bash
+python3 tools/asset_pipeline/cli/build_all.py --blender /snap/bin/blender \
+    --godot ../../Godot_v4.7.2-stable_linux.x86_64
+python3 tools/asset_pipeline/cli/catalogue.py   # assets/generated/catalogue/index.html
+```
+
+- **Batch builds with a cache** (`cli/build_all.py`): every specification,
+  each checked first. An asset's build key is the SHA-256 of what decides
+  its bytes: its specification, its Blender script, the Blender version,
+  and for a neural candidate its source mesh and the records before it.
+  A matching key reuses the build (`build_key.json` beside it); the
+  validator runs on every asset every time, and the Godot result is kept
+  with the key (`checks.json`), so a cached asset shows its last result.
+  Six assets: 61 s built and checked in Godot, 0.5 s cached. The rock's
+  approval holds through a rebuild, its bytes being the same.
+- **A searchable catalogue** (`cli/catalogue.py`): one static page,
+  offline, from `report.json` and each asset's specification, manifest,
+  provenance and preview: type, status, validator and Godot results,
+  approval, size, triangles, file size, ports, animations and their
+  bindings, materials and licences; a search box filters on all of them.
+- **LODs: a policy, not yet a check.** Godot's editor import generates
+  mesh LODs by default; the assets keep their triangle budgets. No public
+  API reports an imported mesh's LOD count at runtime, so no check claims
+  it; a real one remains open.
+
 ## Phase 2, a first neural test (2026-10-29)
 
 A decorative rock, image to mesh, outside the repository's code paths
@@ -265,7 +293,7 @@ is pending.
   Hunyuan3D-2.1's licence excludes the EU.
 - **Beyond the proof of concept:** a placement that is not greedy, and the compile from assembly
   to network node (ADR-0031 §3: PlanetSim's, not Godot's, from P1).
-  Phase 4 (batch generation, searchable previews, caching) is untouched.
+  Phase 4's LOD check is open.
 - **CI:** CTest runs `assetforge_specifications` everywhere (the
   specifications pass, and eight broken copies fail with the expected
   messages) and `assetforge_layout` (the power chain feasible, its routes
