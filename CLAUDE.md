@@ -43,47 +43,35 @@ state/fluxes rather than scripted climate modifiers; - production code
 and tests together; - do not proceed to M9 unless explicitly requested.
 
 Current investigation: [INV-04](docs/tasks/INV-04-v8-transport-and-radiation.md),
-the remaining V8 gap. INV-03 completed the post-fallback refit and restart
-checks. V8 is now measured at L4 over three years (ADR-0023 §16, accepted
-2026-10-22). Its baseline fails: 0.936 K against the 0.3 K limit, and a
-0.901 reference/climate precipitation ratio against ±10 %. The gap is
-reference land 9.2 K warmer and its ocean 2.4 K colder. The earlier
-L3 measurement was 4.148 K. Its cause, found 2026-10-23: climate mode's
-land air is cold and dry because its transport brings almost no water to
-land (1.55 against reference mode's 23.3 W/m² of latent heat), which
-weakens the greenhouse over land. Most of the contrast was inside the
-transport's groups; ADR-0027 (accepted 2026-10-23, implemented 2026-10-24)
-mixes each group's heat (`heat_group_mixing = 1` in the preset), with the
-radiation pair refitted to τ_d = 1.147, κ_v = 0.005735 m²/kg (L4/150
-287.985 K). ADR-0028 (accepted and implemented 2026-10-26) adds the
-equatorial waves' exchange to the eddy diffusivity (c = 50 m/s), with
-the pair refitted to τ_d = 1.062696, κ_v = 0.00531348 m²/kg (L4/150
-288.001 K). **V8 passes at L4 by agreement:** −0.146 K, precipitation
-ratio 0.996, land 0.39 K and ocean 0.05 K from reference mode; climate
-land's air stays dry (1.7 against 23.0 W/m² of latent heat). The waves'
-cold starts made ADR-0024 §9's fallback fail. ADR-0024 §9.6 (accepted
-2026-10-26) restarts the fallback's columns from the step's start, and a
-fallback that fails too moves no heat that month. V11: L5/250 502.6 s
-(3 fallback months), L6/250 1,803.7 s (4 fallback months, one with no
-heat); all but one are in the first year. The column gate is on the
-residual, 1e-9 W/m² (ADR-0027 §10). INV-04's open tasks list the rest.
-The accepted ADR-0024 §9 fallback is on in the Earth-like preset: a coupled
-month over 100 W/m² consistency residual uses the diffusive transport.
-Before ADR-0027, with the pair τ_d = 1.111, κ_v = 0.005555 m²/kg, the
-L4/150 mean was 287.984 K, the L5/250 run took 308.3 s, and the L6/250
-run took 1,061.1 s. Both performance runs pass their budget and column
-convergence gates; L6 has 10 fallback months and no failed circulation
-months. Two-year L6 runs on one and four workers have the same hash
-through eight fallback months. An L4 PSNAP restart before the month-2
-fallback, using INV-02's radiation pair, reproduces the fallback and the
-uninterrupted six-month hash with four versus one workers. It restores the
-climate scheduler directly; `PlanetRun` still has no resume constructor.
-The refitted L6 restart also passes (2026-10-22): a PSNAP at tick 175317
-before month 4 reproduces all four monthly hashes through months 4–7 with
-four versus one workers, including three fallback months and the next
-non-fallback month. Energy/water gates and column convergence pass. Changes
-to the fallback or nonlinear solve require an architecture decision. M9 must
-not start unless explicitly requested.
+V8 (climate–reference parity), measured at L4 over three years (ADR-0023
+§16). Its first cause (2026-10-23): climate mode's land air is cold and dry
+because its transport brings almost no water to land. ADR-0027 (accepted
+2026-10-23) mixes each transport group's heat (`heat_group_mixing = 1`).
+ADR-0028 (accepted 2026-10-26) adds the equatorial waves' exchange to the
+eddy diffusivity; at c = 50 m/s V8 passed at L4 (−0.146 K), but by
+compensation. ADR-0029 (proposed: land's water in climate mode) found
+(2026-10-30) that at the same sea-surface temperature climate mode's
+tropical air is 9–12 K colder than reference mode's, its Hadley overturning
+4–10 times weaker, its water held in the bottom layer, and the waves
+flattened its equator-to-pole difference (P2 38.9 against 48.8 K).
+**ADR-0028 §11 (accepted with the user 2026-10-30): c = 25 m/s,** the
+radiation pair refitted to τ_d = 1.1298584, κ_v = 0.0056492919 m²/kg
+(L4/150 288.009 K). V8 at L4 then fails as expected, +0.473 K
+(precipitation ratio 0.970), with P2 within 0.7 K of reference mode's;
+V11 passes on the i9-14900KS (L5/250 412 s, L6/250 1,542 s). What remains
+looks structural: climate mode's rain is 99 % Betts–Miller's from its bottom
+layer, reference mode's 79 % from resolved ascent aloft. **V8 at L5
+(c = 50) fails at −3.195 K: reference mode is not converged between L4 and
+L5** (2.8 K colder at L5, P2 48.8 → 60.1 K; climate mode hardly changes),
+so V8 at L4 is level-dependent (ADR-0023 §16.5). **V8 at L6 (c = 25) runs
+on the RTX 5070 Ti machine** (started 2026-11-02 09:16, about 29 h; log
+`~/src/planet_game_runs/a3db687/build/inv04/v8_L6_c25.log` there): it
+decides whether reference mode settles by L5. Until then nothing is tuned
+against V8. ADR-0024 §9's fallback (R_f = 100 W/m², with §9.6's restart) is
+on in the preset; the column gate is on the residual, 1e-9 W/m² (ADR-0027
+§10); `PlanetRun` has no resume constructor. INV-04's open tasks list the
+rest. Changes to the fallback or nonlinear solve require an architecture
+decision. M9 must not start unless explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is
