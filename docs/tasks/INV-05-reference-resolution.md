@@ -41,3 +41,21 @@ climate mode's only, but the radiation pair differs between the two.)
 2. Then, by what 1 shows: the dynamics' damping and friction against
    resolution, the resolved eddy heat transport, or the cryosphere's
    growth.
+
+## What depends on resolution in reference mode (code read, 2026-11-03)
+
+| Term | Scaled with resolution? | Expected effect at L5–L6 |
+|---|---|---|
+| ∇⁴ hyperviscosity (`hyperviscosity_for_damping_time`) | yes: the grid-scale mode decays in 8 h at every level, ν ∝ d̄⁴ | a fixed physical wavelength is damped 16 times less per level: stronger resolved eddies (usual for the scheme) |
+| Surface drag | no dependence: bulk coefficients (1.5e-3 ocean, 4e-3 land) | — |
+| Sub-step count (`substep_count`) | yes: CFL on the mesh's smallest spacing, assuming winds ≤ 150 m/s | the guard was raised from 100 to 150 m/s once already, after a Held–Suarez spin-up reached 100.85 m/s (ADR-0011 §13) |
+| **Orography** (`dynamics_orography_max_step_m`) | **no: at most 800 m between neighbours**, a height, not a slope | the steepest slope allowed doubles per level: steeper mountains, stronger forced flow |
+| **Resolved condensation** (τ_c = 12 h, with Betts–Miller's τ_bm = 2 h) | **no:** fixed times | finer cells resolve stronger ascent; latent heat released in one cell drives more ascent there (grid-point storms). The surface step's own note: with τ_c = 3 h, winds passed 150 m/s within 3 hours at L3. Reference mode's convective share falls from 0.21 at L4 to 0.08 at L5 |
+
+Predictions for the trajectories:
+- **orography:** the strongest winds over steep terrain, early, whatever the climate;
+- **grid-point storms:** the strongest winds where condensation is intense (tropics, storm tracks), growing with level.
+
+The trajectory probe records the strongest wind's speed, not its place: if
+the winds are the issue, the next probe records where (latitude, terrain,
+condensation).
