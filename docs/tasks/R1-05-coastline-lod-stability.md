@@ -926,6 +926,36 @@ normals, silhouette and picking are not reconciled by identical colour.
 The atlas is a control only; no fixed raster is approved by ADR-0030 and
 the required shared-coast cell geometry is still absent.
 
+**Local shared-geometry planet-band stand-in (2026-11-03).** The probe-only
+parent/child exporter can now write a fourth mesh, `smooth`, sampled from
+`TerrainRelief::smooth_sample()` on the *same* 256² parent footprint. It is
+clipped and rendered with the same unshaded wet/dry colours as the shared
+detailed-coast parent and four children. This is **not** the production
+dual-cell fan; it isolates relief choice on one patch, with the same camera
+and projection, and cannot establish planet-band coverage or cell-mesh
+hypsometry. Seed 20260928, L4 key 0/4/7/0, OpenGL 3.3 / RTX 2080 Ti,
+512² fixed nadir poses:
+
+| Height (radii) | Common interior px | Shared parent vs children water changes | Smooth vs shared parent changes | Smooth changes >1 px from shared shore |
+|---:|---:|---:|---:|---:|
+| 0.70 | 2,440 | 0 | 117 | 0 |
+| 0.50 | 5,002 | 0 | 251 | 30 |
+| 0.30 | 14,488 | 0 | 718 | 230 |
+| 0.15 | 59,408 | 0 | 3,069 | 1,873 |
+| 0.08 | 199,445 | 0 | 11,018 | 8,561 |
+| 0.04 | 258,064 | 0 | 18,918 | 16,505 |
+
+The shared parent and children use exactly the same coastal sampling lattice,
+so their zero changes are local handoff evidence, not contour-fidelity proof.
+The smooth control's differences show why the filtered relief cannot simply
+be reused for a zooming cell-side coast. The 0.70-radii patch covers less
+than 1% of this 512² frame; a whole-planet representation cannot be inferred
+from it. This test does not compare the actual dual-cell fan, a moving camera,
+production style materials, or the canonical contour at independent points;
+the twice-fine misses and memory/frame-cost gates remain open. The next
+probe must constrain the *actual cell-side geometry* over a broader coastal
+footprint without replacing the whole planet with high-frequency tile meshes.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

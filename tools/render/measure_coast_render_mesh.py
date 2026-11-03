@@ -79,6 +79,11 @@ def main():
             finer_region = ndimage.binary_erosion(common & uv, iterations=2)
             print("  children vs twice-fine relief:", compare(children, ultra, finer_region))
             print("  detail vs twice-fine relief:", compare(detail, ultra, finer_region))
+        if os.path.exists(stem + "-smooth.png"):
+            smooth, sv = read(stem + "-smooth.png")
+            smooth_region = ndimage.binary_erosion(common & sv, iterations=2)
+            print("  smooth vs shared-coast parent:", compare(smooth, parent, smooth_region))
+            print("  smooth vs shared-coast children:", compare(smooth, children, smooth_region))
 
 
 if __name__ == "__main__":

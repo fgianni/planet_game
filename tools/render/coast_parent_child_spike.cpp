@@ -5,6 +5,7 @@
 // Writes prefix-{parent,children,detail}.bin and prefix-focus.txt for
 // godot/tests/probe_coast_render_mesh.gd. Parent coarse step = 4, child = 2,
 // shared coastal step = 1 in a 256 x 256 parent-local canonical lattice.
+// Selected raised-sparse `case` also exports a smooth-relief control mesh.
 #include "sim/planet/run/planet_run.hpp"
 #include "sim/presentation/terrain_tile.hpp"
 
@@ -41,12 +42,13 @@ struct Tile {
     double sea;
     int n;
     std::vector<double> height;
-    Tile(const TerrainRelief& r, TileKey k, double s, int count)
+    Tile(const TerrainRelief& r, TileKey k, double s, int count, bool smooth = false)
         : relief(r), key(k), sea(s), n(count),
           height(static_cast<std::size_t>((n + 1) * (n + 1))) {
         for (int y = 0; y <= n; ++y) for (int x = 0; x <= n; ++x)
             height[static_cast<std::size_t>(y * (n + 1) + x)] =
-                relief.sample(direction(x, y)).elevation_m - sea;
+                (smooth ? relief.smooth_sample(direction(x, y)) :
+                          relief.sample(direction(x, y))).elevation_m - sea;
     }
     Vec3d direction(double x, double y) const {
         const double side = std::ldexp(1.0, key.level);
@@ -803,6 +805,13 @@ int main(int argc, char** argv) {
         save(prefix + "-parent.bin", parent_vertices);
         save(prefix + "-children.bin", child_vertices);
         save(prefix + "-detail.bin", detail);
+        if (selected && sparse) {
+            const Tile smooth_tile(relief, parent_key, terrain.sea_level_m, parent_grid, true);
+            std::vector<Vertex> smooth_vertices;
+            adaptive(smooth_tile, 4, focus, raised, false, false, smooth_vertices);
+            save(prefix + "-smooth.bin", smooth_vertices);
+            std::cout << "smooth-relief control vertices " << smooth_vertices.size() << '\n';
+        }
     }
     if (argc == 5) {
         const Tile denser(relief, parent_key, terrain.sea_level_m, parent_grid * 2);

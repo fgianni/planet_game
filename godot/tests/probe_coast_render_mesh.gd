@@ -34,6 +34,7 @@ func _run() -> void:
 	var altitudes := "0.15,0.08,0.04"
 	var include_ultra := false
 	var face_pair := false
+	var include_smooth := false
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--coast-prefix="):
 			prefix = argument.trim_prefix("--coast-prefix=")
@@ -43,6 +44,8 @@ func _run() -> void:
 			include_ultra = true
 		if argument == "--coast-face-pair":
 			face_pair = true
+		if argument == "--coast-smooth":
+			include_smooth = true
 	var focus_file := FileAccess.open(prefix + "-focus.txt", FileAccess.READ)
 	assert(focus_file != null, "missing focus")
 	var parts := focus_file.get_line().split(" ", false)
@@ -81,6 +84,8 @@ func _run() -> void:
 		var kinds := ["face-same", "face-mixed"] if face_pair else ["parent", "children", "detail"]
 		if include_ultra:
 			kinds.append("ultra")
+		if include_smooth:
+			kinds.append("smooth")
 		for kind in kinds:
 			instance.mesh = _mesh(prefix + "-" + kind + ".bin")
 			for unused in 4:

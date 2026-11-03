@@ -365,5 +365,12 @@ none constitutes validation of a production implementation.
   differences. This is a negative geometry control, not a shared-coast
   implementation: independent within-texel classifications still disagree,
   and the cell mesh's geometry, occlusion and picking are unchanged.
+- A local unshaded geometry control compares a smooth-relief mesh against
+  independently generated detailed-coast parent/children on one 256² L4
+  tile footprint. The shared pair has zero water-mask changes at six fixed
+  nadir poses; smooth versus shared changes 117 pixels at 0.70 radii (only
+  2,440 common interior pixels), rising to 18,918 at 0.04 radii. This is a
+  tile-derived stand-in, **not** a constrained dual-cell fan or a planet-band
+  zoom acceptance test. It does not clear contour fidelity or global cost.
 - Future water-extent semantics remain R5 work. This decision changes only
   the presentation of today's static sea-level boundary.
