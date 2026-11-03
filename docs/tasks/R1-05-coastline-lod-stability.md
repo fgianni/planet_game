@@ -1010,6 +1010,79 @@ This is a cell-domain feasibility diagnostic, **not a passing ≤1 px handoff
 candidate**. Adaptive coast-focused sampling and a conforming transition
 are required before any renderer change.
 
+**Coastal-only dual-fan refinement control (2026-11-03).** The local
+exporter now has `16 adaptive`: it samples the canonical relief on a
+16-subdivision base lattice in each selected *cell-fan* triangle, tests a
+4× sublattice and base-triangle centre for wet/dry sign changes, and
+refines only the mixed base triangles. An unrefined triangle inserts four
+intervals on an edge **only** when that edge belongs to a refined
+neighbour; otherwise its interior remains one triangle. This is a
+presentation-only geometry experiment, not a new cell mesh in Godot.
+
+| Seed 20260928, 0.10-radian cap | L4 | L6 |
+|---|---:|---:|
+| Selected real fan triangles | 57 | 673 |
+| Refined base triangles / all base triangles | 703 / 14,592 | 4,205 / 172,288 |
+| Local exported vertices / bytes | 103,206 / 1.65 MB | 872,136 / 13.95 MB |
+| Shared refined base edges / open cap edges | 1,359 / 28 | 8,284 / 30 |
+| Unpaired exported triangle edges / within 0.10 radii of focus | 410 / 0 | 1,188 / 0 |
+
+The L4 16-adaptive mesh is **identical in water and visibility masks at the
+tested 0.04-radii pose** to the previous uniform-64 fan, while using 1.65 MB
+rather than 11.50 MB of triangle-list data. It therefore still differs
+from the independently generated shared patch in 959/254,016 common
+interior pixels, 58 more than one pixel from the patch shore. The L6
+fixed-pose patch comparison has 145/50,736 changed pixels at 0.04 radii,
+zero more than one pixel from that patch shore; at 0.70 radii only 28
+patch-interior pixels are covered, so it says almost nothing about planet
+scale. The L6 patch was freshly regenerated with the same seed/key
+(0/6/16/0). The edge audit in
+`tools/render/check_coast_cell_fan_spike.py` compares **exact exported
+float32 positions**: rounding to a 0.6 m grid falsely reported 17
+non-manifold L6 edges by collapsing distinct tiny coastal segments. Its
+synthetic regression checks a T-junction and this rounding failure.
+
+Zero unpaired edges within 0.10 radii is local incidence evidence,
+not a crack-free production join. The 410/1,188 open edges are on the
+detached cap; no outer transition to the untouched cell fan, georeferenced
+canonical-contour displacement, normal/skirt/picking test, whole-planet
+cost, moving zoom, or style parity has been implemented. The L4 close-pose
+comparison still fails the **≤1 px** screen criterion. The reduced local
+vertex cost cannot yet be extrapolated to the L6 64 MiB cache gate.
+
+**Open-cap hand-back diagnostic (2026-11-03).** The adaptive fan exporter
+now saves `PREFIX-fan-boundary.csv` for the macro-fan edges touched on only
+one side by its 0.10-radian selected cap. It samples 65 georeferenced points
+per edge from the detailed canonical relief, the *filtered* relief used by
+coarse tiles, and a drawn-height proxy reconstructed from the production
+cell fan's mean-elevation/land-fraction vertex rule. The latter is **not**
+the cell shader's fractional water classifier. The independent
+`tools/render/measure_coast_fan_boundary.py` reader reports linearly
+interpolated sampled crossings and is regression-tested for a missing
+counterpart and a displaced one. Pinned seed 20260928, L4 key 0/4/7/0 and
+L6 key 0/6/16/0 (freshly regenerated patches):
+
+| Open-cap diagnostic | L4 | L6 |
+|---|---:|---:|
+| Macro edges / edges crossed by detailed relief | 19 / 10 | 67 / 13 |
+| Sampled detailed / filtered edge crossings | 22 / 2 | 26 / 4 |
+| Detailed crossings on an edge with no filtered crossing | 20 | 22 |
+| Independent interior sample classes different from filtered / raised-height proxy | 184 / 299 | 287 / 263 |
+| Largest positive-height gap to the coarse cell geometry on an edge | 519 m | 290 m |
+| Largest nearest *same-edge*, linearly matched detailed–filtered crossing gap | 8.11 km | 63.5 km |
+
+The matched-gap figure is not a contour displacement: a detailed crossing
+can be matched to the wrong filtered crossing on that edge, or have no
+counterpart at all; neither field's exact root is solved. These cap edges
+are generally outside the close-pose patch. The results cannot be
+converted into a rendered ≤1 px handoff claim, and filtered relief is not
+the production cell shader. They do show that simply joining the
+canonical cap to the existing coarse/filtered surface along its current
+perimeter would discard sampled coastal crossings or introduce a new
+shoreline transition. A viable cell-side representation needs a
+contour-aware outer strip with matching classification and heights, tested
+against the actual production fan, not just crack-free inner triangulation.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

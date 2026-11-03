@@ -380,5 +380,24 @@ none constitutes validation of a production implementation.
   one pixel from the patch shore. Its 11.5 MB of local triangle-list vertices
   and missing transition back to the unrefined fan are not a viable bounded,
   crack-free implementation. This does not change the accepted gates.
+- A probe-only adaptive control on those actual fan domains refines only
+  base triangles with sampled canonical wet/dry sign changes and splits
+  neighbouring coarse edges as needed. L4 seed 20260928 at the closest
+  fixed pose reproduces the uniform-64 fan mask with 1.65 MB instead of
+  11.5 MB of local vertices, but still differs from the shared tile patch
+  by 959 pixels (58 over one pixel from the patch shore). L6 exports
+  13.95 MB in the same 0.10-radian cap. Exact float32 edge-incidence audits
+  find no unmatched edges within 0.10 radii of focus, but hundreds remain
+  at the deliberately detached cap. No cell-to-tile transition, canonical
+  contour fidelity, global cache cost or continuous-zoom gate is cleared.
+- On the same cap's **outer** macro-fan perimeter, a separately recorded
+  65-sample-per-edge probe finds 22 detailed versus two filtered shoreline
+  crossings at L4, and 26 versus four at L6; 20/22 detailed crossings have
+  no filtered crossing on their respective edge. The drawn cell-fan height
+  proxy differs from canonical positive height by up to 519/290 m. These
+  sampled-edge numbers are not exact-contour or screen displacement and the
+  cell shader's fractional water classification is different. They rule out
+  treating the unjoined cap as a hand-back to the existing coarse fan;
+  topology, height and classification need a measured outer transition.
 - Future water-extent semantics remain R5 work. This decision changes only
   the presentation of today's static sea-level boundary.
