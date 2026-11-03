@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <exception>
+#include <stdexcept>
 #include <iomanip>
 #include <iostream>
 #include <numbers>
@@ -57,7 +58,12 @@ int main(int argc, char** argv) {
         int samples = 0, steps = 0;
         try {
             while (run.tick() < end) {
-                run.run_until(std::min<SimulationTick>(run.tick() + 10, end));
+                // Whole 10-minute steps: a calendar month does not end on one,
+                // and a target short of the next step would not advance the
+                // run (the month then ends up to 9 minutes late).
+                const SimulationTick before = run.tick();
+                run.run_until(run.tick() + 10);
+                if (run.tick() == before) throw std::runtime_error("the run did not advance");
                 ++steps;
                 if (run.dynamics() != nullptr) max_wind = std::max(max_wind, run.dynamics()->last().max_wind_m_s);
                 const auto& step = run.last_step();
