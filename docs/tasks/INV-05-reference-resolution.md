@@ -92,4 +92,26 @@ L3, first two months: always in the top layer; over terrain ≥ 1 km 10–13 %
 of the maxima against 14 % of edges, over steps ≥ 500 m 12–20 % against
 15 % (no preference for mountains); in rain ≥ 20 mm/day 23–25 % against
 11–14 % (about twice as likely); poleward of 60° 29–39 % against 13 %.
-L4 and L5 follow.
+
+Months 2–12 (after the hot start), the share of hourly maxima against the
+share of edges (`build/inv05/where_L3.log`, `where_L4.log`):
+
+| | L3 | L4 |
+|---|---|---|
+| Terrain ≥ 1 km | 16.8 % vs 13.9 % (×1.2) | 11.5 % vs 9.6 % (×1.2) |
+| Step ≥ 500 m | 22.2 % vs 15.2 % (×1.5) | 13.1 % vs 9.4 % (×1.4) |
+| Rain ≥ 20 mm/day | 8.8 % vs 6.5 % (×1.3) | 20.5 % vs 8.7 % (×2.3) |
+| Tropics (< 30°) | 12.6 % vs 49.6 % (×0.3) | 0.9 % vs 50.0 % (×0.02) |
+| Poleward of 60° | 26.3 % vs 13.3 % (×2.0) | 51.3 % vs 13.2 % (×3.9) |
+| Top layer | 100 % | 99.8 % |
+
+- **Not orography:** mountains are only mildly favoured (×1.2–1.5), the
+  same at both levels; L3's months 9–12 lean more on terrain (40–48 %)
+  than the rest.
+- **High latitudes and rain, more so with level:** at L4 half the maxima
+  are poleward of 60° and their rain association doubles from L3; the
+  tropics have almost none. The zonal-mean jets are also far poleward
+  (62–77° at L5 and L6). Candidates: condensation heating in high-latitude
+  storms concentrated in single cells (grid-point storms), or the polar
+  jets themselves sharpening as the resolution rises.
+- L5 is queued on the RTX 5070 Ti machine after its trajectory run.
