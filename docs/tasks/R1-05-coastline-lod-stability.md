@@ -841,6 +841,27 @@ three-face vertex or skirts/normals, reference contour,
 continuous zoom, production styles or global cost has been rendered here.
 The one-pixel shoreline gate remains open.
 
+**Three-face junction probe (2026-11-03).** At a cube corner the exporter
+independently locates and builds all three incident face tiles. It requires
+their clipped exterior polygons to emit the shared corner on both incident
+edges with the same wet/dry class and float32 camera-relative position.
+`check_coast_parent_child_spike.py --corners` checks all eight unique cube
+corners at L4 and L6 for seeds 42 and 20260928 (32 audits): zero class or
+emitted-corner endpoint mismatches, zero reported float-position gaps. This
+tests the vertex, not whole three-way edge strips or triangle normals.
+
+The `corner-render` probe additionally exports all three raised face tiles
+and the twelve independently generated finer replacements. Two seed-42 L4
+coastal corner patches (face-4 key 0/0 with five sampled face-edge crossings;
+face-5 key 15/15 with three) were rendered through the probe-only unshaded
+Godot viewport at 0.08, 0.04 and 0.02 radii. All six same/mixed comparisons
+have zero water-mask changes in 258,064 common-interior pixels per pose and
+zero visible-mask XOR over the complete 512² images. The centre of the exact
+cube vertex is not itself a sampled shoreline crossing; nearby edge crossings
+provide coastal context. This is fixed-pose same-lattice coverage evidence,
+not a proof of subpixel cracks, normals, skirts, production styles, a
+continuous planet-to-tile zoom or the one-pixel fidelity gate.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

@@ -340,5 +340,13 @@ none constitutes validation of a production implementation.
   footprint removes that probe artifact. These renders do not prove the
   absence of subpixel cracks, three-face continuity, normal/skirt integrity,
   contour fidelity, zoom parity or either style gate.
+- A subsequent probe compares emitted clipped corner endpoints across the
+  three independently generated face tiles at all eight cube corners for two
+  seeds at L4/L6 (32 audits): zero class or endpoint mismatches. Two coastal
+  L4 three-face patches also have zero same-versus-finer water- and visible-mask
+  differences at three unshaded fixed poses each. The exact corner points are
+  not shoreline crossings; nearby edge crossings are sampled. This does not
+  establish three-way normals/skirts, subpixel crack freedom or the broader
+  screen-space and cost gates.
 - Future water-extent semantics remain R5 work. This decision changes only
   the presentation of today's static sea-level boundary.

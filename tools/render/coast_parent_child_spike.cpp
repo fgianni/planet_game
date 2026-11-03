@@ -1,7 +1,7 @@
 // Probe-only ADR-0030 parent/child shared-coast experiment, no renderer change.
 // Build against libPlanetSimPresentation.a and libPlanetSim.a.
 // Usage: coast_parent_child_spike 4|6 prefix [flat|raised|flat-boundary|raised-boundary|raised-sparse] [ultra]
-//        coast_parent_child_spike 4|6 prefix MODE audit|case|face-render seed face x y
+//        coast_parent_child_spike 4|6 prefix MODE audit|case|face-render|corner-render seed face x y
 // Writes prefix-{parent,children,detail}.bin and prefix-focus.txt for
 // godot/tests/probe_coast_render_mesh.gd. Parent coarse step = 4, child = 2,
 // shared coastal step = 1 in a 256 x 256 parent-local canonical lattice.
@@ -397,6 +397,28 @@ OpposingFace across_face(const Tile& tile, int edge) {
     return {{face, tile.key.level, fixed_u ? boundary_index : index,
              fixed_u ? index : boundary_index}, other_edge, reversed};
 }
+struct CornerTile { TileKey key; int x, y; };
+std::array<CornerTile, 3> corner_tiles(const Tile& tile, int x, int y) {
+    const Vec3d direction = tile.direction(x, y);
+    const int ntiles = 1 << tile.key.level;
+    std::array<CornerTile, 3> tiles{};
+    int count = 0;
+    for (std::uint8_t face = 0; face < faces.size(); ++face) {
+        if (dot(direction, faces[face].n) < 0.5) continue;
+        const auto uv = face_coordinates(face, direction);
+        if (std::abs(std::abs(uv[0]) - 1.0) > 1e-10 ||
+            std::abs(std::abs(uv[1]) - 1.0) > 1e-10)
+            throw std::runtime_error("cube corner maps outside face corners");
+        if (count >= 3) throw std::runtime_error("more than three faces at cube corner");
+        const bool high_x = uv[0] > 0.0, high_y = uv[1] > 0.0;
+        tiles[static_cast<std::size_t>(count++)] = {
+            {face, tile.key.level, static_cast<std::uint32_t>(high_x ? ntiles - 1 : 0),
+             static_cast<std::uint32_t>(high_y ? ntiles - 1 : 0)},
+            high_x ? tile.n : 0, high_y ? tile.n : 0};
+    }
+    if (count != 3) throw std::runtime_error("cube corner does not have three faces");
+    return tiles;
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -409,14 +431,16 @@ int main(int argc, char** argv) {
     const bool selected = argc == 9;
     const bool audit = selected && std::string(argv[4]) == "audit";
     const bool face_render = selected && std::string(argv[4]) == "face-render";
+    const bool corner_render = selected && std::string(argv[4]) == "corner-render";
     if (argc >= 5 && (selected ? (std::string(argv[4]) != "audit" &&
                                    std::string(argv[4]) != "case" &&
-                                   std::string(argv[4]) != "face-render") :
+                                   std::string(argv[4]) != "face-render" &&
+                                   std::string(argv[4]) != "corner-render") :
                                   std::string(argv[4]) != "ultra")) return 2;
     const bool raised = mode == "raised" || mode == "raised-boundary" || mode == "raised-sparse";
     const bool fine_boundary = mode == "flat-boundary" || mode == "raised-boundary";
     const bool sparse = mode == "raised-sparse";
-    if (face_render && !sparse) return 2;
+    if ((face_render || corner_render) && !sparse) return 2;
     Scenario scenario;
     scenario.seed = selected ? std::stoull(argv[5]) : 20260928U;
     scenario.subdivision = level;
@@ -445,7 +469,7 @@ int main(int argc, char** argv) {
         }
     }
     if (focus_x < 0) {
-        if (!audit) throw std::runtime_error("parent has no sampled coast");
+        if (!audit && !corner_render) throw std::runtime_error("parent has no sampled coast");
         focus_x = focus_y = parent_grid / 2;
     }
     int render_edge = -1, render_crossing = -1;
@@ -474,9 +498,14 @@ int main(int argc, char** argv) {
         }
         if (render_edge < 0) throw std::runtime_error("face-render tile has no edge crossing");
     }
+    if (corner_render && !((parent_key.x == 0 || parent_key.x + 1 == (1U << level)) &&
+                           (parent_key.y == 0 || parent_key.y + 1 == (1U << level))))
+        throw std::runtime_error("corner-render requires a cube-corner tile");
     const Vec3d focus = face_render ? parent.direction(
         render_edge == 1 ? parent_grid : render_edge == 3 ? 0 : render_crossing + 0.5,
         render_edge == 2 ? parent_grid : render_edge == 0 ? 0 : render_crossing + 0.5) :
+        corner_render ? parent.direction(parent_key.x == 0 ? 0 : parent_grid,
+                                         parent_key.y == 0 ? 0 : parent_grid) :
         parent.direction(focus_x + 0.5, focus_y + 0.5);
     std::vector<Vertex> parent_vertices, child_vertices, detail;
     const Counts parent_counts = adaptive(parent, 4, focus, raised, fine_boundary, sparse, parent_vertices);
@@ -684,6 +713,48 @@ int main(int argc, char** argv) {
         throw std::runtime_error("clipped parent edge disagrees with finer opposite-face tiles: " +
             std::to_string(mixed_face_segments.mismatches) + " intervals, max endpoint gap " +
             std::to_string(mixed_face_segments.max_position_gap_m) + " m");
+    std::size_t corner_faces = 0, corner_class_mismatches = 0, corner_endpoint_mismatches = 0;
+    double corner_max_gap_m = 0.0;
+    if (sparse && (parent_key.x == 0 || parent_key.x + 1 == (1U << level)) &&
+                  (parent_key.y == 0 || parent_key.y + 1 == (1U << level))) {
+        const int x = parent_key.x == 0 ? 0 : parent_grid;
+        const int y = parent_key.y == 0 ? 0 : parent_grid;
+        const auto triplet = corner_tiles(parent, x, y);
+        std::array<float, 3> first_position{};
+        bool first_class = false;
+        for (const auto& item : triplet) {
+            const Tile tile(relief, item.key, terrain.sea_level_m, parent_grid);
+            std::vector<Vertex> vertices;
+            const Counts counts = adaptive(tile, 4, focus, raised, false, true, vertices);
+            const bool wet = tile.at(item.x, item.y) <= 0.0;
+            const auto position = drawn_position(tile, tile.point(item.x, item.y), focus, raised, wet);
+            // The clipped polygon must actually emit this corner on both
+            // incident exterior edges, not merely sample the same height.
+            for (int edge : {item.x == 0 ? 3 : 1, item.y == 0 ? 0 : 2}) {
+                bool found = false;
+                const bool at_start = (edge == 1 || edge == 3 ? item.y : item.x) == 0;
+                for (const auto& segment : counts.segments[static_cast<std::size_t>(edge)]) {
+                    const auto& endpoint = at_start ? segment.first : segment.last;
+                    if ((at_start ? segment.start == 0.0 : segment.end == parent_grid) &&
+                        segment.water == wet && endpoint == position)
+                        found = true;
+                }
+                corner_endpoint_mismatches += !found;
+            }
+            if (corner_faces++) {
+                corner_class_mismatches += wet != first_class;
+                for (int axis = 0; axis < 3; ++axis)
+                    corner_max_gap_m = std::max(corner_max_gap_m,
+                        std::abs(static_cast<double>(position[static_cast<std::size_t>(axis)]) -
+                                 first_position[static_cast<std::size_t>(axis)]) * mesh->radius_m());
+            } else {
+                first_class = wet;
+                first_position = position;
+            }
+        }
+        if (corner_class_mismatches || corner_endpoint_mismatches || corner_max_gap_m > 1e-5)
+            throw std::runtime_error("independently emitted three-face corner disagrees");
+    }
     if (face_render) {
         const OpposingFace opposite = across_face(parent, render_edge);
         std::vector<Vertex> same = parent_vertices, mixed = parent_vertices;
@@ -703,10 +774,32 @@ int main(int argc, char** argv) {
         std::cout << "face render edge " << render_edge << " crossing " << render_crossing
                   << " same/mixed vertices " << same.size() << '/' << mixed.size() << '\n';
     }
-    if (!audit && !face_render) for (int y = 0; y < parent_grid; ++y) for (int x = 0; x < parent_grid; ++x)
+    if (corner_render) {
+        const auto triplet = corner_tiles(parent, parent_key.x == 0 ? 0 : parent_grid,
+                                         parent_key.y == 0 ? 0 : parent_grid);
+        std::vector<Vertex> same = parent_vertices, mixed = child_vertices;
+        for (const auto& item : triplet) {
+            if (item.key.face == parent_key.face) continue;
+            const Tile neighbour(relief, item.key, terrain.sea_level_m, parent_grid);
+            adaptive(neighbour, 4, focus, raised, false, true, same);
+            for (int cy = 0; cy < 2; ++cy) for (int cx = 0; cx < 2; ++cx) {
+                const TileKey key{item.key.face, static_cast<std::uint8_t>(level + 1),
+                    item.key.x * 2U + static_cast<std::uint32_t>(cx),
+                    item.key.y * 2U + static_cast<std::uint32_t>(cy)};
+                const Tile finer_tile(relief, key, terrain.sea_level_m, parent_grid / 2);
+                adaptive(finer_tile, 2, focus, raised, false, true, mixed);
+            }
+        }
+        save(std::string(argv[2]) + "-face-same.bin", same);
+        save(std::string(argv[2]) + "-face-mixed.bin", mixed);
+        std::cout << "three-face corner render same/mixed vertices " << same.size()
+                  << '/' << mixed.size() << '\n';
+    }
+    if (!audit && !face_render && !corner_render)
+        for (int y = 0; y < parent_grid; ++y) for (int x = 0; x < parent_grid; ++x)
         square(parent, x, y, 1, focus, raised, detail);
     const std::string prefix = argv[2];
-    if (!audit && !face_render) {
+    if (!audit && !face_render && !corner_render) {
         save(prefix + "-parent.bin", parent_vertices);
         save(prefix + "-children.bin", child_vertices);
         save(prefix + "-detail.bin", detail);
@@ -759,7 +852,10 @@ int main(int argc, char** argv) {
                << " max float-position gap " << face_segments.max_position_gap_m << " m"
                << "; mixed-face clipped segments " << mixed_face_segments.segments
                << " mismatches " << mixed_face_segments.mismatches
-               << " max float-position gap " << mixed_face_segments.max_position_gap_m << " m"
+                << " max float-position gap " << mixed_face_segments.max_position_gap_m << " m"
+               << "; three-face corner faces/class/endpoint mismatches " << corner_faces
+               << '/' << corner_class_mismatches << '/' << corner_endpoint_mismatches
+               << " max float-position gap " << corner_max_gap_m << " m"
               << "; parent + children sampling/mesh "
               << std::chrono::duration<double>(adaptive_done - start).count() << " s\n";
 }

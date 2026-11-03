@@ -1,6 +1,6 @@
 """Reproducible geometry-only ADR-0030 probe checks.
 
-Usage: python3 tools/render/check_coast_parent_child_spike.py /tmp/opencode/coast_parent_child_spike [--all-faces|--coastal-faces]
+Usage: python3 tools/render/check_coast_parent_child_spike.py /tmp/opencode/coast_parent_child_spike [--all-faces|--coastal-faces|--corners]
 The C++ exporter must be built separately against the presentation/core archives.
 """
 import re
@@ -27,10 +27,14 @@ def run(executable, mode, seed, level, face, x, y):
     assert face, output
     mixed = re.search(r"mixed-face clipped segments (\d+) mismatches (\d+) max float-position gap (\S+) m", output)
     assert mixed, output
+    corner = re.search(r"three-face corner faces/class/endpoint mismatches (\d+)/(\d+)/(\d+) max float-position gap (\S+) m", output)
+    assert corner, output
     if mode == "raised-sparse":
         assert int(face[4]) == 0 and float(face[5]) == 0, output
         assert int(mixed[2]) == 0 and float(mixed[3]) == 0, output
         assert int(mixed[1]) == int(face[3]), output
+        assert (int(corner[1]), int(corner[2]), int(corner[3]), float(corner[4])) in (
+            (0, 0, 0, 0.0), (3, 0, 0, 0.0)), output
     assert count("boundary coverage errors") == 0, output
     return (count("child seam unmatched vertices"),
             count("parent/child outer edge unmatched vertices"),
@@ -39,12 +43,12 @@ def run(executable, mode, seed, level, face, x, y):
             (int(segments[3]), int(segments[4])),
             (int(neighbour[1]), int(neighbour[2])),
             (int(face[1]), int(face[2]), int(face[3])),
-            int(mixed[1]))
+            int(mixed[1]), int(corner[1]))
 
 
 def main():
     if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and
-                                     sys.argv[2] not in ("--all-faces", "--coastal-faces")):
+                                     sys.argv[2] not in ("--all-faces", "--coastal-faces", "--corners")):
         raise SystemExit(__doc__)
     executable = sys.argv[1]
     cases = [
@@ -72,7 +76,17 @@ def main():
               f"same/mixed cube-face segments {sparse[6][2]}/{sparse[7]} "
               f"with {sparse[6][1]} crossings; "
               f"vertices {old[3]} -> {sparse[3]} (all-edge {full[3]})")
-    if len(sys.argv) == 3:
+    if len(sys.argv) == 3 and sys.argv[2] == "--corners":
+        for seed in (42, 20260928):
+            for level in (4, 6):
+                for face in (0, 1):
+                    for x in (0, (1 << level) - 1):
+                        for y in (0, (1 << level) - 1):
+                            result = run(executable, "raised-sparse", seed, level, face, x, y)
+                            assert result[8] == 3 and result[:3] == (0, 0, 0)
+        print("32 independently generated three-face corner audits (8 corners x 2 seeds x L4/L6): "
+              "zero class, clipped-endpoint or float-position mismatches")
+    if len(sys.argv) == 3 and sys.argv[2] != "--corners":
         edges = crossings = 0
         coastal_edges = 0
         indices = (0, 3, 7, 11, 15) if sys.argv[2] == "--coastal-faces" else (8,)
