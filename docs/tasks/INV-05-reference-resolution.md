@@ -71,14 +71,17 @@ machine). The largest wind of any step:
 |---|---:|---|---|
 | L3 | 95.5 m/s | 43–58 m/s | 21–34 m/s |
 | L4 | 106.9 m/s | 59–85 m/s | 26–35 m/s |
-| L5 | 124.0 m/s | 89–117 m/s (months 2–6) | 39–46 m/s |
-| L6 | 143.0 m/s | (running) | 41 m/s (month 1) |
+| L5 | 124.0 m/s | 76–117 m/s (months 2–16) | 36–46 m/s |
+| L6 | 143.0 m/s | 134, 128 m/s (months 2–3) | 50–54 m/s (months 2–3) |
 
 - **Not the hot start alone:** after month 1's peak each level settles at
   its own level of strongest wind, about 1.4 times per level (≈ 50, 70,
   100 m/s at L3, L4, L5); at L6 that reaches the 150 m/s bound, as its V8
   run did in year 2.
 - **The maxima are local:** the zonal-mean jets are 20–46 m/s.
+- L5 stopped at month 16 and L6 at month 3 when the RTX 5070 Ti machine
+  was shut down (2026-11-03; `traj_L5_partial16.log`); L6 restarted from
+  the start, and L5's 16 months are kept as they are.
 - The P2 difference also grows with level (after two years about 29 K at
   L3 and 37 K at L4; 48 K at L5 after six months), all levels still cooling
   from the start (the tropics 319 → 305 K in two years).
