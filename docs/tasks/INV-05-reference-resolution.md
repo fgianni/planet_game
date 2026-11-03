@@ -59,3 +59,37 @@ Predictions for the trajectories:
 The trajectory probe records the strongest wind's speed, not its place: if
 the winds are the issue, the next probe records where (latitude, terrain,
 condensation).
+
+## 1. Spin-up trajectories (2026-11-03)
+
+From the same initial state, reference mode month by month
+([`tools/v8/reference_trajectory_probe.cpp`](../../tools/v8/reference_trajectory_probe.cpp);
+`build/inv05/traj_L3.log`, `traj_L4.log` here; L5 and L6 on the RTX 5070 Ti
+machine). The largest wind of any step:
+
+| Level | Month 1 (the hot start) | Months 2–24 | Southern zonal-mean jet |
+|---|---:|---|---|
+| L3 | 95.5 m/s | 43–58 m/s | 21–34 m/s |
+| L4 | 106.9 m/s | 59–85 m/s | 26–35 m/s |
+| L5 | 124.0 m/s | 89–117 m/s (months 2–6) | 39–46 m/s |
+| L6 | 143.0 m/s | (running) | 41 m/s (month 1) |
+
+- **Not the hot start alone:** after month 1's peak each level settles at
+  its own level of strongest wind, about 1.4 times per level (≈ 50, 70,
+  100 m/s at L3, L4, L5); at L6 that reaches the 150 m/s bound, as its V8
+  run did in year 2.
+- **The maxima are local:** the zonal-mean jets are 20–46 m/s.
+- The P2 difference also grows with level (after two years about 29 K at
+  L3 and 37 K at L4; 48 K at L5 after six months), all levels still cooling
+  from the start (the tropics 319 → 305 K in two years).
+
+## 2. Where the strongest winds are (2026-11-03)
+
+Every hour, the edge and layer with the largest normal wind, against the
+same shares over all edges
+([`tools/v8/reference_wind_location_probe.cpp`](../../tools/v8/reference_wind_location_probe.cpp)).
+L3, first two months: always in the top layer; over terrain ≥ 1 km 10–13 %
+of the maxima against 14 % of edges, over steps ≥ 500 m 12–20 % against
+15 % (no preference for mountains); in rain ≥ 20 mm/day 23–25 % against
+11–14 % (about twice as likely); poleward of 60° 29–39 % against 13 %.
+L4 and L5 follow.
