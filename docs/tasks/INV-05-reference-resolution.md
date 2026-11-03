@@ -124,7 +124,7 @@ share of edges (`build/inv05/where_L3.log`, `where_L4.log`):
   does not (×1.3, ×2.3, ×1.9).** Grid-point storms are the weaker
   candidate; the polar caps are where resolution matters.
 
-## 3. The strongest winds' structure (2026-11-03, running)
+## 3. The strongest winds' structure (2026-11-03)
 
 Every hour, the cell with the fastest top-layer wind: its speed against
 its neighbours' mean (a spike or a smooth jet), its eastward share u/|V|,
@@ -133,3 +133,38 @@ its rain against its neighbours', and its latitude in 10° bins from 50°
 reference mode leaves the circulation's vertical mass flux empty, so the
 ascent ratio is not available). L3, month 1: 56 m/s, ×1.30 its neighbours,
 eastward share 0.96, rain ×1.27, all equatorward of 70°: a smooth zonal jet.
+
+Months 2–12 (`build/inv05/shape_L3.log`, `shape_L4.log`, `shape_L5.log`;
+the rain ratio as a median, its mean dominated by cells whose neighbours
+hardly rain):
+
+| | L3 | L4 | L5 |
+|---|---:|---:|---:|
+| Fastest cell wind, top layer | 46.0 m/s | 59.8 m/s | 72.0 m/s |
+| Against its neighbours' mean | ×1.32 | ×1.19 | ×1.10 |
+| Eastward share u/\|V\| | 0.96 | 0.95 | 0.95 |
+| Rain against its neighbours' (median) | ×1.44 | ×1.61 | ×3.51 |
+| \|φ\| < 50° / 50–60 / 60–70 / 70–80 / 80–90 | 45 / 39 / 16 / 1 / 0 % | 17 / 30 / 42 / 12 / 0 % | 6 / 12 / 42 / 39 / 1 % |
+
+- **A smooth zonal jet, not grid-point spikes:** the fastest cell is
+  hardly faster than its neighbours, and less so at finer levels (×1.32 →
+  ×1.10), and blows eastward (0.95).
+- **The jet strengthens and moves poleward with level:** about +13 m/s
+  per level, from 50–60° at L3 to 60–80° at L5 (Earth's eddy-driven jets
+  are at 40–50°). Not at the pole itself (80–90°: ≤ 1 %), so not the mesh
+  or Coriolis near the pole.
+- **Rain under the jet sharpens at L5** (median ×3.5): the storm track
+  under the jet concentrates, though it no longer holds the maxima more
+  often (§2).
+- **The cell winds are 25–35 % below the dynamics' edge maxima** (72 m/s
+  against ≈ 100 m/s at L5): the 150 m/s bound is on the edge-normal winds,
+  which carry grid-scale structure that the cell reconstruction smooths.
+  At L6 the edge maxima are at 134–141 m/s in months 2–5 of the restarted
+  run.
+
+Reading: reference mode's polar caps get colder with level (P2 rises),
+and the jet follows by thermal wind, stronger and farther poleward. The
+question becomes the cause of the colder caps. Next: the caps' energy
+budget by level, the resolved eddy heat transport across 50–70°, the top
+of atmosphere and the surface (ice, snow, cloud) poleward of 60°.
+
