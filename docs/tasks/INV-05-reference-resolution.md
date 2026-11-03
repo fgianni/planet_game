@@ -117,4 +117,19 @@ share of edges (`build/inv05/where_L3.log`, `where_L4.log`):
   (62–77° at L5 and L6). Candidates: condensation heating in high-latitude
   storms concentrated in single cells (grid-point storms), or the polar
   jets themselves sharpening as the resolution rises.
-- L5 is queued on the RTX 5070 Ti machine after its trajectory run.
+- **L5 (2026-11-03, `where_L5.log`), months 2–12:** poleward of 60°
+  83.7 % of the maxima against 13.3 % of edges (×6.3; 98 % in months 6–7),
+  rain ≥ 20 mm/day ×1.9, terrain ≥ 1 km ×1.3, tropics none. **The polar
+  concentration grows with level (×2.0, ×3.9, ×6.3); the rain association
+  does not (×1.3, ×2.3, ×1.9).** Grid-point storms are the weaker
+  candidate; the polar caps are where resolution matters.
+
+## 3. The strongest winds' structure (2026-11-03, running)
+
+Every hour, the cell with the fastest top-layer wind: its speed against
+its neighbours' mean (a spike or a smooth jet), its eastward share u/|V|,
+its rain against its neighbours', and its latitude in 10° bins from 50°
+([`tools/v8/reference_wind_structure_probe.cpp`](../../tools/v8/reference_wind_structure_probe.cpp);
+reference mode leaves the circulation's vertical mass flux empty, so the
+ascent ratio is not available). L3, month 1: 56 m/s, ×1.30 its neighbours,
+eastward share 0.96, rain ×1.27, all equatorward of 70°: a smooth zonal jet.
