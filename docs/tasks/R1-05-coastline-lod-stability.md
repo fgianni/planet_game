@@ -862,6 +862,43 @@ provide coastal context. This is fixed-pose same-lattice coverage evidence,
 not a proof of subpixel cracks, normals, skirts, production styles, a
 continuous planet-to-tile zoom or the one-pixel fidelity gate.
 
+**Continuous-camera zoom baseline (2026-11-03; production unchanged).**
+`godot/tests/probe_coast_handoff.gd --coast-zoom-sweep` holds the same L4
+coastal focus and drives 16 ordered ranges from 1.20 to 0.03 radii through
+the actual `GlobeCamera` altitude-band weights and poses. At each pose it
+settles the terrain tiles, captures the camera-weighted blend, then forces
+cell-only and tile-only images without moving the camera. Run
+`tools/render/measure_coast_zoom.py` on the prefix for central 352² map-style
+water-colour diagnostics. The first attempt at this sweep was **invalid**:
+the camera's per-frame `_process()` reapplied the blend while the forced
+endpoints were being captured, spuriously reporting near-zero changes. The
+probe now explicitly applies each pose and suspends that automatic update
+during capture; the valid rerun reports:
+
+| Range (radii) | Actual tile weight | Deepest drawn tile | Forced endpoint water changes / common px | Deep changes (missing shore treated as distant) |
+|---:|---:|---:|---:|---:|
+| 0.90 | 0.051 | 3 | 4,498 / 116,074 | 420 |
+| 0.70 | 0.501 | 3 | 3,868 / 123,755 | 595 |
+| 0.50 | 0.9996 | 4 | 4,013 / 123,904 | 863 |
+| 0.25 | 1.000 | 5 | 10,240 / 123,904 | 5,635 |
+| 0.10 | 1.000 | 6 | 6,312 / 123,904 | 4,711 |
+| 0.03 | 1.000 | 8 | 14,145 / 123,904 | 12,700 |
+
+At the closest range the cell-only mask contains no central shoreline,
+while the tile-only mask contains a visible island (the largest changed
+component has 14,145 pixels). The zoom metric treats a missing counterpart
+shore as infinitely distant, rather than erroneously counting its interior
+as zero-distance; this count is not a matched-contour displacement. The unit
+test pins the missing-island case. The blend image moves from
+the cell mask toward the tile mask as its actual weight rises (at 0.70 radii,
+3,044 changed pixels versus cell and 1,752 versus tile). These are **forced
+same-pose endpoint colour comparisons** at ordered camera positions, not
+georeferenced contour displacements between consecutive frames or a test of
+the candidate clipped geometry on the cell mesh. The production geometry,
+occlusion and picking still disagree. No one-pixel implementation gate is
+claimed; a shared-coast cell representation and full rendered zoom remain
+the next blocker.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

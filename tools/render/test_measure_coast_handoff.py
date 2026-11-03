@@ -3,6 +3,7 @@
 import unittest
 
 from measure_coast_handoff import components, shore_distance
+from measure_coast_zoom import metrics
 
 
 class CoastMaskTests(unittest.TestCase):
@@ -27,6 +28,24 @@ class CoastMaskTests(unittest.TestCase):
 
     def test_components_are_eight_connected(self):
         self.assertEqual(components({(0, 0), (1, 1), (8, 8)}), [2, 1])
+
+    def test_zoom_metrics_keep_blend_and_endpoints_separate(self):
+        valid = {(x, y) for x in range(12) for y in range(12)}
+        cell = {p for p in valid if p[0] < 4}
+        tile = {p for p in valid if p[0] < 8}
+        result = metrics(valid, cell, valid, tile, valid, cell)
+        self.assertEqual(result["endpoint_changes"], 48)
+        self.assertEqual(result["deep"], 0)
+        self.assertEqual(result["blend_vs_cell"], 0)
+        self.assertEqual(result["blend_vs_tile"], 48)
+
+    def test_zoom_missing_island_has_no_cell_shore(self):
+        valid = {(x, y) for x in range(16) for y in range(16)}
+        island = {(x, y) for x in range(4, 12) for y in range(4, 12)}
+        result = metrics(valid, set(), valid, island, valid, island)
+        self.assertEqual(result["endpoint_changes"], 64)
+        self.assertEqual(result["cell_shore_pixels"], 0)
+        self.assertGreater(result["deep"], 0)
 
 
 if __name__ == "__main__":

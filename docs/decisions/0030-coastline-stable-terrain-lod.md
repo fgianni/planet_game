@@ -348,5 +348,15 @@ none constitutes validation of a production implementation.
   not shoreline crossings; nearby edge crossings are sampled. This does not
   establish three-way normals/skirts, subpixel crack freedom or the broader
   screen-space and cost gates.
+- An ordered 16-pose L4 zoom baseline now uses the actual globe-camera band
+  weights and fixed-focus poses, with tiles settled before forced same-pose
+  cell/tile endpoint captures. The present renderer changes 3,868 central
+  water-colour pixels at tile weight 0.501 (595 deeper than one pixel inside
+  both masks); closer detailed-tile views change more, including a 14,145-pixel
+  island component at 0.03 radii absent from the cell-only central mask.
+  These colour heuristics identify the existing gap, not a georeferenced
+  contour displacement or a candidate shared-coast zoom pass. An initial
+  near-zero sweep was discarded because the camera overwrote forced endpoint
+  weights each frame; the corrected probe suspends that reapply during capture.
 - Future water-extent semantics remain R5 work. This decision changes only
   the presentation of today's static sea-level boundary.
