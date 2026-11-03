@@ -712,3 +712,10 @@ to 60.1 K, while climate mode hardly changes (290.70 against 290.40 K). So
 V8 at L4 is a level-dependent measure. A decision on V8's level (L5, L6
 or an extrapolation) is open.
 
+**16.6 V8 at L6 (2026-11-02, INV-04).** Reference mode stops in its
+second spin-up year at L6: its winds pass the primitive-equation core's
+150 m/s sub-step bound (ADR-0028 §11's preset). With L5's result, the
+reference dynamics' climate grows more extreme with resolution (P2 48.8 K
+at L4, 60.1 K at L5); V8's level stays undecided until that is
+understood.
+

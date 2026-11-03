@@ -1457,6 +1457,27 @@ machine's P-cores after this machine froze on 2026-10-29
   not a tropical one: INV-04's tropical findings at L4 stand. For L6:
   the polar bands, sea ice, cloud cover and the drift.
 
+**V8 at L6 (2026-11-02), ADR-0028 §11's preset: reference mode stops.**
+Run on the RTX 5070 Ti machine's P-cores (build `a3db687`; log
+`~/src/planet_game_runs/a3db687/build/inv04/v8_L6_c25.log` there).
+Climate mode's half completed (291.39 K). Reference mode stopped in its
+second spin-up year, after 6.5 h: `wind of 150.831332 m/s exceeds the
+sub-step rule's bound of 150.000000 m/s` (the primitive-equation core's
+guard on its sub-stepping). Nothing was watching the run; it was found
+the next morning.
+- **Reference mode grows more extreme with resolution:** its P2
+  equator-to-pole difference 48.8 K at L4, 60.1 K at L5, and at L6 winds
+  past 150 m/s within two years (Earth's jets peak near 60–80 m/s).
+- Its grid-scale damping is already resolution-aware (the hyperviscosity
+  is set from a fixed damping time at the grid scale,
+  `hyperviscosity_for_damping_time`), so this is not a missing scaling of
+  that term; it is how the resolved circulation, the polar cryosphere
+  (L4 → L5 above) or the other damping (the boundary layer's friction
+  k_f, 1 day) behave as the grid refines.
+- So V8 has no converged reference above L5 with the current reference
+  dynamics. Raising the 150 m/s guard would only let the run continue;
+  whether reference mode's climate is right at any level is the question.
+
 **Running at the end of 2026-10-29** (detached; logs in `build/inv04/`):
 - V8 at L5 under ADR-0023 §16.2 (`v8_L5_3yr.log`, started 09:48, about
   12 h: L4's convergence, open task 6);
