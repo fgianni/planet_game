@@ -899,6 +899,33 @@ occlusion and picking still disagree. No one-pixel implementation gate is
 claimed; a shared-coast cell representation and full rendered zoom remain
 the next blocker.
 
+**Shared-colour control on the zoom sweep (2026-11-03).** The existing
+probe-only `coast_mask_spike.cpp` generated a 512²-per-face atlas from the
+detailed relief (4.72 MB raw RGB; 728/98,259 independent offset samples
+classify differently from their nearest texel). With
+`--coast-atlas=/tmp/opencode/coast-mask-zoom.png`, the same corrected
+16-pose camera sweep substitutes the atlas water colour on *both* unmodified
+cell and tile geometry. Selected forced-endpoint changes:
+
+| Range (radii) / actual tile weight | Production colour | Shared atlas colour | Atlas deep changes |
+|---|---:|---:|---:|
+| 0.90 / 0.051 | 4,498 | 126 | 0 |
+| 0.70 / 0.501 | 3,868 | 47 | 0 |
+| 0.50 / 0.9996 | 4,013 | 31 | 0 |
+| 0.25 / 1.000 | 10,240 | 85 | 0 |
+| 0.10 / 1.000 | 6,312 | 19 | 0 |
+| 0.03 / 1.000 | 14,145 | 298 | 0 |
+
+The full atlas sweep has 19--298 changed central pixels per pose, and every
+pose reports zero deep mask changes. This isolates the independent
+water-colour classifier as a
+large part of the current handoff, **not** the solution: face-local nearest
+texels do not prove canonical contour fidelity, and cell triangles remain
+flat/coarse while tiles carry detailed raised relief. Their occlusion,
+normals, silhouette and picking are not reconciled by identical colour.
+The atlas is a control only; no fixed raster is approved by ADR-0030 and
+the required shared-coast cell geometry is still absent.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

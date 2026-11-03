@@ -358,5 +358,12 @@ none constitutes validation of a production implementation.
   contour displacement or a candidate shared-coast zoom pass. An initial
   near-zero sweep was discarded because the camera overwrote forced endpoint
   weights each frame; the corrected probe suspends that reapply during capture.
+- On the corrected 16-pose zoom sweep, a probe-only 512²-per-face detailed-
+  relief atlas applied to *both* cell and tile water colouring reduces the
+  half-blend endpoint mask changes from 3,868 to 47 pixels, and the closest
+  pose from 14,145 to 298; the sampled atlas comparisons have no deep mask
+  differences. This is a negative geometry control, not a shared-coast
+  implementation: independent within-texel classifications still disagree,
+  and the cell mesh's geometry, occlusion and picking are unchanged.
 - Future water-extent semantics remain R5 work. This decision changes only
   the presentation of today's static sea-level boundary.
