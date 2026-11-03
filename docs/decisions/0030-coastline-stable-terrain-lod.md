@@ -372,5 +372,13 @@ none constitutes validation of a production implementation.
   2,440 common interior pixels), rising to 18,918 at 0.04 radii. This is a
   tile-derived stand-in, **not** a constrained dual-cell fan or a planet-band
   zoom acceptance test. It does not clear contour fidelity or global cost.
+- A subsequent local probe starts from the *actual L4 dual-cell fan triangle
+  domains* (57 triangles touching a 0.10-radian cap), rather than a tile
+  stand-in. Sampling and clipping canonical relief on uniform barycentric
+  subdivisions reduces unshaded patch differences to 1 pixel at 0.70 radii
+  at 64 subdivisions, but still changes 959 pixels at 0.04 radii, 58 over
+  one pixel from the patch shore. Its 11.5 MB of local triangle-list vertices
+  and missing transition back to the unrefined fan are not a viable bounded,
+  crack-free implementation. This does not change the accepted gates.
 - Future water-extent semantics remain R5 work. This decision changes only
   the presentation of today's static sea-level boundary.

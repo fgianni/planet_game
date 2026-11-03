@@ -35,6 +35,10 @@ func _run() -> void:
 	var include_ultra := false
 	var face_pair := false
 	var include_smooth := false
+	var include_cell := false
+	var include_fan := false
+	var cell_seed := 20260928
+	var cell_level := 4
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--coast-prefix="):
 			prefix = argument.trim_prefix("--coast-prefix=")
@@ -46,6 +50,14 @@ func _run() -> void:
 			face_pair = true
 		if argument == "--coast-smooth":
 			include_smooth = true
+		if argument == "--coast-cell":
+			include_cell = true
+		if argument == "--coast-fan":
+			include_fan = true
+		if argument.begins_with("--coast-cell-seed="):
+			cell_seed = int(argument.trim_prefix("--coast-cell-seed="))
+		if argument.begins_with("--coast-cell-level="):
+			cell_level = int(argument.trim_prefix("--coast-cell-level="))
 	var focus_file := FileAccess.open(prefix + "-focus.txt", FileAccess.READ)
 	assert(focus_file != null, "missing focus")
 	var parts := focus_file.get_line().split(" ", false)
@@ -76,6 +88,16 @@ func _run() -> void:
 	material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	instance.material_override = material
 	viewport.add_child(instance)
+	var cell_planet: PlanetMeshNode = null
+	if include_cell:
+		cell_planet = PlanetMeshNode.new()
+		viewport.add_child(cell_planet)
+		cell_planet.rebuild(cell_level, 6_371_000.0, cell_seed, "earth_like")
+		cell_planet.set_style("map")
+		cell_planet.set_day_night_shading(false)
+		cell_planet.set_relief_exaggeration(1.0)
+		cell_planet.position = -focus
+		cell_planet.visible = false
 	for altitude in altitudes.split(",", false):
 		var height := float(altitude)
 		assert(height > 0.0)
@@ -86,6 +108,8 @@ func _run() -> void:
 			kinds.append("ultra")
 		if include_smooth:
 			kinds.append("smooth")
+		if include_fan:
+			kinds.append("fan")
 		for kind in kinds:
 			instance.mesh = _mesh(prefix + "-" + kind + ".bin")
 			for unused in 4:
@@ -95,4 +119,15 @@ func _run() -> void:
 			var output: String = prefix + "-" + altitude.replace(".", "_") + "-" + kind + ".png"
 			assert(image.save_png(output) == OK, "failed to save " + output)
 			print(output)
+		if include_cell:
+			instance.visible = false
+			cell_planet.visible = true
+			for unused in 4:
+				await process_frame
+			var cell_image := viewport.get_texture().get_image()
+			var cell_output: String = prefix + "-" + altitude.replace(".", "_") + "-cell.png"
+			assert(cell_image != null and cell_image.save_png(cell_output) == OK)
+			print(cell_output)
+			cell_planet.visible = false
+			instance.visible = true
 	quit(0)

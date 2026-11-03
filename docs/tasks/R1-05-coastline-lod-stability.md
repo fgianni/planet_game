@@ -956,6 +956,60 @@ the twice-fine misses and memory/frame-cost gates remain open. The next
 probe must constrain the *actual cell-side geometry* over a broader coastal
 footprint without replacing the whole planet with high-frequency tile meshes.
 
+**Actual dual-cell fan baseline on the local patch (2026-11-03).**
+`probe_coast_render_mesh.gd --coast-cell` now renders a separate
+`PlanetMeshNode` built at L4/seed 20260928, map style, without changing its
+geometry. It places the node at `-focus`, exactly as the patch vertices are
+exported relative to the same unit-sphere focus, and captures at the same
+fixed camera poses. The comparison excludes two pixels at each patch edge,
+then two more for the cell comparison; only their common visible interior
+is counted. A synthetic PNG regression pins the two distinct material
+colours and this patch crop. At 0.70 radii the patch centre is visible and
+390/2,056 common interior water-colour pixels disagree, with 234 more than
+one pixel from the *patch mask's* shore. At 0.04 radii the values are
+31,442/254,016 and 29,001, respectively. This is a **different-material
+colour heuristic**, not matched-contour displacement: production map
+shading, fractional classes and the unshaded patch can differ without a
+geometric crossing. The large disagreement confirms the real cell fan
+cannot be replaced in this argument by the earlier smooth tile-derived
+stand-in. It does not measure whole-globe coverage, style parity or the
+one-pixel gate; no production renderer was changed.
+
+**Bounded dual-cell fan sampling spike (2026-11-03; not an implementation).**
+`tools/render/coast_cell_fan_spike.cpp` takes the real L4 Voronoi cell
+centres and corners, selects 57 complete dual-fan triangles touching a
+0.10-radian cap around that same focus, subdivides each triangle in its
+own barycentric coordinates, samples the detailed position-keyed relief,
+and clips wet/dry triangles at sea level. It exports an unshaded probe mesh
+only; the production `PlanetMeshNode` and its shader are untouched. On the
+same fixed camera poses as the independently generated shared-coast patch,
+both probe meshes use the same unshaded wet/dry material. Reported water
+changes are within the common visible patch interior (not full-globe
+changes); the patch footprint is fully covered at the three reported poses.
+
+| Fan subdivisions / local triangle-list bytes | 0.70 radii: changes / >1 px from patch shore | 0.15 radii: changes / >1 px | 0.04 radii: changes / >1 px |
+|---|---:|---:|---:|
+| Production fan with different map material | 390 / 234 | 2,610 / 2,079 | 31,442 / 29,001 |
+| 16 / 760,704 | 29 / 0 | 190 / 0 | 4,981 / 2,977 |
+| 32 / 2,934,048 | 12 / 0 | 352 / 1 | 2,321 / 721 |
+| 64 / 11,503,584 | 1 / 0 | 120 / 0 | 959 / 58 |
+
+The local patch covers 2,056/57,456/254,016 common interior pixels at
+those respective poses. The production-fan row is a **different-material
+colour heuristic** and is not directly comparable as geometric error to
+the unshaded rows. Even at 64 subdivisions, the close-pose fan has 58
+pixels farther than one pixel from the patch mask's shore, including
+connected changed components larger than four pixels. Increasing uniform
+subdivision reduces the residual at steep vertex cost; 11.5 MB for this
+*single local cap* cannot be assumed to fit the 64 MiB L6 global constraint
+budget. More importantly, the cap has **no hand-back to unrefined cell
+triangles**: it is a detached local mesh, with no proven crack-free join,
+normals, picking, L6 coverage, or continuous-zoom rendering. Comparison
+against another sampled patch is not independent canonical-contour fidelity.
+This is a cell-domain feasibility diagnostic, **not a passing ≤1 px handoff
+candidate**. Adaptive coast-focused sampling and a conforming transition
+are required before any renderer change.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

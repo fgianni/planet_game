@@ -40,7 +40,27 @@ def face_pair_metrics(same, same_visible, mixed, mixed_visible):
                 visible_mixed=int(mixed_visible.sum()),
                 visible_xor=int((same_visible ^ mixed_visible).sum()),
                 common_interior=int(common.sum()),
-                water=compare(same, mixed, common))
+                 water=compare(same, mixed, common))
+
+
+def cell_patch_metrics(cell, cell_visible, patch, patch_visible, common):
+    # The patch silhouette, not the much larger cell globe, defines the
+    # comparison. Erode again to exclude its clipped and antialiased edge.
+    region = ndimage.binary_erosion(common & cell_visible, iterations=2)
+    return dict(common_interior=int(region.sum()),
+                cell_water=int((cell & region).sum()),
+                patch_water=int((patch & region).sum()),
+                patch_center_visible=bool(patch_visible[patch.shape[0] // 2,
+                                                        patch.shape[1] // 2]),
+                water=compare(cell, patch, region))
+
+
+def fan_patch_metrics(fan, fan_visible, patch, patch_visible, common):
+    region = ndimage.binary_erosion(common & fan_visible, iterations=2)
+    return dict(common_interior=int(region.sum()),
+                patch_missing=int((patch_visible & ~fan_visible).sum()),
+                fan_outside_patch=int((fan_visible & ~patch_visible).sum()),
+                water=compare(fan, patch, region))
 
 
 def main():
@@ -84,6 +104,14 @@ def main():
             smooth_region = ndimage.binary_erosion(common & sv, iterations=2)
             print("  smooth vs shared-coast parent:", compare(smooth, parent, smooth_region))
             print("  smooth vs shared-coast children:", compare(smooth, children, smooth_region))
+        if os.path.exists(stem + "-cell.png"):
+            cell, cell_visible = read(stem + "-cell.png")
+            print("  actual cell fan vs shared patch (colour heuristic):",
+                  cell_patch_metrics(cell, cell_visible, parent, pv, common))
+        if os.path.exists(stem + "-fan.png"):
+            fan, fv = read(stem + "-fan.png")
+            print("  sampled dual-fan constraint vs shared patch:",
+                  fan_patch_metrics(fan, fv, parent, pv, common))
 
 
 if __name__ == "__main__":
