@@ -185,5 +185,44 @@ levels but the caps (poleward of 60°) cool by 5–10 K per level:
 At L6 the caps are still cooling at month 23 (257.5 K). The caps' heat
 budget by level (the dynamics' transport into them across 60° and 70°,
 clouds, ice and snow; [`tools/v8/reference_polar_budget_probe.cpp`](../../tools/v8/reference_polar_budget_probe.cpp))
-is running for 24 months at L3, L4 and L5.
+was run for 24 months at L3, L4 and L5 (`build/inv05/caps_L3.log` …
+`caps_L5.log`; L6 is running on the RTX 5070 Ti machine).
+
+Year 2 (months 13–24), poleward of 60°, W/m² of the cap:
+
+| | L3 S | L4 S | L5 S | L3 N | L4 N | L5 N |
+|---|---:|---:|---:|---:|---:|---:|
+| Surface temperature (K) | 279.8 | 273.6 | 265.0 | 282.7 | 278.2 | 270.2 |
+| Carried in across 60°, dry | 17.8 | 19.4 | 31.1 | 21.0 | 26.1 | 33.0 |
+| Carried in across 60°, latent | 48.6 | 44.6 | 44.2 | 54.9 | 45.7 | 42.7 |
+| **Carried in, total** | **66.4** | **64.0** | **75.3** | **75.9** | **71.8** | **75.7** |
+| Cloud longwave effect | 38.9 | 32.0 | 22.3 | 41.4 | 34.6 | 26.4 |
+| Cloud shortwave effect | −17.4 | −14.7 | −11.3 | −21.5 | −19.4 | −16.1 |
+| **Cloud net** | **21.5** | **17.3** | **11.0** | **19.9** | **15.2** | **10.3** |
+| Cloud cover | 0.36 | 0.32 | 0.28 | 0.39 | 0.34 | 0.30 |
+| Sea-ice cover of the cap | 0.02 | 0.26 | 0.55 | 0.00 | 0.00 | 0.15 |
+| Snow cover of the cap | 0.00 | 0.05 | 0.10 | 0.16 | 0.19 | 0.26 |
+
+- **Not the transport:** the heat carried into the caps is the same
+  within ±6 W/m² at all three levels, and largest at L5. The resolved
+  eddies deliver as much heat to colder caps.
+- **The clouds:** the caps' net cloud warming halves from L3 to L5 (21 →
+  11 W/m²), mostly the longwave (39–41 → 22–26 W/m²): less cover (0.36–0.39
+  → 0.28–0.30) and thinner clouds.
+- **Ice and snow follow:** southern sea ice from 0.02 to 0.55 of the cap,
+  snow up in both, more sunlight reflected.
+- **Feedback or cause:** colder caps hold less vapour and make fewer
+  clouds, so the cloud loss can follow the cooling as well as cause it.
+  What sets the first difference is open: the cloud fraction's dependence
+  on the cell size (the same water spread over smaller cells), or the
+  ice's albedo once it grows.
+- Caveat on the split: the transports are the dynamics' column changes by
+  10° band (INV-04), the latent part including the RK3 clipping's added
+  vapour; latent above dry at 60° is unlike Earth's, where dry dominates
+  there. The totals' comparison between levels does not depend on the
+  split.
+
+Next: how the cloud fraction depends on the cell's state and size (code
+read), and a test that separates cause from feedback (the same run with
+the caps' clouds or ice albedo held between levels).
 
