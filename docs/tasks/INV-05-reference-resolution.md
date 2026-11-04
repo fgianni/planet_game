@@ -226,3 +226,38 @@ Next: how the cloud fraction depends on the cell's state and size (code
 read), and a test that separates cause from feedback (the same run with
 the caps' clouds or ice albedo held between levels).
 
+## 5. The caps' clouds by level (2026-11-04)
+
+Hourly over the caps, year 2 (months 13–24; L5 months 13–20)
+([`tools/v8/reference_cap_clouds_probe.cpp`](../../tools/v8/reference_cap_clouds_probe.cpp);
+`build/inv05/clouds_L3.log` … `clouds_L5.log`):
+
+| | L3 S | L4 S | L5 S | L3 N | L4 N | L5 N |
+|---|---:|---:|---:|---:|---:|---:|
+| Cloud water path (kg/m²) | 0.0196 | 0.0191 | 0.0195 | 0.0227 | 0.0208 | 0.0225 |
+| Column cover | 0.346 | 0.315 | 0.276 | 0.381 | 0.334 | 0.332 |
+| Cell layers at overcast | 0.4 % | 2.3 % | 4.0 % | 0.9 % | 2.4 % | 4.3 % |
+| Cloud water beyond overcast | 0.6 % | 7.3 % | 22.6 % | 1.1 % | 5.9 % | 15.4 % |
+| Vapour path (kg/m²) | 15.0 | 11.1 | 6.4 | 21.5 | 17.6 | 16.0 |
+
+- **The same cloud water, less cover:** the caps hold the same cloud water
+  at every level (within 10 %), but finer cells concentrate it: overcast
+  layers rise tenfold and up to a quarter of the water is beyond overcast,
+  where f_k = min(1, q_l m / W_c) adds no cover and the in-cloud
+  optics (reflection τ/(2 + τ), emissivity) saturate. Concave optics over
+  a more variable water field radiate less for the same mean water.
+- **Vapour falls, cloud water does not:** the vapour loss is the colder
+  caps' feedback; the cloud water is not, so the cover loss is not
+  explained by the cooling.
+- **A candidate first cause:** resolved cloud water concentrates with
+  resolution, the cloud scheme's overcast limit and saturating optics
+  make the same water warm the caps less, the caps cool, ice and snow
+  grow, P2 rises, and the polar jet strengthens to the dynamics' bound at
+  L6. ADR-0023 §13.3 made the optics linear in cloud water below
+  overcast so that a month's mean water radiates as its steps do; that
+  holds in time but not across cell sizes once cells reach overcast.
+
+Next: a causal test at L5, the caps' cloud optics made insensitive to the
+concentration (an experiment, not a preset change), to see how much of
+the 10–15 K colder caps it removes.
+
