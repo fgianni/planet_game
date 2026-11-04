@@ -72,7 +72,7 @@ machine). The largest wind of any step:
 | L3 | 95.5 m/s | 43–58 m/s | 21–34 m/s |
 | L4 | 106.9 m/s | 59–85 m/s | 26–35 m/s |
 | L5 | 124.0 m/s | 76–117 m/s (months 2–16) | 36–46 m/s |
-| L6 | 143.0 m/s | 134, 128 m/s (months 2–3) | 50–54 m/s (months 2–3) |
+| L6 | 143.0 m/s | 107–143 m/s (months 2–23); **stopped in month 24 at 150.8 m/s** | 37–55 m/s, at 72–78° S |
 
 - **Not the hot start alone:** after month 1's peak each level settles at
   its own level of strongest wind, about 1.4 times per level (≈ 50, 70,
@@ -167,4 +167,23 @@ and the jet follows by thermal wind, stronger and farther poleward. The
 question becomes the cause of the colder caps. Next: the caps' energy
 budget by level, the resolved eddy heat transport across 50–70°, the top
 of atmosphere and the surface (ice, snow, cloud) poleward of 60°.
+
+## 4. The polar caps by level (2026-11-04)
+
+L6's restarted trajectory (`build/inv05/traj_L6.log`) stopped in month 24,
+a wind of 150.8 m/s against the sub-step rule's 150 m/s bound, in year 2
+as its V8 run did. At the same month, the tropics hardly differ between
+levels but the caps (poleward of 60°) cool by 5–10 K per level:
+
+| Month 16 | L3 | L4 | L5 | L6 |
+|---|---:|---:|---:|---:|
+| Polar caps | 285.5 K | 280.0 K | 270.5 K | 264.7 K |
+| Tropics (30° S–30° N) | 306.1 K | 307.0 K | 307.4 K | 307.7 K |
+| P2 | 24.7 K | 32.3 K | 42.3 K | 48.6 K |
+| Largest wind | 45.7 m/s | 84.8 m/s | 95.3 m/s | 119.1 m/s |
+
+At L6 the caps are still cooling at month 23 (257.5 K). The caps' heat
+budget by level (the dynamics' transport into them across 60° and 70°,
+clouds, ice and snow; [`tools/v8/reference_polar_budget_probe.cpp`](../../tools/v8/reference_polar_budget_probe.cpp))
+is running for 24 months at L3, L4 and L5.
 
