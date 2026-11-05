@@ -222,6 +222,12 @@ Year 2 (months 13–24), poleward of 60°, W/m² of the cap:
   there. The totals' comparison between levels does not depend on the
   split.
 
+**L6** (`caps_L6.log`, months 13–23; the run stopped in month 24 at
+150.831332 m/s, the same wind as the trajectory run's: it reproduces)
+continues the trend: surface 258.0 K S and 263.0 K N, carried in 81.0 and
+85.6 W/m² (more again), cloud net 4.7 and 4.1 W/m², cover 0.23 and 0.25,
+sea ice 0.70 and 0.26 of the caps, snow 0.15 and 0.36.
+
 Next: how the cloud fraction depends on the cell's state and size (code
 read), and a test that separates cause from feedback (the same run with
 the caps' clouds or ice albedo held between levels).
@@ -260,4 +266,14 @@ Hourly over the caps, year 2 (months 13–24; L5 months 13–20)
 Next: a causal test at L5, the caps' cloud optics made insensitive to the
 concentration (an experiment, not a preset change), to see how much of
 the 10–15 K colder caps it removes.
+
+## 6. The overcast test (2026-11-05, running)
+
+The in-cloud water path W_c raised from 0.05 to 0.2 kg/m² (the trajectory
+probe's fourth argument), so few cells reach overcast at any level, for
+two years at L3, L4 and L5; L5's baseline rerun for 24 months beside it
+(`traj_L5.log`). If the overcast concentration is the first cause, the
+caps' L3–L5 difference (≈ 15 K at month 16) shrinks with it. W_c changes
+every level's cover too, so the test compares the levels' difference,
+not the climates.
 
