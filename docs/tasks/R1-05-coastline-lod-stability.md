@@ -1232,6 +1232,33 @@ costs do not establish the L6 global cache/frame budget. A bounded
 same-density propagation to a filtered-relief-compatible perimeter has
 **not** been demonstrated. Production remains unchanged.
 
+**Handover and a per-pixel feasibility probe (2026-11-05; probe only).**
+R1-05 moved to another session, at the user's direction. The probes above
+build the shared coast from geometry. A tile with relief splits while its
+vertex spacing is over 4 px (`split_error_px`), so a vertex-defined coast
+meets a 1 px gate only with near-pixel vertex spacing. That is the
+15–37 MB per local cap above. The alternative is to classify each pixel
+from georeferenced pages of the canonical field itself.
+`tools/render/coast_page_probe.cpp` measures what that costs: seed
+20260928, 400 000 area-uniform points, 24 threads.
+
+| | L4 | L6 |
+|---|---:|---:|
+| Finest octave wavelength (smallest coast feature) | 2.32 km | 0.58 km |
+| `sample()`: one thread / 24 threads (µs per sample) | 0.74 / 0.04 | 1.89 / 0.07 |
+| \|∇h\| p50 / p99 / max (m per km) | 6.5 / 94 / 363 | 10.2 / 146 / 658 |
+| Uncertified by one global slope bound, 10 / 1 / 0.1 km texels | 56 / 12 / 1 % | 61 / 25 / 2 % |
+
+- Canonical samples run at 15–25 million a second on this machine. A
+  1080p view at two samples per pixel is about 4 million samples
+  (0.2–0.3 s), cached by the existing quadtree keys and refined only as
+  the camera zooms.
+- A single global slope bound certifies little, because the maximum is
+  50 times the median. Skipping all-land or all-water pages would need
+  per-cell bounds; at this cost it is not required.
+- The gradients are central differences at a tenth of the finest
+  wavelength: estimates, not proofs. Production is unchanged.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and
