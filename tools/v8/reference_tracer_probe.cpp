@@ -7,7 +7,10 @@
 // mean χ. If it falls with level as the vapour does, the transport itself
 // changes; if not, the rain-out does. Not a gate.
 //
-//   reference_tracer_probe LEVEL MONTHS [WORKERS] [LIFETIME_DAYS]
+//   reference_tracer_probe LEVEL MONTHS [WORKERS] [LIFETIME_DAYS] [ORDER]
+//
+// ORDER: the vapour's and the tracer's horizontal advection (1 upwind, the
+// preset; 2 limited second-order).
 #include "sim/planet/orbit/climate_calendar.hpp"
 #include "sim/planet/run/planet_run.hpp"
 
@@ -28,6 +31,7 @@ int main(int argc, char** argv) {
     const int months = std::atoi(argv[2]);
     const std::size_t workers = argc > 3 ? static_cast<std::size_t>(std::atoi(argv[3])) : 16U;
     const double lifetime_days = argc > 4 ? std::atof(argv[4]) : 10.0;
+    const int order = argc > 5 ? std::atoi(argv[5]) : 1;
     Scenario scenario;
     scenario.subdivision = level;
     scenario.seed = 1;
@@ -36,6 +40,7 @@ int main(int argc, char** argv) {
     scenario.initial_mode = SimulationMode::reference;
     PlanetRun run(scenario, workers, ClimateCirculationUse::coupled, [=](SurfaceEnergyParameters& p) {
         p.passive_tracer_lifetime_s = lifetime_days * 86400.0;
+        p.vapour_advection_order = order;
     });
     const auto& mesh = run.state().mesh();
     double cap_area[2] = {};
