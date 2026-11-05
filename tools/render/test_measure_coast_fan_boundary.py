@@ -24,6 +24,7 @@ class BoundarySamplesTests(unittest.TestCase):
         self.assertEqual(result["detailed_crossings"], 3)
         self.assertEqual(result["filtered_crossings"], 1)
         self.assertEqual(result["detailed_without_filtered_edge"], 2)
+        self.assertEqual(result["incompatible_sampled_edges"], 2)
         self.assertAlmostEqual(result["max_matched_edge_gap_m"], 50.0)
         self.assertEqual(result["raised_height_proxy_misses"], 1)
         self.assertEqual(crossings(edges[0], "filtered_m"), [])
@@ -56,6 +57,14 @@ class BoundarySamplesTests(unittest.TestCase):
         result = projected_metrics(edges, (0, 0, 1), [0.7])[0.7]
         self.assertEqual(result["unmatched_in_frame"], 0)
         self.assertGreater(result["max_matched_gap_px"], 1)
+
+    def test_matched_crossings_can_still_be_incompatible(self):
+        edges = {0: [sample(0, 1, 1), sample(0.5, -1, 1),
+                     sample(1, -1, -1)]}
+        result = metrics(edges)
+        self.assertEqual(result["detailed_without_filtered_edge"], 0)
+        self.assertEqual(result["incompatible_sampled_edges"], 1)
+        self.assertEqual(result["filtered_class_misses"], 1)
 
 
 if __name__ == "__main__":

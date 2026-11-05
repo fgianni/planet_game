@@ -58,10 +58,14 @@ def crossings(samples, field):
 
 def metrics(edges):
     result = dict(edges=len(edges), crossed_edges=0, detailed_crossings=0,
-                  filtered_crossings=0, detailed_without_filtered_edge=0,
-                  filtered_class_misses=0, raised_height_proxy_misses=0,
+                   filtered_crossings=0, detailed_without_filtered_edge=0,
+                   incompatible_sampled_edges=0,
+                   filtered_class_misses=0, raised_height_proxy_misses=0,
                   max_matched_edge_gap_m=0.0, max_raised_height_gap_m=0.0)
     for samples in edges.values():
+        result["incompatible_sampled_edges"] += any(
+            (row["detailed_m"] <= 0) != (row["filtered_m"] <= 0)
+            for row in samples)
         detailed = crossings(samples, "detailed_m")
         filtered = crossings(samples, "filtered_m")
         result["crossed_edges"] += bool(detailed)

@@ -3,7 +3,8 @@
 // Build against build-godot/libPlanetSimPresentation.a and libPlanetSim.a,
 // with C++20, -O3, -ffp-contract=off, -lzstd and -pthread.
 // Usage: coast_cell_fan_spike 4|6 seed existing-patch-prefix
-//        [subdivisions [adaptive [--cap-rad=0.2] [--factor=8]]]
+//        [subdivisions [adaptive [--cap-rad=0.2] [--factor=8]
+//                        [--handoff-rings=0..32]]]
 // Writes existing-patch-prefix-fan.bin for probe_coast_render_mesh.gd;
 // adaptive mode also writes open-boundary georeferenced samples to CSV.
 #include "sim/planet/run/planet_run.hpp"
@@ -33,6 +34,7 @@ struct BaseTriangle { std::array<Point, 3> points; bool refine; };
 struct EdgeAudit { std::vector<Point> points; unsigned visits = 0; };
 struct MacroPoint { Vec3d direction; double drawn_height_m; };
 struct MacroEdge { std::array<MacroPoint, 2> ends; unsigned visits = 0; };
+struct FanTriangle { std::array<Vec3d, 3> directions; bool selected; };
 
 EdgePoint point_key(const Point& point) {
     constexpr double quantization = 1e10; // ~0.6 mm on an Earth-radius sphere
@@ -169,16 +171,17 @@ void emit_adaptive(const BaseTriangle& triangle, const std::map<EdgeKey, bool>& 
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc < 4 || argc > 8) return 2;
+    if (argc < 4 || argc > 9) return 2;
     const unsigned level = static_cast<unsigned>(std::stoul(argv[1]));
     if (level != 4 && level != 6) return 2;
-    const unsigned divisions = argc == 5 ? static_cast<unsigned>(std::stoul(argv[4])) : 16U;
+    const unsigned divisions = argc >= 5 ? static_cast<unsigned>(std::stoul(argv[4])) : 16U;
     if (divisions < 2 || divisions > 64) return 2;
     const bool adaptive = argc >= 6 && std::string(argv[5]) == "adaptive";
     if (argc >= 6 && !adaptive) return 2;
     double cap_rad = 0.10;
     unsigned factor = 4;
-    bool cap_seen = false, factor_seen = false;
+    unsigned handoff_rings = 0;
+    bool cap_seen = false, factor_seen = false, rings_seen = false;
     for (int arg = 6; arg < argc; ++arg) {
         const std::string option = argv[arg];
         if (option.starts_with("--cap-rad=") && !cap_seen) {
@@ -187,10 +190,14 @@ int main(int argc, char** argv) {
         } else if (option.starts_with("--factor=") && !factor_seen) {
             factor = static_cast<unsigned>(std::stoul(option.substr(9)));
             factor_seen = true;
+        } else if (option.starts_with("--handoff-rings=") && !rings_seen) {
+            handoff_rings = static_cast<unsigned>(std::stoul(option.substr(16)));
+            rings_seen = true;
         } else return 2;
     }
     if (!std::isfinite(cap_rad) || cap_rad < 0.10 || cap_rad > 0.40 ||
-        (factor != 4 && factor != 8)) return 2;
+        (factor != 4 && factor != 8) || handoff_rings > 32 ||
+        (handoff_rings && !adaptive)) return 2;
     const std::string prefix = argv[3];
     std::ifstream focus_file(prefix + "-focus.txt");
     Vec3d focus{};
@@ -232,6 +239,79 @@ int main(int argc, char** argv) {
     // This is deliberately a bounded local footprint, not an L4/L6 global
     // fine mesh. Its selected/unselected outer edge is NOT yet continuous.
     const double cap_dot = std::cos(cap_rad);
+    std::vector<FanTriangle> fans;
+    std::map<EdgeKey, std::vector<std::size_t>> adjacency;
+    for (const auto& cell : mesh->cells()) {
+        const auto corners = mesh->cell_corners(cell.id);
+        for (std::size_t edge = 0; edge < corners.size(); ++edge) {
+            const std::array<Vec3d, 3> directions = {
+                cell.center_unit, mesh->corners_unit()[corners[edge]],
+                mesh->corners_unit()[corners[(edge + 1) % corners.size()]]};
+            const bool selected = std::max({dot(focus, directions[0]),
+                dot(focus, directions[1]), dot(focus, directions[2])}) >= cap_dot;
+            const auto index = fans.size();
+            fans.push_back({directions, selected});
+            for (unsigned side = 0; side < 3; ++side)
+                adjacency[edge_key({directions[side], 0.0},
+                                   {directions[(side + 1) % 3], 0.0})].push_back(index);
+        }
+    }
+    for (const auto& [key, touching] : adjacency) {
+        (void)key;
+        if (touching.size() != 2) throw std::runtime_error("non-paired global fan edge");
+    }
+    // A deliberately conservative filtered-relief surrogate for the outer
+    // hand-back. Test the same 64 positions as the boundary CSV. A crossing
+    // count alone is insufficient: opposite classes can agree at endpoints.
+    const auto incompatible = [&](const std::array<Vec3d, 2>& ends) {
+        for (unsigned i = 0; i <= 64; ++i) {
+            const double t = double(i) / 64.0;
+            const Vec3d direction = normalized(ends[0] * (1.0 - t) + ends[1] * t);
+            if ((relief.sample(direction).elevation_m <= terrain.sea_level_m) !=
+                (relief.smooth_sample(direction).elevation_m <= terrain.sea_level_m))
+                return true;
+        }
+        return false;
+    };
+    std::size_t added_fans = 0;
+    unsigned used_rings = 0;
+    for (; used_rings < handoff_rings; ++used_rings) {
+        std::vector<std::size_t> additions;
+        for (const auto& [key, touching] : adjacency) {
+            (void)key;
+            const auto a = touching[0], b = touching[1];
+            if (fans[a].selected == fans[b].selected) continue;
+            const auto selected = fans[a].selected ? a : b;
+            const auto outside = fans[a].selected ? b : a;
+            const auto& directions = fans[selected].directions;
+            for (unsigned side = 0; side < 3; ++side)
+                if (edge_key({directions[side], 0.0},
+                             {directions[(side + 1) % 3], 0.0}) == key &&
+                    incompatible({directions[side], directions[(side + 1) % 3]})) {
+                    additions.push_back(outside);
+                    break;
+                }
+        }
+        if (additions.empty()) break;
+        std::sort(additions.begin(), additions.end());
+        additions.erase(std::unique(additions.begin(), additions.end()), additions.end());
+        for (const auto index : additions) fans[index].selected = true;
+        added_fans += additions.size();
+    }
+    std::size_t incompatible_boundary_edges = 0, open_macro_edges = 0;
+    for (const auto& [key, touching] : adjacency) {
+        (void)key;
+        if (fans[touching[0]].selected == fans[touching[1]].selected) continue;
+        ++open_macro_edges;
+        const auto& directions = fans[touching[0]].directions;
+        for (unsigned side = 0; side < 3; ++side)
+            if (edge_key({directions[side], 0.0},
+                         {directions[(side + 1) % 3], 0.0}) == key) {
+                incompatible_boundary_edges += incompatible(
+                    {directions[side], directions[(side + 1) % 3]});
+                break;
+            }
+    }
     std::vector<Vertex> vertices;
     std::size_t fan_triangles = 0;
     std::size_t coast_triangles = 0;
@@ -239,14 +319,13 @@ int main(int argc, char** argv) {
     std::vector<BaseTriangle> base_triangles;
     std::map<EdgeKey, bool> refined_edges;
     std::map<EdgeKey, MacroEdge> macro_edges;
+    std::size_t fan_index = 0;
     for (const auto& cell : mesh->cells()) {
         const auto corners = mesh->cell_corners(cell.id);
         for (std::size_t edge = 0; edge < corners.size(); ++edge) {
-            const std::array<Vec3d, 3> fan = {
-                cell.center_unit, mesh->corners_unit()[corners[edge]],
-                mesh->corners_unit()[corners[(edge + 1) % corners.size()]]};
-            if (std::max({dot(focus, fan[0]), dot(focus, fan[1]), dot(focus, fan[2])}) < cap_dot)
-                continue;
+            const auto& selected_fan = fans[fan_index++];
+            if (!selected_fan.selected) continue;
+            const auto& fan = selected_fan.directions;
             ++fan_triangles;
             if (adaptive) {
                 const std::array<MacroPoint, 3> coarse = {{
@@ -416,7 +495,10 @@ int main(int argc, char** argv) {
               << coast_triangles << ", exported vertices " << count << " ("
               << vertices.size() * sizeof(Vertex) << " bytes); cap rad " << cap_rad
               << ", subdivisions " << divisions << ", adaptive " << adaptive
-              << ", coastal factor " << factor
+               << ", coastal factor " << factor << ", handoff rings " << used_rings
+               << ", added fan triangles " << added_fans
+               << ", open/incompatible macro edges " << open_macro_edges << '/'
+               << incompatible_boundary_edges
               << ", refined base triangles " << refined_base_triangles << '/'
               << base_triangles.size() << ", refined edges " << refined_edges.size()
               << " (internal/open " << internal_refined_edges << '/'

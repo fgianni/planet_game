@@ -1190,6 +1190,48 @@ an island appearing with LOD. The outer cap still has no production-fan
 hand-back, and neither style, moving camera nor matched-contour displacement
 was validated; no production refinement factor is selected.
 
+**Contour-aware fan-neighbour expansion (2026-11-05; probe only).**
+`coast_cell_fan_spike` accepts `--handoff-rings=0..32`. It builds the
+adjacency graph of the **actual dual-cell fan triangles** (including
+unselected triangles), starts at the unchanged 0.10-radian cap, and in
+each synchronous ring includes the neighbour across each open macro edge
+whose canonical detailed and filtered-relief classes disagree at any of
+65 shared georeferenced positions. It does not change the sampling density,
+relief field, simulation, renderer or shader. Filtered relief is only a
+surrogate for the production cell shader; the criterion is sampled, not a
+proof that no crossing exists between samples. `0` preserves the original
+cap and reports its incompatible edge count. The enlarged mesh remains a
+**detached** fan patch, not a stitched production hand-back.
+
+| Seed 20260928, 16× base / 8× coastal, 75° FOV | Selected fans | Added fans | Open / incompatible sampled edges | Detailed crossings lacking filtered counterpart | Maximum matched edge gap | Raw local vertices |
+|---|---:|---:|---:|---:|---:|---:|
+| L4, cap 0.10, 0 rings | 57 | 0 | not separately audited | 20 | 8.11 km | 3.76 MB |
+| L4, cap 0.10, 8 rings | 99 | 42 | 41 / not separately audited | 1 | 128.07 km | 10.59 MB |
+| L4, cap 0.10, 32 rings | 141 | 84 | 69 / 1 | 0 | 2.75 km | 15.69 MB |
+| L6, cap 0.10, 0 rings | 673 | 0 | not separately audited | 22 | 63.50 km | 26.55 MB |
+| L6, cap 0.10, 8 rings | 745 | 72 | 89 / 1 | 0 | 5.62 km | 36.53 MB |
+
+The L4 32-ring boundary extends as far as **0.713 rad** from focus
+(minimum 0.101 rad), despite the 0.10-radian starting footprint; L6's
+8-ring boundary extends to 0.145 rad. Both runs exhausted their stated
+ring budgets and still have one incompatible sampled edge. The L4 matched
+crossings project 0.14 px apart at 0.70 radii, but one sample retains the
+opposite class. At L6/0.175 radii the matched crossings project **1.44 px**
+apart (in frame, outside the central crop); at 0.04 radii the cap boundary
+is offscreen. This projected filtered-surrogate gap is *not* a measured
+production-shader handoff displacement, but cannot be counted as a pass.
+Exact float32 audits of the 32-ring L4 and 8-ring L6 exports report zero
+interior unpaired, non-manifold and degenerate edges within each detached
+patch. Fixed-pose mask-to-independent-reference checks: L4/0.70 changes
+18 pixels over 18,841 common interior pixels (zero >1 px), L4/0.04 remains
+413 over 258,064 (zero >1 px); L6/0.175 changes 41 over 126,204 (zero
+>1 px), L6/0.04 remains 153 over 258,064 (zero >1 px). Expansion changes
+coverage, not close-pose contour fidelity. Neither those masks nor the
+sampled outer edge proves a ≤1 px matched-contour handoff, and the local
+costs do not establish the L6 global cache/frame budget. A bounded
+same-density propagation to a filtered-relief-compatible perimeter has
+**not** been demonstrated. Production remains unchanged.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

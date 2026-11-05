@@ -427,5 +427,16 @@ none constitutes validation of a production implementation.
   26.55 MB of raw local vertices in one 0.10-radian cap. Exact exported-edge
   checks pass after removing two zero-area float32 clipping triangles;
   this is not a cost, contour-fidelity or handoff acceptance result.
+- A probe-only 65-sample-per-edge contour-aware expansion through actual
+  neighbouring dual-cell fan triangles does not close the outer hand-back
+  within the tested bounds. From a 0.10-radian L4 cap, 32 rings reach a
+  perimeter 0.713 radians from focus, add 84 triangles, cost 15.69 MB of
+  raw local vertices and still leave a sampled detailed/filtered class
+  mismatch. At L6, eight rings add 72 triangles (36.53 MB total); one
+  incompatible edge remains and the matched boundary crossings differ by
+  1.44 px at the tested 0.175-radii planet pose. Filtered relief is not the
+  actual cell shader, and these are not production handoff measurements.
+  Removing unmatched crossings alone is insufficient; neither a bounded
+  outer strip nor the binding implementation gates have been established.
 - Future water-extent semantics remain R5 work. This decision changes only
   the presentation of today's static sea-level boundary.
