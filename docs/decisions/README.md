@@ -30,7 +30,7 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0027 | [The air mixed within the climate transport's groups](0027-air-mixed-within-transport-groups.md) | Accepted | 2026-10-23 |
 | 0028 | [The equatorial waves' heat exchange in the climate transport](0028-equatorial-wave-heat-exchange.md) | Accepted (c = 50 m/s; amended 2026-10-30, §11: c = 25 m/s) | 2026-10-26 |
 | 0029 | [Land's water in climate mode](0029-land-water-in-climate-mode.md) | Proposed (option A measured; B or C deferred until after INV-05) | 2026-10-29 |
-| 0030 | [A shared coastline for terrain LOD](0030-coastline-stable-terrain-lod.md) | Accepted direction; pre-acceptance gate expressly waived, implementation gates open; Amendment 1 (per-pixel coast pages, connected-ocean rule) proposed 2026-11-05 | 2026-11-02 |
+| 0030 | [A shared coastline for terrain LOD](0030-coastline-stable-terrain-lod.md) | Accepted direction; pre-acceptance gate expressly waived, implementation gates open; Amendment 1 (per-pixel coast pages, connected-ocean rule) accepted 2026-11-05, not implemented | 2026-11-02 |
 | 0031 | [Factories: engineered assemblies that compile to network nodes](0031-factories-engineered-then-network-nodes.md) | Proposed; not before P1 | 2026-10-29 |
 
 Records cite the design record by version and section (for example "Design

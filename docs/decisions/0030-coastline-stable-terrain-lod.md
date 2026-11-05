@@ -4,7 +4,8 @@
   The pre-acceptance feasibility prerequisite was expressly waived; the
   validation gates below were **not** waived for implementation or completion.
   Amendment 1 (a per-pixel coast from canonical pages, with the
-  connected-ocean rule) is proposed, 2026-11-05.
+  connected-ocean rule) was accepted with the user on 2026-11-05. It is not
+  implemented, and its gates are not passed.
 - **Amends:** ADR-0022 §4.8–4.9's terrain-LOD coastline contract. Independently
   sampled coarse tiles currently disagree with detailed relief between shared
   vertices. The existing renderer remains unchanged until validation passes.
@@ -443,7 +444,7 @@ none constitutes validation of a production implementation.
 - Future water-extent semantics remain R5 work. This decision changes only
   the presentation of today's static sea-level boundary.
 
-## Amendment 1 (proposed 2026-11-05): a per-pixel coast from canonical pages
+## Amendment 1 (accepted 2026-11-05 with the user): a per-pixel coast from canonical pages
 
 ### A1.1 Why
 
