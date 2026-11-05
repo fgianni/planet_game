@@ -2,7 +2,10 @@
 
 - **Track:** rendering, following R1-04 (ADR-0022 §4.8–4.9)
 - **Status:** architecture accepted 2026-11-02 (ADR-0030); implementation
-  and acceptance tests pending. R1-05 is not complete.
+  and acceptance tests pending. R1-05 is not complete. ADR-0030 Amendment 1
+  (a per-pixel coast from canonical pages, with the connected-ocean rule) is
+  proposed (2026-11-05) and awaits the user's decision. R1-05 moved to
+  another session on 2026-11-05.
 - **Implementation gate:** ADR-0030 selects a shared coastline. Its
   pre-acceptance feasibility prerequisite was explicitly waived, **not** its
   rendered handoff, contour fidelity, raised seam, zoom, style and cost gates.
