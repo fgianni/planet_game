@@ -111,6 +111,10 @@ struct SurfaceEnergyParameters {
     // at H and θ* = Σ A θ_c / s_c / Σ A / s_c, so Σ A δ = 0 and at m = 1
     // the group's cells share one θ_c to first order.
     double heat_group_mixing = 0.0;
+    // INV-05, investigations only: reference mode's horizontal vapour
+    // advection, 1 upwind (ADR-0021 §4.5, the preset) or 2 limited
+    // second-order upwind (PrimitiveEquationParameters).
+    int vapour_advection_order = 1;
 };
 
 // The bulk transfer coefficients of evaporation (ADR-0021 §4.3): the tiles'

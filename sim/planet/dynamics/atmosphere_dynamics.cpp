@@ -49,6 +49,7 @@ PrimitiveEquationParameters AtmosphereDynamics::model_parameters(
     result.heat_capacity_J_kg_K = dry_air_heat_capacity_J_kg_K;
     result.hyperviscosity_m4_s =
         hyperviscosity_for_damping_time(mesh, parameters.hyperviscosity_damping_s);
+    result.vapour_advection_order = parameters.vapour_advection_order;
     return result;
 }
 

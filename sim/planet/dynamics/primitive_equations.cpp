@@ -15,6 +15,10 @@ namespace {
     return EdgeId{static_cast<EdgeId::value_type>(index)};
 }
 
+[[nodiscard]] CellId cell_id(std::size_t index) noexcept {
+    return CellId{static_cast<CellId::value_type>(index)};
+}
+
 // (1/A_i) Σ_e n_ei l_e v_e for an edge array v.
 [[nodiscard]] double cell_divergence(const PlanetMesh& mesh, std::size_t cell,
                                      std::span<const double> edge_values) {
@@ -335,6 +339,82 @@ void PrimitiveEquationModel::tendency(const PrimitiveEquationState& state,
             return state.mass_humidity.layer(k)[i] / (ps[i] / (g * n_d));
         };
         std::vector<double> humidity_flux(n * edges);
+        if (parameters_.vapour_advection_order == 2) {
+            // INV-05's experiment: each cell's limited slope along its edge
+            // normals, slope[(k cells + i) edges-of-i + j] = φ_i (d/2) ∇q_i · n_j,
+            // stored per directed edge (the mesh's cell_edges order).
+            std::vector<std::size_t> offset(cells + 1U, 0U);
+            for (std::size_t i = 0; i < cells; ++i) {
+                offset[i + 1U] = offset[i] + mesh.cell_edges(cell_id(i)).size();
+            }
+            const std::size_t directed = offset[cells];
+            std::vector<double> slope(n * directed, 0.0);
+            for_each_deterministic_block(
+                mesh.blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+                    for (std::size_t i = block.begin; i < block.end; ++i) {
+                        const auto around = mesh.cell_edges(cell_id(i));
+                        const double area = mesh.cell(cell_id(i)).area_m2;
+                        for (std::size_t k = 0; k < n; ++k) {
+                            const double q = humidity(k, i);
+                            double gx = 0.0, gy = 0.0, lo = q, hi = q;
+                            for (const auto& side : around) {
+                                const double qj = humidity(k, side.neighbor.to_index());
+                                const double l = mesh.edge(side.edge).length_m;
+                                gx += 0.5 * (qj - q) * side.outward_normal_east * l;
+                                gy += 0.5 * (qj - q) * side.outward_normal_north * l;
+                                lo = std::min(lo, qj);
+                                hi = std::max(hi, qj);
+                            }
+                            gx /= area;
+                            gy /= area;
+                            double limit = 1.0;
+                            for (const auto& side : around) {
+                                const double d = 0.5 * mesh.edge(side.edge).centroid_distance_m *
+                                                 (gx * side.outward_normal_east + gy * side.outward_normal_north);
+                                if (d > 0.0) {
+                                    limit = std::min(limit, (hi - q) / d);
+                                } else if (d < 0.0) {
+                                    limit = std::min(limit, (lo - q) / d);
+                                }
+                            }
+                            limit = std::max(0.0, limit);
+                            for (std::size_t j = 0; j < around.size(); ++j) {
+                                const auto& side = around[j];
+                                slope[k * directed + offset[i] + j] =
+                                    limit * 0.5 * mesh.edge(side.edge).centroid_distance_m *
+                                    (gx * side.outward_normal_east + gy * side.outward_normal_north);
+                            }
+                        }
+                    }
+                });
+            // Each edge's place in its two cells' lists.
+            std::vector<std::size_t> at_first(edges, 0U), at_second(edges, 0U);
+            for (std::size_t i = 0; i < cells; ++i) {
+                const auto around = mesh.cell_edges(cell_id(i));
+                for (std::size_t j = 0; j < around.size(); ++j) {
+                    const std::size_t e = around[j].edge.to_index();
+                    if (mesh.edge(around[j].edge).first_cell.to_index() == i) {
+                        at_first[e] = offset[i] + j;
+                    } else {
+                        at_second[e] = offset[i] + j;
+                    }
+                }
+            }
+            for_each_deterministic_block(
+                grid.edge_blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
+                    for (std::size_t e = block.begin; e < block.end; ++e) {
+                        const auto& edge = mesh.edge(edge_id(e));
+                        const std::size_t a = edge.first_cell.to_index();
+                        const std::size_t b = edge.second_cell.to_index();
+                        for (std::size_t k = 0; k < n; ++k) {
+                            const double f = flux[k * edges + e];
+                            const double q = f >= 0.0 ? humidity(k, a) + slope[k * directed + at_first[e]]
+                                                      : humidity(k, b) + slope[k * directed + at_second[e]];
+                            humidity_flux[k * edges + e] = f * q;
+                        }
+                    }
+                });
+        } else {
         for_each_deterministic_block(
             grid.edge_blocks(), worker_count, [&](std::size_t, const CellBlock& block) {
                 for (std::size_t e = block.begin; e < block.end; ++e) {
@@ -347,6 +427,7 @@ void PrimitiveEquationModel::tendency(const PrimitiveEquationState& state,
                     }
                 }
             });
+        }
         if (totals != nullptr) {
             for (std::size_t i = 0; i < n * edges; ++i) {
                 totals->vapour_kg_m[i] += weight * humidity_flux[i];

@@ -36,6 +36,9 @@ struct AtmosphereDynamicsParameters {
     // cycle's reference mode).
     bool advect_humidity = false;
     SubstepRule rule;
+    // INV-05: the horizontal vapour advection's order (1 the preset's
+    // upwind; PrimitiveEquationParameters).
+    int vapour_advection_order = 1;
 };
 
 struct AtmosphereDynamicsDiagnostics {

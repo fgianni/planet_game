@@ -126,6 +126,86 @@ int main() {
         PLANETSIM_EXPECT(test, lowest >= -1e-6);
     }
 
+    // INV-05's limited second-order vapour advection (order 2): the same
+    // uniform, total and non-negative checks, and a smooth field keeps
+    // more of its variance than upwind's over the same steps.
+    {
+        const std::size_t n = 3;
+        Field2D<double> ps(cells);
+        Field3D<double> t(n, cells);
+        for (std::size_t i = 0; i < cells; ++i) {
+            ps[i] = 100'000.0 + 4'000.0 * noise(1, i);
+            for (std::size_t k = 0; k < n; ++k) {
+                t.layer(k)[i] = 260.0 - 20.0 * static_cast<double>(k) + 30.0 * noise(2 + static_cast<std::uint32_t>(k), i);
+            }
+        }
+        double variance[2] = {};
+        for (const int order : {1, 2}) {
+            PrimitiveEquationParameters parameters;
+            parameters.layer_count = n;
+            parameters.vapour_advection_order = order;
+            const PrimitiveEquationModel model(mesh, grid, parameters, height);
+            auto state = model.state_at_rest(ps, t);
+            for (std::size_t k = 0; k < n; ++k) {
+                for (std::size_t e = 0; e < mesh.edge_count(); ++e) {
+                    state.normal_velocity_m_s.layer(k)[e] = 40.0 * noise(10 + static_cast<std::uint32_t>(k), e);
+                }
+            }
+            const double g = parameters.gravity_m_s2;
+            auto uniform = state;
+            auto varying = state;
+            auto smooth = state;
+            uniform.mass_humidity = Field3D<double>(n, cells);
+            varying.mass_humidity = Field3D<double>(n, cells);
+            smooth.mass_humidity = Field3D<double>(n, cells);
+            double vapour_before = 0.0;
+            for (std::size_t k = 0; k < n; ++k) {
+                for (std::size_t i = 0; i < cells; ++i) {
+                    const double mu = state.surface_pressure_Pa[i] / (g * static_cast<double>(n));
+                    const auto& x = mesh.cells()[i].center_unit;
+                    uniform.mass_humidity.layer(k)[i] = 0.01 * mu;
+                    varying.mass_humidity.layer(k)[i] = 0.01 * (0.5 + noise(30, i * n + k)) * mu;
+                    smooth.mass_humidity.layer(k)[i] = 0.01 * (1.0 + 0.8 * x.x * x.y + 0.5 * x.z) * mu;
+                    vapour_before += mesh.cells()[i].area_m2 * varying.mass_humidity.layer(k)[i];
+                }
+            }
+            for (int step = 0; step < 20; ++step) {
+                model.step(uniform, 120.0);
+                model.step(varying, 120.0);
+                model.step(smooth, 120.0);
+            }
+            double spread = 0.0, vapour_after = 0.0, lowest = 0.0, area = 0.0, mean = 0.0;
+            for (std::size_t k = 0; k < n; ++k) {
+                for (std::size_t i = 0; i < cells; ++i) {
+                    const double a = mesh.cells()[i].area_m2;
+                    const double mu = uniform.surface_pressure_Pa[i] / (g * static_cast<double>(n));
+                    spread = std::max(spread, std::abs(uniform.mass_humidity.layer(k)[i] / mu / 0.01 - 1.0));
+                    vapour_after += a * varying.mass_humidity.layer(k)[i];
+                    const double mu_v = varying.surface_pressure_Pa[i] / (g * static_cast<double>(n));
+                    lowest = std::min(lowest, varying.mass_humidity.layer(k)[i] / mu_v);
+                    const double mu_s = smooth.surface_pressure_Pa[i] / (g * static_cast<double>(n));
+                    mean += a * smooth.mass_humidity.layer(k)[i] / mu_s;
+                    area += a;
+                }
+            }
+            mean /= area;
+            for (std::size_t k = 0; k < n; ++k) {
+                for (std::size_t i = 0; i < cells; ++i) {
+                    const double mu_s = smooth.surface_pressure_Pa[i] / (g * static_cast<double>(n));
+                    const double d = smooth.mass_humidity.layer(k)[i] / mu_s - mean;
+                    variance[order - 1] += mesh.cells()[i].area_m2 * d * d / area;
+                }
+            }
+            std::cout << "order " << order << " humidity: uniform spread " << spread << ", conservation "
+                      << std::abs(vapour_after / vapour_before - 1.0) << ", lowest q " << lowest
+                      << ", smooth variance " << variance[order - 1] << '\n';
+            PLANETSIM_EXPECT(test, spread <= 1e-12);
+            PLANETSIM_EXPECT(test, std::abs(vapour_after / vapour_before - 1.0) <= 1e-13);
+            PLANETSIM_EXPECT(test, lowest >= -1e-6);
+        }
+        PLANETSIM_EXPECT(test, variance[1] > variance[0]);
+    }
+
     // V4: an isothermal atmosphere at rest over the terrain stays at rest.
     {
         PrimitiveEquationParameters parameters;

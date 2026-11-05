@@ -279,6 +279,7 @@ PlanetRun::PlanetRun(const Scenario& scenario, std::size_t worker_count,
     if (winds) {
         AtmosphereDynamicsParameters dynamics_parameters;
         dynamics_parameters.advect_humidity = surface_.water_cycle;
+        dynamics_parameters.vapour_advection_order = surface_.vapour_advection_order;
         dynamics_ = std::make_unique<AtmosphereDynamics>(*mesh_, state_.slow(), parameters_,
                                                          surface_.atmosphere, fractions_,
                                                          dynamics_parameters, worker_count_);

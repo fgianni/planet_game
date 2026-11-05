@@ -42,6 +42,13 @@ struct PrimitiveEquationParameters {
     double reference_pressure_Pa = 100'000.0;   // p₀ of θ
     double hyperviscosity_m4_s = 0.0;
     HeldSuarezForcing held_suarez;
+    // INV-05: the vapour's horizontal edge value. 1: the upwind cell's q
+    // (ADR-0021 §4.5). 2: second-order upwind, q_u + φ_u (d/2) ∇q_u · n,
+    // ∇q the Green–Gauss gradient of the neighbour differences and φ_u
+    // Barth–Jespersen's limiter, which keeps every reconstructed edge
+    // value within the upwind cell's and its neighbours' range (so ≥ 0).
+    // Vertical advection stays upwind. An experiment, not the preset.
+    int vapour_advection_order = 1;
 };
 
 struct PrimitiveEquationState {
