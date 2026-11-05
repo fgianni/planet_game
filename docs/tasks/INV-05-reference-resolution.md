@@ -319,3 +319,55 @@ caps have cooled (their surface temperatures within 3 K):
   ([`tools/v8/reference_vapour_budget_probe.cpp`](../../tools/v8/reference_vapour_budget_probe.cpp))
   runs for three months at L3–L6.
 
+## 8. The vapour budget by band, and the advection scheme (2026-11-05)
+
+Month 1, kg/m²/day of each band (`build/inv05/vapour_L3.log` …
+`vapour_L5.log`; L6 running):
+
+| | L3 | L4 | L5 |
+|---|---:|---:|---:|
+| Advection, 30° S–0 | −3.55 | −2.90 | −1.76 |
+| Advection, 0–30° N | −3.17 | −2.29 | −1.97 |
+| Advection, 60–30° S | +2.28 | +2.10 | +1.21 |
+| Advection, 30–60° N | +2.43 | +1.50 | +1.20 |
+| Advection, 90–60° S | +5.75 | +4.37 | +3.23 |
+| Advection, 60–90° N | +6.49 | +5.00 | +4.14 |
+| Condensation (resolved + convective), 90–60° S | 4.65 | 4.26 | 4.20 |
+| Evaporation, 60–30° S | 5.64 | 7.16 | 7.85 |
+| Vapour path, 30° S–0 (kg/m²) | 218 | 234 | 245 |
+
+- **The meridional vapour flux itself shrinks with level,** from the
+  tropics' export (about halved L3 to L5) to the caps' import (−44 %);
+  the water is not lost on the way (the caps' condensation hardly
+  changes, the mid-latitudes evaporate more to make up), and the tropics
+  keep more of their vapour.
+- **The cause in the code:** `primitive_equations.cpp` advects the vapour
+  first-order upwind (ADR-0021 §4.5: upwind q on the edges and the
+  interfaces, the limited positive form of ADR-0002 §4.2), and Θ with a
+  centred, energy-conserving edge value. Upwind's numerical diffusivity
+  is about |u| Δx / 2: with the cell spacing 891, 446, 223 and 112 km at
+  L3–L6 and |u| = 10–30 m/s, 4.5–13, 2.2–6.7, 1.1–3.3 and 0.6–1.7 × 10⁶
+  m²/s, against Earth's effective eddy diffusivity for moisture of about
+  1–2 × 10⁶ m²/s. At L3 and L4 the scheme's own diffusion carries much of
+  the poleward vapour flux; it halves with each level, the heat's does
+  not exist, which is why the latent transport falls with level and the
+  dry does not (§7).
+- **The chain:** coarse cells over-transport vapour poleward → the caps
+  are moist, cloudy and warm (vapour and cloud greenhouse); finer cells
+  transport less → the caps dry, lose cloud, cool; ice and snow grow
+  (§4); P2 rises; the polar jet strengthens (§3) until, at L6, the edge
+  winds pass the dynamics' 150 m/s bound (§1).
+- **For V8:** reference mode at L4 carries a numerical moisture
+  diffusion of the order of Earth's eddy diffusivity or more, and climate
+  mode's transport (ADR-0027, ADR-0028) was fitted to agree with it.
+
+Whether reference mode converges once its moisture transport is resolved
+cannot be said from these runs: the numerical part shrinks towards zero,
+the resolved eddies' part is what is left, and L6 stops before its second
+year ends.
+
+Next, a causal test: the same runs with a higher-order, limited and
+positive vapour advection (default off, the default's hash unchanged),
+at L3 and L5; if the levels' cap difference largely closes, the upwind
+scheme is confirmed. Adopting one is an ADR-0021 §4.5 amendment.
+
