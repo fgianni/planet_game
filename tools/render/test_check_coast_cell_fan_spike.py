@@ -37,6 +37,10 @@ class CellFanIncidenceTests(unittest.TestCase):
         self.assertEqual(result["edges"], 6)
         self.assertEqual(result["nonmanifold"], 0)
 
+    def test_repeated_exported_position_is_a_degenerate_triangle(self):
+        result = self.check([((0, 0, 0), (0, 0, 0), (1, 0, 0))])
+        self.assertEqual(result["degenerate"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

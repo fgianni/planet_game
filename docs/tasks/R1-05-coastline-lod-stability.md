@@ -1153,6 +1153,43 @@ outer visibility cannot clear the canonical fidelity requirement. The
 ≤1 px handoff, topology, global cache, normals/skirts, picking, style and
 continuous-zoom gates all remain open.
 
+**Coastal refinement-density sensitivity (2026-11-05; probe only).** The
+bounded dual-cell fan exporter now accepts `--factor=4|8` for the mixed
+base triangles. Both factors keep the same 16-subdivision base lattice,
+selected macro-fan footprint and geometric outer cap; only sampled
+coastal interiors and the fine intervals of their neighbouring edges
+change. Exact float32 incidence audits have no unpaired edges within
+0.10 radii of focus at L4/L6. At L6, the first 8× export emitted two
+zero-area clipped triangles with repeated float32 vertex positions,
+which falsely made two edges appear non-manifold. The exporter now
+omits those zero-area triangles, and the checker *fails* on any such
+degenerate triangle; the L6 8× audit then has zero degenerate and zero
+non-manifold edges. Linking the stale October `build-godot` PlanetSim
+archive with current simulation headers produced a runtime ABI mismatch
+(both 4× and 8× crashed before export); these measurements use the
+current `build/` archive. No concurrent simulation source was changed for
+this probe.
+
+| L4/L6, seed 20260928, cap 0.10 rad, FOV 75° | 4× local raw vertices | 8× local raw vertices | 4× canonical mask changes / >1 px | 8× canonical mask changes / >1 px |
+|---|---:|---:|---:|---:|
+| L4, 0.70 radii | 1.65 MB | 3.76 MB | 12 / 0 | 6 / 0 |
+| L4, 0.04 radii | 1.65 MB | 3.76 MB | 1,148 / 28 | 413 / 0 |
+| L4, 0.02 radii | — | 3.76 MB | — | 326 / 6 |
+| L6, 0.175 radii | 13.95 MB | 26.55 MB | 62 / 0 | 25 / 0 |
+| L6, 0.04 radii | 13.95 MB | 26.55 MB | 430 / 0 | 153 / 0 |
+
+All comparisons use the independent pixel-centred detailed-relief
+reference and the same fixed, unshaded nadir camera; the 0.02/0.04-radii
+references use the height-aware ray control. At L4/0.02 the independently
+generated tile patch itself has 373 mask differences, 11 more than one
+pixel from the binary reference shore. Thus 8× helps at the tested
+0.04-radii pose but does **not** establish fidelity across further zoom,
+nor does the local L6 26.55 MB figure establish the 64 MiB *global*
+coastal-cache budget. A connected changed component is not necessarily
+an island appearing with LOD. The outer cap still has no production-fan
+hand-back, and neither style, moving camera nor matched-contour displacement
+was validated; no production refinement factor is selected.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

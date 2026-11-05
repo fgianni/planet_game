@@ -419,5 +419,13 @@ none constitutes validation of a production implementation.
   comparisons, **not** matched-contour handoff displacement or proof of a
   production failure. The local fan still lacks an outer join, and the
   canonical fidelity and implementation gates remain binding.
+- Increasing only the probe's mixed-triangle coastal factor from 4× to 8×
+  reduces the L4 fixed-pose 0.04-radii differences against the independent
+  relief mask from 1,148 (28 farther than one pixel from that mask's shore)
+  to 413 (zero farther than one pixel), but at 0.02 radii six deep pixels
+  return and the independent tile patch also has eleven. L6 8× costs
+  26.55 MB of raw local vertices in one 0.10-radian cap. Exact exported-edge
+  checks pass after removing two zero-area float32 clipping triangles;
+  this is not a cost, contour-fidelity or handoff acceptance result.
 - Future water-extent semantics remain R5 work. This decision changes only
   the presentation of today's static sea-level boundary.

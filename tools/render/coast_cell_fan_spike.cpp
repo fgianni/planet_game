@@ -3,7 +3,7 @@
 // Build against build-godot/libPlanetSimPresentation.a and libPlanetSim.a,
 // with C++20, -O3, -ffp-contract=off, -lzstd and -pthread.
 // Usage: coast_cell_fan_spike 4|6 seed existing-patch-prefix
-//        [subdivisions [adaptive [--cap-rad=0.2]]]
+//        [subdivisions [adaptive [--cap-rad=0.2] [--factor=8]]]
 // Writes existing-patch-prefix-fan.bin for probe_coast_render_mesh.gd;
 // adaptive mode also writes open-boundary georeferenced samples to CSV.
 #include "sim/planet/run/planet_run.hpp"
@@ -30,7 +30,7 @@ struct Point { Vec3d direction; double height_m; };
 using EdgePoint = std::array<std::int64_t, 3>;
 using EdgeKey = std::pair<EdgePoint, EdgePoint>;
 struct BaseTriangle { std::array<Point, 3> points; bool refine; };
-struct EdgeAudit { std::array<Point, 5> points; unsigned visits = 0; };
+struct EdgeAudit { std::vector<Point> points; unsigned visits = 0; };
 struct MacroPoint { Vec3d direction; double drawn_height_m; };
 struct MacroEdge { std::array<MacroPoint, 2> ends; unsigned visits = 0; };
 
@@ -69,22 +69,36 @@ void emit(const std::array<Point, 3>& triangle, const Vec3d& focus, double radiu
             if (inside_a != inside_b)
                 polygon.push_back(interpolate(a, b, a.height_m / (a.height_m - b.height_m)));
         }
-        for (std::size_t i = 2; i < polygon.size(); ++i)
+        for (std::size_t i = 2; i < polygon.size(); ++i) {
+            std::array<Vertex, 3> triangle_vertices{};
+            std::size_t vertex = 0;
             for (const Point& point : {polygon[0], polygon[i - 1], polygon[i]}) {
                 const Vec3d position = point.direction *
                     (1.0 + (wet ? 0.0 : std::max(0.0, point.height_m) / radius_m)) - focus;
-                vertices.push_back({static_cast<float>(position.x), static_cast<float>(position.y),
-                                    static_cast<float>(position.z), wet ? 1.0F : 0.0F});
+                triangle_vertices[vertex++] = {static_cast<float>(position.x),
+                    static_cast<float>(position.y), static_cast<float>(position.z),
+                    wet ? 1.0F : 0.0F};
             }
+            // Sea-level clipping can create a nominal triangle with two
+            // identical exported float32 positions. It has zero area and
+            // double-counts neighbouring edges in the incidence audit.
+            const auto same_position = [&](int a, int b) {
+                return triangle_vertices[a][0] == triangle_vertices[b][0] &&
+                       triangle_vertices[a][1] == triangle_vertices[b][1] &&
+                       triangle_vertices[a][2] == triangle_vertices[b][2];
+            };
+            if (same_position(0, 1) || same_position(1, 2) || same_position(0, 2))
+                continue;
+            vertices.insert(vertices.end(), triangle_vertices.begin(), triangle_vertices.end());
+        }
     }
 }
 
-// Every base triangle has the same four edge intervals, regardless of
+// Every base triangle has the same fine edge intervals, regardless of
 // whether its interior is refined. This avoids a T-junction at the *base*
 // lattice edge. It does not join the outer cap to the production fan.
 bool needs_refinement(const std::array<Point, 3>& base, const TerrainRelief& relief,
-                      double sea_level_m) {
-    constexpr unsigned factor = 4;
+                      double sea_level_m, unsigned factor) {
     const bool wet = base[0].height_m <= 0.0;
     bool mixed = false;
     for (unsigned i = 0; i <= factor; ++i)
@@ -101,17 +115,16 @@ bool needs_refinement(const std::array<Point, 3>& base, const TerrainRelief& rel
 void emit_adaptive(const BaseTriangle& triangle, const std::map<EdgeKey, bool>& refined_edges,
                    const TerrainRelief& relief, double sea_level_m, const Vec3d& focus,
                    double radius_m, std::vector<Vertex>& vertices,
-                   std::size_t& coast_triangles) {
-    constexpr unsigned factor = 4;
+                   std::size_t& coast_triangles, unsigned factor) {
     const auto& base = triangle.points;
-    const auto at = [](unsigned i, unsigned j) { return i * (factor + 1) + j; };
+    const auto at = [factor](unsigned i, unsigned j) { return i * (factor + 1) + j; };
     const auto fine = [&](unsigned i, unsigned j) {
         return sample(relief, sea_level_m,
             base[0].direction * double(factor - i - j) +
             base[1].direction * double(i) + base[2].direction * double(j));
     };
     if (triangle.refine) {
-        std::array<Point, (factor + 1) * (factor + 1)> samples{};
+        std::vector<Point> samples(static_cast<std::size_t>((factor + 1) * (factor + 1)));
         for (unsigned i = 0; i <= factor; ++i)
             for (unsigned j = 0; i + j <= factor; ++j) samples[at(i, j)] = fine(i, j);
         for (unsigned i = 0; i < factor; ++i)
@@ -156,7 +169,7 @@ void emit_adaptive(const BaseTriangle& triangle, const std::map<EdgeKey, bool>& 
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc < 4 || argc > 7) return 2;
+    if (argc < 4 || argc > 8) return 2;
     const unsigned level = static_cast<unsigned>(std::stoul(argv[1]));
     if (level != 4 && level != 6) return 2;
     const unsigned divisions = argc == 5 ? static_cast<unsigned>(std::stoul(argv[4])) : 16U;
@@ -164,12 +177,20 @@ int main(int argc, char** argv) {
     const bool adaptive = argc >= 6 && std::string(argv[5]) == "adaptive";
     if (argc >= 6 && !adaptive) return 2;
     double cap_rad = 0.10;
-    if (argc == 7) {
-        const std::string option = argv[6];
-        if (!option.starts_with("--cap-rad=")) return 2;
-        cap_rad = std::stod(option.substr(10));
-        if (!std::isfinite(cap_rad) || cap_rad < 0.10 || cap_rad > 0.40) return 2;
+    unsigned factor = 4;
+    bool cap_seen = false, factor_seen = false;
+    for (int arg = 6; arg < argc; ++arg) {
+        const std::string option = argv[arg];
+        if (option.starts_with("--cap-rad=") && !cap_seen) {
+            cap_rad = std::stod(option.substr(10));
+            cap_seen = true;
+        } else if (option.starts_with("--factor=") && !factor_seen) {
+            factor = static_cast<unsigned>(std::stoul(option.substr(9)));
+            factor_seen = true;
+        } else return 2;
     }
+    if (!std::isfinite(cap_rad) || cap_rad < 0.10 || cap_rad > 0.40 ||
+        (factor != 4 && factor != 8)) return 2;
     const std::string prefix = argv[3];
     std::ifstream focus_file(prefix + "-focus.txt");
     Vec3d focus{};
@@ -257,7 +278,8 @@ int main(int argc, char** argv) {
                     std::array<Point, 3>{samples[index(i, j)], samples[index(i + 1, j)],
                                          samples[index(i, j + 1)]};
                 if (adaptive) {
-                    const bool refine = needs_refinement(points, relief, terrain.sea_level_m);
+                    const bool refine = needs_refinement(points, relief, terrain.sea_level_m,
+                                                         factor);
                     base_triangles.push_back({points, refine});
                     if (refine) {
                         ++refined_base_triangles;
@@ -281,7 +303,7 @@ int main(int argc, char** argv) {
     if (adaptive)
         for (const auto& triangle : base_triangles)
             emit_adaptive(triangle, refined_edges, relief, terrain.sea_level_m,
-                          focus, radius, vertices, coast_triangles);
+                          focus, radius, vertices, coast_triangles, factor);
     std::size_t internal_refined_edges = 0, open_refined_edges = 0;
     if (adaptive) {
         std::map<EdgeKey, EdgeAudit> audited;
@@ -292,8 +314,10 @@ int main(int argc, char** argv) {
                 const EdgeKey key = edge_key(a, b);
                 if (!refined_edges.contains(key)) continue;
                 auto& record = audited[key];
-                for (unsigned t = 0; t <= 4; ++t) {
-                    const double weight = point_key(a) == key.first ? t / 4.0 : (4 - t) / 4.0;
+                if (!record.visits) record.points.resize(factor + 1);
+                for (unsigned t = 0; t <= factor; ++t) {
+                    const double weight = point_key(a) == key.first ? double(t) / factor :
+                                          double(factor - t) / factor;
                     const Point point = sample(relief, terrain.sea_level_m,
                         a.direction * (1.0 - weight) + b.direction * weight);
                     if (record.visits && (length(record.points[t].direction - point.direction) > 1e-8 ||
@@ -392,6 +416,7 @@ int main(int argc, char** argv) {
               << coast_triangles << ", exported vertices " << count << " ("
               << vertices.size() * sizeof(Vertex) << " bytes); cap rad " << cap_rad
               << ", subdivisions " << divisions << ", adaptive " << adaptive
+              << ", coastal factor " << factor
               << ", refined base triangles " << refined_base_triangles << '/'
               << base_triangles.size() << ", refined edges " << refined_edges.size()
               << " (internal/open " << internal_refined_edges << '/'

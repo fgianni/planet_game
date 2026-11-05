@@ -27,6 +27,8 @@ def audit(path: Path, interior_radius: float = 0.10):
     # Do not quantize: L6 has distinct sub-metre coastline edges that a
     # 0.6 m position grid merges into spurious non-manifold incidences.
     positions = vertices[:, :3].view("<u4").reshape(-1, 3, 3)
+    degenerate = sum(len({tuple(point) for point in triangle}) < 3
+                     for triangle in positions)
     edges = Counter()
     for start, end in ((0, 1), (1, 2), (2, 0)):
         for a, b in zip(positions[:, start], positions[:, end]):
@@ -39,7 +41,8 @@ def audit(path: Path, interior_radius: float = 0.10):
                             < interior_radius for a, b in unpaired)
     return dict(vertices=int(count[0]), edges=len(edges),
                 unpaired=len(unpaired), interior_unpaired=int(interior_unpaired),
-                nonmanifold=sum(value > 2 for value in edges.values()))
+                nonmanifold=sum(value > 2 for value in edges.values()),
+                degenerate=int(degenerate))
 
 
 def main():
@@ -49,8 +52,8 @@ def main():
     args = parser.parse_args()
     result = audit(args.mesh, args.interior_radius)
     print(result)
-    if result["interior_unpaired"] or result["nonmanifold"]:
-        parser.exit(1, "interior open or non-manifold triangle edges\n")
+    if result["interior_unpaired"] or result["nonmanifold"] or result["degenerate"]:
+        parser.exit(1, "interior open, non-manifold or degenerate triangle edges\n")
 
 
 if __name__ == "__main__":
