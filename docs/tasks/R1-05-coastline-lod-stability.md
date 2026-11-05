@@ -1259,6 +1259,46 @@ from georeferenced pages of the canonical field itself.
 - The gradients are central differences at a tenth of the finest
   wavelength: estimates, not proofs. Production is unchanged.
 
+**The connected-ocean rule, from the first option-A probe (2026-10-26,
+recorded 2026-11-05).**
+`tools/render/coast_constraint_probe.cpp` was R1-05's first experiment and
+had stayed uncommitted.
+
+Build (Release): `c++ -std=c++20 -O3 -ffp-contract=off -I .
+tools/render/coast_constraint_probe.cpp build/libPlanetSimPresentation.a
+build/libPlanetSim.a -lzstd -pthread -o build/coast_constraint_probe`.
+
+The probe:
+- picks the L1 tile with the most coast crossings on a fixed coarse scan
+  (L4, seed 20260928: face 5, x 0, y 1);
+- samples a 256² reference of the canonical relief over it, under
+  ADR-0005's connected-ocean rule: water where h ≤ sea level and the
+  cell is not all land;
+- compares that reference with the parent's and children's land/water
+  classification from their triangles' interpolated heights.
+
+Result:
+- The filtered L1 tile disagrees on 10.9 % of samples, and the detailed
+  L2 tiles on 3.3 %.
+- The reference has 4 146 coast crossings, 144 of them set by
+  connectivity rather than by height.
+- 129 below-sea samples lie in inland depressions, which are not ocean.
+- Five meshes and the reference take 0.03 s.
+
+The finding not carried into ADR-0030 is that rule:
+- Under ADR-0005, ground below sea level is ocean only in ocean-connected
+  cells. Inland depressions such as the Caspian and the Dead Sea are land
+  (ocean fraction 0).
+- ADR-0030 decision 1 defines the canonical shore as the plain contour
+  h = sea level. Taken literally, every representation would draw those
+  depressions as sea.
+- That contradicts the authoritative fractions and decision 2's
+  consistency with `surface_class`.
+
+As the probe notes, a connectivity boundary on a cell edge is not a
+continuous height zero, so a canonical coast needs a continuous form of
+the rule. The proposed amendment to ADR-0030 gives one (§ "Amendment 1").
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and
