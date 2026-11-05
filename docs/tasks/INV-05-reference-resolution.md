@@ -418,3 +418,35 @@ efficient on finer cells (the rain under the jet concentrates threefold
 at L5, §3). The column has no sub-grid saturation in the preset (M8-07's
 width β = 0), so a coarse cell condenses only once its mean saturates.
 
+## 11. A passive tracer: transport without rain-out (2026-11-05)
+
+A tracer χ held at 1 in the bottom layer equatorward of 30° and decaying
+with a 10-day lifetime, carried by the winds with the vapour's own scheme
+but never condensing (`passive_tracer_lifetime_s`, commit 28360be; off by
+default, the tracer does not act on the climate, so each run's climate is
+its baseline's). What the winds carry into the caps poleward of 60°
+(kg/m²/day of the cap, of μ χ; `build/inv05/tracer_L3.log` …
+`tracer_L6.log`, `tracer_L3_o2.log` … `tracer_L5_o2.log`):
+
+| | L3 | L4 | L5 | L6 |
+|---|---:|---:|---:|---:|
+| Upwind, months 1–3, S / N | 48.8 / 45.3 | 43.8 / 38.3 | 35.1 / 30.2 | 32.8 / 26.1 |
+| Upwind, months 4–6, S / N | 44.4 / 33.1 | 43.4 / 22.9 | 37.8 / 20.0 | |
+| Order 2, months 1–3, S / N | 26.1 / 26.1 | 26.9 / 17.6 | 29.0 / 18.4 | |
+| Order 2, months 4–6, S / N | 33.5 / 16.7 | 28.4 / 12.7 | 30.8 / 11.8 | |
+
+- **With upwind, the transport itself falls with level** (−28 % S and
+  −33 % N from L3 to L5 in months 1–3; L6 lower again), most of the
+  vapour's fall (§8: −44 % and −36 %).
+- **With order 2 it hardly does:** the levels' tracer delivery agrees
+  within 10–30 % (only L3's north higher), and is about 40 % below
+  upwind L3's. The upwind diffusion carries much of the tracer poleward
+  at coarse levels, as §8 estimated; the resolved transport is roughly
+  level-independent.
+- **The puzzle left:** under order 2 the caps' temperature gap between
+  levels stays at 13.5 K (§9) although the winds deliver about the same
+  tracer at every level. So the vapour must rain out more on the way at
+  finer levels (§10) — or the gap is not set by the water reaching the
+  caps at all. The vapour budget under order 2 (`vapour_L3_o2.log` …
+  `vapour_L5_o2.log`) separates them.
+
