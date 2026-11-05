@@ -267,7 +267,7 @@ Next: a causal test at L5, the caps' cloud optics made insensitive to the
 concentration (an experiment, not a preset change), to see how much of
 the 10–15 K colder caps it removes.
 
-## 6. The overcast test (2026-11-05, running)
+## 6. The overcast test (2026-11-05)
 
 The in-cloud water path W_c raised from 0.05 to 0.2 kg/m² (the trajectory
 probe's fourth argument), so few cells reach overcast at any level, for
@@ -276,4 +276,46 @@ two years at L3, L4 and L5; L5's baseline rerun for 24 months beside it
 caps' L3–L5 difference (≈ 15 K at month 16) shrinks with it. W_c changes
 every level's cover too, so the test compares the levels' difference,
 not the climates.
+
+Year 2 (months 13–24) by level, the preset's W_c and four times it
+(`traj_L3.log` … `traj_L5.log`, `traj_L3_wc02.log` … `traj_L5_wc02.log`):
+
+| | W_c = 0.05: L3 / L4 / L5 | L5 − L3 | W_c = 0.2: L3 / L4 / L5 | L5 − L3 |
+|---|---|---:|---|---:|
+| Polar caps | 281.7 / 276.0 / 267.6 K | −14.1 K | 284.2 / 278.7 / 271.1 K | −13.1 K |
+| Tropics | 305.9 / 306.7 / 307.2 K | +1.3 K | 308.5 / 308.9 / 309.0 K | +0.5 K |
+| P2 | 28.2 / 35.8 / 44.9 K | +16.7 K | 28.3 / 35.3 / 43.5 K | +15.2 K |
+| Largest wind | 55 / 85 / 110 m/s | +55 m/s | 53 / 84 / 107 m/s | +53 m/s |
+
+**Not confirmed:** with few cells at overcast the levels differ by
+almost as much (−13.1 against −14.1 K). The overcast concentration
+accounts for about 1 K; the caps' cloud loss is mostly the colder caps'
+feedback.
+
+## 7. When the difference starts: the first month (2026-11-05)
+
+Month 1 of the cap budgets (`caps_L3.log` … `caps_L6.log`), before the
+caps have cooled (their surface temperatures within 3 K):
+
+| Month 1, W/m² of the cap | L3 | L4 | L5 | L6 |
+|---|---:|---:|---:|---:|
+| Latent carried in across 60°, S | 166.6 | 126.4 | 93.4 | 89.4 |
+| Latent carried in across 60°, N | 187.9 | 144.8 | 119.8 | 106.3 |
+| Dry carried in across 60°, S | 79.4 | 91.2 | 83.6 | 65.4 |
+| Cloud longwave effect, S | 36.8 | 27.5 | 20.5 | 16.1 |
+| Cloud cover, S | 0.45 | 0.39 | 0.33 | 0.30 |
+
+- **The first difference is the water reaching the caps:** in the first
+  month, finer levels carry 40–45 % less vapour into the caps, while the
+  dry heat differs little; their clouds are thinner from the start. In
+  year 2 the totals agree because colder caps draw more dry heat (§4):
+  the year-2 agreement is the feedback, the month-1 deficit the cause.
+- The dynamics' clipping adds no vapour (0.0000 kg/m²/day at L3), so the
+  latent transports are the advection's.
+- Open: whether the water condenses on the way (more resolved
+  condensation in the mid-latitudes at finer levels) or is carried less
+  (the advection's numerical diffusion, larger on coarse cells, moving
+  vapour down its gradient). The vapour budget by 30° band
+  ([`tools/v8/reference_vapour_budget_probe.cpp`](../../tools/v8/reference_vapour_budget_probe.cpp))
+  runs for three months at L3–L6.
 
