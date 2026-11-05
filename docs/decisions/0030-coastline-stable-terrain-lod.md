@@ -3,6 +3,8 @@
 - **Status:** accepted 2026-11-02 by explicit decision; not implemented.
   The pre-acceptance feasibility prerequisite was expressly waived; the
   validation gates below were **not** waived for implementation or completion.
+  Amendment 1 (a per-pixel coast from canonical pages, with the
+  connected-ocean rule) is proposed, 2026-11-05.
 - **Amends:** ADR-0022 §4.8–4.9's terrain-LOD coastline contract. Independently
   sampled coarse tiles currently disagree with detailed relief between shared
   vertices. The existing renderer remains unchanged until validation passes.
@@ -440,3 +442,132 @@ none constitutes validation of a production implementation.
   outer strip nor the binding implementation gates have been established.
 - Future water-extent semantics remain R5 work. This decision changes only
   the presentation of today's static sea-level boundary.
+
+## Amendment 1 (proposed 2026-11-05): a per-pixel coast from canonical pages
+
+### A1.1 Why
+
+Every representation probed so far (R1-05, 2026-10-29 to 2026-11-05)
+builds the shared coast from geometry, and the coast then follows the
+geometry's vertices.
+- A tile with relief splits only until its vertex spacing on screen is
+  4 px (`split_error_px`). A coast drawn from vertices meets the 1 px
+  gate only with near-pixel vertex spacing on every coast.
+- The refined fan patches that approach it cost 15–37 MB each locally,
+  against 64 MiB for the whole planet.
+- None has a bounded hand-back to the coarse cell mesh and tiles.
+
+The canonical relief, by contrast, is a pure function of position, and
+band-limited (finest wavelength 2.32 km at L4 and 0.58 km at L6). It is
+also cheap: 0.74–1.89 µs a sample on one thread, and 15–25 million a
+second on 24 (`tools/render/coast_page_probe.cpp`).
+
+So the coast can follow the screen instead of the geometry: sample the
+canonical field on georeferenced pages, and classify each pixel from
+them.
+
+### A1.2 The canonical water field (amends decision 1)
+
+Decision 1's plain contour, h = sea level, ignores ADR-0005's
+connected-ocean rule. Under that rule, ground below sea level is ocean
+only in ocean-connected cells (R1-05, "The connected-ocean rule"). The
+canonical water field is therefore
+
+  s(x) = (z_sea − h(x)) − (1 − κ(x)) D,  water where s(x) > 0,
+
+where:
+- h is `TerrainRelief::sample()`.
+- κ is the relief's own blend (its cell and corner weights) of a
+  per-cell κ_c:
+  - κ_c = 0 for a depression cell: all land (land fraction 1) with its
+    lowest quantile below sea level;
+  - κ_c = 1 otherwise;
+  - a corner's κ is the mean of its three cells' κ_c.
+- D is the snapshot's deepest depression below sea level, plus 1 m.
+
+The field is continuous, a pure function of position, seed, snapshot and
+sea level, and equal to z_sea − h wherever κ = 1.
+
+A depression cell never borders an ocean-connected cell: if it did, it
+would be ocean-connected itself. So κ < 1 only around depressions,
+towards land whose own curves are above sea level, and s moves no
+seacoast. True depressions are rare: none at L4 for seeds 20260928 and 42,
+and 357 and 528 of 40 962 cells at L6, up to 255 and 304 m deep.
+
+What s keeps as water is the below-sea relief the corner handover places
+inside all-land cells near a coast (all 129 such samples in the L4
+probe's tile). It is continuous, but it over-draws water against the cell
+fractions. It is measured against decision 2's `surface_class`
+readability gate, not snapped to cell edges, which would draw straight
+seams.
+
+A later sea-level change (R5) recomputes the depression cells, D and the
+pages.
+
+### A1.3 Coast pages (replace decision 2's shore vertices and edges)
+
+- **What a page is.** A page belongs to one tile key, from the existing
+  cube-face quadtree. It holds s on a P × P lattice (P = 256 to start,
+  8 samples per tile quad) placed on the global dyadic face coordinates
+  (decision 3).
+- **Exactness and determinism.** Each page is a pure function of its key,
+  the seed, the snapshot and the sea level, so it is byte-identical
+  however it is reached (V10).
+- **Shared points are exact.** Neighbouring pages share their edge
+  points, and a parent's points are every other point of its children's,
+  so they agree at those points exactly. Face edges and corners use
+  decision 3's deterministic ownership.
+- **The drawn coast** is the zero line of the bilinear interpolation of
+  the finest resident page under each pixel, antialiased over the pixel's
+  footprint.
+  - Pages are requested so that their samples are at least as dense as
+    the screen's pixels (two per pixel as the target).
+  - Where the finest resident page is coarser, as while children load,
+    it is drawn as it stands and the shortfall is reported, not hidden.
+- **Every visible LOD reads the same pages,** through one page table:
+  coarse and detailed tiles and the planet-band cell mesh alike. The cell
+  mesh's `detail_seed_coast` threshold no longer decides open water where
+  a page covers it.
+- **Memory:** pages are stored at 2 bytes a sample, and cached and evicted
+  like tiles, within the 64 MiB coastal budget.
+
+### A1.4 Geometry follows the classification (amends decision 4)
+
+- **Water vertices sit at sea level.** A vertex where the page says water
+  is drawn at sea level, and a land vertex at no lower than sea level,
+  for detailed and filtered tiles alike. The cell mesh does the same.
+- **The remaining disagreement is measured, not assumed zero.** Within
+  one vertex spacing, a triangle can still mix the two (wet land or dry
+  ocean). Its height there is that of its vertices, so it is largest for
+  coarse filtered tiles. It is measured in pixels and must meet the
+  screen-space gate.
+- **Picking and collision** use the page classification and the drawn
+  geometry.
+- **Not required by this amendment:** shore vertices on the contour, or
+  clipped coastal triangles.
+
+### A1.5 Gates
+
+ADR-0030's implementation and completion gates stand unchanged, the
+≤1 px screen-space gate included. This amendment adds:
+- **V-A1, the field:** κ and s are continuous across fan and cell edges,
+  are the plain contour where κ = 1, and keep every depression cell's
+  ground dry. The `surface_class` consistency of the handover ground is
+  measured.
+- **V-A2, the pages:** pages are byte-identical by any route, and their
+  shared edge, parent/child and face-corner points agree exactly.
+  Bilinear contour error is measured against pixel-centred canonical
+  references at several poses, seeds, L4 and L6, and all faces.
+- **V-A3, the cost:** page generation time, resident page bytes at L6
+  (within 64 MiB) and frame times, under R1-04's flight.
+
+### A1.6 Tasks
+
+1. Build the field (κ, D, s) and `make_coast_page` in `sim/presentation`,
+   with headless tests for V-A1 and V-A2. Production is unchanged.
+2. Build a headless screen-space harness: page classification against
+   pixel-centred canonical references, the ≤1 px and 4-px island rules.
+3. Godot: the page cache, atlas and page table, and both styles' surface
+   shaders for tiles and the cell mesh; geometry by the page's sign.
+4. The rendered gates: the zoom sweep, V4, V9, V10, V13, both styles,
+   L6 frame times and memory. Only then does production change.
