@@ -1,13 +1,16 @@
 import unittest
+import math
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from measure_coast_fan_boundary import crossings, metrics, read_samples
+from measure_coast_fan_boundary import (crossings, metrics, project,
+                                        projected_metrics, read_samples)
 
 
-def sample(t, detailed, filtered, coarse=0.0, length=100.0):
+def sample(t, detailed, filtered, coarse=0.0, length=100.0, direction=(0, 0, 1)):
     return dict(t=t, detailed_m=detailed, filtered_m=filtered,
-                coarse_drawn_m=coarse, edge_length_m=length)
+                coarse_drawn_m=coarse, edge_length_m=length,
+                **dict(zip(("direction_x", "direction_y", "direction_z"), direction)))
 
 
 class BoundarySamplesTests(unittest.TestCase):
@@ -28,10 +31,31 @@ class BoundarySamplesTests(unittest.TestCase):
     def test_reader_rejects_unordered_samples(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "boundary.csv"
-            path.write_text("edge,t,detailed_m,filtered_m,coarse_drawn_m,edge_length_m\n"
-                            "0,0,1,1,0,100\n0,1,0,0,0,100\n0,0.5,-1,-1,0,100\n")
+            path.write_text("edge,t,detailed_m,filtered_m,coarse_drawn_m,edge_length_m,"
+                            "direction_x,direction_y,direction_z\n"
+                            "0,0,1,1,0,100,0,0,1\n0,1,0,0,0,100,0,0,1\n"
+                            "0,0.5,-1,-1,0,100,0,0,1\n")
             with self.assertRaisesRegex(ValueError, "invalid samples"):
                 read_samples(path)
+
+    def test_projected_unmatched_crossing_leaves_close_pose_frame(self):
+        def direction(x):
+            return x, 0.0, math.sqrt(1 - x * x)
+        edges = {0: [sample(0, 1, 1, direction=direction(0.09)),
+                     sample(1, -1, 1, direction=direction(0.11))]}
+        self.assertEqual(project((0, 0, 1), (0, 0, 1), 0.7), (256, 256))
+        results = projected_metrics(edges, (0, 0, 1), [0.7, 0.04])
+        self.assertEqual(results[0.7]["unmatched_central"], 1)
+        self.assertEqual(results[0.04]["in_frame"], 0)
+
+    def test_matched_crossing_projection_reports_pixel_gap(self):
+        def direction(x):
+            return x, 0.0, math.sqrt(1 - x * x)
+        edges = {0: [sample(0, 1, 3, direction=direction(0.08)),
+                     sample(1, -1, -1, direction=direction(0.12))]}
+        result = projected_metrics(edges, (0, 0, 1), [0.7])[0.7]
+        self.assertEqual(result["unmatched_in_frame"], 0)
+        self.assertGreater(result["max_matched_gap_px"], 1)
 
 
 if __name__ == "__main__":

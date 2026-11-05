@@ -399,5 +399,15 @@ none constitutes validation of a production implementation.
   cell shader's fractional water classification is different. They rule out
   treating the unjoined cap as a hand-back to the existing coarse fan;
   topology, height and classification need a measured outer transition.
+- Georeferenced outer-edge samples projected into fixed 512² nadir 75°
+  camera poses show the unresolved cap boundary is visible at the relevant
+  planet–region blend. At L4's ~0.70-radii blend, six detailed crossings
+  with no filtered crossing on their edge remain in the central crop even
+  after expanding the local cap from 0.10 to 0.40 radians (raw local
+  triangle-list storage rises from 1.65 to 14.0 MB). At L6's ~0.175-radii
+  blend, a 0.20-radian cap puts its perimeter outside the frame but costs
+  45.1 MB for one local cap before overhead. These are projected sampled
+  roots at a probe focus, not actual rendered handoff movement or a global
+  cache result; the ≤1 px, contour-fidelity and cost gates remain open.
 - Future water-extent semantics remain R5 work. This decision changes only
   the presentation of today's static sea-level boundary.

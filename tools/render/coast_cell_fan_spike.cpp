@@ -2,7 +2,8 @@
 // fan triangles. Not a production mesh: the outer hand-back is not stitched.
 // Build against build-godot/libPlanetSimPresentation.a and libPlanetSim.a,
 // with C++20, -O3, -ffp-contract=off, -lzstd and -pthread.
-// Usage: coast_cell_fan_spike 4|6 seed existing-patch-prefix [subdivisions [adaptive]]
+// Usage: coast_cell_fan_spike 4|6 seed existing-patch-prefix
+//        [subdivisions [adaptive [--cap-rad=0.2]]]
 // Writes existing-patch-prefix-fan.bin for probe_coast_render_mesh.gd;
 // adaptive mode also writes open-boundary georeferenced samples to CSV.
 #include "sim/planet/run/planet_run.hpp"
@@ -155,13 +156,20 @@ void emit_adaptive(const BaseTriangle& triangle, const std::map<EdgeKey, bool>& 
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc < 4 || argc > 6) return 2;
+    if (argc < 4 || argc > 7) return 2;
     const unsigned level = static_cast<unsigned>(std::stoul(argv[1]));
     if (level != 4 && level != 6) return 2;
     const unsigned divisions = argc == 5 ? static_cast<unsigned>(std::stoul(argv[4])) : 16U;
     if (divisions < 2 || divisions > 64) return 2;
-    const bool adaptive = argc == 6 && std::string(argv[5]) == "adaptive";
-    if (argc == 6 && !adaptive) return 2;
+    const bool adaptive = argc >= 6 && std::string(argv[5]) == "adaptive";
+    if (argc >= 6 && !adaptive) return 2;
+    double cap_rad = 0.10;
+    if (argc == 7) {
+        const std::string option = argv[6];
+        if (!option.starts_with("--cap-rad=")) return 2;
+        cap_rad = std::stod(option.substr(10));
+        if (!std::isfinite(cap_rad) || cap_rad < 0.10 || cap_rad > 0.40) return 2;
+    }
     const std::string prefix = argv[3];
     std::ifstream focus_file(prefix + "-focus.txt");
     Vec3d focus{};
@@ -202,7 +210,6 @@ int main(int argc, char** argv) {
     // Select whole fan triangles by their actual cell/corner directions.
     // This is deliberately a bounded local footprint, not an L4/L6 global
     // fine mesh. Its selected/unselected outer edge is NOT yet continuous.
-    constexpr double cap_rad = 0.10;
     const double cap_dot = std::cos(cap_rad);
     std::vector<Vertex> vertices;
     std::size_t fan_triangles = 0;
@@ -313,7 +320,8 @@ int main(int argc, char** argv) {
         boundary_file.open(prefix + "-fan-boundary.csv");
         if (!boundary_file) throw std::runtime_error("cannot write boundary samples");
         boundary_file << std::setprecision(17)
-                      << "edge,t,detailed_m,filtered_m,coarse_drawn_m,edge_length_m\n";
+                      << "edge,t,detailed_m,filtered_m,coarse_drawn_m,edge_length_m,"
+                         "direction_x,direction_y,direction_z\n";
     }
     if (adaptive) for (const auto& [key, record] : macro_edges) {
         (void)key;
@@ -350,7 +358,8 @@ int main(int argc, char** argv) {
             previous_smooth = filtered;
             const double coarse = a.drawn_height_m * (1.0 - t) + b.drawn_height_m * t;
             boundary_file << boundary_edges - 1 << ',' << t << ',' << height << ','
-                          << filtered << ',' << coarse << ',' << edge_length_m << '\n';
+                          << filtered << ',' << coarse << ',' << edge_length_m << ','
+                          << direction.x << ',' << direction.y << ',' << direction.z << '\n';
             boundary_max_height_gap_m = std::max(boundary_max_height_gap_m,
                                                   std::abs(std::max(0.0, height) - coarse));
             // Heights alone are not the cell shader's water mask. This only

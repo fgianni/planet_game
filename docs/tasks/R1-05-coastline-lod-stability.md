@@ -1083,6 +1083,41 @@ shoreline transition. A viable cell-side representation needs a
 contour-aware outer strip with matching classification and heights, tested
 against the actual production fan, not just crack-free inner triangulation.
 
+**Projected outer-cap visibility and radius sweep (2026-11-04).** The
+boundary CSV now also records each sampled unit-sphere direction.
+`measure_coast_fan_boundary.py --focus PREFIX-focus.txt --fov 75` projects
+its linearly interpolated crossings into a 512², 75° **nadir** camera at
+the same tile-patch focus; the central crop is pixels [80,432)². This
+matches the globe camera's FOV and zero auto-tilt at the approximate
+planet–region blend centres (L4 0.70035, L6 0.17515 radii), but is **not**
+an actual-camera render, a matched shoreline measurement, or the earlier
+`get_coastal_focus()` zoom path. A synthetic test checks visibility,
+offscreen rejection and a shifted projected crossing; the Godot
+`test_coast_boundary_projection.gd` checks the 60°/75° projection against
+`Camera3D.unproject_position()`. A cap-radius option
+on the *probe-only* exporter provides a local cost/visibility sensitivity:
+
+| Level / cap radius | Local triangle-list bytes | Detailed / filtered perimeter crossings | Detailed crossings in frame / central at blend centre | No-filtered-edge crossings in frame / central |
+|---|---:|---:|---:|---:|
+| L4 / 0.10 | 1.65 MB | 22 / 2 | 22 / 22 | 20 / 20 |
+| L4 / 0.20 | 5.39 MB | 8 / 2 | 8 / 8 | 6 / 6 |
+| L4 / 0.30 | 8.83 MB | 10 / 2 | 10 / 10 | 6 / 6 |
+| L4 / 0.40 | 14.00 MB | 10 / 4 | 10 / 10 | 6 / 6 |
+| L6 / 0.10 | 13.95 MB | 26 / 4 | 26 / 9 | 22 / 8 |
+| L6 / 0.20 | 45.10 MB | 12 / 2 | 0 / 0 | 0 / 0 |
+
+The L6 0.20-radian boundary is offscreen at *its* blend centre, not at
+0.70 radii (which is still planet-only for L6). Conversely, even a
+0.40-radian L4 cap retains six detailed crossings without a filtered
+same-edge counterpart in the central blend crop. Enlarging a fixed cap
+alone therefore does not demonstrate a coast-preserving L4 hand-back, and
+the L6 0.20 cap already consumes 45.1 MB of **raw local vertices** before
+cache, normals, skirt and other coastal views. These are sample-root and
+cost diagnostics, **not** proof that a resolvable island appears, a measured
+pixel shoreline jump, or a failure of the 64 MiB *global* cache gate.
+The camera moves in the real viewer; visibility at one nadir focus cannot
+substitute for a bounded, contour-aware cell representation and full zoom.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and
