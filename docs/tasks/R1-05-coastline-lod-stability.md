@@ -1282,18 +1282,27 @@ Result:
   L2 tiles on 3.3 %.
 - The reference has 4 146 coast crossings, 144 of them set by
   connectivity rather than by height.
-- 129 below-sea samples lie in inland depressions, which are not ocean.
+- 129 below-sea samples fall in all-land cells (land fraction 1).
 - Five meshes and the reference take 0.03 s.
 
-The finding not carried into ADR-0030 is that rule:
-- Under ADR-0005, ground below sea level is ocean only in ocean-connected
-  cells. Inland depressions such as the Caspian and the Dead Sea are land
-  (ocean fraction 0).
-- ADR-0030 decision 1 defines the canonical shore as the plain contour
-  h = sea level. Taken literally, every representation would draw those
-  depressions as sea.
-- That contradicts the authoritative fractions and decision 2's
-  consistency with `surface_class`.
+The finding not carried into ADR-0030 is that rule. Under ADR-0005, ground
+below sea level is ocean only in ocean-connected cells; an all-land cell's
+fraction is 1 at the snapshot's sea level. ADR-0030 decision 1 defines the
+canonical shore as the plain contour h = sea level, and two kinds of
+below-sea ground in all-land cells would then be drawn as sea:
+- **The relief's handover at cell edges.** Towards an all-land cell's
+  edges, the relief blends in its corners' curves, and those include the
+  neighbouring ocean cells' curves. Near the coast this pulls the height
+  below sea level inside a cell whose fraction says land. At L4 that is
+  all of the probe's 129 samples: no L4 cell is an inland depression for
+  either seed (20260928 and 42).
+- **True inland depressions,** such as the Caspian or the Dead Sea: all-land
+  cells whose own lowest quantile is below sea level. At L6 there are 357
+  (seed 20260928) and 528 (seed 42) of the 40 962 cells, up to 255 and
+  304 m deep (a scratch census, 2026-11-05).
+
+Either contradicts the authoritative fractions and decision 2's
+consistency with `surface_class`.
 
 As the probe notes, a connectivity boundary on a cell edge is not a
 continuous height zero, so a canonical coast needs a continuous form of
