@@ -42,14 +42,16 @@ units; - deterministic and testable implementation; - physical
 state/fluxes rather than scripted climate modifiers; - production code
 and tests together; - do not proceed to M9 unless explicitly requested.
 
-Current investigation: [INV-04](docs/tasks/INV-04-v8-transport-and-radiation.md),
-V8 (climate–reference parity), measured at L4 over three years (ADR-0023
+Most recent investigation: [INV-04](docs/tasks/INV-04-v8-transport-and-radiation.md)
+(closed 2026-11-05; its "Outcome" section has the summary and the
+known limitations carried forward), V8 (climate–reference parity), measured at L4 over three years (ADR-0023
 §16). Its first cause (2026-10-23): climate mode's land air is cold and dry
 because its transport brings almost no water to land. ADR-0027 (accepted
 2026-10-23) mixes each transport group's heat (`heat_group_mixing = 1`).
 ADR-0028 (accepted 2026-10-26) adds the equatorial waves' exchange to the
 eddy diffusivity; at c = 50 m/s V8 passed at L4 (−0.146 K), but by
-compensation. ADR-0029 (proposed: land's water in climate mode) found
+compensation. ADR-0029 (proposed: land's water in climate mode; B or C deferred until
+after INV-05) found
 (2026-10-30) that at the same sea-surface temperature climate mode's
 tropical air is 9–12 K colder than reference mode's, its Hadley overturning
 4–10 times weaker, its water held in the bottom layer, and the waves
@@ -72,8 +74,8 @@ bound (ADR-0023 §16.6). **Current: [INV-05](docs/tasks/INV-05-reference-resolut
 reference mode's resolution dependence** (started 2026-11-03). Nothing is
 tuned against V8 meanwhile. ADR-0024 §9's fallback (R_f = 100 W/m², with §9.6's restart) is
 on in the preset; the column gate is on the residual, 1e-9 W/m² (ADR-0027
-§10); `PlanetRun` has no resume constructor. INV-04's open tasks list the
-rest. Changes to the fallback or nonlinear solve require an architecture
+§10); `PlanetRun` has no resume constructor. INV-04's "Outcome" and open
+tasks list the rest. Changes to the fallback or nonlinear solve require an architecture
 decision. M9 must not start unless explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
