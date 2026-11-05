@@ -409,5 +409,15 @@ none constitutes validation of a production implementation.
   45.1 MB for one local cap before overhead. These are projected sampled
   roots at a probe focus, not actual rendered handoff movement or a global
   cache result; the ≤1 px, contour-fidelity and cost gates remain open.
+- An independent pixel-centred detailed-relief reference at the same fixed
+  nadir pose isolates fan-side contour approximation from tile-patch
+  sampling. At L4 seed 20260928, 0.04 radii and 75° FOV, the adaptive fan
+  differs on 1,148/258,064 common pixels, 28 more than one pixel from the
+  reference's binary shore; the independent tile patch differs on 491
+  pixels, none over one pixel. A height-aware ray control changes no
+  reference water classes at that focus. These are unshaded mask-to-field
+  comparisons, **not** matched-contour handoff displacement or proof of a
+  production failure. The local fan still lacks an outer join, and the
+  canonical fidelity and implementation gates remain binding.
 - Future water-extent semantics remain R5 work. This decision changes only
   the presentation of today's static sea-level boundary.

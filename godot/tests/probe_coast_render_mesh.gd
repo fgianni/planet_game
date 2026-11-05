@@ -39,6 +39,7 @@ func _run() -> void:
 	var include_fan := false
 	var cell_seed := 20260928
 	var cell_level := 4
+	var probe_fov := 60.0
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--coast-prefix="):
 			prefix = argument.trim_prefix("--coast-prefix=")
@@ -58,6 +59,9 @@ func _run() -> void:
 			cell_seed = int(argument.trim_prefix("--coast-cell-seed="))
 		if argument.begins_with("--coast-cell-level="):
 			cell_level = int(argument.trim_prefix("--coast-cell-level="))
+		if argument.begins_with("--coast-fov="):
+			probe_fov = float(argument.trim_prefix("--coast-fov="))
+	assert(probe_fov > 0.0 and probe_fov < 180.0)
 	var focus_file := FileAccess.open(prefix + "-focus.txt", FileAccess.READ)
 	assert(focus_file != null, "missing focus")
 	var parts := focus_file.get_line().split(" ", false)
@@ -78,7 +82,7 @@ func _run() -> void:
 	var camera := Camera3D.new()
 	camera.near = 0.00001
 	camera.far = 2.0
-	camera.fov = 60.0
+	camera.fov = probe_fov
 	camera.current = true
 	viewport.add_child(camera)
 	var instance := MeshInstance3D.new()
@@ -103,6 +107,9 @@ func _run() -> void:
 		assert(height > 0.0)
 		camera.position = focus * height
 		camera.look_at(Vector3.ZERO, Vector3.UP if absf(focus.dot(Vector3.UP)) < 0.9 else Vector3.FORWARD)
+		var pose_label := altitude.replace(".", "_")
+		if not is_equal_approx(probe_fov, 60.0):
+			pose_label += "-fov%s" % str(probe_fov).replace(".", "_")
 		var kinds := ["face-same", "face-mixed"] if face_pair else ["parent", "children", "detail"]
 		if include_ultra:
 			kinds.append("ultra")
@@ -116,7 +123,7 @@ func _run() -> void:
 				await process_frame
 			var image := viewport.get_texture().get_image()
 			assert(image != null)
-			var output: String = prefix + "-" + altitude.replace(".", "_") + "-" + kind + ".png"
+			var output: String = prefix + "-" + pose_label + "-" + kind + ".png"
 			assert(image.save_png(output) == OK, "failed to save " + output)
 			print(output)
 		if include_cell:
@@ -125,7 +132,7 @@ func _run() -> void:
 			for unused in 4:
 				await process_frame
 			var cell_image := viewport.get_texture().get_image()
-			var cell_output: String = prefix + "-" + altitude.replace(".", "_") + "-cell.png"
+			var cell_output: String = prefix + "-" + pose_label + "-cell.png"
 			assert(cell_image != null and cell_image.save_png(cell_output) == OK)
 			print(cell_output)
 			cell_planet.visible = false

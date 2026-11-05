@@ -1118,6 +1118,41 @@ pixel shoreline jump, or a failure of the 64 MiB *global* cache gate.
 The camera moves in the real viewer; visibility at one nadir focus cannot
 substitute for a bounded, contour-aware cell representation and full zoom.
 
+**Independent pixel-centred relief control (2026-11-05).**
+`coast_fan_canonical_reference.cpp` casts each pixel-centre ray from the
+same fixed nadir camera onto the unit sphere and samples the **canonical
+detailed relief** at that georeferenced direction, independent of both
+fan and tile sampling lattices. It writes an unshaded wet/dry reference;
+`measure_coast_fan_reference.py` compares it with the fan and an independent
+tile patch only where each mesh is visible, eroding two silhouette pixels.
+The optional `raised` ray control samples the first bracketed relief hit
+along each ray (16 coarse steps and 20 bisections); it is not a certified
+grazing/multiple-occluder solver. At L4/seed 20260928/0.04 radii it shifts
+240,581 land-pixel ray hits by up to 862 m at 60° FOV, but changes **zero**
+reference water classes versus the unit-sphere control (also zero at 75°).
+Thus the tested close-pose colour-mask residual cannot simply be attributed
+to ignoring raised-surface parallax. The Godot probe accepts `--coast-fov=75`
+without changing production geometry or overwriting its 60° captures.
+
+| Level / fixed pose / FOV | Common fan interior px | Fan vs canonical changes / >1 px from canonical mask shore | Common tile-patch interior px | Patch vs canonical changes / >1 px |
+|---|---:|---:|---:|---:|
+| L4 / 0.70 / 75° | 9,510 | 12 / 0 | 1,310 | 2 / 0 |
+| L4 / 0.04 / 75°, raised reference | 258,064 | 1,148 / 28 | 258,064 | 491 / 0 |
+| L6 / 0.175 / 75° | 115,642 | 62 / 0 | 1,306 | 4 / 0 |
+| L4 / 0.04 / 60°, raised reference | 258,064 | 1,247 / 96 | 258,064 | 542 / 3 |
+
+This is a **fidelity diagnostic**, not matched-contour displacement or a
+rendered handoff test: the pixels >1 from the reference's binary shoreline
+are not shoreline shifts between two LODs. The patch covers very little of
+the distant pose; the candidate cap does not join the rest of the actual
+cell fan. The detailed field itself can contain features between these
+pixel-centre samples, and unshaded classes are not either production style.
+Nevertheless, the independent L4 close-pose reference catches resolvable
+fan-side errors absent in the sampled tile patch. Improving only the cap's
+outer visibility cannot clear the canonical fidelity requirement. The
+≤1 px handoff, topology, global cache, normals/skirts, picking, style and
+continuous-zoom gates all remain open.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and
