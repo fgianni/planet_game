@@ -115,6 +115,9 @@ struct SurfaceEnergyParameters {
     // advection, 1 upwind (ADR-0021 §4.5, the preset) or 2 limited
     // second-order upwind (PrimitiveEquationParameters).
     int vapour_advection_order = 1;
+    // INV-05, investigations only: reference mode's passive tracer lifetime
+    // (s; 0 none; AtmosphereDynamicsParameters).
+    double passive_tracer_lifetime_s = 0.0;
 };
 
 // The bulk transfer coefficients of evaporation (ADR-0021 §4.3): the tiles'

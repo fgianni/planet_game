@@ -60,6 +60,9 @@ struct PrimitiveEquationState {
     // mass fluxes F_k and vertical fluxes W as Θ, so the column's water is
     // conserved. Empty: no tracer.
     Field3D<double> mass_humidity;
+    // INV-05: a passive tracer C_k = μ_k χ_k (layer × cell), carried as Q
+    // is and with no sources here (AtmosphereDynamics adds them). Empty: none.
+    Field3D<double> mass_tracer;
 };
 
 struct PrimitiveEquationDiagnostics {

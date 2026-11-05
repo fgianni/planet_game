@@ -208,9 +208,54 @@ void AtmosphereDynamics::step(PlanetState& state, double dt_s) {
             }
         }
     }
+    last_.tracer_into_caps_kg_s = {};
+    last_.tracer_cap_mean = {};
+    // INV-05's passive tracer: μ χ into the model, and the caps' content.
+    const bool tracer = parameters_.passive_tracer_lifetime_s > 0.0;
+    // 0 the southern cap, 1 the northern, 2 neither.
+    const auto cap_of = [&](std::size_t i) -> std::size_t {
+        const double z = cells[i].center_unit.z;
+        return z > std::sin(std::numbers::pi / 3.0) ? 1U : (z < -std::sin(std::numbers::pi / 3.0) ? 0U : 2U);
+    };
+    std::array<double, 2> cap_before{};
+    if (tracer) {
+        if (tracer_.layer_count() != n || tracer_.cell_count() != cell_count) {
+            tracer_ = Field3D<double>(n, cell_count, 0.0);
+        }
+        pe.mass_tracer = Field3D<double>(n, cell_count);
+        for (std::size_t k = 0; k < n; ++k) {
+            for (std::size_t i = 0; i < cell_count; ++i) {
+                pe.mass_tracer.layer(k)[i] = pe.surface_pressure_Pa[i] / (g * n_d) * tracer_.layer(k)[i];
+                if (cap_of(i) < 2U) cap_before[cap_of(i)] += cells[i].area_m2 * pe.mass_tracer.layer(k)[i];
+            }
+        }
+    }
     flux_totals_.mass_kg_m.assign(n * edge_count, 0.0);
     flux_totals_.vapour_kg_m.assign(n * edge_count, 0.0);
     last_.steps = model_.advance(pe, dt_s, parameters_.rule, worker_count_, &flux_totals_);
+    if (tracer) {
+        std::array<double, 2> cap_after{}, cap_mass{};
+        const double keep = std::exp(-dt_s / parameters_.passive_tracer_lifetime_s);
+        const double tropics = std::sin(std::numbers::pi / 6.0);
+        for (std::size_t k = 0; k < n; ++k) {
+            for (std::size_t i = 0; i < cell_count; ++i) {
+                const double mass = pe.surface_pressure_Pa[i] / (g * n_d);
+                const double content = pe.mass_tracer.layer(k)[i];
+                if (cap_of(i) < 2U) cap_after[cap_of(i)] += cells[i].area_m2 * content;
+                double chi = std::max(0.0, content / mass) * keep;
+                if (k == 0U && std::abs(cells[i].center_unit.z) < tropics) chi = 1.0;
+                tracer_.layer(k)[i] = chi;
+                if (cap_of(i) < 2U) {
+                    last_.tracer_cap_mean[cap_of(i)] += cells[i].area_m2 * mass * chi;
+                    cap_mass[cap_of(i)] += cells[i].area_m2 * mass;
+                }
+            }
+        }
+        for (std::size_t h = 0; h < 2U; ++h) {
+            last_.tracer_into_caps_kg_s[h] = (cap_after[h] - cap_before[h]) / dt_s;
+            last_.tracer_cap_mean[h] = cap_mass[h] > 0.0 ? last_.tracer_cap_mean[h] / cap_mass[h] : 0.0;
+        }
+    }
     last_.northward_mass_kg_s = {};
     last_.northward_vapour_kg_s = {};
     for (const Crossing& crossing : crossings_) {

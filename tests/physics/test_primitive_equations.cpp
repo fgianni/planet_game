@@ -28,7 +28,7 @@ using planetsim::PrimitiveEquationState;
             Field3D<double>(state.mass_theta.layer_count(), state.mass_theta.cell_count()),
             Field3D<double>(state.normal_velocity_m_s.layer_count(),
                             state.normal_velocity_m_s.cell_count()),
-            Field3D<double>{}};
+            Field3D<double>{}, Field3D<double>{}};
 }
 
 }  // namespace
@@ -169,6 +169,10 @@ int main() {
                     vapour_before += mesh.cells()[i].area_m2 * varying.mass_humidity.layer(k)[i];
                 }
             }
+            // INV-05's passive tracer rides along: uniform with the uniform
+            // humidity, and the varying field's copy, which must match it.
+            uniform.mass_tracer = uniform.mass_humidity;
+            varying.mass_tracer = varying.mass_humidity;
             for (int step = 0; step < 20; ++step) {
                 model.step(uniform, 120.0);
                 model.step(varying, 120.0);
@@ -202,6 +206,16 @@ int main() {
             PLANETSIM_EXPECT(test, spread <= 1e-12);
             PLANETSIM_EXPECT(test, std::abs(vapour_after / vapour_before - 1.0) <= 1e-13);
             PLANETSIM_EXPECT(test, lowest >= -1e-6);
+            double tracer_gap = 0.0;
+            for (std::size_t k = 0; k < n; ++k) {
+                for (std::size_t i = 0; i < cells; ++i) {
+                    tracer_gap = std::max(tracer_gap, std::abs(varying.mass_tracer.layer(k)[i] -
+                                                               varying.mass_humidity.layer(k)[i]));
+                    tracer_gap = std::max(tracer_gap, std::abs(uniform.mass_tracer.layer(k)[i] -
+                                                               uniform.mass_humidity.layer(k)[i]));
+                }
+            }
+            PLANETSIM_EXPECT(test, tracer_gap == 0.0);
         }
         PLANETSIM_EXPECT(test, variance[1] > variance[0]);
     }

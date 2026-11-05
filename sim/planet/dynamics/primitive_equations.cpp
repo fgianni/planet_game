@@ -71,10 +71,13 @@ namespace {
     const auto& theta = state.mass_theta;
     const auto& u = state.normal_velocity_m_s;
     const auto& q = state.mass_humidity;
+    const auto& c = state.mass_tracer;
     return {Field2D<double>(state.surface_pressure_Pa.size()),
             Field3D<double>(theta.layer_count(), theta.cell_count()),
             Field3D<double>(u.layer_count(), u.cell_count()),
             q.layer_count() > 0U ? Field3D<double>(q.layer_count(), q.cell_count())
+                                 : Field3D<double>{},
+            c.layer_count() > 0U ? Field3D<double>(c.layer_count(), c.cell_count())
                                  : Field3D<double>{}};
 }
 
@@ -179,7 +182,8 @@ PrimitiveEquationState PrimitiveEquationModel::state_at_rest(
         throw std::invalid_argument("rest state fields do not match the model");
     }
     PrimitiveEquationState state{surface_pressure_Pa, Field3D<double>(n, mesh.cell_count()),
-                                 Field3D<double>(n, mesh.edge_count(), 0.0), Field3D<double>{}};
+                                 Field3D<double>(n, mesh.edge_count(), 0.0), Field3D<double>{},
+                                 Field3D<double>{}};
     // Θ from T needs π̄, which depends only on p_s: compute it with Θ = 1.
     for (std::size_t k = 0; k < n; ++k) {
         for (std::size_t i = 0; i < mesh.cell_count(); ++i) {
@@ -334,9 +338,10 @@ void PrimitiveEquationModel::tendency(const PrimitiveEquationState& state,
     // The vapour (ADR-0021 §4.5): Q = μ q in flux form with upwind q on the
     // edges and the interfaces, the limited, positive form of ADR-0002
     // §4.2, with the same F and W as Θ.
-    if (state.mass_humidity.layer_count() == n) {
+    // INV-05's passive tracer (mass_tracer) is carried the same way.
+    const auto advect = [&](const Field3D<double>& tracer, Field3D<double>& tracer_rate, bool record) {
         const auto humidity = [&](std::size_t k, std::size_t i) {
-            return state.mass_humidity.layer(k)[i] / (ps[i] / (g * n_d));
+            return tracer.layer(k)[i] / (ps[i] / (g * n_d));
         };
         std::vector<double> humidity_flux(n * edges);
         if (parameters_.vapour_advection_order == 2) {
@@ -428,7 +433,7 @@ void PrimitiveEquationModel::tendency(const PrimitiveEquationState& state,
                 }
             });
         }
-        if (totals != nullptr) {
+        if (record && totals != nullptr) {
             for (std::size_t i = 0; i < n * edges; ++i) {
                 totals->vapour_kg_m[i] += weight * humidity_flux[i];
             }
@@ -449,10 +454,16 @@ void PrimitiveEquationModel::tendency(const PrimitiveEquationState& state,
                             const double w = vertical_flux[m * cells + i];
                             return w * (w >= 0.0 ? humidity(m - 1U, i) : humidity(m, i));
                         };
-                        rate.mass_humidity.layer(k)[i] = -horizontal - (across(k + 1U) - across(k));
+                        tracer_rate.layer(k)[i] = -horizontal - (across(k + 1U) - across(k));
                     }
                 }
             });
+    };
+    if (state.mass_humidity.layer_count() == n) {
+        advect(state.mass_humidity, rate.mass_humidity, true);
+    }
+    if (state.mass_tracer.layer_count() == n) {
+        advect(state.mass_tracer, rate.mass_tracer, false);
     }
 
     // Corner potential vorticity and cell Bernoulli function, per layer.
@@ -710,6 +721,14 @@ void PrimitiveEquationModel::step(PrimitiveEquationState& state, double dt_s,
                 auto o_q = out.mass_humidity.layer(k);
                 for (std::size_t i = 0; i < a_q.size(); ++i) {
                     o_q[i] = a_q[i] + scale * r_q[i];
+                }
+            }
+            if (state.mass_tracer.layer_count() > 0U) {
+                const auto a_c = state.mass_tracer.layer(k);
+                const auto r_c = rate.mass_tracer.layer(k);
+                auto o_c = out.mass_tracer.layer(k);
+                for (std::size_t i = 0; i < a_c.size(); ++i) {
+                    o_c[i] = a_c[i] + scale * r_c[i];
                 }
             }
         }

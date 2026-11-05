@@ -39,6 +39,11 @@ struct AtmosphereDynamicsParameters {
     // INV-05: the horizontal vapour advection's order (1 the preset's
     // upwind; PrimitiveEquationParameters).
     int vapour_advection_order = 1;
+    // INV-05: a passive tracer χ (0 none): held at 1 in the bottom layer
+    // equatorward of 30° after each step, decaying everywhere with this
+    // lifetime (s), carried by the winds as the vapour is but never
+    // condensing, to separate the transport from the rain-out.
+    double passive_tracer_lifetime_s = 0.0;
 };
 
 struct AtmosphereDynamicsDiagnostics {
@@ -75,6 +80,11 @@ struct AtmosphereDynamicsDiagnostics {
     // side, as the model applied them over the step (EdgeFluxTotals).
     std::array<std::array<double, 17>, max_atmosphere_layer_count> northward_mass_kg_s{};
     std::array<std::array<double, 17>, max_atmosphere_layer_count> northward_vapour_kg_s{};
+    // INV-05's passive tracer, when on: what the winds carried into the
+    // caps poleward of 60° S and 60° N over the step (Σ A μ χ, kg/s), and
+    // the caps' mass-weighted mean χ after it.
+    std::array<double, 2> tracer_into_caps_kg_s{};
+    std::array<double, 2> tracer_cap_mean{};
 };
 
 class AtmosphereDynamics {
@@ -132,6 +142,7 @@ class AtmosphereDynamics {
         double sign;
     };
     std::vector<Crossing> crossings_;
+    Field3D<double> tracer_;   // INV-05: χ, layer × cell
 };
 
 // Reference mode runs `dynamics` on every step after the processes already

@@ -280,6 +280,7 @@ PlanetRun::PlanetRun(const Scenario& scenario, std::size_t worker_count,
         AtmosphereDynamicsParameters dynamics_parameters;
         dynamics_parameters.advect_humidity = surface_.water_cycle;
         dynamics_parameters.vapour_advection_order = surface_.vapour_advection_order;
+        dynamics_parameters.passive_tracer_lifetime_s = surface_.passive_tracer_lifetime_s;
         dynamics_ = std::make_unique<AtmosphereDynamics>(*mesh_, state_.slow(), parameters_,
                                                          surface_.atmosphere, fractions_,
                                                          dynamics_parameters, worker_count_);
