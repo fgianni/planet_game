@@ -5,7 +5,10 @@
 // the dynamics' advection (its clipping included), and the band's vapour
 // path (kg/m²). Not a gate.
 //
-//   reference_vapour_budget_probe LEVEL MONTHS [WORKERS]
+//   reference_vapour_budget_probe LEVEL MONTHS [WORKERS] [ORDER]
+//
+// ORDER: the vapour's horizontal advection (1 upwind, the preset; 2 limited
+// second-order).
 #include "sim/planet/orbit/climate_calendar.hpp"
 #include "sim/planet/run/planet_run.hpp"
 
@@ -33,7 +36,9 @@ int main(int argc, char** argv) {
     scenario.atmosphere_layers = 3;
     scenario.spin_up_years = 0;
     scenario.initial_mode = SimulationMode::reference;
-    PlanetRun run(scenario, workers);
+    const int order = argc > 4 ? std::atoi(argv[4]) : 1;
+    PlanetRun run(scenario, workers, ClimateCirculationUse::coupled,
+                  [=](SurfaceEnergyParameters& p) { p.vapour_advection_order = order; });
     const auto& mesh = run.state().mesh();
     std::array<double, 6> band_area{};
     for (const auto& cell : mesh.cells()) {
