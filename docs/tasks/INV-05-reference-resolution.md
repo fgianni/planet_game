@@ -371,3 +371,50 @@ positive vapour advection (default off, the default's hash unchanged),
 at L3 and L5; if the levels' cap difference largely closes, the upwind
 scheme is confirmed. Adopting one is an ADR-0021 §4.5 amendment.
 
+## 9. The advection test (2026-11-05)
+
+The limited second-order vapour advection (`vapour_advection_order = 2`,
+commit 80cc106; default off, the default unchanged), two years at L3, L4
+and L5 (`traj_L3_o2.log` … `traj_L5_o2.log`; L5 months 13–22). Year 2:
+
+| | Upwind: L3 / L4 / L5 | L5 − L3 | Order 2: L3 / L4 / L5 | L5 − L3 |
+|---|---|---:|---|---:|
+| Polar caps | 281.7 / 276.0 / 267.6 K | −14.1 K | 275.1 / 268.4 / 261.6 K | −13.5 K |
+| Tropics | 305.9 / 306.7 / 307.2 K | +1.3 K | 307.2 / 307.5 / 307.9 K | +0.8 K |
+| P2 | 28.2 / 35.8 / 44.9 K | +16.7 K | 37.7 / 45.6 / 52.7 K | +14.9 K |
+| Largest wind | 55 / 85 / 110 m/s | +55 m/s | 71 / 111 / 131 m/s | +60 m/s |
+
+- **Not the levels' difference:** order 2 cools every level's caps by
+  6–8 K (less numerical diffusion, less vapour poleward, as §8 predicted),
+  but the difference between the levels stays (−13.5 against −14.1 K).
+  The upwind diffusion is a large effect on reference mode's caps at every
+  level (and so on V8), not what changes with level.
+- Order 2 makes the winds stronger at every level (L5 131 m/s in year 2),
+  so it brings L5 nearer the dynamics' bound.
+
+## 10. Where the water goes instead: condensation by band (2026-11-05)
+
+Month 1 of the vapour budgets, L3–L6 (kg/m²/day; `vapour_L6.log` added):
+
+| | L3 | L4 | L5 | L6 |
+|---|---:|---:|---:|---:|
+| 30° S–0: resolved condensation | 4.52 | 5.68 | 6.42 | 7.23 |
+| 30° S–0: convective | 3.76 | 3.67 | 3.38 | 2.92 |
+| 30° S–0: advection (export) | −3.55 | −2.90 | −1.76 | −1.43 |
+| 60–30° S: resolved condensation | 5.16 | 6.75 | 6.97 | 7.32 |
+| 60–30° S: evaporation | 5.64 | 7.16 | 7.85 | 8.67 |
+| 60–30° S: advection | +2.28 | +2.10 | +1.21 | +0.71 |
+| 90–60° S: advection | +5.75 | +4.37 | +3.23 | +3.09 |
+
+The water rains out nearer where it evaporates at finer levels: the
+tropics' and the mid-latitudes' resolved condensation rises by 40–60 %
+from L3 to L6 (the convective part falls), the tropics export less than
+half as much, the mid-latitudes evaporate more and import less. The local
+water cycle intensifies with resolution and the poleward transport of
+water weakens, with the upwind scheme or without it (§9). A candidate:
+finer cells resolve narrower, stronger ascent and saturate where a
+coarse cell's mean stays below saturation, so condensation is more
+efficient on finer cells (the rain under the jet concentrates threefold
+at L5, §3). The column has no sub-grid saturation in the preset (M8-07's
+width β = 0), so a coarse cell condenses only once its mean saturates.
+
