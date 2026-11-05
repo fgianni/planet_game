@@ -1,7 +1,10 @@
 // INV-05: reference mode's spin-up trajectory at one mesh level, month by
 // month from the initial state, to compare levels. Not a gate.
 //
-//   reference_trajectory_probe LEVEL MONTHS [WORKERS]
+//   reference_trajectory_probe LEVEL MONTHS [WORKERS] [W_C]
+//
+// W_C, when given, sets the clouds' in-cloud water path (kg/m², ADR-0023
+// §13.3; the preset's 0.05) for INV-05's overcast test.
 //
 // Each month prints: the largest wind of any step (the dynamics' own
 // maximum), the top layer's zonal-mean eastward wind at its strongest in
@@ -35,7 +38,10 @@ int main(int argc, char** argv) {
     scenario.atmosphere_layers = 3;
     scenario.spin_up_years = 0;
     scenario.initial_mode = SimulationMode::reference;
-    PlanetRun run(scenario, workers);
+    const double w_c = argc > 4 ? std::atof(argv[4]) : -1.0;
+    PlanetRun run(scenario, workers, ClimateCirculationUse::coupled, [=](SurfaceEnergyParameters& p) {
+        if (w_c > 0.0) p.atmosphere.cloud_in_cloud_water_path_kg_m2 = w_c;
+    });
     const auto& mesh = run.state().mesh();
     const std::size_t cells = mesh.cell_count();
     std::vector<double> latitude(cells);
