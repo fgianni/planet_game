@@ -494,3 +494,32 @@ Established:
    removing it cools every level's caps by 6–8 K (§9). That bears on V8's
    reference at L4 whatever else is found.
 
+## 13. The caps' surface by level (2026-11-09)
+
+The same planet (seed 1) at each level, before any step
+([`tools/v8/reference_cap_geometry_probe.cpp`](../../tools/v8/reference_cap_geometry_probe.cpp);
+heights are each cell's median sub-cell elevation):
+
+| Poleward of 60° | L3 | L4 | L5 | L6 |
+|---|---:|---:|---:|---:|
+| South: land share | 0.039 | 0.124 | 0.112 | 0.124 |
+| South: land's mean height | 610 m | 846 m | 925 m | 760 m |
+| South: land ≥ 1.5 km (share of the cap) | 0.000 | 0.019 | 0.027 | 0.020 |
+| South: area in mixed coast cells | 0.135 | 0.204 | 0.116 | 0.093 |
+| North: land share | 0.564 | 0.576 | 0.560 | 0.546 |
+| North: land's mean height | 801 m | 710 m | 483 m | 394 m |
+| North: land ≥ 1.5 km | 0.069 | 0.037 | 0.026 | 0.022 |
+| North: area in mixed coast cells | 0.488 | 0.250 | 0.156 | 0.141 |
+
+- **Not the caps' geometry from L4 on:** the land shares agree within
+  0.03 at L4–L6 and the planet's within 0.001 (0.290); the northern land
+  gets lower with level (710 → 394 m), which would warm it, while it
+  cools.
+- **L3's southern cap is the exception:** almost all ocean (land 0.039
+  against 0.11–0.12), so part of L3's warmer southern cap is its
+  geometry; the northern cap, with the same land at every level, cools
+  as much (§4: 282.7, 278.2, 270.2, 263.0 K in year 2).
+- The coast cells shrink with level, as they must; with the land shares
+  unchanged, the cryosphere's growth (§4) follows the cooling, not the
+  coastlines.
+
