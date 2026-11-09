@@ -1,6 +1,8 @@
 # ADR-0029 — Land's water in climate mode
 
-- **Status:** Proposed (2026-10-29), for decision with the user
+- **Status:** Proposed (2026-10-29). Option A was measured 2026-10-30 (§6).
+  B against C is deferred until after INV-05 (with the user, 2026-11-05,
+  when INV-04 closed).
 - **Date:** 2026-10-29
 - **Milestone:** P0, between M8 and M9 (investigation INV-04)
 - **Context documents:** `docs/tasks/INV-04-v8-transport-and-radiation.md`

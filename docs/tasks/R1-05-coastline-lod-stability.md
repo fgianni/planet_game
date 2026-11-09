@@ -2,7 +2,10 @@
 
 - **Track:** rendering, following R1-04 (ADR-0022 §4.8–4.9)
 - **Status:** architecture accepted 2026-11-02 (ADR-0030); implementation
-  and acceptance tests pending. R1-05 is not complete.
+  and acceptance tests pending. R1-05 is not complete. ADR-0030 Amendment 1
+  (a per-pixel coast from canonical pages, with the connected-ocean rule) was
+  accepted with the user on 2026-11-05; its tasks (§A1.6) are in progress. R1-05 moved to
+  another session on 2026-11-05.
 - **Implementation gate:** ADR-0030 selects a shared coastline. Its
   pre-acceptance feasibility prerequisite was explicitly waived, **not** its
   rendered handoff, contour fidelity, raised seam, zoom, style and cost gates.
@@ -1231,6 +1234,82 @@ sampled outer edge proves a ≤1 px matched-contour handoff, and the local
 costs do not establish the L6 global cache/frame budget. A bounded
 same-density propagation to a filtered-relief-compatible perimeter has
 **not** been demonstrated. Production remains unchanged.
+
+**Handover and a per-pixel feasibility probe (2026-11-05; probe only).**
+R1-05 moved to another session, at the user's direction. The probes above
+build the shared coast from geometry. A tile with relief splits while its
+vertex spacing is over 4 px (`split_error_px`), so a vertex-defined coast
+meets a 1 px gate only with near-pixel vertex spacing. That is the
+15–37 MB per local cap above. The alternative is to classify each pixel
+from georeferenced pages of the canonical field itself.
+`tools/render/coast_page_probe.cpp` measures what that costs: seed
+20260928, 400 000 area-uniform points, 24 threads.
+
+| | L4 | L6 |
+|---|---:|---:|
+| Finest octave wavelength (smallest coast feature) | 2.32 km | 0.58 km |
+| `sample()`: one thread / 24 threads (µs per sample) | 0.74 / 0.04 | 1.89 / 0.07 |
+| \|∇h\| p50 / p99 / max (m per km) | 6.5 / 94 / 363 | 10.2 / 146 / 658 |
+| Uncertified by one global slope bound, 10 / 1 / 0.1 km texels | 56 / 12 / 1 % | 61 / 25 / 2 % |
+
+- Canonical samples run at 15–25 million a second on this machine. A
+  1080p view at two samples per pixel is about 4 million samples
+  (0.2–0.3 s), cached by the existing quadtree keys and refined only as
+  the camera zooms.
+- A single global slope bound certifies little, because the maximum is
+  50 times the median. Skipping all-land or all-water pages would need
+  per-cell bounds; at this cost it is not required.
+- The gradients are central differences at a tenth of the finest
+  wavelength: estimates, not proofs. Production is unchanged.
+
+**The connected-ocean rule, from the first option-A probe (2026-10-26,
+recorded 2026-11-05).**
+`tools/render/coast_constraint_probe.cpp` was R1-05's first experiment and
+had stayed uncommitted.
+
+Build (Release): `c++ -std=c++20 -O3 -ffp-contract=off -I .
+tools/render/coast_constraint_probe.cpp build/libPlanetSimPresentation.a
+build/libPlanetSim.a -lzstd -pthread -o build/coast_constraint_probe`.
+
+The probe:
+- picks the L1 tile with the most coast crossings on a fixed coarse scan
+  (L4, seed 20260928: face 5, x 0, y 1);
+- samples a 256² reference of the canonical relief over it, under
+  ADR-0005's connected-ocean rule: water where h ≤ sea level and the
+  cell is not all land;
+- compares that reference with the parent's and children's land/water
+  classification from their triangles' interpolated heights.
+
+Result:
+- The filtered L1 tile disagrees on 10.9 % of samples, and the detailed
+  L2 tiles on 3.3 %.
+- The reference has 4 146 coast crossings, 144 of them set by
+  connectivity rather than by height.
+- 129 below-sea samples fall in all-land cells (land fraction 1).
+- Five meshes and the reference take 0.03 s.
+
+The finding not carried into ADR-0030 is that rule. Under ADR-0005, ground
+below sea level is ocean only in ocean-connected cells; an all-land cell's
+fraction is 1 at the snapshot's sea level. ADR-0030 decision 1 defines the
+canonical shore as the plain contour h = sea level, and two kinds of
+below-sea ground in all-land cells would then be drawn as sea:
+- **The relief's handover at cell edges.** Towards an all-land cell's
+  edges, the relief blends in its corners' curves, and those include the
+  neighbouring ocean cells' curves. Near the coast this pulls the height
+  below sea level inside a cell whose fraction says land. At L4 that is
+  all of the probe's 129 samples: no L4 cell is an inland depression for
+  either seed (20260928 and 42).
+- **True inland depressions,** such as the Caspian or the Dead Sea: all-land
+  cells whose own lowest quantile is below sea level. At L6 there are 357
+  (seed 20260928) and 528 (seed 42) of the 40 962 cells, up to 255 and
+  304 m deep (a scratch census, 2026-11-05).
+
+Either contradicts the authoritative fractions and decision 2's
+consistency with `surface_class`.
+
+As the probe notes, a connectivity boundary on a cell edge is not a
+continuous height zero, so a canonical coast needs a continuous form of
+the rule. The proposed amendment to ADR-0030 gives one (§ "Amendment 1").
 
 ## Acceptance after the decision
 

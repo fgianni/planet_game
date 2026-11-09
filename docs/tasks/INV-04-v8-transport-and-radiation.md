@@ -1,8 +1,10 @@
 # Investigation INV-04 — V8 transport and radiation
 
 - **Milestone:** P0, after INV-03 and before M9
-- **Status:** investigation in progress (2026-10-23). V8 at L4 (ADR-0023 §16) fails at 0.936 K and
-  0.901; the cause found so far is climate mode's dry land (below). No solver or preset change
+- **Status:** closed 2026-11-05 with the user (see "Outcome" below). V8 at
+  L4 fails at +0.473 K under ADR-0028 §11. This is recorded as a known
+  limitation, not tuned. Reference mode's dependence on the mesh level
+  continues in [INV-05](INV-05-reference-resolution.md).
 - **Governing decisions:** ADR-0001 V2, ADR-0023 §15 (independent starts),
   ADR-0024 §9 (fallback), ADR-0025 §14 and ADR-0026 §8 (deferred options)
 - **Predecessor:** [INV-03](INV-03-l6-startup-transport.md)
@@ -1351,17 +1353,63 @@ waves off as the base, nothing tested closes it:
   middle and top layers, against 2). That is the monthly column's
   architecture, not a coefficient.
 
-## Next decision
+## Outcome (closed 2026-11-05)
 
-The gap is a land and cryosphere gap (above), with the high-cloud
-longwave difference as before. Before choosing a model change: measure
-both modes after a spin-up long enough to bring the top-of-atmosphere
-imbalance near zero, and compare land temperature with snow cover held
-equal in the two modes, to separate the snow-albedo feedback from its
-cause. No solver, field meaning,
-PSNAP schema, preset or acceptance threshold has changed. ADR-0026's
-previously deferred options remain deferred; temperature tuning alone is
-not evidence for accepting them.
+**The question:** why V8 (climate–reference parity) failed at L4: 0.936 K
+and a 0.901 precipitation ratio at the start.
+
+**What was found, in order:**
+1. **Climate land is cold because its air is cold and dry.** Its
+   transport brings almost no water to land: 1.55 against 23.3 W/m² of
+   latent heat.
+2. **The land–ocean contrast sat inside the transport's groups.** Fix:
+   ADR-0027.
+3. **The tropics lacked a heat exchange between groups.** Fix:
+   ADR-0028, the equatorial waves.
+4. **At c = 50 m/s, V8 passed only by compensation.** The waves cooled
+   the tropical air and suppressed the Hadley overturning (ADR-0029
+   option A and the column sweep). §11 set c = 25 m/s.
+5. **The rest is structural.** Climate mode's tropical air stays 7–9 K
+   colder and its overturning 4–10 times weaker. Its rain is 99 %
+   Betts–Miller's from the bottom layer; reference mode's is 79 % from
+   resolved ascent aloft.
+6. **V8's reference is not converged with level.**
+   - L4 → L5: reference mode cools 2.8 K, and P2 rises from 48.8 to
+     60.1 K (ADR-0023 §16.5).
+   - L6: its winds pass the 150 m/s bound in year 2 (§16.6).
+   - INV-05 found that upwind vapour advection carries much of reference
+     mode's poleward water at L3–L4. It is not, however, what changes
+     with level.
+
+**Decisions taken:**
+- **ADR-0023 §16:** V8 at L4 over three years; §16.5 and §16.6 record
+  L5 and L6.
+- **ADR-0027:** heat mixed within the transport's groups.
+- **ADR-0028:** c = 50 m/s, then §11: c = 25 m/s.
+- **ADR-0024 §9.6:** the fallback restarts its columns, and a failed
+  fallback moves no heat.
+- **The radiation pair** is now τ_d = 1.1298584, κ_v = 0.0056492919 m²/kg
+  (L4/150 288.009 K).
+
+**V8 at closure** (ADR-0028 §11.6):
+
+| Level | Reference − climate | Ratio | Verdict |
+|---|---:|---:|---|
+| L4, c = 25 | +0.473 K | 0.970 | Fails the 0.3 K limit; P2 agrees within 0.7 K |
+| L5, c = 50 | −3.195 K | 0.975 | Fails |
+| L6, c = 25 | — | — | Reference mode stops |
+
+**Known limitations, carried forward:**
+- **Climate mode's tropical air and land water,** above. ADR-0029 stays
+  proposed: its option A is done. B (a constrained azonal circulation)
+  or C (accept it for P0) is decided after INV-05 (with the user,
+  2026-11-05).
+- **V8's verdict depends on the level** until reference mode settles:
+  INV-05.
+- The open tasks below, each with its disposition at closure.
+- **Specification M8A:** ADR-0023 §8's question on cloud-water advection
+  was to be decided "after INV-04". It is now open; nothing about it is
+  decided here.
 
 ## Decision in progress (2026-10-22)
 
@@ -1380,7 +1428,28 @@ land into the circulation's mean flow and its eddies, then run cheap
 climate-only sensitivity tests (off by default, as INV-03's prototypes
 were) before proposing an ADR.
 
-## Open tasks (updated 2026-10-29)
+## Open tasks (updated 2026-10-29; disposition at closure, 2026-11-05)
+
+**Disposition at closure** (the numbers are the list's below):
+- **Done:** 1–4.
+- **To INV-05:** 6, L4's convergence. It is measured: reference mode is
+  not converged between L4 and L5.
+- **Known limitations, not pursued under P0's current gates:**
+  - 5, the deep ocean's drift (ADR-0023 §16.3);
+  - 7, the cloud longwave's oscillation at 6-hour to 2-day steps;
+  - 8, unbounded land snow, probably outside P0;
+  - 9, a solver for the columns' kinks;
+  - 10, the L4 fit's fragility. Under §11's preset the fit has one
+    fallback month and passes;
+  - 11, `PlanetRun`'s missing resume constructor, a separate task when
+    wanted;
+  - 12, M8's limitations (ADR-0025 §14).
+- **Still waiting on their decisions:** 13 and 14.
+- **Housekeeping:**
+  - 15: `git stash` now holds a single, later entry (on `5d6d672`),
+    which is not the one this list describes.
+  - 16 and 17 stand as working notes.
+
 
 **Done since the first list (2026-10-22):**
 - the 20-year spin-up: the gap grows to 4.719 K, as climate mode keeps
@@ -1485,8 +1554,7 @@ the next morning.
   diagnostics (`adr0029a_L4_v8.log`, about 3 h): reference mode's half of
   the layer-by-layer comparison.
 
-Next: read both, compare the two modes layer by layer (option A), and
-record the L5 verdict.
+Both were read: "ADR-0029 option A" and "V8 at L5", above.
 
 **V8 (this investigation), in order:**
 1. ~~**Which part of the climate transport fails to bring water to
