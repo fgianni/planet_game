@@ -5,7 +5,8 @@
   and acceptance tests pending. R1-05 is not complete. ADR-0030 Amendment 1
   (a per-pixel coast from canonical pages, with the connected-ocean rule) was
   accepted with the user on 2026-11-05; its tasks (§A1.6) are in progress. R1-05 moved to
-  another session on 2026-11-05.
+  another session on 2026-11-05. The headless Amendment 1 field/page slice
+  was started on 2026-11-09; renderer and acceptance gates remain pending.
 - **Implementation gate:** ADR-0030 selects a shared coastline. Its
   pre-acceptance feasibility prerequisite was explicitly waived, **not** its
   rendered handoff, contour fidelity, raised seam, zoom, style and cost gates.
@@ -1324,3 +1325,43 @@ the rule. The proposed amendment to ADR-0030 gives one (§ "Amendment 1").
 - The existing semantic water extent and the authoritative cell fractions
   remain unchanged, as do all simulation state hashes. Both styles agree on
   the coast, and the L6 60 fps/tile-memory gate remains in force.
+
+### Amendment 1 headless field and pages (2026-11-09; not wired to rendering)
+
+`sim/presentation/coast_water_field.*` derives κ from all-land cells whose
+lowest quantile is below the snapshot sea level, computes D as the deepest
+such depression plus 1 m, and evaluates s through **the relief's own**
+cell/corner blend. It does not mutate the terrain snapshot. For seed
+20260928, L4 has zero depression cells and L6 has 357; 349 sampled below-sea
+points across L6 depression cells stay dry. The maximum tested signed-field
+jump across near-adjacent cell/fan-edge probes is below 0.01 m (a finite-step
+continuity diagnostic, not a mathematical proof). The schema-3 hypsometry
+and land fractions are required; no synthetic schema-2 coastline is made.
+
+`sim/presentation/coast_page.*` samples 256 **dyadic intervals** along each
+tile edge, with 257 endpoint-inclusive nodes. This resolves the literal
+"P × P, P=256" wording in ADR-0030 A1.3 in favour of its exact shared-edge
+and parent/child requirements: 256 nodes including both endpoints would
+have 255 intervals and could not nest dyadically. Each node uses an
+explicit little-endian signed 16-bit integer in metres, rounded to nearest
+metre and saturated at ±32767 m. A nonzero value below 0.5 m preserves its
+sign as ±1 rather than silently becoming zero; the resulting bilinear
+zero-line can move and **must** be measured by V-A2. Each page consumes
+132,098 bytes (1,026 more than a literal 256² two-byte page); 512 such
+pages would consume 64.50 MiB, so the 64 MiB *coastal* cache gate requires
+at most 508 full resident pages or another measured storage policy. The
+512-tile cache is unaffected by this headless code.
+
+Headless tests cover same-level neighbours, parent/child shared points,
+a cube-face edge, a three-face corner, reroute byte identity, invalid keys,
+κ=1 plain-contour equality and sampled depression dryness. At a deliberately
+coarse L4 face-5 level-1 coastal page (seed 20260928), bilinear page values
+flip 44/4,096 independently sampled quad centres against canonical s, with
+maximum signed-field error 812 m. This is **not** a 1 px screen-space gate:
+pages must be requested at screen density, including a measured shortfall
+while children load. Other seeds, faces, sea levels, the pixel-centred
+reference and projected contour/island checks, global cache policy, tile
+geometry, Godot, both styles, zoom and frame times remain unvalidated.
+The first cold L4 coastal-page generation measured ~377 ms on this host,
+including lazy relief rank-table construction; it cannot run on the render
+thread. Warm-generation and asynchronous cache/frame costs are still open.

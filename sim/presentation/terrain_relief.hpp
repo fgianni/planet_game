@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <span>
 #include <vector>
 
 namespace planetsim::presentation {
@@ -74,6 +75,10 @@ public:
     [[nodiscard]] double cell_rank(CellId cell, double noise_value) const;
     [[nodiscard]] CellId nearest_cell(const Vec3d& direction_unit, CellId hint) const;
     [[nodiscard]] double cell_elevation_m(CellId cell, double rank) const;
+    // Blend a per-cell scalar with the same cell/corner weights as the
+    // elevation curve (ADR-0030 Amendment 1's connectivity field).
+    [[nodiscard]] double blended_cell_scalar(const Vec3d& direction_unit, CellId cell,
+                                             std::span<const double> values) const;
     [[nodiscard]] double cell_spacing_rad() const noexcept { return spacing_rad_; }
     [[nodiscard]] const PlanetMesh& mesh() const noexcept { return *mesh_; }
 
