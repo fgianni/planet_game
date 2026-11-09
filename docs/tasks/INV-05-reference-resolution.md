@@ -50,7 +50,7 @@ climate mode's only, but the radiation pair differs between the two.)
 | Surface drag | no dependence: bulk coefficients (1.5e-3 ocean, 4e-3 land) | — |
 | Sub-step count (`substep_count`) | yes: CFL on the mesh's smallest spacing, assuming winds ≤ 150 m/s | the guard was raised from 100 to 150 m/s once already, after a Held–Suarez spin-up reached 100.85 m/s (ADR-0011 §13) |
 | **Orography** (`dynamics_orography_max_step_m`) | **no: at most 800 m between neighbours**, a height, not a slope | the steepest slope allowed doubles per level: steeper mountains, stronger forced flow |
-| **Resolved condensation** (τ_c = 12 h, with Betts–Miller's τ_bm = 2 h) | **no:** fixed times | finer cells resolve stronger ascent; latent heat released in one cell drives more ascent there (grid-point storms). The surface step's own note: with τ_c = 3 h, winds passed 150 m/s within 3 hours at L3. Reference mode's convective share falls from 0.21 at L4 to 0.08 at L5 |
+| **Resolved condensation** (τ_c = 12 h, with Betts–Miller's τ_bm = 2 h; **corrected 2026-11-09, §15: with moist convection on, as in the preset, τ_c is not used and the column condenses the whole excess, saturation adjustment**) | **no:** fixed times | finer cells resolve stronger ascent; latent heat released in one cell drives more ascent there (grid-point storms). The surface step's own note: with τ_c = 3 h, winds passed 150 m/s within 3 hours at L3. Reference mode's convective share falls from 0.21 at L4 to 0.08 at L5 |
 
 Predictions for the trajectories:
 - **orography:** the strongest winds over steep terrain, early, whatever the climate;
@@ -542,4 +542,24 @@ Year 2:
 about ±1 K (in opposite directions at L3 and L5), against the levels'
 14 K. The damping that changes 16-fold per level at a fixed wavelength
 does not set the caps.
+
+## 15. The condensation-time test: void, and a correction (2026-11-09)
+
+τ_c at 6 h and 48 h against 12 h, two years at L3 and L5
+(`traj_L3_c6.log`, `traj_L3_c48.log`, `traj_L5_c6.log`, `traj_L5_c48.log`):
+**every run is identical to its baseline** to the printed digits. The
+column uses τ_c only without moist convection
+(`atmosphere_column.hpp`: `in_solve_fraction` is 1 with moist convection,
+and the pass after it takes the whole excess too); with it, as in the
+preset, the resolved condensation is saturation adjustment, the whole
+excess over the cell's mean saturation each step (ADR-0023 §4.3). The
+code-read table above said a fixed 12 h; that was wrong.
+
+What it means for the condensation lead: the preset's resolved
+condensation has no time scale and no sub-grid width (M8-07's β = 0), so
+a cell condenses exactly when its mean saturates, and finer cells, whose
+means vary more, saturate more of the time. That is a resolution
+dependence built into the scheme, consistent with §10 and §12 (resolved
+condensation up 40–75 % from L3 to L5 in every band). It is not yet shown
+to set the caps' temperature.
 
