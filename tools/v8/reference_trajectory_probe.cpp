@@ -1,13 +1,14 @@
 // INV-05: reference mode's spin-up trajectory at one mesh level, month by
 // month from the initial state, to compare levels. Not a gate.
 //
-//   reference_trajectory_probe LEVEL MONTHS [WORKERS] [W_C] [ORDER] [DAMPING_H]
+//   reference_trajectory_probe LEVEL MONTHS [WORKERS] [W_C] [ORDER] [DAMPING_H] [TAU_C_H]
 //
 // W_C, when positive, sets the clouds' in-cloud water path (kg/m², ADR-0023
 // §13.3; the preset's 0.05) for INV-05's overcast test; ORDER the vapour's
 // horizontal advection (1 upwind, the preset; 2 limited second-order);
 // DAMPING_H, when positive, the dynamics' grid-scale damping time (hours;
-// the preset's 8).
+// the preset's 8); TAU_C_H, when positive, the resolved condensation's
+// relaxation time (hours; the preset's 12).
 //
 // Each month prints: the largest wind of any step (the dynamics' own
 // maximum), the top layer's zonal-mean eastward wind at its strongest in
@@ -44,10 +45,12 @@ int main(int argc, char** argv) {
     const double w_c = argc > 4 ? std::atof(argv[4]) : -1.0;
     const int order = argc > 5 ? std::atoi(argv[5]) : 1;
     const double damping_h = argc > 6 ? std::atof(argv[6]) : 0.0;
+    const double tau_c_h = argc > 7 ? std::atof(argv[7]) : 0.0;
     PlanetRun run(scenario, workers, ClimateCirculationUse::coupled, [=](SurfaceEnergyParameters& p) {
         if (w_c > 0.0) p.atmosphere.cloud_in_cloud_water_path_kg_m2 = w_c;
         p.vapour_advection_order = order;
         if (damping_h > 0.0) p.hyperviscosity_damping_s = damping_h * 3600.0;
+        if (tau_c_h > 0.0) p.condensation_time_s = tau_c_h * 3600.0;
     });
     const auto& mesh = run.state().mesh();
     const std::size_t cells = mesh.cell_count();
