@@ -118,6 +118,9 @@ struct SurfaceEnergyParameters {
     // INV-05, investigations only: reference mode's passive tracer lifetime
     // (s; 0 none; AtmosphereDynamicsParameters).
     double passive_tracer_lifetime_s = 0.0;
+    // INV-05, investigations only: reference mode's grid-scale damping time
+    // (s; 0 keeps AtmosphereDynamicsParameters' 8 h).
+    double hyperviscosity_damping_s = 0.0;
 };
 
 // The bulk transfer coefficients of evaporation (ADR-0021 §4.3): the tiles'
