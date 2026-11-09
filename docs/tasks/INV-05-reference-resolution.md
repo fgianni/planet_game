@@ -523,3 +523,23 @@ heights are each cell's median sub-cell elevation):
   unchanged, the cryosphere's growth (§4) follows the cooling, not the
   coastlines.
 
+## 14. The damping test (2026-11-09)
+
+The grid-scale damping time at 2 h and 32 h against the preset's 8 h
+(`hyperviscosity_damping_s`, commit fcbf9c9), two years each
+(`traj_L3_d2.log`, `traj_L3_d32.log`, `traj_L5_d2.log`, `traj_L5_d32.log`).
+Year 2:
+
+| | 2 h | 8 h | 32 h |
+|---|---:|---:|---:|
+| L3 polar caps | 280.6 K | 281.7 K | 282.2 K |
+| L5 polar caps | 268.5 K | 267.6 K | 266.5 K |
+| L3 P2 | 29.7 K | 28.2 K | 27.4 K |
+| L5 P2 | 44.0 K | 44.9 K | 46.4 K |
+| L5 largest wind | 108 m/s | 110 m/s | 113 m/s |
+
+**Not the damping:** a factor of 16 in the damping time moves the caps by
+about ±1 K (in opposite directions at L3 and L5), against the levels'
+14 K. The damping that changes 16-fold per level at a fixed wavelength
+does not set the caps.
+
