@@ -29,6 +29,7 @@ public:
                                       CellId hint = CellId{0}) const;
     [[nodiscard]] double depression_depth_m() const noexcept { return depth_m_; }
     [[nodiscard]] std::size_t depression_cells() const noexcept { return depression_cells_; }
+    [[nodiscard]] const TerrainRelief& relief() const noexcept { return relief_; }
 
 private:
     const TerrainRelief& relief_;
