@@ -1312,6 +1312,60 @@ As the probe notes, a connectivity boundary on a cell edge is not a
 continuous height zero, so a canonical coast needs a continuous form of
 the rule. The proposed amendment to ADR-0030 gives one (§ "Amendment 1").
 
+**Amendment 1 task 2: the pages in screen space (2026-11-10; probe only).**
+`tools/render/coast_screen_probe.cpp` places a nadir pinhole camera (512²
+px, 60° field of view) over coastal foci on the canonical contour, found by
+bisection along a fixed sequence of great-circle steps. It casts 4 × 4 rays
+a pixel onto the bare sphere; raised geometry is a later gate.
+
+Each pixel's water coverage is computed three ways:
+- **the reference:** canonical s at every ray;
+- **the page level:** the coarsest level with at least two nodes a pixel
+  at the nadir;
+- **one level coarser and one level finer** than that.
+
+A pixel is water at coverage above 0.5. A differing pixel is **deep** when
+all eight neighbours of the comparison's reference mask are on its own side.
+A difference region of four pixels or more is reported, and flagged when it
+contains a deep pixel (an island or inlet that would appear or disappear).
+
+Seeds 20260928 and 42, at L4 and L6; logs `build/r105/handoff_L*_aa4.log`.
+Deep pixels summed over each configuration's foci (3, or 2 for L6 seed 42):
+
+| Altitude (pixel width) | L4 20260928 | L4 42 | L6 20260928 | L6 42 |
+|---|---|---|---|---|
+| 12 000 km (27 km) | 7 / 6 / 7 / 4 | 4 / 5 / 3 / 1 | 15 / 11 / 8 / 11 | 3 / 5 / 10 / 2 |
+| 4 000 km (9.0 km) | 2 / 0 / 1 / 3 | 1 / 2 / 1 / 1 | 2 / 2 / 2 / 1 | 6 / 7 / 1 / 3 |
+| 1 000 km (2.3 km) | 0 / 0 / 1 / 0 | 0 / 0 / 0 / 0 | 0 / 0 / 2 / 1 | 1 / 0 / 0 / 1 |
+| 250, 50, 10 and 2 km | 0 everywhere | 0 | 0 | 0 |
+
+Each cell gives, in order: pages against the field; one level coarser
+against the field; the handoff from one level coarser to the page level;
+and from the page level to one level finer.
+
+- **At 250 km and below** nothing is deep in any comparison, in any of the
+  four configurations: the pages meet the ≤1 px rule against the field and
+  across both handoffs.
+- **No deep region of four pixels or more** appears at any altitude. The
+  largest difference region is 7 px, without a deep pixel.
+- **The remaining deep pixels are isolated, from 1 000 km up.** At most 15
+  per configuration, among about 84 000 visible pixels each at orbit. There
+  a pixel is 4–50 times the relief's finest wavelength (2.3 km at L4,
+  0.58 km at L6). Point sampling, even at 16 rays, then flips pixels near
+  half coverage arbitrarily, so these counts measure sampling noise as well
+  as the pages.
+- The gate allows sub-pixel features to merge at orbit, but not a
+  resolvable jump. That needs coarse pages that store a **filtered**
+  coverage of the fine field instead of point values, and a coverage
+  reference to judge them; neither is built yet. Until then, the orbit
+  rows are not a pass.
+- Each pose (three renders plus the reference, 24 threads) takes 1–20 s,
+  and the page cache holds 50–260 pages a pose: 6.6–34 MB of node bytes.
+  This measures no frame cost.
+
+Not covered yet: cube-face seams in view, a focus near an L6 depression,
+raised geometry, either style or Godot.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and
