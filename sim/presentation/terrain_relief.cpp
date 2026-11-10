@@ -283,6 +283,11 @@ ReliefSample TerrainRelief::sample(const Vec3d& direction_unit, CellId hint) con
     return {elevation, r, cell};
 }
 
+ReliefWeights TerrainRelief::weights(const Vec3d& direction_unit, CellId hint) const {
+    const Blend w = blend(direction_unit, nearest_cell(direction_unit, hint));
+    return {w.cell, w.first, w.second, w.own, w.first_weight, w.second_weight};
+}
+
 ReliefSample TerrainRelief::smooth_sample(const Vec3d& direction_unit, CellId hint) const {
     const CellId cell = nearest_cell(direction_unit, hint);
     const Blend w = blend(direction_unit, cell);

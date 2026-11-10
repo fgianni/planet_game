@@ -50,6 +50,17 @@ inline constexpr double relief_handover = 0.15;
 inline constexpr std::size_t relief_rank_knots = 33;
 inline constexpr std::size_t relief_rank_samples = 4096; // per cell, for F_cell
 
+// The weights sample() blends with at a place (§4.9): the cell's own curve
+// and its fan triangle's two corners' curves, summing to 1.
+struct ReliefWeights {
+    CellId cell;
+    CornerIndex first = 0;
+    CornerIndex second = 0;
+    double own = 1.0;
+    double first_weight = 0.0;
+    double second_weight = 0.0;
+};
+
 struct ReliefSample {
     double elevation_m = 0.0;
     double rank = 0.0; // r(x): band b is [b/8, (b+1)/8)
@@ -68,6 +79,10 @@ public:
     // The filtered terrain coarse tiles draw (ADR-0022 §4.9): the same
     // blend of curves, read at their means instead of at the point's rank.
     [[nodiscard]] ReliefSample smooth_sample(const Vec3d& direction_unit, CellId hint = CellId{0}) const;
+
+    // The blend weights sample() uses at a direction (ADR-0030 A1.2 blends
+    // its connectivity with them).
+    [[nodiscard]] ReliefWeights weights(const Vec3d& direction_unit, CellId hint = CellId{0}) const;
 
     // The parts, exposed for tests.
     [[nodiscard]] double noise(const Vec3d& direction_unit) const;

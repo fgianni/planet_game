@@ -89,6 +89,7 @@ add_library(PlanetSim STATIC
 add_library(PlanetSim::PlanetSim ALIAS PlanetSim)
 
 add_library(PlanetSimPresentation STATIC
+    sim/presentation/coast_page.cpp
     sim/presentation/detail_seed.cpp
     sim/presentation/presentation_record.cpp
     sim/presentation/terrain_relief.cpp

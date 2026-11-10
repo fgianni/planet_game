@@ -12,6 +12,31 @@
   Do not change the production tile contract until those gates pass.
   No PlanetSim solver, terrain field meaning or PSNAP change is permitted.
 
+## Canonical coast-field and page foundation (2026-11-10)
+
+`sim/presentation/coast_page.{hpp,cpp}` implements ADR-0030 Amendment 1's
+continuous water field and a 256-interval-per-side, half-float page keyed by
+the existing cube tile. It is Godot-free and currently **unused by the
+production renderer**; no tile geometry, style, field or snapshot changed.
+
+`test_coast_page` checks exact half-float round trips, plain-sea reduction,
+dry depression centres, connectedness in [0,1], continuity across sampled
+cell edges, byte-identical page regeneration and shared parent/child,
+same-face and all-face edge samples. With seed 20260928, L4's selected
+coastal L2 page (face 5, 3/0) takes about 0.025 s to generate on this
+machine; its bilinear sign differs from the canonical field at 41 of 20,000
+independent points (0.205%). At L6 the test sees 357 disconnected
+below-sea cells, a 256.35 m suppression depth and a maximum 0.272 m change
+between adjacent samples in its edge walks. The initial strict
+connectedness test found 79 values at 1 + 2.22e-16 from a weighted-sum
+roundoff; the field now clamps only its computed connectedness to [0,1].
+The strict range test remains unchanged.
+
+These are source/page checks, **not** proof of the one-pixel coastline gate,
+four-pixel island retention, raised-geometry consistency, Godot colour
+parity, mixed-level joins, or the 64 MiB global coastal-cache budget. The
+existing production tile renderer still uses the old waterline.
+
 ## Measured problem
 
 `tools/render/coast_lod_probe.cpp` compares the existing filtered mean-height
