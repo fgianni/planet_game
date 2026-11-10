@@ -1525,6 +1525,41 @@ stands" while children load):
 - Pages get their own queue, behind the tiles, and a tile is made again
   (0.75 ms) when its own page arrives.
 
+**Task 3c: pages stream behind the tiles (2026-11-11).** Commit `c442f32`
+lets a tile be made with an ancestor's page while its own loads (A1.3).
+`TerrainTiles` now streams pages separately:
+- Each tile is made at once with the finest resident page, its own or an
+  ancestor's, and made again (about 0.75 ms) when a finer one arrives.
+- Of the twelve workers, six make only tiles; the others make pages first.
+- A page keeps its layer while any cached tile is drawn with it.
+
+R1-04's flight, and the same build without pages:
+
+| | Without pages | First form (each tile waits for its page) | Streamed |
+|---|---|---|---|
+| Frames to settle at 100 m, L4 / L6 | 0 / 0 | about 8 400 / 15 300 | 0 / 0 |
+| Then until every drawn tile has its own page, L4 / L6 | — | — | 1.7 s / 5.6 s |
+| Planet-band wall p95 / p99, L4 | 7.2 / 8.3 ms | 9.7 / 20 ms | 9.6 / 22 ms |
+| Planet-band wall p95 / p99, L6 | 7.6 / 8.0 ms | | 7.4 / 9.6 ms |
+| Region and local wall p95, L6 | 10.0 / 10.8 ms | | 8.6 / 10.6 ms |
+
+- **Passes:** V9 (no holes) and V13. No drawn tile ever lacked a layer: at
+  most 13 (L4) and 2 (L6) layers in use during the descent.
+- **The descent outruns the pages.** The scripted descent from orbit to
+  100 m takes about one second, faster than coarse coverage pages (about
+  0.4 s each, the first building the relief's rank tables). Until they
+  arrive, the coast comes from an ancestor's page or, before any, from the
+  drawn surface's waterline.
+- **Resident pages at the 100 m hold:** 457 at L4 (about 60 MB), above
+  the 384-page cache, because a page in use by a cached tile is kept.
+- **The L4 planet band's p99** (22 ms against 8.3) is most likely the page
+  array created on the main thread; it is not yet addressed.
+- **The other Godot tests pass:** cell texels, detail coverage, display
+  transfer, the globe camera, scene lighting, the climate lab, style
+  switching, the R2 overlay and clouds.
+- **Still open for task 3:** the cell mesh, which does not read pages yet;
+  picking; and the rendered gates of task 4.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

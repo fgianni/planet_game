@@ -75,6 +75,7 @@ func _run() -> void:
 	var deepest := 0
 	var coast_layers := 0  # ADR-0030 A1: coast page layers in use, at most
 	var coast_missing := 0 # drawn tiles whose page found no layer, at most
+	var coast_pages := 0   # resident pages, at most
 	var path := []
 	for frame in frames_down:
 		path.append(exp(lerp(log(high), log(low), float(frame) / (frames_down - 1))))
@@ -109,6 +110,7 @@ func _run() -> void:
 		deepest = maxi(deepest, int(stats.get("deepest_level", 0)))
 		coast_layers = maxi(coast_layers, int(stats.get("coast_layers", 0)))
 		coast_missing = maxi(coast_missing, int(stats.get("coast_without_layer", 0)))
+		coast_pages = maxi(coast_pages, int(stats.get("coast_pages", 0)))
 		most[band] = Vector2i(maxi(most[band].x, int(stats.get("drawn", 0)) if stats.get("active", false) else 0),
 			maxi(most[band].y, int(stats.get("cached", 0))))
 		# At the bottom, hold until the tiles have settled (at most a minute).
@@ -145,6 +147,18 @@ func _run() -> void:
 		await process_frame
 		if int(planet.get_terrain_tile_stats().get("pending", 0)) == 0:
 			break
+	# ADR-0030 A1: the coast pages stream behind the tiles; how long, held at
+	# 100 m, until every drawn tile has its own (at most a minute).
+	var pages_start := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - pages_start < 60_000:
+		globe.look_at_direction(low_focus, low, 0.0)
+		await process_frame
+		var coast: Dictionary = planet.get_terrain_tile_stats()
+		if int(coast.get("coast_pages_pending", 0)) == 0 and int(coast.get("coast_remakes", 0)) == 0 \
+				and int(coast.get("coast_from_ancestor", 0)) == 0:
+			break
+	var pages_settle_ms := Time.get_ticks_msec() - pages_start
+	var settled: Dictionary = planet.get_terrain_tile_stats()
 	var focal: float = root.get_visible_rect().size.y * 0.5 / tan(deg_to_rad(camera.fov) * 0.5)
 	var low_frames := mini(LOW_FRAMES, frames_down / 2)
 	for step in low_frames:
@@ -166,7 +180,10 @@ func _run() -> void:
 		_failures += 1
 	print("V9: %d frames checked, %d hole samples; deepest tile level %d; %d frames to settle at 100 m" % [
 		frames_checked, holes_total, deepest, settle])
-	print("Coast pages: at most %d layers in use; at most %d drawn tiles without one" % [coast_layers, coast_missing])
+	print("Coast pages: during the flight at most %d resident, %d layers in use, %d drawn tiles without a layer; held at 100 m, after %.1f s more than the tiles: %d resident, %d of %d drawn tiles from an ancestor's page or none, %d pages pending" % [
+		coast_pages, coast_layers, coast_missing, pages_settle_ms / 1000.0, int(settled.get("coast_pages", 0)),
+		int(settled.get("coast_from_ancestor", 0)), int(settled.get("drawn", 0)),
+		int(settled.get("coast_pages_pending", 0))])
 	if holes_total > 0:
 		_failures += 1
 	for band in ["planet", "region", "local"]:

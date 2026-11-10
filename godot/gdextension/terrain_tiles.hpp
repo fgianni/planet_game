@@ -14,7 +14,6 @@
 #include <deque>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -33,12 +32,15 @@ namespace planetsim::godot_bridge {
 // origin - camera in double precision, under a top-level node so the
 // planet node's own 32-bit offset never reaches them.
 //
-// With a coast water field, every tile is made with its own coast page
-// (ADR-0030 Amendment 1): its geometry follows the page, and the page goes
-// to a layer of one texture array the styles read (a page that is water or
-// land throughout needs no layer). The six roots are made at once without
-// pages, so there is always something to draw, and are made again with
-// them.
+// With a coast water field (ADR-0030 Amendment 1), coast pages stream
+// behind the tiles: a page costs 35 to 600 times its tile. Each tile is
+// made at once with the finest resident page, its own or an ancestor's
+// (A1.3: the finest resident page is drawn as it stands), and made again
+// when a finer one arrives; its geometry follows that page. A page goes to
+// a layer of one texture array the styles read (one that is water or land
+// throughout needs none), and keeps it while any cached tile is drawn
+// with it. The six roots are made at once without pages, so there is
+// always something to draw.
 class TerrainTiles {
 public:
     struct View {
@@ -57,7 +59,7 @@ public:
         std::int64_t drawn = 0;
         std::int64_t cached = 0;
         std::int64_t meshed = 0;   // turned into meshes this update
-        std::int64_t pending = 0;  // wanted, not yet ready
+        std::int64_t pending = 0;  // wanted, not yet ready (missing tiles; not remakes)
         std::int64_t deepest_level = 0;
         double mesh_ms = 0.0;
         std::vector<std::int64_t> drawn_by_level;
@@ -71,6 +73,10 @@ public:
         // page found no free layer (they fall back to the drawn surface).
         std::int64_t coast_layers = 0;
         std::int64_t coast_without_layer = 0;
+        std::int64_t coast_pages = 0;          // resident
+        std::int64_t coast_pages_pending = 0;  // wanted, not yet made
+        std::int64_t coast_from_ancestor = 0;  // drawn tiles made with an ancestor's page, or none
+        std::int64_t coast_remakes = 0;        // tiles wanted again, with a finer page
     };
 
     TerrainTiles(godot::Node3D* parent, std::shared_ptr<const presentation::TerrainRelief> relief,
@@ -95,6 +101,7 @@ public:
     // 64 MiB of coastal constraints. Most tiles need none: R1-04's flights
     // use at most 40 (L4) and 68 (L6).
     static constexpr int coast_layer_count = 128;
+    static constexpr std::size_t cache_pages = 384; // 132 KB each in memory: 51 MB
 
 private:
     struct Entry {
@@ -104,14 +111,29 @@ private:
         std::uint64_t last_used = 0;
         double min_radius = 1.0; // of the drawn surface
         double max_radius = 1.0;
-        bool with_coast = false; // made with its coast page
-        int coast_layer = -1;    // its page's layer, if it has one
-        bool coast_missing = false; // its page needed a layer and found none
+        int coast_level = -1;          // the level of the page it was made with, -1 none
+        std::uint64_t coast_page = 0;  // that page's id
+        bool coast_missing = false;    // that page needed a layer and found none
+    };
+
+    // A resident coast page (ADR-0030 A1).
+    struct Page {
+        std::shared_ptr<const presentation::CoastPage> page;
+        int layer = -1;     // its layer, if it needs one and found one
+        float mode = 0.0F;  // as CUSTOM2.w: 1 / -1 throughout, 2 point, 3 coverage, 0 none
+        int users = 0;      // cached tiles made with it
+        std::uint64_t last_used = 0;
+    };
+
+    // A tile to make, with the page to make it with (or none).
+    struct Job {
+        presentation::TileKey key;
+        std::shared_ptr<const presentation::CoastPage> page;
     };
 
     struct Made {
         presentation::TileGeometry tile;
-        std::optional<presentation::CoastPage> page;
+        bool with_page = false;
     };
 
     [[nodiscard]] static std::uint64_t id(const presentation::TileKey& key) noexcept;
@@ -120,8 +142,13 @@ private:
     void select(const presentation::TileKey& key, const View& view);
     void add(const Made& made);
     void release(Entry& entry);
+    // The finest resident page for `key`, its own or an ancestor's.
+    [[nodiscard]] Page* best_page(const presentation::TileKey& key);
+    void add_page(std::shared_ptr<const presentation::CoastPage> page);
+    [[nodiscard]] bool free_unused_page_layer();
+    void evict_pages();
     void evict();
-    void work();
+    void work(bool tiles_only);
 
     godot::Node3D* root_ = nullptr; // top-level holder of the tile instances
     std::uint64_t root_id_ = 0;     // its ObjectID: the planet node may have freed it first
@@ -129,6 +156,9 @@ private:
     std::shared_ptr<const presentation::CoastWaterField> coast_;
     godot::Ref<godot::Texture2DArray> coast_pages_;
     std::vector<int> free_layers_;
+    std::unordered_map<std::uint64_t, Page> pages_;
+    std::vector<presentation::TileKey> pages_wanted_;
+    std::int64_t remakes_ = 0; // of wanted_, tiles present but wanted with a finer page
     presentation::TileDrawing drawing_;
     godot::Ref<godot::ShaderMaterial> material_;
     double highest_radius_ = 1.0;
@@ -138,12 +168,16 @@ private:
     std::uint64_t frame_ = 0;
     Stats stats_;
 
-    // Worker threads make tiles from `queue_` into `done_`.
+    // Worker threads make tiles from `queue_` into `done_`, and, when no
+    // tile waits, pages from `page_queue_` into `done_pages_`.
     std::mutex mutex_;
     std::condition_variable wake_;
-    std::deque<presentation::TileKey> queue_;
+    std::deque<Job> queue_;
     std::unordered_set<std::uint64_t> in_flight_;
     std::vector<Made> done_;
+    std::deque<presentation::TileKey> page_queue_;
+    std::unordered_set<std::uint64_t> pages_in_flight_;
+    std::vector<std::shared_ptr<const presentation::CoastPage>> done_pages_;
     bool stopping_ = false;
     std::vector<std::thread> workers_;
 };
