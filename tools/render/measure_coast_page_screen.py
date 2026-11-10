@@ -26,6 +26,33 @@ def read(prefix):
     return info, mask("visible"), mask("canonical"), mask("page")
 
 
+def float_control(prefix, visible, canonical, page):
+    path = Path(f"{prefix}-float-page.raw")
+    if not path.exists():
+        return None
+    values = np.fromfile(path, dtype=np.uint8)
+    if values.size != page.size or np.any(values > 1):
+        raise ValueError("invalid float-page mask")
+    float_page = values.reshape(page.shape).astype(bool)
+    interior = ndimage.binary_erosion(visible, iterations=2)
+    quantization = (float_page ^ page) & interior
+    result = dict(quantization_changes=int(quantization.sum()),
+                  shared_errors=int(((float_page ^ canonical) & (page ^ canonical) & interior).sum()),
+                  only_float_wrong=int(((float_page ^ canonical) & ~(page ^ canonical) & interior).sum()),
+                  only_stored_wrong=int((~(float_page ^ canonical) & (page ^ canonical) & interior).sum()))
+    return float_page, result
+
+
+def optional_mask(prefix, name, shape):
+    path = Path(f"{prefix}-{name}.raw")
+    if not path.exists():
+        return None
+    values = np.fromfile(path, dtype=np.uint8)
+    if values.size != np.prod(shape) or np.any(values > 1):
+        raise ValueError(f"invalid {name} mask")
+    return values.reshape(shape).astype(bool)
+
+
 def metric(visible, canonical, page):
     if visible.shape != canonical.shape or page.shape != canonical.shape:
         raise ValueError("mask dimensions differ")
@@ -74,6 +101,14 @@ def main():
     info, visible, canonical, page = read(args.prefix)
     print(info)
     print(metric(visible, canonical, page))
+    control = float_control(args.prefix, visible, canonical, page)
+    if control is not None:
+        float_page, attribution = control
+        print("unquantized lattice:", metric(visible, canonical, float_page))
+        print("storage attribution:", attribution)
+    alternative = optional_mask(args.prefix, "companded-page", page.shape)
+    if alternative is not None:
+        print("probe-only companded 16-bit:", metric(visible, canonical, alternative))
     if args.other:
         other_info, other_visible, other_canonical, other_page = read(args.other)
         for key in ("size", "level", "seed", "altitude", "fov"):
@@ -82,6 +117,12 @@ def main():
         if not np.array_equal(visible, other_visible) or not np.array_equal(canonical, other_canonical):
             parser.error("reference or visibility masks differ at matched pose")
         print("page-to-page:", metric(visible, page, other_page))
+        other_control = float_control(args.other, other_visible, other_canonical, other_page)
+        if control is not None and other_control is not None:
+            print("unquantized-to-unquantized:", metric(visible, control[0], other_control[0]))
+        other_alternative = optional_mask(args.other, "companded-page", page.shape)
+        if alternative is not None and other_alternative is not None:
+            print("companded-to-companded:", metric(visible, alternative, other_alternative))
 
 
 if __name__ == "__main__":

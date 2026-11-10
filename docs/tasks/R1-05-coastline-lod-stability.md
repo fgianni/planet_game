@@ -1414,3 +1414,41 @@ nor a proof that four-pixel islands/inlets cannot appear at another pose.
 Actual page residency while loading, raised geometry, both styles, varied
 seeds/sea levels/all faces, continuous zoom and L6 frame/cache gates remain
 open. Production terrain is unchanged.
+
+### Page precision attribution (2026-11-10; probe-only controls)
+
+The fixed-pose probe now resamples only the **same global dyadic nodes**
+needed by its pixel rays, caches the exact `CoastWaterField` doubles at
+those nodes, and bilinearly interpolates them as an unquantized control.
+This leaves the page lattice and camera fixed while removing the committed
+page's 1 m signed-int16 rounding/sign-preserving bias. A second control
+simulates a signed 16-bit logarithmic-magnitude encoding (100 m scale,
+±32767 m range, nonzero sign preserved) and decodes before interpolation.
+It is **not** packed into page bytes or a proposed production format; its
+CPU and shader costs and byte identity have not been measured. The native
+probe exports separate masks; the Python metric reports changes uniquely
+attributable to storage versus errors shared with the unquantized lattice.
+
+At seed 20260928, 75° FOV, 512² unit-sphere pixel-centre rays, 258,064
+interior pixels; each entry is changed pixels / pixels more than 1 px
+from **either** binary shore (not an AA contour displacement):
+
+| Level / altitude / page level | Current 1 m page | Unquantized lattice | Probe-only companded 16-bit |
+|---|---:|---:|---:|
+| L4 / 0.04 / 7 | 79 / 3 | 15 / 2 | 15 / 2 |
+| L4 / 0.04 / 8 | 65 / 1 | 3 / 0 | 6 / 0 |
+| L6 / 0.04 / 7 | 94 / 4 | 65 / 2 | 64 / 2 |
+| L6 / 0.04 / 8 | 76 / 0 | 15 / 0 | 16 / 0 |
+| L6 / 0.175 / 5 | 160 / 3 | 154 / 2 | 154 / 1 |
+
+Matched-pose adjacent-level **page-to-page** comparisons also retain
+deep binary differences with exact lattice nodes: L4/0.04 7→8 has 12
+changes, two >1 px (companded: 11/two); L6/0.04 7→8 has 50/two
+(companded: 48/two); L6/0.175 5→6 has 115/two, maximum 9.06 px
+from the coarse unquantized binary shore (companded: 115/one, max 4.24 px).
+All deep changed components in these controls have only one or two pixels.
+Thus 1 m quantization contributes substantially to **total** coast-pixel
+error, especially on the fine pages, but cannot alone account for the
+remaining small-feature handoff differences. A higher-precision 16-bit
+mapping is worth testing further, **not selected**. The no-feature-≥4 px
+and ≤1 px after-AA gates remain open; no production code or style changed.

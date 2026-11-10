@@ -1,8 +1,10 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 
-from measure_coast_page_screen import metric
+from measure_coast_page_screen import float_control, metric, optional_mask
 
 
 class PageScreenMetricTests(unittest.TestCase):
@@ -41,6 +43,26 @@ class PageScreenMetricTests(unittest.TestCase):
         result = metric(visible, coarse, finer)
         self.assertGreater(result["max_from_reference_shore_px"], 1)
         self.assertEqual(result["beyond_one_either_px"], 1)
+
+    def test_storage_attribution_does_not_double_count_shared_errors(self):
+        with TemporaryDirectory() as directory:
+            prefix = Path(directory) / "case"
+            visible = np.ones((12, 12), dtype=bool)
+            canonical = np.zeros_like(visible)
+            stored = np.zeros_like(visible)
+            floating = np.zeros_like(visible)
+            stored[5, 5] = True  # only stored wrong
+            floating[5, 6] = True  # only float wrong
+            stored[5, 7] = floating[5, 7] = True  # shared error
+            floating.astype(np.uint8).tofile(f"{prefix}-float-page.raw")
+            control, attribution = float_control(prefix, visible, canonical, stored)
+            np.testing.assert_array_equal(control, floating)
+            self.assertEqual(attribution["quantization_changes"], 2)
+            self.assertEqual(attribution["only_stored_wrong"], 1)
+            self.assertEqual(attribution["only_float_wrong"], 1)
+            self.assertEqual(attribution["shared_errors"], 1)
+            np.ones((12, 12), dtype=np.uint8).tofile(f"{prefix}-companded-page.raw")
+            self.assertEqual(optional_mask(prefix, "companded-page", (12, 12)).sum(), 144)
 
 
 if __name__ == "__main__":

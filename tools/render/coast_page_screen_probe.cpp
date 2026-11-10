@@ -3,7 +3,10 @@
 // Build: c++ -std=c++20 -O3 -ffp-contract=off -I . <this file>
 //        build/libPlanetSimPresentation.a build/libPlanetSim.a -lzstd -pthread -o probe
 // Usage: probe level seed focus.txt altitude_radii page_level output_prefix [fov_deg]
-// Writes three raw 512x512 byte masks (visible, canonical, page) and metadata.
+// Writes four raw 512x512 byte masks (visible, canonical, page,
+// float-page control, companded-page control) and metadata. Both controls
+// sample the *same* dyadic nodes; companding is only a probe of alternative
+// 16-bit precision, not a change to the stored CoastPage format.
 #include "sim/planet/run/planet_run.hpp"
 #include "sim/presentation/coast_page.hpp"
 
@@ -57,6 +60,26 @@ void save(const std::string& path, const std::vector<std::uint8_t>& bytes) {
     if (!out) throw std::runtime_error("incomplete screen mask");
 }
 
+double bilinear(const std::array<double, 4>& corners, double tx, double ty) {
+    return (1.0 - ty) * ((1.0 - tx) * corners[0] + tx * corners[1]) +
+           ty * ((1.0 - tx) * corners[2] + tx * corners[3]);
+}
+
+// Probe-only alternative 16-bit encoding, NOT a page-format change. The
+// logarithmic magnitude gives near-zero values finer resolution while
+// retaining the same +/-32767 m range and two bytes per node.
+double companded(double value) {
+    constexpr double scale_m = 100.0;
+    constexpr double limit_m = 32767.0;
+    const double magnitude = std::min(std::abs(value), limit_m);
+    if (magnitude == 0.0) return 0.0;
+    const double coordinate = std::log1p(magnitude / scale_m) /
+                              std::log1p(limit_m / scale_m);
+    const double encoded = std::max(1.0, std::round(coordinate * 32767.0));
+    return std::copysign(scale_m * std::expm1(encoded / 32767.0 *
+                         std::log1p(limit_m / scale_m)), value);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -76,6 +99,12 @@ int main(int argc, char** argv) {
     if (!(altitude > 0.0) || !std::isfinite(altitude) || requested_page_level > tile_max_level ||
         !(fov > 0.0 && fov < 180.0) || !std::isfinite(fov)) return 2;
     const auto page_level = static_cast<std::uint8_t>(requested_page_level);
+    for (const double value : {-40000.0, -100.0, -0.01, 0.0, 0.01, 100.0, 40000.0}) {
+        const double decoded = companded(value);
+        if (!std::isfinite(decoded) || (decoded > 0.0) != (value > 0.0) ||
+            (decoded < 0.0) != (value < 0.0) || std::abs(decoded) > 32767.001)
+            throw std::runtime_error("invalid probe companding");
+    }
     for (std::uint8_t face = 0; face < 6; ++face)
         for (const double u : {-0.8, 0.0, 0.8})
             for (const double v : {-0.8, 0.0, 0.8}) {
@@ -100,11 +129,14 @@ int main(int argc, char** argv) {
     const Vec3d camera = focus * (1.0 + altitude);
     const double radius_squared = dot(camera, camera) - 1.0;
     std::vector<std::uint8_t> visible(size * size, 0), canonical(size * size, 0),
-                              page_mask(size * size, 0);
+                              page_mask(size * size, 0), float_page_mask(size * size, 0),
+                              companded_page_mask(size * size, 0);
     std::map<std::array<std::uint32_t, 4>, CoastPage> pages;
+    std::map<std::array<std::uint32_t, 3>, std::array<double, 2>> exact_nodes;
     double min_density = 1e300, max_density = 0.0;
     double generation_ms = 0.0;
-    std::size_t insufficient = 0, visible_pixels = 0, flips = 0;
+    std::size_t insufficient = 0, visible_pixels = 0, flips = 0, float_flips = 0,
+                quantization_flips = 0, companded_flips = 0, companded_vs_float = 0;
     CellId hint{0};
     for (int y = 0; y < size; ++y) for (int x = 0; x < size; ++x) {
         const double right = (x + 0.5 - size / 2.0) / focal;
@@ -140,12 +172,43 @@ int main(int argc, char** argv) {
         hint = exact.cell;
         const bool wet = exact.signed_water_m > 0.0;
         const bool drawn = iter->second.bilinear_signed_water_m(px, py) > 0.0;
+        const auto ix = static_cast<std::uint32_t>(px);
+        const auto iy = static_cast<std::uint32_t>(py);
+        const auto x1 = std::min(ix + 1U, coast_page_intervals);
+        const auto y1 = std::min(iy + 1U, coast_page_intervals);
+        const auto exact_node = [&](std::uint32_t local_x, std::uint32_t local_y) {
+            const std::uint32_t global_x = tx * coast_page_intervals + local_x;
+            const std::uint32_t global_y = ty * coast_page_intervals + local_y;
+            const auto node_key = std::array<std::uint32_t, 3>{key.face, global_x, global_y};
+            auto node = exact_nodes.find(node_key);
+            if (node == exact_nodes.end()) {
+                const double lines = static_cast<double>(coast_page_intervals) * tiles;
+                const Vec3d node_direction = tile_face_direction(key.face,
+                    -1.0 + 2.0 * global_x / lines, -1.0 + 2.0 * global_y / lines);
+                const double signed_water = field.signed_water_m(node_direction, hint);
+                node = exact_nodes.emplace(node_key, std::array<double, 2>{
+                    signed_water, companded(signed_water)}).first;
+            }
+            return node->second;
+        };
+        const auto n00 = exact_node(ix, iy), n10 = exact_node(x1, iy);
+        const auto n01 = exact_node(ix, y1), n11 = exact_node(x1, y1);
+        const bool unquantized = bilinear({n00[0], n10[0], n01[0], n11[0]},
+                                          px - ix, py - iy) > 0.0;
+        const bool compressed = bilinear({n00[1], n10[1], n01[1], n11[1]},
+                                       px - ix, py - iy) > 0.0;
         const std::size_t index = static_cast<std::size_t>(y * size + x);
         visible[index] = 1;
         canonical[index] = static_cast<std::uint8_t>(wet);
         page_mask[index] = static_cast<std::uint8_t>(drawn);
+        float_page_mask[index] = static_cast<std::uint8_t>(unquantized);
+        companded_page_mask[index] = static_cast<std::uint8_t>(compressed);
         ++visible_pixels;
         flips += wet != drawn;
+        float_flips += wet != unquantized;
+        quantization_flips += unquantized != drawn;
+        companded_flips += wet != compressed;
+        companded_vs_float += unquantized != compressed;
         // Minimum x/y screen derivative in page samples per pixel. Continue
         // the current face's coordinates across an edge for this derivative.
         double density = 1e300;
@@ -170,11 +233,17 @@ int main(int argc, char** argv) {
     save(prefix + "-visible.raw", visible);
     save(prefix + "-canonical.raw", canonical);
     save(prefix + "-page.raw", page_mask);
+    save(prefix + "-float-page.raw", float_page_mask);
+    save(prefix + "-companded-page.raw", companded_page_mask);
     std::ofstream info(prefix + "-info.txt");
     info << "size " << size << "\nlevel " << level << "\nseed " << seed
          << "\naltitude " << altitude << "\nfov " << fov
          << "\npage_level " << static_cast<int>(page_level)
          << "\nvisible " << visible_pixels << "\nflips " << flips
+         << "\nfloat_flips " << float_flips << "\nquantization_flips " << quantization_flips
+         << "\ncompanded_flips " << companded_flips
+         << "\ncompanded_vs_float " << companded_vs_float
+         << "\nfloat_nodes " << exact_nodes.size()
          << "\npages " << pages.size() << "\npage_bytes "
          << pages.size() * coast_page_nodes * coast_page_nodes * 2ULL
          << "\ngeneration_ms " << generation_ms
@@ -182,6 +251,9 @@ int main(int argc, char** argv) {
          << "\ndensity_below_2 " << insufficient << '\n';
     if (!info) throw std::runtime_error("incomplete screen metadata");
     std::cout << prefix << ": visible " << visible_pixels << ", flips " << flips
+              << ", float/interpolation flips " << float_flips
+              << ", quantization-only changes " << quantization_flips
+              << ", companded/float changes " << companded_flips << '/' << float_flips
               << ", pages " << pages.size() << ", bytes "
               << pages.size() * coast_page_nodes * coast_page_nodes * 2ULL
               << ", cold page generation " << generation_ms << " ms"
