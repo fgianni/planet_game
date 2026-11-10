@@ -1366,6 +1366,51 @@ and from the page level to one level finer.
 Not covered yet: cube-face seams in view, a focus near an L6 depression,
 raised geometry, either style or Godot.
 
+**Filtered coverage pages at orbit, seams and depressions (2026-11-10;
+probe only).** `coast_screen_probe` gains:
+- **A coverage page kind.** Each node holds its footprint's water coverage
+  minus 0.5, from S × S sub-samples of s, with S = the node spacing over
+  half the relief's finest wavelength, capped at 16. Levels with S = 1 keep
+  point pages.
+- **A coverage reference** of up to 64 × 64 rays a pixel.
+- **Seam foci:** coast crossings of cube-face edges.
+- **Depression foci:** the centres of L6's inland depression cells.
+
+Logs are `build/r105/coverage_*.log`. Deep pixels at 12 000 km, in the same
+four comparisons as above:
+
+| | Point pages | Coverage pages |
+|---|---|---|
+| L4 20260928 | 7 / 6 / 7 / 4 | 0 / 0 / 0 / 1 |
+| L4 42 | 4 / 5 / 3 / 1 | 7 / 4 / 1 / 1 |
+| L6 20260928 | 15 / 11 / 8 / 11 | 4 / 1 / 1 / 3 |
+| L6 42 | 3 / 5 / 10 / 2 | 3 / 1 / 0 / 1 |
+
+- **Coverage pages reduce the orbit deep pixels, but not to zero.** L4
+  seed 42 is worse against the field. At L6 both the footprint cap (16)
+  and the reference cap (64 rays) fall short of resolving 0.58 km features
+  at orbit.
+- **A coverage page with S = 2 is cruder than a point page.** L6 seed
+  20260928 at 250 km has 4 deep pixels one level coarser (none with point
+  pages). Coverage should start only where S ≥ 3 or so.
+- **Seams:** L4 seam foci behave like other coasts. L6's have up to 4
+  isolated deep pixels at 4 000 km, and none above 1 below 1 000 km. No
+  seam artefact is visible: edge nodes of coverage pages are not yet
+  shared between faces, and this sample does not show it.
+- **Depressions:** no water appears where the field has none. Views
+  centred on depression cells have 0 water pixels in the reference and in
+  the pages at 50 km and below, and 242 against 242 at 250 km (L6 seed
+  20260928). Where ocean is in view, the water counts agree within 0.05 %.
+- **No deep region of four pixels or more**, at any altitude or kind.
+- **Open: the orbit metric.** At orbit, binarising coverage at 0.5 makes
+  any pixel near half coverage a candidate flip. A "resolvable jump" there
+  may be better measured as a per-pixel coverage change (for example
+  ≥ 0.5) than as a flip at the threshold. That is a reading of ADR-0030's
+  gate, to settle with the user.
+- Each pose takes 3–21 s (24 threads); coverage pages at L6's coarse
+  levels cost up to 256 sub-samples a node. Neither cost is a runtime
+  design.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and
