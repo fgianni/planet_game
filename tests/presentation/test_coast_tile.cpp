@@ -97,6 +97,37 @@ void check(test::Context& test, const TileKey& key, const TerrainRelief& relief,
     PLANETSIM_EXPECT(test, worst_normal < 1e-5);
 }
 
+// A tile drawn from an ancestor's page, `up` levels up (A1.3: while its own
+// loads): its vertices follow the ancestor's bilinear value, their
+// coast_uv is their place in that page, and up to three levels up every
+// vertex is an ancestor node.
+void ancestor(test::Context& test, const TileKey& key, int up, const TerrainRelief& relief,
+              const CoastWaterField& field, const TileDrawing& drawing) {
+    TileKey page_key = key;
+    for (int k = 0; k < up; ++k) page_key = tile_parent(page_key);
+    const CoastPage page = make_coast_page(page_key, field, 8U);
+    const TileGeometry tile = make_terrain_tile(key, relief, drawing, &page, &field);
+    PLANETSIM_EXPECT(test, tile.coast_key == page_key);
+    const std::size_t surface = 6U * tile_grid * tile_grid;
+    int wrong_side = 0;
+    int off_node = 0;
+    for (std::size_t v = 0; v < surface; ++v) {
+        const double fx = tile.coast_uv[2 * v] * coast_page_intervals;
+        const double fy = tile.coast_uv[2 * v + 1] * coast_page_intervals;
+        off_node += std::abs(fx - std::round(fx)) > 1e-4 || std::abs(fy - std::round(fy)) > 1e-4 ? 1 : 0;
+        const bool wet = page.bilinear_signed_water_m(fx, fy) > 0.0;
+        const double height = tile.custom1[4 * v + 3];
+        wrong_side += wet ? (height > 0.0 ? 1 : 0) : (height < 0.0 ? 1 : 0);
+    }
+    std::cout << "tile L" << int(key.level) << " from its ancestor " << up << " levels up: " << off_node
+              << " vertices off a node, " << wrong_side << " on the wrong side\n";
+    PLANETSIM_EXPECT(test, wrong_side == 0);
+    if (up <= 3) PLANETSIM_EXPECT(test, off_node == 0);
+    // Its own page, or no page: the tile's key.
+    const CoastPage own = make_coast_page(key, field, 8U);
+    PLANETSIM_EXPECT(test, make_terrain_tile(key, relief, drawing, &own, &field).coast_key == key);
+}
+
 }  // namespace
 
 int main() {
@@ -115,7 +146,12 @@ int main() {
     // A detailed coastal tile and a filtered one (R1-05's probes' tiles).
     check(test, TileKey{5, 2, 3, 0}, relief, field, drawing);
     check(test, TileKey{5, 1, 0, 1}, relief, field, drawing);
-    // A page must be the tile's own, with its field.
+    // From an ancestor's page, one, three and five levels up.
+    const TileKey deep{5, 5, 24, 1};
+    ancestor(test, deep, 1, relief, field, drawing);
+    ancestor(test, deep, 3, relief, field, drawing);
+    ancestor(test, deep, 5, relief, field, drawing);
+    // A page must be the tile's own or an ancestor's, with its field.
     const CoastPage other = make_coast_page(TileKey{5, 2, 2, 0}, field, 8U);
     bool rejected = false;
     try { (void)make_terrain_tile(TileKey{5, 2, 3, 0}, relief, drawing, &other, &field); }

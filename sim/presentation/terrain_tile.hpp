@@ -62,17 +62,23 @@ struct TileGeometry {
     std::vector<float> custom0;      // second corner texel xy, weights of cell and first corner
     std::vector<float> custom1;      // planet-centred unit direction xyz, height above sea (m)
     std::vector<float> coast_uv;     // with a coast page: the vertex's place in it, xy in [0, 1]
+    TileKey coast_key;               // the page it was made with (its own or an ancestor's)
     double min_radius = 0.0;         // of the drawn surface, for culling and collision
     double max_radius = 0.0;
 };
 
-// With the tile's own coast page (ADR-0030 A1.4), the geometry follows its
-// classification: every vertex lies on a page node (every eighth), and a
-// water vertex is drawn at sea level with a height of at most 0, a land
-// vertex at its height but no lower than sea level. The ring of points
-// outside the tile, used only for normals, takes the value the neighbour's
-// page holds there (coast_node_value), so shared edges keep their normals.
-// Without a page the tile is as before, byte for byte.
+// With a coast page (ADR-0030 A1.4), the tile's own or, while its own
+// loads, an ancestor's (A1.3: the finest resident page is drawn as it
+// stands), the geometry follows the page's classification: a water vertex
+// is drawn at sea level with a height of at most 0, a land vertex at its
+// height but no lower than sea level. With its own page every vertex lies
+// on a node (every eighth); an ancestor's up to three levels up still has
+// a node at every vertex, and its bilinear value is read in between
+// otherwise. The ring of points outside the tile, used only for normals,
+// reads the page where it covers them and otherwise takes the value the
+// neighbouring page of its level holds there (coast_node_value), so shared
+// edges keep their normals. `coast_uv` holds the vertices' places in that
+// page. Without a page the tile is as before, byte for byte.
 [[nodiscard]] TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief,
                                              const TileDrawing& drawing, const CoastPage* coast = nullptr,
                                              const CoastWaterField* field = nullptr);

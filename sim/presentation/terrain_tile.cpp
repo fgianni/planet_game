@@ -110,10 +110,20 @@ double tile_angular_size(const TileKey& key) {
 
 TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, const TileDrawing& drawing,
                                const CoastPage* coast, const CoastWaterField* field) {
-    if (coast != nullptr && (field == nullptr || !(coast->key == key))) {
-        throw std::invalid_argument("a tile's coast page needs its own key and the water field");
+    // The page is the tile's own or an ancestor's: the same face, a level
+    // no finer, holding the tile.
+    const int page_depth = coast != nullptr ? static_cast<int>(key.level) - static_cast<int>(coast->key.level) : 0;
+    if (coast != nullptr && (field == nullptr || coast->key.face != key.face || page_depth < 0 ||
+                             (key.x >> page_depth) != coast->key.x || (key.y >> page_depth) != coast->key.y)) {
+        throw std::invalid_argument("a tile's coast page must be its own or an ancestor's, with the water field");
     }
-    constexpr std::uint32_t nodes_per_quad = coast_page_intervals / tile_grid;
+    // Grid line i of the tile, in the page's node coordinates (exact for an
+    // ancestor up to three levels up: its nodes are every 8 / 2^page_depth lines).
+    const auto page_node = [&](std::uint32_t tile_index, std::uint32_t page_index, std::int64_t i) {
+        const double in_tiles = (static_cast<double>(tile_index) * tile_grid + static_cast<double>(i)) /
+                                (static_cast<double>(tile_grid) * std::ldexp(1.0, page_depth));
+        return (in_tiles - static_cast<double>(page_index)) * coast_page_intervals;
+    };
     const PlanetMesh& mesh = relief.mesh();
     const std::size_t cell_count = mesh.cell_count();
     constexpr std::int64_t lines = tile_grid + 1;
@@ -144,16 +154,18 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
             hint = sample.cell;
             point.height_m = sample.elevation_m - drawing.sea_level_m;
             if (coast != nullptr) {
-                // The page's node, or outside the tile the value the
-                // neighbour's page holds there (rounded the same way).
+                // The page's value, or outside the page the value the
+                // neighbouring page of its level holds there (rounded the
+                // same way).
+                const double px = page_node(key.x, coast->key.x, i);
+                const double py = page_node(key.y, coast->key.y, j);
                 double water = 0.0;
-                if (i >= 0 && j >= 0 && i <= tile_grid && j <= tile_grid) {
-                    water = coast->signed_water_m(static_cast<std::uint32_t>(i) * nodes_per_quad,
-                                                  static_cast<std::uint32_t>(j) * nodes_per_quad);
+                if (px >= 0.0 && py >= 0.0 && px <= coast_page_intervals && py <= coast_page_intervals) {
+                    water = coast->bilinear_signed_water_m(px, py);
                 } else {
                     CellId coast_hint = sample.cell;
                     water = half_to_float(half_from_float(static_cast<float>(
-                        coast_node_value(*field, key.level, point.direction, coast_hint))));
+                        coast_node_value(*field, coast->key.level, point.direction, coast_hint))));
                 }
                 point.height_m = water > 0.0 ? std::min(point.height_m, 0.0) : std::max(point.height_m, 0.0);
             }
@@ -173,6 +185,7 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
 
     TileGeometry tile;
     tile.key = key;
+    if (coast != nullptr) tile.coast_key = coast->key;
     tile.origin = tile_center_direction(key);
     tile.min_radius = 1e300;
     tile.max_radius = 0.0;
@@ -231,7 +244,8 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
     const auto vertex_at = [&](std::int64_t i, std::int64_t j) {
         const Point& p = at(i, j);
         return Vertex{p.position, normal_at(i, j), p.direction, p.height_m, p.rank,
-                      static_cast<double>(i) / tile_grid, static_cast<double>(j) / tile_grid};
+                      coast != nullptr ? page_node(key.x, coast->key.x, i) / coast_page_intervals : 0.0,
+                      coast != nullptr ? page_node(key.y, coast->key.y, j) / coast_page_intervals : 0.0};
     };
 
     for (std::int64_t j = 0; j < tile_grid; ++j) {
