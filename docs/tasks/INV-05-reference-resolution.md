@@ -597,3 +597,48 @@ budget in full by level (top of atmosphere, surface, the atmosphere's
 storage), so that the term carrying the rest is found rather than
 guessed.
 
+## 17. The caps' full energy budget (2026-11-10)
+
+Per-cell energy diagnostics (commit c92b019; each cell's share of the
+surface step's sums, closing as `closure_residual_J` does: the caps'
+physics residual is 0.0000 W/m²) with the dynamics' dry and latent
+convergence and the clouds' effects
+([`tools/v8/reference_cap_energy_probe.cpp`](../../tools/v8/reference_cap_energy_probe.cpp);
+`build/inv05/energy_L3.log` … `energy_L5.log`). Upwind (the preset), W/m²
+of the cap:
+
+| Year 2 | S: L3 | L4 | L5 | L5 − L3 | N: L3 | L4 | L5 | L5 − L3 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Sunlight absorbed | 163.7 | 138.6 | 111.1 | **−52.6** | 133.7 | 134.4 | 120.1 | −13.6 |
+| Outgoing longwave | 208.4 | 204.9 | 199.6 | −8.8 | 218.9 | 216.9 | 209.0 | −9.9 |
+| Cloud shortwave effect | −17.4 | −14.7 | −11.3 | +6.1 | −21.5 | −19.5 | −16.1 | +5.4 |
+| Cloud longwave effect | 38.9 | 32.0 | 22.3 | −16.6 | 41.4 | 34.6 | 26.4 | −15.0 |
+| Dynamics, dry | 17.8 | 19.4 | 31.1 | +13.3 | 21.0 | 26.1 | 33.0 | +12.0 |
+| Dynamics, latent | 48.6 | 44.6 | 44.2 | −4.4 | 54.9 | 45.7 | 42.7 | −12.2 |
+| Storage | +4.0 | −20.9 | −40.6 | −44.6 | −29.3 | −35.6 | −43.0 | −13.7 |
+| Sensible, surface to air | 13.3 | 1.2 | −9.9 | −23.2 | 4.9 | −2.5 | −11.3 | −16.2 |
+| Surface temperature (K) | 279.8 | 273.6 | 265.0 | −14.9 | 282.7 | 278.2 | 270.2 | −12.5 |
+
+L5 − L3 earlier (W/m²):
+
+| | S, months 1–3 | S, months 4–12 | N, months 1–3 | N, months 4–12 |
+|---|---:|---:|---:|---:|
+| Sunlight absorbed | +2.9 | −49.0 | −10.7 | +4.9 |
+| Outgoing longwave | +13.9 | +4.0 | +19.6 | +4.2 |
+| Cloud longwave effect | −21.6 | −17.6 | −27.6 | −20.1 |
+| Dynamics, latent | −55.3 | −24.8 | −56.7 | −35.0 |
+| Storage | −53.8 | −73.0 | −85.0 | −30.6 |
+
+- **The south's difference is the sea ice's albedo** once it grows: 53
+  W/m² less sunlight absorbed in year 2 (ice 0.02 → 0.55 of the cap), with
+  the cap still cooling at 41 W/m² at L5 against equilibrium (+4) at L3:
+  the gap is still widening.
+- **The north's is spread:** less sunlight (more snow), less cloud
+  greenhouse, less latent heat brought in; the dry heat brought in rises
+  (+12) and partly offsets.
+- **The first months:** less latent heat brought in (−55 W/m²) and less
+  cloud greenhouse (−22 to −28 W/m²), before the ice. The upwind
+  diffusion is most of the first (§11), yet with it removed the gap
+  remains (§9); the same budget under order 2 (`energy_L3_o2.log` …
+  `energy_L5_o2.log`) shows which term carries it then.
+
