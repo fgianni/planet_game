@@ -1598,12 +1598,25 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     }
 
     std::vector<double> land_melt_kg_m2(cells, 0.0);   // INV-04, per cell
+    // INV-05: each cell's share of the step's sums, W/m² of cell.
+    std::vector<double> cell_absorbed(cells, 0.0), cell_outgoing(cells, 0.0),
+        cell_storage(cells, 0.0), cell_atmosphere_storage(cells, 0.0), cell_sensible(cells, 0.0),
+        cell_evaporation_latent(cells, 0.0), cell_melt_latent(cells, 0.0),
+        cell_condensation_latent(cells, 0.0);
     const BudgetPartial total = reduce_deterministic_blocks<BudgetPartial>(
         mesh.blocks(), worker_count, BudgetPartial{},
         [&](std::size_t, const CellBlock& block) {
             BudgetPartial partial;
             for (std::size_t cell = block.begin; cell < block.end; ++cell) {
                 const double area_m2 = mesh.cells()[cell].area_m2;
+                const double absorbed_before = partial.absorbed_W;
+                const double emitted_before = partial.emitted_W;
+                const double storage_before = partial.storage_change_J;
+                const double atmosphere_before = partial.atmosphere_storage_change_J;
+                const double sensible_before = partial.sensible_W;
+                const double evaporation_before = partial.evaporation_latent_J;
+                const double melt_before = partial.latent_heat_J;
+                const double condensation_before = partial.condensation_latent_J;
                 const double snow = slow.land_snow_water_equivalent_kg_m2[cell];
                 const bool to_space = layers == 0U;
                 CellTiles tiles;
@@ -1911,6 +1924,17 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
                     (fractions.land_fraction[cell] * land_step.state.surface_K +
                      fractions.ocean_fraction[cell] * ocean_K) /
                     tile_share[cell]);
+                cell_absorbed[cell] = (partial.absorbed_W - absorbed_before) / area_m2;
+                cell_outgoing[cell] = (partial.emitted_W - emitted_before) / area_m2;
+                cell_storage[cell] = (partial.storage_change_J - storage_before) / (area_m2 * dt_s);
+                cell_atmosphere_storage[cell] =
+                    (partial.atmosphere_storage_change_J - atmosphere_before) / (area_m2 * dt_s);
+                cell_sensible[cell] = (partial.sensible_W - sensible_before) / area_m2;
+                cell_evaporation_latent[cell] =
+                    (partial.evaporation_latent_J - evaporation_before) / (area_m2 * dt_s);
+                cell_melt_latent[cell] = (partial.latent_heat_J - melt_before) / (area_m2 * dt_s);
+                cell_condensation_latent[cell] =
+                    (partial.condensation_latent_J - condensation_before) / (area_m2 * dt_s);
             }
             return partial;
         },
@@ -1947,6 +1971,14 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     diagnostics.land_melt_heat_J = total.land_melt_J;
     diagnostics.land_storage_change_J = total.land_storage_change_J;
     diagnostics.land_melt_kg_m2 = std::move(land_melt_kg_m2);
+    diagnostics.cell_absorbed_W_m2 = std::move(cell_absorbed);
+    diagnostics.cell_outgoing_W_m2 = std::move(cell_outgoing);
+    diagnostics.cell_storage_W_m2 = std::move(cell_storage);
+    diagnostics.cell_atmosphere_storage_W_m2 = std::move(cell_atmosphere_storage);
+    diagnostics.cell_sensible_W_m2 = std::move(cell_sensible);
+    diagnostics.cell_evaporation_latent_W_m2 = std::move(cell_evaporation_latent);
+    diagnostics.cell_melt_latent_W_m2 = std::move(cell_melt_latent);
+    diagnostics.cell_condensation_latent_W_m2 = std::move(cell_condensation_latent);
     diagnostics.cell_transport_W_m2.assign(transport.values().begin(), transport.values().end());
     diagnostics.cell_latent_transport_W_m2 = std::move(latent_delivered_W_m2);
     if (!eddy_latent.empty()) {
