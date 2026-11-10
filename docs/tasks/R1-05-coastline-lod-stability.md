@@ -1411,6 +1411,35 @@ four comparisons as above:
   levels cost up to 256 sub-samples a node. Neither cost is a runtime
   design.
 
+**The headless gate under ADR-0030 A1.5a (2026-11-10; probe only).**
+The user chose the reading in ADR-0030 A1.5a: where features are
+sub-pixel, a resolvable jump is a coverage change of 0.5 or more. The
+probe now reports such jumps and the largest change. Coverage pages start
+at S ≥ 3, and point pages stay below that.
+
+The eight configurations were rerun: coast foci, both seeds, L4 and L6;
+seam foci, L4 and L6; depression foci, L6, both seeds. That is 161 poses,
+logs `build/r105/jump_*.log`.
+
+- **Coverage jumps of 0.5 or more: none** at the page level and in either
+  handoff. The largest per-pixel change is 0.25 against the field and
+  0.31 across a handoff.
+- **Where features are resolved** (250 km and below), the ≤ 1 px rule
+  holds as written: no deep pixel at the page level or across the
+  handoffs.
+- **No deep region of four pixels or more**, anywhere.
+- **The shortfall state** (one level coarser, while children load) has a
+  single jump, of exactly 0.50: L6 seed 42, 250 km. A1.3 reports this
+  state rather than hiding it.
+- Isolated threshold flips remain at orbit (up to 7 per configuration
+  against the field), reported as A1.5a requires.
+
+The headless page representation meets the screen-space gate in this
+sample, with these limits: flat footprint (no raised geometry), nadir
+views only, two seeds, and a probe-only coverage kind. That kind samples a
+face-aligned footprint, so cube-face edge nodes are not yet shared
+between faces.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

@@ -21,9 +21,13 @@
 //   coarser than the relief's finest features hold a filtered coast.
 //   The reference then casts up to 64 x 64 rays a pixel, enough to resolve
 //   those features, and a pixel's candidate coverage is the mean of the
-//   bilinear coverage under its rays. Levels whose nodes resolve the
-//   finest features (one sub-sample) keep point pages: s's zero line is
-//   more exact than a binary node.
+//   bilinear coverage under its rays. Levels needing fewer than 3 x 3
+//   sub-samples keep point pages: s's zero line is more exact than a
+//   coarse coverage there.
+//
+// Each comparison also reports pixels whose coverage changes by 0.5 or
+// more: the resolvable jumps of ADR-0030 A1.5a where features are
+// sub-pixel.
 //
 // Three focus kinds: coast (points on the canonical contour), seam (coast
 // points on cube-face edges), depression (the centres of L6's inland
@@ -144,7 +148,7 @@ ProbePage make_probe_page(const TileKey& key, const CoastWaterField& field) {
     ProbePage page;
     page.key = key;
     page.values.resize(static_cast<std::size_t>(coast_page_nodes) * coast_page_nodes);
-    if (!coverage_pages || footprint_samples(key.level) == 1) {
+    if (!coverage_pages || footprint_samples(key.level) < 3) {
         const CoastPage point = make_coast_page(key, field);
         for (std::uint32_t y = 0; y < coast_page_nodes; ++y)
             for (std::uint32_t x = 0; x < coast_page_nodes; ++x)
@@ -312,6 +316,8 @@ Mask render(PageCache& cache, const std::array<FaceFrame, 6>& frames, const Came
 struct Result {
     std::size_t pixels = 0, differing = 0, deep = 0, components4 = 0, deep_components4 = 0, largest = 0;
     double coverage_difference_px = 0.0;
+    std::size_t coverage_jumps = 0;   // pixels whose coverage changes by 0.5 or more (ADR-0030 A1.5a)
+    double largest_coverage_change = 0.0;
 };
 
 // `drawn` against `reference`. A differing pixel is deep when the reference
@@ -325,7 +331,10 @@ Result evaluate(const Mask& reference, const Mask& drawn, const Camera& camera, 
     for (std::size_t i = 0; i < reference.wet.size(); ++i) {
         if (reference.wet[i] < 0) continue;
         ++result.pixels;
-        result.coverage_difference_px += std::abs(drawn.coverage[i] - reference.coverage[i]);
+        const double change = std::abs(drawn.coverage[i] - reference.coverage[i]);
+        result.coverage_difference_px += change;
+        result.coverage_jumps += change >= 0.5 ? 1U : 0U;
+        result.largest_coverage_change = std::max(result.largest_coverage_change, change);
         if (drawn.wet[i] == reference.wet[i]) continue;
         ++result.differing;
         bool same = true;
@@ -396,7 +405,8 @@ std::size_t water_pixels(const Mask& m) {
 
 void print(const char* name, const Result& r) {
     std::cout << ' ' << name << "=" << r.differing << '/' << r.deep << '/' << r.components4 << '/'
-              << r.deep_components4 << '/' << r.largest << '/' << r.coverage_difference_px;
+              << r.deep_components4 << '/' << r.largest << '/' << r.coverage_difference_px << '/'
+              << r.coverage_jumps << '/' << r.largest_coverage_change;
 }
 
 // Bisect the canonical contour between two directions of opposite class.
@@ -474,7 +484,7 @@ int main(int argc, char** argv) {
               << focus_points.size() << ' ' << kind << " foci, " << antialiasing << "x" << antialiasing
               << " rays a pixel, " << (coverage_pages ? "coverage" : "point") << " pages; finest wavelength "
               << finest_rad * radius_km << " km\n";
-    std::cout << "each comparison: differing/deep/regions>=4/deep regions>=4/largest/coverage difference (px)\n";
+    std::cout << "each comparison: differing/deep/regions>=4/deep regions>=4/largest/coverage difference (px)/coverage jumps >= 0.5/largest coverage change\n";
     PageCache cache(field);
     constexpr std::array<double, 7> altitudes_km{12000.0, 4000.0, 1000.0, 250.0, 50.0, 10.0, 2.0};
     for (std::size_t f = 0; f < focus_points.size(); ++f) {

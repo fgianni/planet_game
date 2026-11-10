@@ -562,6 +562,20 @@ ADR-0030's implementation and completion gates stand unchanged, the
 - **V-A3, the cost:** page generation time, resident page bytes at L6
   (within 64 MiB) and frame times, under R1-04's flight.
 
+### A1.5a Reading of the screen-space gate where features are sub-pixel (with the user, 2026-11-10)
+
+Where the relief's finest wavelength is below a pixel (at L6, 0.58 km;
+from about 1 000 km of altitude up in R1-05's probe), a pixel near half
+water coverage can flip at the 0.5 threshold under any representation.
+There, a **resolvable jump** is a pixel whose water coverage changes by
+0.5 or more:
+- between a page level and the next, at the same pose (the handoffs);
+- or against a reference that resolves the finest features.
+
+Threshold flips are still counted and reported, but do not fail the gate
+there. Where features are resolved, the ≤ 1 px rule above applies as
+written. The four-pixel island rule applies everywhere.
+
 ### A1.6 Tasks
 
 1. Build the field (κ, D, s) and `make_coast_page` in `sim/presentation`,
