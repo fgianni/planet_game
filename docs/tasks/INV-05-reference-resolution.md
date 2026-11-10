@@ -642,3 +642,34 @@ L5 − L3 earlier (W/m²):
   remains (§9); the same budget under order 2 (`energy_L3_o2.log` …
   `energy_L5_o2.log`) shows which term carries it then.
 
+## 18. The budget under order 2: the caps' evaporation (2026-11-10)
+
+The same budget with the limited second-order vapour advection
+(`energy_L3_o2.log` … `energy_L5_o2.log`), where every level receives about
+the same water (§11, §12). L5 − L3, W/m² of the cap:
+
+| | S, months 1–3 | S, 4–12 | S, year 2 | N, months 1–3 | N, 4–12 | N, year 2 |
+|---|---:|---:|---:|---:|---:|---:|
+| Evaporation's latent heat (surface cooling) | **+37.4** | +25.0 | +4.5 | **+35.7** | +26.5 | +5.4 |
+| Cloud longwave effect | −10.3 | −10.6 | −11.5 | −15.0 | −12.5 | −11.6 |
+| Latent heat brought in | +6.4 | +3.9 | +6.8 | −3.9 | −11.4 | +1.1 |
+| Sunlight absorbed | +1.9 | −44.8 | −49.0 | −25.3 | +1.0 | −25.2 |
+| Dry heat brought in | −35.8 | −18.5 | +9.3 | −9.9 | −1.0 | +9.6 |
+| Surface temperature (K) | −4.0 | −7.3 | −13.9 | −3.1 | −6.9 | −13.0 |
+
+- **The first difference is the caps' own evaporation:** with the water
+  supply equal, L5's caps evaporate 37 W/m² more than L3's from the
+  first months (S: 3.5 against 40.9 W/m² in months 1–3), a surface
+  cooling, with the cloud greenhouse 10–15 W/m² weaker throughout; the
+  ice (S) and snow (N) albedo follow from month 4.
+- **A mechanism in the code:** evaporation (ADR-0021 §4.3) is a bulk
+  transfer with the cell's resolved bottom-layer wind speed plus a fixed
+  5 m/s gustiness (`surface_energy.cpp`, `gustiness_m_s`), while the
+  sensible heat uses a fixed exchange coefficient
+  (`air_exchange_W_m2_K`). A cell's mean wind speed is smaller than the
+  mean speed of finer cells over it, so finer meshes resolve more wind
+  speed and evaporate more from the same flow; only the evaporation
+  carries it.
+- Test next: evaporation with the gustiness alone (the resolved wind left
+  out) at every level; if the levels' difference closes, this is it.
+
