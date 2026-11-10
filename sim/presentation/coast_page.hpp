@@ -14,7 +14,7 @@ namespace planetsim::presentation {
 // pages share their edge nodes. 256 dyadic intervals need 257
 // endpoint-inclusive nodes per side.
 //
-// Two kinds, by level (R1-05, "The headless gate under A1.5a"):
+// Two kinds, by level (ADR-0030 A1.3a):
 // - point: the canonical signed water field s at the node. A parent's nodes
 //   are every other node of its children's, value for value.
 // - coverage: at levels whose nodes are coarser than the relief's finest
@@ -31,7 +31,7 @@ namespace planetsim::presentation {
 // half keeps the sign exactly and resolves s to about 5e-4 m near 1 m.
 inline constexpr std::uint32_t coast_page_intervals = 256;
 inline constexpr std::uint32_t coast_page_nodes = coast_page_intervals + 1;
-inline constexpr int coast_footprint_cap = 16;      // sub-samples a footprint side, at most
+inline constexpr int coast_footprint_cap = 4;       // sub-samples a footprint side, at most (A1.3a)
 inline constexpr int coast_coverage_threshold = 3;  // fewer sub-samples a side: a point page
 
 enum class CoastPageKind : std::uint8_t { point, coverage };

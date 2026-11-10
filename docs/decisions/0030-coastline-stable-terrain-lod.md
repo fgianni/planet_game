@@ -4,8 +4,9 @@
   The pre-acceptance feasibility prerequisite was expressly waived; the
   validation gates below were **not** waived for implementation or completion.
   Amendment 1 (a per-pixel coast from canonical pages, with the
-  connected-ocean rule) was accepted with the user on 2026-11-05. It is not
-  implemented, and its gates are not passed.
+  connected-ocean rule) was accepted with the user on 2026-11-05, with
+  A1.5a (2026-11-10) and A1.3a (2026-11-11). Its headless library parts
+  are implemented; the renderer and its gates are not.
 - **Amends:** ADR-0022 §4.8–4.9's terrain-LOD coastline contract. Independently
   sampled coarse tiles currently disagree with detailed relief between shared
   vertices. The existing renderer remains unchanged until validation passes.
@@ -531,6 +532,33 @@ pages.
   a page covers it.
 - **Memory:** pages are stored at 2 bytes a sample, and cached and evicted
   like tiles, within the 64 MiB coastal budget.
+
+### A1.3a Two page kinds (accepted with the user, 2026-11-11)
+
+Amends A1.3's "a page holds s". Under A1.5a's reading, a page coarser than
+the relief's finest features has to hold a filtered coast, not point
+values. A page's kind follows from its level:
+
+- **Point:** s at each node, where a node spacing needs fewer than 3
+  sub-samples a side at half the relief's finest wavelength. A parent's
+  nodes are every other node of its children's, value for value.
+- **Coverage:** elsewhere, each node holds its footprint's water coverage
+  minus 0.5, so water is still a value above 0. The footprint is S × S
+  sub-samples of s across one nominal node spacing, with S that ratio
+  capped at 4 (`coast_footprint_cap`). It is laid out on a tangent basis
+  that depends on the node's direction alone, so cube-face edge nodes have
+  one value whichever face computes them. A pixel's coverage reads the
+  bilinear value + 0.5.
+
+The cap trades cost against fidelity:
+- At L6 (R1-05, "Task 3a"), caps 16, 8 and 4 give the same gate results:
+  no coverage jump, no deep region of four pixels.
+- A coarse page then costs about 0.4 s on one thread, against 6.3 s at
+  cap 16. A cold orbit view needs 2–4 s on twelve workers, against
+  30–50 s.
+
+Coverage at two levels is two different filters; their handoff is what
+the screen-space gate measures. Page bytes and their size are unchanged.
 
 ### A1.4 Geometry follows the classification (amends decision 4)
 
