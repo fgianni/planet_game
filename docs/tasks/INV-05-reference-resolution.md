@@ -673,3 +673,46 @@ the same water (§11, §12). L5 − L3, W/m² of the cap:
 - Test next: evaporation with the gustiness alone (the resolved wind left
   out) at every level; if the levels' difference closes, this is it.
 
+## 19. The evaporation-wind test (2026-11-10)
+
+Evaporation with the gustiness alone (`evaporation_resolved_wind = false`,
+commit b1f516c), two years at L3, L4 and L5 (`traj_L3_w0.log` …
+`traj_L5_w0.log`). Year 2:
+
+| Polar caps | L3 | L4 | L5 | L5 − L3 |
+|---|---:|---:|---:|---:|
+| Preset | 281.7 K | 276.0 K | 267.6 K | −14.1 K |
+| Gustiness only | 281.8 K | 276.4 K | 269.4 K | −12.4 K |
+
+**A part, not the cause:** about 1.7 K of the 14 K. The caps' larger
+evaporation at L5 (§18) comes mostly from their air, not the resolved
+wind speed.
+
+## Status (2026-11-10, after §19)
+
+Of the caps' 14 K between L3 and L5 in year 2, the parts found, each
+measured alone (they need not add):
+
+| Part | Size | § |
+|---|---:|---|
+| Saturation adjustment on the cell's mean | ≈ 2.6 K | 16 |
+| The evaporation's resolved wind speed | ≈ 1.7 K | 19 |
+| The clouds' overcast limit | ≈ 1 K | 6 |
+| L3's almost ocean-only southern cap | ≈ 1 K | 13 |
+| **Not explained** | **≈ 8 K** | |
+
+Ruled out as the level difference: orography (§2), the upwind diffusion
+(§9, though it is a 6–8 K bias at every level), the water reaching the
+caps (§11, §12), the coastlines and land (§13), the grid-scale damping
+(§14); τ_c is not used in the preset (§15).
+
+What the budget shows (§17, §18): the caps' difference starts in the
+first months as a weaker cloud greenhouse and more surface evaporation,
+both of colder and drier cap air; from month 4 the sea ice's (S) and
+snow's (N) albedo amplify it, and in year 2 L5's caps are still cooling
+(storage −40 W/m² against +4 at L3), so the two-year gap is not an
+equilibrium one. Several resolution-dependent schemes each contribute a
+part; none found carries most of it. What remains is consistent with the
+resolved dynamics' own convergence (the eddies and the jet resolved
+better with level), which no single switch isolates.
+
