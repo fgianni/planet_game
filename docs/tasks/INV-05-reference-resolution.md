@@ -450,3 +450,76 @@ its baseline's). What the winds carry into the caps poleward of 60°
   caps at all. The vapour budget under order 2 (`vapour_L3_o2.log` …
   `vapour_L5_o2.log`) separates them.
 
+## 12. The vapour budget under order 2 (2026-11-05)
+
+Month 1, kg/m²/day (`vapour_L3_o2.log` … `vapour_L5_o2.log`):
+
+| | L3 | L4 | L5 |
+|---|---:|---:|---:|
+| Into 90–60° S | 2.48 | 2.69 | 2.65 |
+| Into 60–90° N | 3.62 | 3.44 | 3.62 |
+| Condensation, 90–60° S | 2.48 | 3.38 | 4.37 |
+| Evaporation, 90–60° S | 0.28 | 0.90 | 1.85 |
+| Condensation, 60–90° N | 3.77 | 4.73 | 5.26 |
+| Evaporation, 60–90° N | 0.66 | 1.70 | 2.03 |
+| Resolved condensation, 30° S–0 | 4.95 | 6.33 | 7.42 |
+| Advection, 30° S–0 | −2.00 | −1.68 | −1.16 |
+| Advection, 60–30° S | +0.87 | +0.96 | +0.71 |
+
+- **The water reaching the caps does not depend on level** under order 2
+  (within 0.2 kg/m²/day), as the tracer's does not (§11). Neither the
+  transport nor the rain-out on the way sets the caps' level difference.
+- **What does change with level is the local water cycle:** resolved
+  condensation rises 40–75 % from L3 to L5 in every band, and the caps'
+  own evaporation rises six- and threefold; the tropics export less.
+- So the gap of 13.5 K (§9) is not the water supply. It builds over the
+  first year from a 2–3 K start (§7) and comes with the ice and snow
+  (§4). Candidates not tested: the cryosphere's growth on the finer
+  coastlines and cells (the caps' land and ocean fractions and their sea
+  ice by level), the resolved condensation's heating aloft and its
+  effect on the caps' stability, and the grid-scale damping (ν ∝ d̄⁴ at
+  a fixed 8-hour time).
+
+### Status (2026-11-05)
+
+Established:
+1. Reference mode's caps cool 5–10 K per level (L3–L6); the tropics do not
+   (§4). The colder caps raise P2 and strengthen a smooth zonal polar jet
+   at 60–80° (§3), whose edge winds reach the 150 m/s bound at L6 (§1).
+2. Not orography (§2), not the clouds' overcast limit (§6), not the
+   upwind diffusion as the level difference (§9), not the water reaching
+   the caps (§11, §12).
+3. The upwind vapour advection is a large, level-dependent bias of its
+   own: at L3 it carries about 40 % of the poleward water (§11), and
+   removing it cools every level's caps by 6–8 K (§9). That bears on V8's
+   reference at L4 whatever else is found.
+
+## 13. The caps' surface by level (2026-11-09)
+
+The same planet (seed 1) at each level, before any step
+([`tools/v8/reference_cap_geometry_probe.cpp`](../../tools/v8/reference_cap_geometry_probe.cpp);
+heights are each cell's median sub-cell elevation):
+
+| Poleward of 60° | L3 | L4 | L5 | L6 |
+|---|---:|---:|---:|---:|
+| South: land share | 0.039 | 0.124 | 0.112 | 0.124 |
+| South: land's mean height | 610 m | 846 m | 925 m | 760 m |
+| South: land ≥ 1.5 km (share of the cap) | 0.000 | 0.019 | 0.027 | 0.020 |
+| South: area in mixed coast cells | 0.135 | 0.204 | 0.116 | 0.093 |
+| North: land share | 0.564 | 0.576 | 0.560 | 0.546 |
+| North: land's mean height | 801 m | 710 m | 483 m | 394 m |
+| North: land ≥ 1.5 km | 0.069 | 0.037 | 0.026 | 0.022 |
+| North: area in mixed coast cells | 0.488 | 0.250 | 0.156 | 0.141 |
+
+- **Not the caps' geometry from L4 on:** the land shares agree within
+  0.03 at L4–L6 and the planet's within 0.001 (0.290); the northern land
+  gets lower with level (710 → 394 m), which would warm it, while it
+  cools.
+- **L3's southern cap is the exception:** almost all ocean (land 0.039
+  against 0.11–0.12), so part of L3's warmer southern cap is its
+  geometry; the northern cap, with the same land at every level, cools
+  as much (§4: 282.7, 278.2, 270.2, 263.0 K in year 2).
+- The coast cells shrink with level, as they must; with the land shares
+  unchanged, the cryosphere's growth (§4) follows the cooling, not the
+  coastlines.
+

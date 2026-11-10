@@ -5,37 +5,13 @@
   and acceptance tests pending. R1-05 is not complete. ADR-0030 Amendment 1
   (a per-pixel coast from canonical pages, with the connected-ocean rule) was
   accepted with the user on 2026-11-05; its tasks (§A1.6) are in progress. R1-05 moved to
-  another session on 2026-11-05.
+  another session on 2026-11-05. The headless Amendment 1 field/page slice
+  was started on 2026-11-09; renderer and acceptance gates remain pending.
 - **Implementation gate:** ADR-0030 selects a shared coastline. Its
   pre-acceptance feasibility prerequisite was explicitly waived, **not** its
   rendered handoff, contour fidelity, raised seam, zoom, style and cost gates.
   Do not change the production tile contract until those gates pass.
   No PlanetSim solver, terrain field meaning or PSNAP change is permitted.
-
-## Canonical coast-field and page foundation (2026-11-10)
-
-`sim/presentation/coast_page.{hpp,cpp}` implements ADR-0030 Amendment 1's
-continuous water field and a 256-interval-per-side, half-float page keyed by
-the existing cube tile. It is Godot-free and currently **unused by the
-production renderer**; no tile geometry, style, field or snapshot changed.
-
-`test_coast_page` checks exact half-float round trips, plain-sea reduction,
-dry depression centres, connectedness in [0,1], continuity across sampled
-cell edges, byte-identical page regeneration and shared parent/child,
-same-face and all-face edge samples. With seed 20260928, L4's selected
-coastal L2 page (face 5, 3/0) takes about 0.025 s to generate on this
-machine; its bilinear sign differs from the canonical field at 41 of 20,000
-independent points (0.205%). At L6 the test sees 357 disconnected
-below-sea cells, a 256.35 m suppression depth and a maximum 0.272 m change
-between adjacent samples in its edge walks. The initial strict
-connectedness test found 79 values at 1 + 2.22e-16 from a weighted-sum
-roundoff; the field now clamps only its computed connectedness to [0,1].
-The strict range test remains unchanged.
-
-These are source/page checks, **not** proof of the one-pixel coastline gate,
-four-pixel island retention, raised-geometry consistency, Godot colour
-parity, mixed-level joins, or the 64 MiB global coastal-cache budget. The
-existing production tile renderer still uses the old waterline.
 
 ## Measured problem
 
@@ -1349,3 +1325,72 @@ the rule. The proposed amendment to ADR-0030 gives one (§ "Amendment 1").
 - The existing semantic water extent and the authoritative cell fractions
   remain unchanged, as do all simulation state hashes. Both styles agree on
   the coast, and the L6 60 fps/tile-memory gate remains in force.
+
+### Amendment 1 headless field and pages (2026-11-09; not wired to rendering)
+
+`sim/presentation/coast_water_field.*` derives κ from all-land cells whose
+lowest quantile is below the snapshot sea level, computes D as the deepest
+such depression plus 1 m, and evaluates s through **the relief's own**
+cell/corner blend. It does not mutate the terrain snapshot. For seed
+20260928, L4 has zero depression cells and L6 has 357; 349 sampled below-sea
+points across L6 depression cells stay dry. The maximum tested signed-field
+jump across near-adjacent cell/fan-edge probes is below 0.01 m (a finite-step
+continuity diagnostic, not a mathematical proof). The schema-3 hypsometry
+and land fractions are required; no synthetic schema-2 coastline is made.
+
+`sim/presentation/coast_page.*` samples 256 **dyadic intervals** along each
+tile edge, with 257 endpoint-inclusive nodes. This resolves the literal
+"P × P, P=256" wording in ADR-0030 A1.3 in favour of its exact shared-edge
+and parent/child requirements: 256 nodes including both endpoints would
+have 255 intervals and could not nest dyadically. Each node uses an
+explicit little-endian signed 16-bit integer in metres, rounded to nearest
+metre and saturated at ±32767 m. A nonzero value below 0.5 m preserves its
+sign as ±1 rather than silently becoming zero; the resulting bilinear
+zero-line can move and **must** be measured by V-A2. Each page consumes
+132,098 bytes (1,026 more than a literal 256² two-byte page); 512 such
+pages would consume 64.50 MiB, so the 64 MiB *coastal* cache gate requires
+at most 508 full resident pages or another measured storage policy. The
+512-tile cache is unaffected by this headless code.
+
+Headless tests cover same-level neighbours, parent/child shared points,
+a cube-face edge, a three-face corner, reroute byte identity, invalid keys,
+κ=1 plain-contour equality and sampled depression dryness. At a deliberately
+coarse L4 face-5 level-1 coastal page (seed 20260928), bilinear page values
+flip 44/4,096 independently sampled quad centres against canonical s, with
+maximum signed-field error 812 m. This is **not** a 1 px screen-space gate:
+pages must be requested at screen density, including a measured shortfall
+while children load. Other seeds, faces, sea levels, the pixel-centred
+reference and projected contour/island checks, global cache policy, tile
+geometry, Godot, both styles, zoom and frame times remain unvalidated.
+The first cold L4 coastal-page generation measured ~377 ms on this host,
+including lazy relief rank-table construction; it cannot run on the render
+thread. Warm-generation and asynchronous cache/frame costs are still open.
+
+
+**Merged with a parallel implementation (2026-11-10).** Another session
+had written the same slice independently (`CoastField` with half-float
+pages, local commit `f93d18c`). The merge keeps this field
+(`CoastWaterField`) and its test, and takes half floats for the pages
+instead of int16 metres (with the user):
+- The bilinear zero line moves by the quantisation error divided by the
+  slope. At the relief's median slope (6.5 m/km, from
+  `coast_page_probe`), int16's 0.5 m moves it by up to about 77 m; at
+  close zoom (2 m vertex spacing at level 18) that is many pixels.
+- A binary16 resolves s to about 5e-4 m near 1 m and keeps its sign.
+
+Page bytes stay explicitly little-endian, 2 a node, so the size and the
+cache arithmetic above are unchanged.
+
+`test_coast_page` now holds both sets of checks:
+- the checks above;
+- exact half-float round trips;
+- every node of all 24 level-0 cube-face edges matched to the adjacent
+  face (6 168 points);
+- full parent/child nesting and a same-face neighbour edge on the
+  coastal L2 page found by a fixed scan (face 5, 3/0; 0.049 s);
+- the bilinear sign against the field at 20 000 points: 41 differ
+  (0.21 %).
+
+The coarse L1 page still flips 44 of 4 096 quad centres, with a maximum
+field error of 812 m. That error is the bilinear reconstruction's, at a
+coarse level, not the storage's.

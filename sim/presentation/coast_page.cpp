@@ -1,65 +1,20 @@
 #include "sim/presentation/coast_page.hpp"
 
-#include "sim/planet/terrain/hypsometry.hpp"
-
 #include <algorithm>
 #include <bit>
 #include <cmath>
 #include <stdexcept>
 
 namespace planetsim::presentation {
+namespace {
 
-CoastField::CoastField(const TerrainRelief& relief, const TerrainSnapshot& terrain)
-    : relief_(&relief), sea_level_m_(terrain.sea_level_m) {
-    const PlanetMesh& mesh = relief.mesh();
-    const std::size_t cells = mesh.cell_count();
-    if (terrain.land_fraction.size() != cells || terrain.mean_elevation_m.size() != cells) {
-        throw std::invalid_argument("coast field: the terrain does not match the relief's mesh");
-    }
-    constexpr std::size_t q = hypsometry_quantile_count;
-    const bool curves = terrain.hypsometry_m.size() == cells * q;
-    cell_kappa_.assign(cells, 1.0);
-    double deepest_m = 0.0;
-    for (std::size_t cell = 0; cell < cells; ++cell) {
-        // ADR-0005: an all-land cell with ground below sea level is not
-        // connected to the ocean (an ocean-connected one has ocean fraction).
-        const double lowest_m = curves ? static_cast<double>(terrain.hypsometry_m[cell * q])
-                                       : static_cast<double>(terrain.mean_elevation_m[cell]);
-        if (terrain.land_fraction[cell] >= 1.0F - 1e-6F && lowest_m < sea_level_m_) {
-            cell_kappa_[cell] = 0.0;
-            deepest_m = std::max(deepest_m, sea_level_m_ - lowest_m);
-            ++depressions_;
-        }
-    }
-    depth_m_ = depressions_ > 0U ? deepest_m + 1.0 : 0.0;
-    corner_kappa_.assign(mesh.corner_count(), 0.0);
-    std::vector<int> count(mesh.corner_count(), 0);
-    for (const auto& cell : mesh.cells()) {
-        for (const CornerIndex corner : mesh.cell_corners(cell.id)) {
-            corner_kappa_[corner] += cell_kappa_[cell.id.to_index()];
-            ++count[corner];
-        }
-    }
-    for (std::size_t corner = 0; corner < corner_kappa_.size(); ++corner) {
-        corner_kappa_[corner] /= std::max(count[corner], 1);
-    }
+void validate(const TileKey& key) {
+    if (key.face >= 6 || key.level > tile_max_level ||
+        key.x >= (1U << key.level) || key.y >= (1U << key.level))
+        throw std::invalid_argument("invalid coast page key");
 }
 
-double CoastField::connectivity(const Vec3d& direction_unit, CellId hint) const {
-    const ReliefWeights w = relief_->weights(direction_unit, hint);
-    // Non-negative weights sum to one mathematically, but their floating
-    // sum can round to 1 + 1 ulp. Keep the physical connectedness in [0,1]
-    // before it shifts the sea-level contour by the depression depth.
-    return std::clamp(w.own * cell_kappa_[w.cell.to_index()] + w.first_weight * corner_kappa_[w.first] +
-                          w.second_weight * corner_kappa_[w.second], 0.0, 1.0);
-}
-
-CoastField::Sample CoastField::sample(const Vec3d& direction_unit, CellId hint) const {
-    const ReliefSample relief = relief_->sample(direction_unit, hint);
-    double water = sea_level_m_ - relief.elevation_m;
-    if (depth_m_ > 0.0) water -= (1.0 - connectivity(direction_unit, relief.cell)) * depth_m_;
-    return {water, relief.elevation_m, relief.cell};
-}
+} // namespace
 
 // F. Giesen's round-to-nearest-even conversion.
 std::uint16_t half_from_float(float value) noexcept {
@@ -96,44 +51,65 @@ float half_to_float(std::uint16_t bits) noexcept {
     return std::bit_cast<float>(sign | ((exponent + 112U) << 23U) | (mantissa << 13U));
 }
 
-float CoastPage::water_m(std::uint32_t i, std::uint32_t j) const { return half_to_float(bits(i, j)); }
-
-double CoastPage::interpolated_water_m(double i, double j) const {
-    constexpr std::uint32_t last = coast_page_size - 1U;
-    const auto x = std::min(static_cast<std::uint32_t>(std::max(i, 0.0)), last);
-    const auto y = std::min(static_cast<std::uint32_t>(std::max(j, 0.0)), last);
-    const double u = std::clamp(i - static_cast<double>(x), 0.0, 1.0);
-    const double v = std::clamp(j - static_cast<double>(y), 0.0, 1.0);
-    return (1.0 - u) * (1.0 - v) * water_m(x, y) + u * (1.0 - v) * water_m(x + 1U, y) +
-           (1.0 - u) * v * water_m(x, y + 1U) + u * v * water_m(x + 1U, y + 1U);
-}
-
 double coast_page_coordinate(std::uint32_t tile, std::uint8_t level, std::uint32_t i) {
-    const double lines = static_cast<double>(coast_page_size) * std::ldexp(1.0, level);
-    return -1.0 + 2.0 * (static_cast<double>(tile) * coast_page_size + static_cast<double>(i)) / lines;
+    // Integer units first: adjacent and parent/child pages obtain
+    // bit-identical doubles.
+    const double lines = static_cast<double>(coast_page_intervals) * std::ldexp(1.0, level);
+    return -1.0 + 2.0 * (static_cast<double>(tile) * coast_page_intervals + static_cast<double>(i)) / lines;
 }
 
-Vec3d coast_page_direction(const TileKey& key, std::uint32_t i, std::uint32_t j) {
-    return tile_face_direction(key.face, coast_page_coordinate(key.x, key.level, i),
-                               coast_page_coordinate(key.y, key.level, j));
+Vec3d coast_page_direction(const TileKey& key, std::uint32_t x, std::uint32_t y) {
+    return tile_face_direction(key.face, coast_page_coordinate(key.x, key.level, x),
+                               coast_page_coordinate(key.y, key.level, y));
 }
 
-CoastPage make_coast_page(const TileKey& key, const CoastField& field) {
+CoastPage make_coast_page(const TileKey& key, const CoastWaterField& field) {
+    validate(key);
     CoastPage page;
     page.key = key;
-    page.water_half.resize(static_cast<std::size_t>(CoastPage::points()) * CoastPage::points());
-    CellId hint = field.relief().nearest_cell(tile_center_direction(key), CellId{0});
+    page.signed_water_le.resize(static_cast<std::size_t>(coast_page_nodes) * coast_page_nodes * 2);
+    CellId hint{0};
     constexpr double largest_half = 65504.0;
-    for (std::uint32_t j = 0; j < CoastPage::points(); ++j) {
-        for (std::uint32_t i = 0; i < CoastPage::points(); ++i) {
-            const CoastField::Sample s = field.sample(coast_page_direction(key, i, j), hint);
-            hint = s.cell;
-            const double clamped = std::clamp(s.water_m, -largest_half, largest_half);
-            page.water_half[static_cast<std::size_t>(j) * CoastPage::points() + i] =
-                half_from_float(static_cast<float>(clamped));
+    for (std::uint32_t y = 0; y < coast_page_nodes; ++y) {
+        for (std::uint32_t x = 0; x < coast_page_nodes; ++x) {
+            const CoastWaterSample water = field.sample(coast_page_direction(key, x, y), hint);
+            if (!std::isfinite(water.signed_water_m))
+                throw std::runtime_error("non-finite canonical coast sample");
+            // Zero is dry by the field's strict > 0 water rule; a half keeps
+            // the sign of every nonzero value it does not round to zero.
+            const std::uint16_t bits = half_from_float(
+                static_cast<float>(std::clamp(water.signed_water_m, -largest_half, largest_half)));
+            const std::size_t offset = 2 * (static_cast<std::size_t>(y) * coast_page_nodes + x);
+            page.signed_water_le[offset] = static_cast<std::uint8_t>(bits & 0xffU);
+            page.signed_water_le[offset + 1] = static_cast<std::uint8_t>(bits >> 8U);
+            hint = water.cell;
         }
     }
     return page;
 }
 
-}  // namespace planetsim::presentation
+std::uint16_t CoastPage::half_bits(std::uint32_t x, std::uint32_t y) const {
+    if (x >= coast_page_nodes || y >= coast_page_nodes ||
+        signed_water_le.size() != static_cast<std::size_t>(coast_page_nodes) * coast_page_nodes * 2)
+        throw std::out_of_range("invalid coast page sample");
+    const std::size_t offset = 2 * (static_cast<std::size_t>(y) * coast_page_nodes + x);
+    return static_cast<std::uint16_t>(signed_water_le[offset] |
+                                      (static_cast<std::uint16_t>(signed_water_le[offset + 1]) << 8U));
+}
+
+double CoastPage::signed_water_m(std::uint32_t x, std::uint32_t y) const {
+    return static_cast<double>(half_to_float(half_bits(x, y)));
+}
+
+double CoastPage::bilinear_signed_water_m(double x, double y) const {
+    if (!std::isfinite(x) || !std::isfinite(y) || x < 0.0 || y < 0.0 ||
+        x > coast_page_intervals || y > coast_page_intervals)
+        throw std::out_of_range("invalid coast page coordinates");
+    const auto x0 = std::min(static_cast<std::uint32_t>(x), coast_page_intervals - 1U);
+    const auto y0 = std::min(static_cast<std::uint32_t>(y), coast_page_intervals - 1U);
+    const double tx = x - x0, ty = y - y0;
+    return (1 - ty) * ((1 - tx) * signed_water_m(x0, y0) + tx * signed_water_m(x0 + 1U, y0)) +
+           ty * ((1 - tx) * signed_water_m(x0, y0 + 1U) + tx * signed_water_m(x0 + 1U, y0 + 1U));
+}
+
+} // namespace planetsim::presentation

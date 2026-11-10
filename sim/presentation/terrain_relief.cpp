@@ -229,6 +229,20 @@ double TerrainRelief::cell_elevation_m(CellId cell, double rank) const {
     return curve_m(quantiles_m_.data() + cell.to_index() * hypsometry_quantile_count, rank);
 }
 
+double TerrainRelief::blended_cell_scalar(const Vec3d& direction_unit, CellId cell,
+                                          std::span<const double> values) const {
+    if (values.size() != mesh_->cell_count() || cell.to_index() >= values.size())
+        throw std::invalid_argument("terrain relief: scalar field does not match mesh");
+    const Blend w = blend(direction_unit, cell);
+    const auto corner_value = [&](CornerIndex corner) {
+        const auto& cells = corner_cells_[corner];
+        return (values[cells[0]] + values[cells[1]] + values[cells[2]]) / 3.0;
+    };
+    return w.own * values[cell.to_index()] +
+           w.first_weight * corner_value(w.first) +
+           w.second_weight * corner_value(w.second);
+}
+
 // The fan triangle (centre, corner, next corner) of `cell` the direction is
 // in, and the weights of the three curves there: the cell's own weight is a
 // smoothstep of its barycentric weight over relief_handover, the rest goes
@@ -281,11 +295,6 @@ ReliefSample TerrainRelief::sample(const Vec3d& direction_unit, CellId hint) con
                              w.first_weight * curve_m(corner_quantiles_m_.data() + w.first * q, r) +
                              w.second_weight * curve_m(corner_quantiles_m_.data() + w.second * q, r);
     return {elevation, r, cell};
-}
-
-ReliefWeights TerrainRelief::weights(const Vec3d& direction_unit, CellId hint) const {
-    const Blend w = blend(direction_unit, nearest_cell(direction_unit, hint));
-    return {w.cell, w.first, w.second, w.own, w.first_weight, w.second_weight};
 }
 
 ReliefSample TerrainRelief::smooth_sample(const Vec3d& direction_unit, CellId hint) const {
