@@ -1,9 +1,12 @@
 #include "terrain_tiles.hpp"
 
+#include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/core/memory.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
+#include <godot_cpp/variant/typed_array.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 
@@ -19,6 +22,34 @@ namespace {
             static_cast<godot::real_t>(v.z)};
 }
 
+// A page that is water or land throughout: 1 or -1, else 0 (it needs a
+// layer). A point page keeps one sign; a coverage page is fully covered.
+[[nodiscard]] float constant_coast(const presentation::CoastPage& page) {
+    const bool coverage = page.kind == presentation::CoastPageKind::coverage;
+    bool all_water = true;
+    bool all_land = true;
+    for (std::uint32_t y = 0; y < presentation::coast_page_nodes && (all_water || all_land); ++y) {
+        for (std::uint32_t x = 0; x < presentation::coast_page_nodes; ++x) {
+            const double v = page.signed_water_m(x, y);
+            all_water = all_water && (coverage ? v >= 0.5 : v > 0.0);
+            all_land = all_land && (coverage ? v <= -0.5 : v <= 0.0);
+        }
+    }
+    return all_water ? 1.0F : (all_land ? -1.0F : 0.0F);
+}
+
+[[nodiscard]] godot::Ref<godot::Image> page_image(const std::vector<std::uint8_t>* bytes) {
+    constexpr auto nodes = static_cast<std::int32_t>(presentation::coast_page_nodes);
+    godot::PackedByteArray data;
+    data.resize(static_cast<std::int64_t>(nodes) * nodes * 2);
+    if (bytes != nullptr) {
+        std::copy(bytes->begin(), bytes->end(), data.ptrw());
+    } else {
+        std::fill(data.ptrw(), data.ptrw() + data.size(), std::uint8_t{0});
+    }
+    return godot::Image::create_from_data(nodes, nodes, false, godot::Image::FORMAT_RH, data);
+}
+
 [[nodiscard]] double now_ms() {
     return std::chrono::duration<double, std::milli>(
                std::chrono::steady_clock::now().time_since_epoch())
@@ -30,8 +61,17 @@ namespace {
 TerrainTiles::TerrainTiles(godot::Node3D* parent,
                            std::shared_ptr<const presentation::TerrainRelief> relief,
                            presentation::TileDrawing drawing, godot::Ref<godot::ShaderMaterial> material,
-                           double highest_elevation_m)
-    : relief_(std::move(relief)), drawing_(drawing), material_(std::move(material)) {
+                           double highest_elevation_m,
+                           std::shared_ptr<const presentation::CoastWaterField> coast)
+    : relief_(std::move(relief)), coast_(std::move(coast)), drawing_(drawing), material_(std::move(material)) {
+    if (coast_) {
+        godot::TypedArray<godot::Ref<godot::Image>> layers;
+        for (int layer = 0; layer < coast_layer_count; ++layer) layers.push_back(page_image(nullptr));
+        coast_pages_.instantiate();
+        coast_pages_->create_from_images(layers);
+        material_->set_shader_parameter("coast_pages", coast_pages_);
+        for (int layer = coast_layer_count - 1; layer >= 0; --layer) free_layers_.push_back(layer);
+    }
     highest_radius_ = 1.0 + drawing_.relief_exaggeration / drawing_.radius_m *
                                 std::max(0.0, highest_elevation_m - drawing_.sea_level_m);
     root_ = memnew(godot::Node3D);
@@ -44,9 +84,10 @@ TerrainTiles::TerrainTiles(godot::Node3D* parent,
     root_->set_transform(godot::Transform3D());
     root_->set_visible(false);
     // The six roots draw the filtered surface and are cheap: made here, so
-    // there is always something to draw.
+    // there is always something to draw (without coast pages: those are
+    // asked of the workers like any tile).
     for (std::uint8_t face = 0; face < 6U; ++face)
-        add(presentation::make_terrain_tile({face, 0U, 0U, 0U}, *relief_, drawing_));
+        add(Made{presentation::make_terrain_tile({face, 0U, 0U, 0U}, *relief_, drawing_), std::nullopt});
     const unsigned threads = std::max(1U, std::thread::hardware_concurrency() / 2U);
     for (unsigned i = 0; i < threads; ++i) workers_.emplace_back([this] { work(); });
 }
@@ -76,10 +117,16 @@ void TerrainTiles::work() {
             queue_.pop_front();
             in_flight_.insert(id(key));
         }
-        presentation::TileGeometry tile = presentation::make_terrain_tile(key, *relief_, drawing_);
+        Made made;
+        if (coast_) {
+            made.page = presentation::make_coast_page(key, *coast_);
+            made.tile = presentation::make_terrain_tile(key, *relief_, drawing_, &*made.page, coast_.get());
+        } else {
+            made.tile = presentation::make_terrain_tile(key, *relief_, drawing_);
+        }
         const std::lock_guard lock(mutex_);
         in_flight_.erase(id(key));
-        done_.push_back(std::move(tile));
+        done_.push_back(std::move(made));
     }
 }
 
@@ -146,6 +193,9 @@ void TerrainTiles::select(const presentation::TileKey& key, const View& view) {
     // Every tile the walk passes through is kept: evicting an ancestor of a
     // drawn tile would collapse its whole branch on the next frame.
     self->second.last_used = frame_;
+    // A tile made without its coast page is asked for again, with it; it
+    // draws meanwhile.
+    if (coast_ && !self->second.with_coast) wanted_.push_back(key);
     if (wants_split(key, self->second, view)) {
         const auto children = presentation::tile_children(key);
         bool ready = true;
@@ -165,8 +215,49 @@ void TerrainTiles::select(const presentation::TileKey& key, const View& view) {
     drawn_.push_back(key);
 }
 
-void TerrainTiles::add(const presentation::TileGeometry& tile) {
+void TerrainTiles::release(Entry& entry) {
+    if (entry.instance != nullptr) entry.instance->queue_free();
+    entry.instance = nullptr;
+    if (entry.coast_layer >= 0) free_layers_.push_back(entry.coast_layer);
+    entry.coast_layer = -1;
+}
+
+void TerrainTiles::add(const Made& made) {
+    const presentation::TileGeometry& tile = made.tile;
+    if (auto previous = tiles_.find(id(tile.key)); previous != tiles_.end()) {
+        release(previous->second);
+        tiles_.erase(previous);
+    }
+    Entry entry;
+    // The tile's coast page: a constant, a layer, or (no layer free, or no
+    // page) the drawn surface's waterline. Its layer and mode go to every
+    // vertex (coast_pages.gdshaderinc).
+    float mode = 0.0F;
+    if (made.page) {
+        entry.with_coast = true;
+        mode = constant_coast(*made.page);
+        if (mode == 0.0F) {
+            if (free_layers_.empty()) {
+                entry.coast_missing = true;
+            } else {
+                entry.coast_layer = free_layers_.back();
+                free_layers_.pop_back();
+                coast_pages_->update_layer(page_image(&made.page->signed_water_le), entry.coast_layer);
+                mode = made.page->kind == presentation::CoastPageKind::coverage ? 3.0F : 2.0F;
+            }
+        }
+    }
     const std::size_t vertices = tile.positions.size() / 3U;
+    godot::PackedFloat32Array custom2;
+    custom2.resize(static_cast<std::int64_t>(vertices * 4U));
+    float* coast = custom2.ptrw();
+    const bool with_uv = tile.coast_uv.size() == vertices * 2U;
+    for (std::size_t v = 0; v < vertices; ++v) {
+        coast[4 * v] = with_uv ? tile.coast_uv[2 * v] : 0.0F;
+        coast[4 * v + 1] = with_uv ? tile.coast_uv[2 * v + 1] : 0.0F;
+        coast[4 * v + 2] = static_cast<float>(entry.coast_layer);
+        coast[4 * v + 3] = mode;
+    }
     godot::PackedVector3Array positions;
     godot::PackedVector3Array normals;
     godot::PackedVector2Array uv;
@@ -196,11 +287,12 @@ void TerrainTiles::add(const presentation::TileGeometry& tile) {
     arrays[godot::Mesh::ARRAY_TEX_UV2] = uv2;
     arrays[godot::Mesh::ARRAY_CUSTOM0] = custom0;
     arrays[godot::Mesh::ARRAY_CUSTOM1] = custom1;
+    arrays[godot::Mesh::ARRAY_CUSTOM2] = custom2;
     const auto rgba_float = static_cast<int64_t>(godot::Mesh::ARRAY_CUSTOM_RGBA_FLOAT);
     const auto format = static_cast<godot::BitField<godot::Mesh::ArrayFormat>>(
         (rgba_float << godot::Mesh::ARRAY_FORMAT_CUSTOM0_SHIFT) |
-        (rgba_float << godot::Mesh::ARRAY_FORMAT_CUSTOM1_SHIFT));
-    Entry entry;
+        (rgba_float << godot::Mesh::ARRAY_FORMAT_CUSTOM1_SHIFT) |
+        (rgba_float << godot::Mesh::ARRAY_FORMAT_CUSTOM2_SHIFT));
     entry.origin = tile.origin;
     entry.min_radius = tile.min_radius;
     entry.max_radius = tile.max_radius;
@@ -231,7 +323,7 @@ void TerrainTiles::evict() {
     for (const auto& [last_used, key_id] : candidates) {
         if (tiles_.size() <= cache_tiles) break;
         auto found = tiles_.find(key_id);
-        found->second.instance->queue_free();
+        release(found->second);
         tiles_.erase(found);
     }
 }
@@ -243,7 +335,7 @@ void TerrainTiles::set_visible(bool visible) {
 void TerrainTiles::update(const View& view) {
     ++frame_;
     // Finished tiles become meshes, within the budget; the rest wait.
-    std::vector<presentation::TileGeometry> finished;
+    std::vector<Made> finished;
     {
         const std::lock_guard lock(mutex_);
         finished.swap(done_);
@@ -252,7 +344,10 @@ void TerrainTiles::update(const View& view) {
     stats_.meshed = 0;
     std::size_t used = 0;
     for (; used < finished.size() && now_ms() - start < mesh_budget_ms; ++used) {
-        if (tiles_.contains(id(finished[used].key))) continue;
+        // Already there, unless this is a tile's coast page arriving.
+        if (auto present = tiles_.find(id(finished[used].tile.key));
+            present != tiles_.end() && (present->second.with_coast || !finished[used].page))
+            continue;
         add(finished[used]);
         ++stats_.meshed;
     }
@@ -270,7 +365,7 @@ void TerrainTiles::update(const View& view) {
     // finished but not yet meshed, or being made, are not asked for again.
     std::stable_sort(wanted_.begin(), wanted_.end(), [](const auto& a, const auto& b) { return a.level < b.level; });
     std::unordered_set<std::uint64_t> waiting;
-    for (std::size_t i = used; i < finished.size(); ++i) waiting.insert(id(finished[i].key));
+    for (std::size_t i = used; i < finished.size(); ++i) waiting.insert(id(finished[i].tile.key));
     {
         const std::lock_guard lock(mutex_);
         queue_.clear();
@@ -286,6 +381,7 @@ void TerrainTiles::update(const View& view) {
     stats_.deepest_level = 0;
     stats_.translation_error_px = 0.0;
     stats_.drawn_by_level.assign(presentation::tile_max_level + 1U, 0);
+    stats_.coast_without_layer = 0;
     const double camera_radius = std::sqrt(view.camera_x * view.camera_x + view.camera_y * view.camera_y +
                                            view.camera_z * view.camera_z);
     for (const auto& key : drawn_) {
@@ -303,12 +399,14 @@ void TerrainTiles::update(const View& view) {
         stats_.translation_error_px =
             std::max(stats_.translation_error_px, planetsim::length(rounding) / nearest * view.focal_px);
         entry.instance->set_visible(true);
+        stats_.coast_without_layer += entry.coast_missing ? 1 : 0;
         stats_.deepest_level = std::max<std::int64_t>(stats_.deepest_level, key.level);
     }
     evict();
     stats_.drawn = static_cast<std::int64_t>(drawn_.size());
     stats_.cached = static_cast<std::int64_t>(tiles_.size());
     stats_.pending = static_cast<std::int64_t>(wanted_.size());
+    stats_.coast_layers = coast_ ? coast_layer_count - static_cast<std::int64_t>(free_layers_.size()) : 0;
 }
 
 }  // namespace planetsim::godot_bridge

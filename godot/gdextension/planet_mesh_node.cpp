@@ -7,6 +7,7 @@
 #include "sim/planet/run/planet_run.hpp"
 #include "sim/planet/planet_state.hpp"
 #include "sim/planet/terrain/terrain_generator.hpp"
+#include "sim/presentation/coast_water_field.hpp"
 #include "sim/presentation/detail_seed.hpp"
 #include "sim/presentation/presentation_record.hpp"
 
@@ -1042,7 +1043,10 @@ void PlanetMeshNode::update_terrain_tiles(const godot::PackedFloat64Array& posit
             double highest_m = terrain_.sea_level_m;
             for (const float value : terrain_.hypsometry_m) highest_m = std::max(highest_m, static_cast<double>(value));
             for (const float value : terrain_.mean_elevation_m) highest_m = std::max(highest_m, static_cast<double>(value));
-            tiles_ = std::make_unique<TerrainTiles>(this, std::move(relief), drawing, material_, highest_m);
+            // ADR-0030 Amendment 1: the canonical coast, from the same relief.
+            auto coast = std::make_shared<const presentation::CoastWaterField>(*relief, terrain_);
+            tiles_ = std::make_unique<TerrainTiles>(this, std::move(relief), drawing, material_, highest_m,
+                                                    std::move(coast));
         }
         tiles_active_ = enabled;
         tiles_weight_ = weight;
@@ -1088,6 +1092,8 @@ godot::Dictionary PlanetMeshNode::get_terrain_tile_stats() const {
         for (const auto count : stats.drawn_by_level) by_level.push_back(count);
         result["drawn_by_level"] = by_level;
         result["translation_error_px"] = stats.translation_error_px;
+        result["coast_layers"] = stats.coast_layers;
+        result["coast_without_layer"] = stats.coast_without_layer;
     }
     return result;
 }

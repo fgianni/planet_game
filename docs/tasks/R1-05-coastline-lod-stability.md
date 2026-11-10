@@ -1480,6 +1480,51 @@ coastal L1 tile (face 5, 0/1), 561 of 6 144 surface vertices change side
 (9.1 %, against the first probe's 10.9 % of samples); on the detailed L2
 tile, 12.
 
+**Task 3c, first form: the styles read the pages (2026-11-11).**
+- **Workers.** `TerrainTiles` makes every tile with its own coast page (the
+  water field from the same relief), and its geometry follows the page.
+- **The GPU array.** Pages go to a 128-layer `Texture2DArray` of binary16
+  (16.9 MB). A page that is water or land throughout takes no layer.
+- **The shaders.** Both styles' surface shaders read the page through
+  `godot/shaders/coast_pages.gdshaderinc`. A tile's vertices carry their
+  page coordinates, layer and mode in `CUSTOM2`. Per-instance uniforms
+  would have held layer and mode, but the Compatibility renderer allows
+  4 096 items, too few for the tile cache.
+- **The roots** start without pages, so there is always something to
+  draw, and are made again with them.
+- The cell mesh does not read pages yet.
+
+Results:
+- **Pass:** R1-04's flight at L4 and L6 (V9: no holes; V13 passes), with
+  at most 42 (L4) and 68 (L6) layers in use. Also the Godot tests for cell
+  texels, detail coverage, display transfer, the globe camera, scene
+  lighting, style switching, the R2 overlay, clouds and the climate lab.
+
+Two regressions against the same build without pages (same machine):
+
+| | Without pages | With pages |
+|---|---|---|
+| Frames to settle at 100 m, L4 / L6 | 0 / 0 | about 8 400 / 15 300 (a few seconds) |
+| Planet-band wall p99, L4 | 8.3 ms | 20 ms (47–73 ms with 448 layers) |
+
+The cause is the cost of a page, one thread at L6:
+
+| L6 level | Tile alone | Page | Kind |
+|---|---:|---:|---|
+| 2 | 0.54 ms | 420 ms | coverage |
+| 4 | 0.81 ms | 396 ms | coverage |
+| 6 | 0.75 ms | 220 ms | coverage |
+| 8–18 | 0.69 ms | 25 ms | point |
+
+A page costs 35 to 600 times its tile, so a tile that waits for its own
+page streams that much later. The next step follows A1.3 ("drawn as it
+stands" while children load):
+- A child's vertices all lie on its parent page's nodes, so a tile can be
+  drawn at once from its nearest resident ancestor's page. That is the
+  shortfall state the probe measured, with no coverage jumps.
+- Pages get their own queue, behind the tiles, and a tile is made again
+  (0.75 ms) when its own page arrives.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

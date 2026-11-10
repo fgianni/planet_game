@@ -4,6 +4,7 @@ render_mode cull_disabled;
 #include "res://shaders/surface_detail.gdshaderinc"
 #include "res://shaders/display_transfer.gdshaderinc"
 #include "res://shaders/view_transition.gdshaderinc"
+#include "res://shaders/coast_pages.gdshaderinc"
 
 uniform sampler2D relief_map : filter_nearest;
 uniform sampler2D surface_class_map : filter_nearest;
@@ -22,6 +23,8 @@ varying vec2 first_corner_texel;
 varying vec4 second_corner_and_weights;
 varying vec3 model_position;
 varying vec2 tile_surface; // (1, height above sea) on a terrain tile, (0, 0) on the cell mesh
+varying vec2 coast_uv;     // a terrain tile vertex's place in its coast page
+varying vec2 coast_layer_mode; // its page's layer and mode (coast_pages.gdshaderinc)
 
 #define CHANNEL(map) detail_fetch(map, cell_texel, first_corner_texel, second_corner_and_weights)
 
@@ -36,6 +39,8 @@ void vertex() {
 	view_relief(VERTEX, NORMAL, CUSTOM1);
 	model_position = detail_planet_position(VERTEX, CUSTOM1);
 	tile_surface = detail_tile_surface(CUSTOM1);
+	coast_uv = CUSTOM2.xy;
+	coast_layer_mode = CUSTOM2.zw;
 }
 
 void fragment() {
@@ -60,9 +65,9 @@ void fragment() {
 	// Waves belong to the region/local view, not the planet-scale map. The
 	// existing band handoff makes them fade in without moving the coastline.
 	float wave_amount = amount * smoothstep(0.0, 1.0, band_fade);
-	// On a terrain tile the coast follows the drawn surface.
+	// On a terrain tile the coast is its page's (ADR-0030 A1), else the drawn surface's.
 	float open_water = mix(detail_cover(classes.r, detail_uniform(direction, detail_seed_coast), amount),
-	                       detail_geometry_water(tile_surface.y), tile_surface.x);
+	                       coast_page_water(coast_uv, coast_layer_mode, detail_geometry_water(tile_surface.y)), tile_surface.x);
 	float land_ice = mix(ice_weight, detail_land_ice(ice_weight, classes.r, sea_ice), tile_surface.x);
 	vec4 cover = detail_partition(vec4(classes.g, classes.b, classes.a, land_ice),
 	                              detail_uniform(direction, detail_seed_land_mix), amount);

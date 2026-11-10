@@ -73,6 +73,8 @@ func _run() -> void:
 	var holes_total := 0
 	var frames_checked := 0
 	var deepest := 0
+	var coast_layers := 0  # ADR-0030 A1: coast page layers in use, at most
+	var coast_missing := 0 # drawn tiles whose page found no layer, at most
 	var path := []
 	for frame in frames_down:
 		path.append(exp(lerp(log(high), log(low), float(frame) / (frames_down - 1))))
@@ -105,6 +107,8 @@ func _run() -> void:
 		last = now
 		var stats: Dictionary = planet.get_terrain_tile_stats()
 		deepest = maxi(deepest, int(stats.get("deepest_level", 0)))
+		coast_layers = maxi(coast_layers, int(stats.get("coast_layers", 0)))
+		coast_missing = maxi(coast_missing, int(stats.get("coast_without_layer", 0)))
 		most[band] = Vector2i(maxi(most[band].x, int(stats.get("drawn", 0)) if stats.get("active", false) else 0),
 			maxi(most[band].y, int(stats.get("cached", 0))))
 		# At the bottom, hold until the tiles have settled (at most a minute).
@@ -162,6 +166,7 @@ func _run() -> void:
 		_failures += 1
 	print("V9: %d frames checked, %d hole samples; deepest tile level %d; %d frames to settle at 100 m" % [
 		frames_checked, holes_total, deepest, settle])
+	print("Coast pages: at most %d layers in use; at most %d drawn tiles without one" % [coast_layers, coast_missing])
 	if holes_total > 0:
 		_failures += 1
 	for band in ["planet", "region", "local"]:
