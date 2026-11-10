@@ -1365,3 +1365,52 @@ geometry, Godot, both styles, zoom and frame times remain unvalidated.
 The first cold L4 coastal-page generation measured ~377 ms on this host,
 including lazy relief rank-table construction; it cannot run on the render
 thread. Warm-generation and asynchronous cache/frame costs are still open.
+
+### Amendment 1 fixed-pose page screen probe (2026-11-09; diagnostic only)
+
+`tools/render/coast_page_screen_probe.cpp` now casts independent 512²
+pixel-centre unit-sphere rays at a fixed nadir camera and compares direct
+`CoastWaterField::sample()` classification with bilinear `CoastPage` values
+from a chosen uniform resident level. Pages are generated lazily by the
+cube-face key reached by each ray; face inverse round-trips are checked on
+all six faces. The raw reference, page and visibility masks are separate.
+`measure_coast_page_screen.py` erodes two silhouette pixels, measures
+changed centres from **both** binary shores, and counts fully interior
+wet/dry components of area ≥4 pixels that have no overlap in the other
+mask. It can compare two levels at the **same** pose and refuses different
+reference/visibility masks. It does not ray-intersect raised terrain, draw
+triangles or shaders, antialias, prove matched contour displacement or
+identify every inlet connected to the frame. A changed component is not
+automatically an island; a one-pixel missing feature can be several pixels
+from the coarse shore yet still be below the four-pixel area criterion.
+
+Seed 20260928, original probe focus, 75° FOV; all quoted changes are over
+258,064 common interior pixels, and no ≥4-pixel wholly missing component
+was found in these particular binary masks:
+
+| Mesh / altitude / page level | Min samples per px | Resident pages / raw bytes | Page vs independent field: changes / >1 px from either shore | Adjacent-level matched-pose changes / >1 px from either page shore |
+|---|---:|---:|---:|---:|
+| L4 / 0.04 / 6 | 1.25 | 16 / 2.11 MB | 84 / 2 | 6→7: 91 / 1 |
+| L4 / 0.04 / 7 | 2.50 | 48 / 6.34 MB | 79 / 3 | 7→8: 86 / 2 |
+| L4 / 0.04 / 8 | 5.00 | 160 / 21.14 MB | 65 / 1 | — |
+| L4 / 0.02 / 7 | 1.25 | 16 / 2.11 MB | 45 / 0 | 7→8: 54 / 0 |
+| L4 / 0.02 / 8 | 2.50 | 48 / 6.34 MB | 41 / 0 | — |
+| L6 / 0.04 / 6 | 1.25 | 18 / 2.38 MB | 214 / 6 | 6→7: 180 / 2 |
+| L6 / 0.04 / 7 | 2.51 | 52 / 6.87 MB | 94 / 4 | 7→8: 102 / 4 |
+| L6 / 0.04 / 8 | 5.02 | 165 / 21.80 MB | 76 / 0 | — |
+| L6 / 0.175 / 5 | 2.74 | 64 / 8.45 MB | 160 / 3 | 5→6: 113 / 3 |
+| L6 / 0.175 / 6 | 5.47 | 216 / 28.53 MB | 55 / 0 | — |
+
+The L6/0.175 level-5→6 comparison has a **10.63 px** maximum distance
+from the coarse page's binary shore, but the three deep changed pixels
+are separate one-pixel components. The nominal two-samples-per-pixel
+request target does not guarantee that every tiny feature is represented
+by a resident page. All page figures are only pages touched by this view,
+not a global 512-tile flight/cache budget. Cold generation of the 64
+L6/0.175 level-5 pages took ~4.18 s in the headless process (including
+lazy relief rank tables); they cannot be generated on the render thread.
+The binary metrics are **not** the after-AA ≤1 px matched-contour gate,
+nor a proof that four-pixel islands/inlets cannot appear at another pose.
+Actual page residency while loading, raised geometry, both styles, varied
+seeds/sea levels/all faces, continuous zoom and L6 frame/cache gates remain
+open. Production terrain is unchanged.
