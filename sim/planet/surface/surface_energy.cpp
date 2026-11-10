@@ -944,7 +944,7 @@ SurfaceEnergyDiagnostics step_surface_energy(PlanetState& state,
     // state (ADR-0011 §17.2), so its winds are not used.
     const bool wind_source = (circulation != nullptr && circulation->active) ||
                              state.has_fast_state();
-    const bool has_wind = wind_source &&
+    const bool has_wind = wind_source && surface.evaporation_resolved_wind &&
                           circulation_fields.eastward_wind_m_s.cell_count() == cells &&
                           circulation_fields.eastward_wind_m_s.layer_count() > 0U &&
                           circulation_fields.northward_wind_m_s.cell_count() == cells;

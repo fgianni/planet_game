@@ -121,6 +121,10 @@ struct SurfaceEnergyParameters {
     // INV-05, investigations only: reference mode's grid-scale damping time
     // (s; 0 keeps AtmosphereDynamicsParameters' 8 h).
     double hyperviscosity_damping_s = 0.0;
+    // INV-05, investigations only: false evaporates with the gustiness
+    // alone, the resolved bottom-layer wind left out (ADR-0021 §4.3 uses
+    // both; true, the preset).
+    bool evaporation_resolved_wind = true;
 };
 
 // The bulk transfer coefficients of evaporation (ADR-0021 §4.3): the tiles'
