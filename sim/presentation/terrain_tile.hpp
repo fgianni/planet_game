@@ -10,6 +10,9 @@
 
 namespace planetsim::presentation {
 
+struct CoastPage;
+class CoastWaterField;
+
 // Terrain tiles of the continuous view (ADR-0022 §4.8, task R1-04 step 3):
 // a quadtree over the six faces of a cube projected onto the sphere.
 // A tile is a pure function of its key, the relief and the drawing
@@ -58,11 +61,20 @@ struct TileGeometry {
     std::vector<float> corner_texel; // UV2: xy
     std::vector<float> custom0;      // second corner texel xy, weights of cell and first corner
     std::vector<float> custom1;      // planet-centred unit direction xyz, height above sea (m)
+    std::vector<float> coast_uv;     // with a coast page: the vertex's place in it, xy in [0, 1]
     double min_radius = 0.0;         // of the drawn surface, for culling and collision
     double max_radius = 0.0;
 };
 
+// With the tile's own coast page (ADR-0030 A1.4), the geometry follows its
+// classification: every vertex lies on a page node (every eighth), and a
+// water vertex is drawn at sea level with a height of at most 0, a land
+// vertex at its height but no lower than sea level. The ring of points
+// outside the tile, used only for normals, takes the value the neighbour's
+// page holds there (coast_node_value), so shared edges keep their normals.
+// Without a page the tile is as before, byte for byte.
 [[nodiscard]] TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief,
-                                             const TileDrawing& drawing);
+                                             const TileDrawing& drawing, const CoastPage* coast = nullptr,
+                                             const CoastWaterField* field = nullptr);
 
 }  // namespace planetsim::presentation

@@ -1,8 +1,11 @@
 #include "sim/presentation/terrain_tile.hpp"
 
+#include "sim/presentation/coast_page.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <stdexcept>
 
 namespace planetsim::presentation {
 namespace {
@@ -105,7 +108,12 @@ double tile_angular_size(const TileKey& key) {
     return std::numbers::pi / 2.0 / std::ldexp(1.0, key.level);
 }
 
-TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, const TileDrawing& drawing) {
+TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, const TileDrawing& drawing,
+                               const CoastPage* coast, const CoastWaterField* field) {
+    if (coast != nullptr && (field == nullptr || !(coast->key == key))) {
+        throw std::invalid_argument("a tile's coast page needs its own key and the water field");
+    }
+    constexpr std::uint32_t nodes_per_quad = coast_page_intervals / tile_grid;
     const PlanetMesh& mesh = relief.mesh();
     const std::size_t cell_count = mesh.cell_count();
     constexpr std::int64_t lines = tile_grid + 1;
@@ -135,6 +143,20 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
                                                  : relief.sample(point.direction, hint);
             hint = sample.cell;
             point.height_m = sample.elevation_m - drawing.sea_level_m;
+            if (coast != nullptr) {
+                // The page's node, or outside the tile the value the
+                // neighbour's page holds there (rounded the same way).
+                double water = 0.0;
+                if (i >= 0 && j >= 0 && i <= tile_grid && j <= tile_grid) {
+                    water = coast->signed_water_m(static_cast<std::uint32_t>(i) * nodes_per_quad,
+                                                  static_cast<std::uint32_t>(j) * nodes_per_quad);
+                } else {
+                    CellId coast_hint = sample.cell;
+                    water = half_to_float(half_from_float(static_cast<float>(
+                        coast_node_value(*field, key.level, point.direction, coast_hint))));
+                }
+                point.height_m = water > 0.0 ? std::min(point.height_m, 0.0) : std::max(point.height_m, 0.0);
+            }
             point.rank = sample.rank;
             point.position = point.direction * (1.0 + exaggeration * std::max(0.0, point.height_m));
         }
@@ -169,6 +191,8 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
         Vec3d direction;
         double height_m;
         double rank;
+        double page_x = 0.0; // the vertex's place in the coast page, [0, 1]
+        double page_y = 0.0;
     };
     const auto emit_triangle = [&](const std::array<Vertex, 3>& corners_in) {
         std::array<Vertex, 3> v = corners_in;
@@ -198,6 +222,7 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
             // position (§4.9); a tile's VERTEX is relative to its origin.
             append(tile.custom1, vertex.direction);
             tile.custom1.push_back(static_cast<float>(vertex.height_m));
+            if (coast != nullptr) append(tile.coast_uv, vertex.page_x, vertex.page_y);
             const double radius = length(vertex.position);
             tile.min_radius = std::min(tile.min_radius, radius);
             tile.max_radius = std::max(tile.max_radius, radius);
@@ -205,7 +230,8 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
     };
     const auto vertex_at = [&](std::int64_t i, std::int64_t j) {
         const Point& p = at(i, j);
-        return Vertex{p.position, normal_at(i, j), p.direction, p.height_m, p.rank};
+        return Vertex{p.position, normal_at(i, j), p.direction, p.height_m, p.rank,
+                      static_cast<double>(i) / tile_grid, static_cast<double>(j) / tile_grid};
     };
 
     for (std::int64_t j = 0; j < tile_grid; ++j) {
