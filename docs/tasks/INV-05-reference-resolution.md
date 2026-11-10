@@ -563,3 +563,37 @@ dependence built into the scheme, consistent with §10 and §12 (resolved
 condensation up 40–75 % from L3 to L5 in every band). It is not yet shown
 to set the caps' temperature.
 
+## 16. The sub-grid condensation test (2026-11-10)
+
+M8-07's sub-grid condensation (`cloud_subgrid_width` β; the preset's 0 is
+saturation adjustment) at β = 0.2 and 0.4, two years at L3 and L5
+(`traj_L3_b02.log`, `traj_L3_b04.log`, `traj_L5_b02.log`,
+`traj_L5_b04.log`; checked first that β reaches reference mode: L3's
+first month differs). Year 2:
+
+| | β = 0 | β = 0.2 | β = 0.4 |
+|---|---:|---:|---:|
+| L3 polar caps | 281.7 K | 282.1 K | 281.3 K |
+| L5 polar caps | 267.6 K | 270.5 K | 270.0 K |
+| **L5 − L3, caps** | **−14.1 K** | **−11.5 K** | **−11.4 K** |
+| L5 − L3, P2 | +16.7 K | +15.2 K | +14.4 K |
+| L5 largest wind | 110 m/s | 110 m/s | 105 m/s |
+
+- **A part, not the cause:** sub-grid condensation warms L5's caps by
+  2.3–2.9 K and leaves L3's within 0.4 K, so it removes about 2.6 K (18 %)
+  of the levels' 14 K; doubling β adds nothing more. Saturation
+  adjustment on the cell's mean contributes to the level difference, as
+  §15 reasoned, but most of the gap is elsewhere.
+
+### Status (2026-11-10)
+
+Of the caps' 14 K between L3 and L5 in year 2: about 2.6 K is the
+saturation adjustment (§16), about 1 K the clouds' overcast limit (§6),
+and about 1 K L3's ocean-only southern cap (§13). Ruled out as the rest:
+orography (§2), the upwind diffusion as the level difference (§9), the
+water reaching the caps (§11, §12), the coastlines and land (§13), the
+grid-scale damping (§14). The next step is to measure the caps' energy
+budget in full by level (top of atmosphere, surface, the atmosphere's
+storage), so that the term carrying the rest is found rather than
+guessed.
+
