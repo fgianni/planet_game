@@ -69,10 +69,10 @@ double coast_finest_wavelength_rad(const TerrainRelief& relief) {
     return relief.cell_spacing_rad() / (relief_features_per_cell * std::ldexp(1.0, relief_octaves - 1));
 }
 
-int coast_footprint_samples(std::uint8_t level, double finest_wavelength_rad) {
+int coast_footprint_samples(std::uint8_t level, double finest_wavelength_rad, int cap) {
     const double spacing = std::numbers::pi / 2.0 / (coast_page_intervals * std::ldexp(1.0, level));
     const double samples = std::ceil(spacing / (finest_wavelength_rad / 2.0));
-    return static_cast<int>(std::clamp(samples, 1.0, static_cast<double>(coast_footprint_cap)));
+    return static_cast<int>(std::clamp(samples, 1.0, static_cast<double>(std::max(cap, coast_coverage_threshold))));
 }
 
 CoastPageKind coast_page_kind(std::uint8_t level, const TerrainRelief& relief) {
@@ -81,9 +81,10 @@ CoastPageKind coast_page_kind(std::uint8_t level, const TerrainRelief& relief) {
                : CoastPageKind::coverage;
 }
 
-double coast_node_value(const CoastWaterField& field, std::uint8_t level, const Vec3d& direction, CellId& hint) {
+double coast_node_value(const CoastWaterField& field, std::uint8_t level, const Vec3d& direction, CellId& hint,
+                        int cap) {
     const TerrainRelief& relief = field.relief();
-    const int samples = coast_footprint_samples(level, coast_finest_wavelength_rad(relief));
+    const int samples = coast_footprint_samples(level, coast_finest_wavelength_rad(relief), cap);
     if (samples < coast_coverage_threshold) {
         const CoastWaterSample s = field.sample(direction, hint);
         hint = s.cell;
@@ -108,7 +109,7 @@ double coast_node_value(const CoastWaterField& field, std::uint8_t level, const 
     return static_cast<double>(wet) / (samples * samples) - 0.5;
 }
 
-CoastPage make_coast_page(const TileKey& key, const CoastWaterField& field, std::size_t workers) {
+CoastPage make_coast_page(const TileKey& key, const CoastWaterField& field, std::size_t workers, int cap) {
     validate(key);
     CoastPage page;
     page.key = key;
@@ -119,7 +120,7 @@ CoastPage make_coast_page(const TileKey& key, const CoastWaterField& field, std:
         CellId hint{0};
         for (std::uint32_t y = first; y < coast_page_nodes; y += step) {
             for (std::uint32_t x = 0; x < coast_page_nodes; ++x) {
-                const double value = coast_node_value(field, key.level, coast_page_direction(key, x, y), hint);
+                const double value = coast_node_value(field, key.level, coast_page_direction(key, x, y), hint, cap);
                 if (!std::isfinite(value)) throw std::runtime_error("non-finite canonical coast sample");
                 // Zero is dry by the field's strict > 0 water rule; a half
                 // keeps the sign of every nonzero value it does not round to

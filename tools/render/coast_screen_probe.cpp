@@ -15,15 +15,13 @@
 // appears or disappears.
 //
 // Two page kinds:
-// - point: the library's CoastPage, s at each node;
-// - coverage: each node holds its footprint's water coverage minus 0.5,
-//   from S x S sub-samples of s with S set by the level, so that pages
-//   coarser than the relief's finest features hold a filtered coast.
+// - point: s at each node, at every level (rounded to a half);
+// - coverage: the library's pages (make_coast_page): coverage − 0.5 of
+//   each node's footprint at levels coarser than the relief's finest
+//   features, point values below that.
 //   The reference then casts up to 64 x 64 rays a pixel, enough to resolve
 //   those features, and a pixel's candidate coverage is the mean of the
-//   bilinear coverage under its rays. Levels needing fewer than 3 x 3
-//   sub-samples keep point pages: s's zero line is more exact than a
-//   coarse coverage there.
+//   bilinear coverage under its rays.
 //
 // Each comparison also reports pixels whose coverage changes by 0.5 or
 // more: the resolvable jumps of ADR-0030 A1.5a where features are
@@ -36,7 +34,7 @@
 // Build (Release): c++ -std=c++20 -O3 -ffp-contract=off -I . \
 //   tools/render/coast_screen_probe.cpp build/libPlanetSimPresentation.a \
 //   build/libPlanetSim.a -lzstd -pthread -o build/coast_screen_probe
-// Run: ./build/coast_screen_probe level seed foci rays point|coverage coast|seam|depression
+// Run: ./build/coast_screen_probe level seed foci rays point|coverage coast|seam|depression [cap]
 #include "sim/planet/run/planet_run.hpp"
 #include "sim/planet/terrain/hypsometry.hpp"
 #include "sim/presentation/coast_page.hpp"
@@ -67,12 +65,12 @@ using namespace planetsim::presentation;
 constexpr int image = 512;
 constexpr double fov_rad = 60.0 * std::numbers::pi / 180.0;
 constexpr int max_reference_rays = 64;
-constexpr int max_footprint_samples = 16;
 
 int antialiasing = 1;
 bool coverage_pages = false;
 double finest_rad = 0.0;   // the relief's finest octave wavelength
 unsigned threads = 1;
+int footprint_cap = coast_footprint_cap;   // the library's, unless a seventh argument sets it
 
 template <typename Body>
 void parallel_rows(int rows, Body body) {
@@ -137,48 +135,31 @@ struct ProbePage {
     }
 };
 
-// The sub-samples a node's footprint needs at `level`: its spacing over half
-// the finest wavelength, at most max_footprint_samples.
-int footprint_samples(std::uint8_t level) {
-    const double spacing = std::numbers::pi / 2.0 / (coast_page_intervals * std::ldexp(1.0, level));
-    return std::clamp(static_cast<int>(std::ceil(spacing / (finest_rad / 2.0))), 1, max_footprint_samples);
-}
+// The sub-samples a node's footprint needs at `level` (the library's rule).
+int footprint_samples(std::uint8_t level) { return coast_footprint_samples(level, finest_rad, footprint_cap); }
 
 ProbePage make_probe_page(const TileKey& key, const CoastWaterField& field) {
     ProbePage page;
     page.key = key;
     page.values.resize(static_cast<std::size_t>(coast_page_nodes) * coast_page_nodes);
-    if (!coverage_pages || footprint_samples(key.level) < 3) {
-        const CoastPage point = make_coast_page(key, field);
+    if (coverage_pages) {
+        // The library's pages: point or coverage by level.
+        const CoastPage library = make_coast_page(key, field, threads, footprint_cap);
+        page.coverage = library.kind == CoastPageKind::coverage;
+        page.footprint_samples = footprint_samples(key.level);
         for (std::uint32_t y = 0; y < coast_page_nodes; ++y)
             for (std::uint32_t x = 0; x < coast_page_nodes; ++x)
-                page.values[static_cast<std::size_t>(y) * coast_page_nodes + x] = point.signed_water_m(x, y);
+                page.values[static_cast<std::size_t>(y) * coast_page_nodes + x] = library.signed_water_m(x, y);
         return page;
     }
-    // Coverage of each node's footprint: the square of one node spacing
-    // around it, in face coordinates (it reaches past a face edge on the
-    // plane's extension, so edge nodes are not yet shared between faces).
-    const int samples = footprint_samples(key.level);
-    page.footprint_samples = samples;
-    page.coverage = true;
-    const double du = 2.0 / (coast_page_intervals * std::ldexp(1.0, key.level));
+    // Point pages at every level: s at each node.
     parallel_rows(static_cast<int>(coast_page_nodes), [&](int y) {
         CellId hint{0};
-        const double v0 = coast_page_coordinate(key.y, key.level, static_cast<std::uint32_t>(y));
         for (std::uint32_t x = 0; x < coast_page_nodes; ++x) {
-            const double u0 = coast_page_coordinate(key.x, key.level, x);
-            int wet = 0;
-            for (int b = 0; b < samples; ++b) {
-                for (int a = 0; a < samples; ++a) {
-                    const double u = u0 + du * ((a + 0.5) / samples - 0.5);
-                    const double v = v0 + du * ((b + 0.5) / samples - 0.5);
-                    const auto s = field.sample(tile_face_direction(key.face, u, v), hint);
-                    hint = s.cell;
-                    wet += s.signed_water_m > 0.0 ? 1 : 0;
-                }
-            }
+            const auto s = field.sample(coast_page_direction(key, x, static_cast<std::uint32_t>(y)), hint);
+            hint = s.cell;
             page.values[static_cast<std::size_t>(y) * coast_page_nodes + x] =
-                static_cast<double>(wet) / (samples * samples) - 0.5;
+                static_cast<double>(half_to_float(half_from_float(static_cast<float>(s.signed_water_m))));
         }
     });
     return page;
@@ -429,6 +410,7 @@ int main(int argc, char** argv) {
     antialiasing = argc > 4 ? std::max(1, std::atoi(argv[4])) : 1;
     coverage_pages = argc > 5 && std::string(argv[5]) == "coverage";
     const std::string kind = argc > 6 ? argv[6] : "coast";
+    footprint_cap = argc > 7 ? std::atoi(argv[7]) : coast_footprint_cap;
     const PlanetRun run(scenario);
     const auto mesh = std::make_shared<const PlanetMesh>(run.state().mesh());
     const auto terrain = run.terrain_snapshot();
@@ -482,7 +464,8 @@ int main(int argc, char** argv) {
     std::cout.setf(std::ios::fixed);
     std::cout << "L" << scenario.subdivision << " seed " << scenario.seed << ", " << image << "^2 px, FOV 60 deg, "
               << focus_points.size() << ' ' << kind << " foci, " << antialiasing << "x" << antialiasing
-              << " rays a pixel, " << (coverage_pages ? "coverage" : "point") << " pages; finest wavelength "
+              << " rays a pixel, " << (coverage_pages ? "coverage" : "point") << " pages (footprint cap "
+              << footprint_cap << "); finest wavelength "
               << finest_rad * radius_km << " km\n";
     std::cout << "each comparison: differing/deep/regions>=4/deep regions>=4/largest/coverage difference (px)/coverage jumps >= 0.5/largest coverage change\n";
     PageCache cache(field);

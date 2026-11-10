@@ -55,18 +55,21 @@ struct CoastPage {
 // side a level needs: its nominal node spacing over half that wavelength,
 // at most coast_footprint_cap.
 [[nodiscard]] double coast_finest_wavelength_rad(const TerrainRelief& relief);
-[[nodiscard]] int coast_footprint_samples(std::uint8_t level, double finest_wavelength_rad);
+[[nodiscard]] int coast_footprint_samples(std::uint8_t level, double finest_wavelength_rad,
+                                          int cap = coast_footprint_cap);
 [[nodiscard]] CoastPageKind coast_page_kind(std::uint8_t level, const TerrainRelief& relief);
 
 // The value a page of `level` holds at a direction: what make_coast_page
 // stores there, before rounding (tile geometry reads it for its ring
 // points). `hint` is updated to a nearby cell.
 [[nodiscard]] double coast_node_value(const CoastWaterField& field, std::uint8_t level, const Vec3d& direction,
-                                      CellId& hint);
+                                      CellId& hint, int cap = coast_footprint_cap);
 
 // `workers` threads take whole rows; the bytes do not depend on them.
+// `cap` (at least coast_coverage_threshold) bounds the footprint's
+// sub-samples a side: a cost against fidelity, measured in R1-05.
 [[nodiscard]] CoastPage make_coast_page(const TileKey& key, const CoastWaterField& field,
-                                        std::size_t workers = 1);
+                                        std::size_t workers = 1, int cap = coast_footprint_cap);
 
 // Round-to-nearest-even IEEE binary16, and back.
 [[nodiscard]] std::uint16_t half_from_float(float value) noexcept;

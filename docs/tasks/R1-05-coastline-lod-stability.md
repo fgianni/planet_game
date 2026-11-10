@@ -1440,6 +1440,46 @@ views only, two seeds, and a probe-only coverage kind. That kind samples a
 face-aligned footprint, so cube-face edge nodes are not yet shared
 between faces.
 
+**Task 3a, the library's coverage pages, and their cost (2026-11-10).**
+`make_coast_page` now has both kinds (commit `55361d0`):
+- point values where a level resolves the relief's finest features;
+- footprint coverage − 0.5 where it needs at least 3 sub-samples a side,
+  at most `coast_footprint_cap`.
+
+The footprint depends on the node's direction alone. Rerunning the probe on
+the library pages (`build/r105/library_*.log`: L4 coast, L6 seed 42 coast,
+L6 seam) reproduces the probe-kind results: no coverage jump at the page
+level or across handoffs; the one shortfall jump (0.50, L6 seed 42, 250 km)
+is unchanged.
+
+The footprint cap, L6 seed 20260928, three coast foci
+(`build/r105/cap{16,8,4}_*.log`):
+- **Cap 16 and cap 8** give the same gate results: 3 / 0 / 1 / 4 deep
+  pixels at 12 000 km, and no jump.
+- **Cap 4** gives 4 / 0 / 2 / 2 deep pixels at 12 000 km, still no jump,
+  and no deep region of four pixels.
+- The pages do differ: summed coverage error 68.4, 68.5 and 70.6 px at the
+  first orbit pose.
+
+One thread, a page (scratch timing, this machine):
+
+| L6 level (sub-samples a side at cap 16) | Cap 16 | Cap 8 | Cap 4 |
+|---|---:|---:|---:|
+| 1–3 (16) | 6.2–6.4 s | 1.6 s | 0.41–0.44 s |
+| 4 (9) | 2.0 s | 1.5 s | 0.40 s |
+| 5 (5) | 0.61 s | 0.61 s | 0.39 s |
+| 6 (3) | 0.22 s | 0.22 s | 0.22 s |
+| 7 and finer (point) | 0.026 s | 0.026 s | 0.026 s |
+
+A cold orbit view needs about 50–100 coarse pages, which on the app's 12
+tile workers means roughly 30–50 s at cap 16, 8–13 s at cap 8 and 2–4 s at
+cap 4.
+
+**Task 3b** (commit `6af7a18`): tiles follow their page. On the filtered
+coastal L1 tile (face 5, 0/1), 561 of 6 144 surface vertices change side
+(9.1 %, against the first probe's 10.9 % of samples); on the detailed L2
+tile, 12.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and
