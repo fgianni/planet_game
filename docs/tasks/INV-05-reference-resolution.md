@@ -1,7 +1,8 @@
 # Investigation INV-05 — Reference mode's resolution dependence
 
 - **Milestone:** P0, after INV-04 and before M9
-- **Status:** started 2026-11-03 (with the user)
+- **Status:** closed 2026-11-12 (with the user); started 2026-11-03. See
+  [Outcome](#outcome-closed-2026-11-12).
 - **Predecessor:** [INV-04](INV-04-v8-transport-and-radiation.md), whose V8 has no
   converged reference above L5
 - **Governing decisions:** ADR-0011 (winds: the reference dynamical core),
@@ -9,6 +10,72 @@
 - **Scope:** why reference mode's climate changes with the mesh level, and
   whether a level exists where it settles. No solver, preset or gate
   changes without a decision; M9 is outside this work.
+
+## Outcome (closed 2026-11-12)
+
+**The question:** why reference mode's climate changes with the mesh
+level (2.8 K colder and P2 48.8 → 60.1 K from L4 to L5, winds past the
+150 m/s bound in year 2 at L6), and whether it settles.
+
+**What happens (§1–§4):** from the same start, the polar caps (poleward of
+60°) cool 5–10 K per level while the tropics agree within 2 K (month 16:
+285.5, 280.0, 270.5, 264.7 K at L3–L6). The larger equator-to-pole
+difference strengthens a smooth zonal jet at 60–80° (not grid-point
+spikes, not the pole) by about 13 m/s per level; the edge winds, which
+carry grid-scale structure the cell winds do not, reach the dynamics'
+bound at L6 (month 24, 150.83 m/s, reproduced). It does not settle by L6,
+and at L5 the caps are still cooling in year 2.
+
+**What explains it.** Of the caps' 14 K between L3 and L5 in year 2,
+measured part by part (§19's table):
+- saturation adjustment on the cell's mean, ≈ 2.6 K (§16, M8-07's
+  sub-grid condensation);
+- the evaporation's resolved wind speed, ≈ 1.7 K (§19);
+- the clouds' overcast limit, ≈ 1 K (§6);
+- L3's almost ocean-only southern cap, ≈ 1 K (§13);
+- about 8 K not attributed to any single scheme, consistent with the
+  resolved dynamics' own convergence.
+
+The full budget (§17, §18) shows the path: in the first months a weaker
+cloud greenhouse and more surface evaporation, of colder, drier cap air;
+from month 4 the sea ice's (S) and snow's (N) albedo amplify it.
+
+**Ruled out as the level difference:** orography (§2), the upwind
+diffusion (§9), the water reaching the caps (§11, §12, with a passive
+tracer), the coastlines and land (§13), the grid-scale damping (§14).
+τ_c is not used in the preset (§15, a void test; the code read
+corrected).
+
+**Found along the way, for V8:** reference mode's first-order upwind
+vapour advection (ADR-0021 §4.5) is a level-dependent numerical diffusion
+of 4.5–13 × 10⁶ m²/s at L3, several times Earth's eddy diffusivity for
+moisture. At L3 it carries about 40 % of the poleward water (§11);
+removing it (a limited second-order scheme) cools every level's caps by
+6–8 K and strengthens the winds (L5 131 m/s in year 2; §9). V8's reference
+at L4 carries this bias.
+
+**Code added (investigation settings, default off; the defaults give the
+baseline exactly):**
+- `vapour_advection_order = 2`, the limited second-order vapour advection
+  (commit 80cc106);
+- `passive_tracer_lifetime_s`, a passive tracer (28360be);
+- `hyperviscosity_damping_s` (fcbf9c9);
+- `evaporation_resolved_wind` (b1f516c);
+- per-cell energy budget diagnostics in `SurfaceEnergyDiagnostics`
+  (c92b019).
+
+The probes are in `tools/v8/reference_*_probe.cpp`; the logs in
+`build/inv05/` here and on the RTX 5070 Ti machine.
+
+**Decisions left with the user (not taken here):**
+1. Adopt the limited second-order vapour advection in reference mode (an
+   ADR-0021 §4.5 amendment), knowing it strengthens the winds towards the
+   150 m/s bound.
+2. How V8 treats a reference that is not converged with level: V8 stays
+   at L4 with the non-convergence a known limitation, or another
+   reference.
+3. Whether the small resolution-dependent parts (sub-grid condensation,
+   the evaporation's wind speed) are worth a fix.
 
 ## What is known (from INV-04)
 
