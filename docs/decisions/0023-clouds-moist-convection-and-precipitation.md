@@ -771,3 +771,12 @@ decision. That keeps V8's meaning fixed while its reference improves.
 
 **17.5 Status.** Proposed; §16.2 stands until this is accepted.
 
+**17.6 V8 at L4 re-measured at the current commit (2026-11-12).** §16.2's
+protocol at commit 8f77e02 (after INV-05's default-off settings and
+diagnostics; the RTX 5070 Ti machine, 16 workers on its P-cores, 102 min)
+gives the same result to the last digit and the same state hashes as the
+2026-10-30 run at a3db687: reference minus climate +0.472891393 K,
+precipitation ratio 0.970140977 (gate fails), climate
+10489696834538135003, reference 7837964125437775335. INV-05's additions
+leave the preset's V8 unchanged.
+
