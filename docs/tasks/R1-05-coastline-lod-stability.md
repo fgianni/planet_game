@@ -1396,6 +1396,10 @@ coarse level, not the storage's.
 
 ### Amendment 1 fixed-pose page screen probe (2026-11-09; diagnostic only)
 
+**Historical format note:** the 2026-11-09 tables in this section were
+captured with the original 1 m int16 page before the parallel half-float
+merge. They are not the current binary16 page baseline; see the rerun below.
+
 `tools/render/coast_page_screen_probe.cpp` now casts independent 512²
 pixel-centre unit-sphere rays at a fixed nadir camera and compares direct
 `CoastWaterField::sample()` classification with bilinear `CoastPage` values
@@ -1445,6 +1449,11 @@ open. Production terrain is unchanged.
 
 ### Page precision attribution (2026-11-10; probe-only controls)
 
+**Historical format note:** the "Current 1 m page" column below means
+the page format *at the time*, before the accepted half-float merge. The
+unquantized and companded controls remain informative, but the committed
+page is now binary16. Do not use those int16 differences as its gate result.
+
 The fixed-pose probe now resamples only the **same global dyadic nodes**
 needed by its pixel rays, caches the exact `CoastWaterField` doubles at
 those nodes, and bilinearly interpolates them as an unquantized control.
@@ -1480,3 +1489,30 @@ error, especially on the fine pages, but cannot alone account for the
 remaining small-feature handoff differences. A higher-precision 16-bit
 mapping is worth testing further, **not selected**. The no-feature-≥4 px
 and ≤1 px after-AA gates remain open; no production code or style changed.
+
+### Half-float page rerun (2026-11-12; headless, not rendered)
+
+After the parallel merge made `CoastPage` binary16, the same C++ fixed-pose
+probe was **relinked** against the current presentation archive and run at
+seed 20260928, 75° FOV, 512². Its metadata now identifies `storage
+binary16`; the float control uses the same dyadic lattice without storage
+rounding. The tested half-float page and unquantized control classify
+**identically at every pixel centre** at L4/0.04 page levels 7 and 8, and
+L6/0.04 levels 7 and 8 and L6/0.175 levels 5 and 6. Thus these residuals
+are not the old 1 m storage quantisation error.
+
+| Matched pose / page pair | Coarse/fine vs direct field (changed interior px) | Page-to-page changes | >1 px from either binary page shore | Largest deep changed component |
+|---|---:|---:|---:|---:|
+| L4 / 0.04 / 7→8 | 15 / 3 | 12 | 2 | 1 px |
+| L6 / 0.04 / 7→8 | 65 / 15 | 50 | 2 | 2 px |
+| L6 / 0.175 / 5→6 | 154 / 55 | 115 | 2 | 1 px |
+
+At the L6 planet-blend pose, the largest binary distance from the coarse
+shore is still 9.06 px for an isolated changed pixel. The old 10.63 px
+number belonged to the int16 page. All figures use pixel-centred
+unit-sphere rays and binary masks, **not** antialiased matched-contour
+movement. The old subpixel-coverage probe code from a prior uncommitted
+session is not in this merged tree; its earlier fixed-pose results must not
+be treated as a rerun on binary16. The four-pixel feature, raised-terrain,
+actual mixed cell/tile style, continuous zoom and L6 cache/frame gates
+remain open. Production terrain and both shaders are unchanged.

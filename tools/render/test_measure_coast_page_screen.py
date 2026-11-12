@@ -4,7 +4,8 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 
-from measure_coast_page_screen import float_control, metric, optional_mask
+from measure_coast_page_screen import (float_control, metric, optional_mask,
+                                       require_matched_pose)
 
 
 class PageScreenMetricTests(unittest.TestCase):
@@ -33,6 +34,14 @@ class PageScreenMetricTests(unittest.TestCase):
         a = np.zeros((10, 10), dtype=bool)
         with self.assertRaisesRegex(ValueError, "dimensions differ"):
             metric(a, a, np.zeros((9, 9), dtype=bool))
+
+    def test_handoff_rejects_mixed_storage_formats(self):
+        visible = np.ones((8, 8), dtype=bool)
+        first = dict(size="8", level="4", seed="1", altitude="0.04",
+                     fov="75", storage="binary16")
+        second = {**first, "storage": "int16_metres"}
+        with self.assertRaisesRegex(ValueError, "format: storage"):
+            require_matched_pose(first, second, visible, visible, visible, visible)
 
     def test_new_small_shore_requires_both_distance_directions(self):
         visible = np.ones((32, 32), dtype=bool)

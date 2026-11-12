@@ -93,6 +93,15 @@ def metric(visible, canonical, page):
     return result
 
 
+def require_matched_pose(info, other_info, visible, other_visible,
+                         canonical, other_canonical):
+    for key in ("size", "level", "seed", "altitude", "fov", "storage"):
+        if info.get(key) != other_info.get(key):
+            raise ValueError(f"different matched pose or format: {key}")
+    if not np.array_equal(visible, other_visible) or not np.array_equal(canonical, other_canonical):
+        raise ValueError("reference or visibility masks differ at matched pose")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("prefix")
@@ -111,11 +120,11 @@ def main():
         print("probe-only companded 16-bit:", metric(visible, canonical, alternative))
     if args.other:
         other_info, other_visible, other_canonical, other_page = read(args.other)
-        for key in ("size", "level", "seed", "altitude", "fov"):
-            if info[key] != other_info[key]:
-                parser.error(f"different matched pose: {key}")
-        if not np.array_equal(visible, other_visible) or not np.array_equal(canonical, other_canonical):
-            parser.error("reference or visibility masks differ at matched pose")
+        try:
+            require_matched_pose(info, other_info, visible, other_visible,
+                                 canonical, other_canonical)
+        except ValueError as error:
+            parser.error(str(error))
         print("page-to-page:", metric(visible, page, other_page))
         other_control = float_control(args.other, other_visible, other_canonical, other_page)
         if control is not None and other_control is not None:

@@ -3,10 +3,10 @@
 // Build: c++ -std=c++20 -O3 -ffp-contract=off -I . <this file>
 //        build/libPlanetSimPresentation.a build/libPlanetSim.a -lzstd -pthread -o probe
 // Usage: probe level seed focus.txt altitude_radii page_level output_prefix [fov_deg]
-// Writes four raw 512x512 byte masks (visible, canonical, page,
+// Writes five raw 512x512 byte masks (visible, canonical, page,
 // float-page control, companded-page control) and metadata. Both controls
 // sample the *same* dyadic nodes; companding is only a probe of alternative
-// 16-bit precision, not a change to the stored CoastPage format.
+// 16-bit precision, not a change to the stored binary16 CoastPage format.
 #include "sim/planet/run/planet_run.hpp"
 #include "sim/presentation/coast_page.hpp"
 
@@ -238,6 +238,7 @@ int main(int argc, char** argv) {
     std::ofstream info(prefix + "-info.txt");
     info << "size " << size << "\nlevel " << level << "\nseed " << seed
          << "\naltitude " << altitude << "\nfov " << fov
+         << "\nstorage binary16"
          << "\npage_level " << static_cast<int>(page_level)
          << "\nvisible " << visible_pixels << "\nflips " << flips
          << "\nfloat_flips " << float_flips << "\nquantization_flips " << quantization_flips
@@ -252,7 +253,7 @@ int main(int argc, char** argv) {
     if (!info) throw std::runtime_error("incomplete screen metadata");
     std::cout << prefix << ": visible " << visible_pixels << ", flips " << flips
               << ", float/interpolation flips " << float_flips
-              << ", quantization-only changes " << quantization_flips
+              << ", half-float/float changes " << quantization_flips
               << ", companded/float changes " << companded_flips << '/' << float_flips
               << ", pages " << pages.size() << ", bytes "
               << pages.size() * coast_page_nodes * coast_page_nodes * 2ULL
