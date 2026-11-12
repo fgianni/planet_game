@@ -1366,6 +1366,34 @@ The first cold L4 coastal-page generation measured ~377 ms on this host,
 including lazy relief rank-table construction; it cannot run on the render
 thread. Warm-generation and asynchronous cache/frame costs are still open.
 
+**Merged with a parallel implementation (2026-11-10).** Another session
+had written the same slice independently (`CoastField` with half-float
+pages, local commit `f93d18c`). The merge keeps this field
+(`CoastWaterField`) and its test, and takes half floats for the pages
+instead of int16 metres (with the user):
+- The bilinear zero line moves by the quantisation error divided by the
+  slope. At the relief's median slope (6.5 m/km, from
+  `coast_page_probe`), int16's 0.5 m moves it by up to about 77 m; at
+  close zoom (2 m vertex spacing at level 18) that is many pixels.
+- A binary16 resolves s to about 5e-4 m near 1 m and keeps its sign.
+
+Page bytes stay explicitly little-endian, 2 a node, so the size and the
+cache arithmetic above are unchanged.
+
+`test_coast_page` now holds both sets of checks:
+- the checks above;
+- exact half-float round trips;
+- every node of all 24 level-0 cube-face edges matched to the adjacent
+  face (6 168 points);
+- full parent/child nesting and a same-face neighbour edge on the
+  coastal L2 page found by a fixed scan (face 5, 3/0; 0.049 s);
+- the bilinear sign against the field at 20 000 points: 41 differ
+  (0.21 %).
+
+The coarse L1 page still flips 44 of 4 096 quad centres, with a maximum
+field error of 812 m. That error is the bilinear reconstruction's, at a
+coarse level, not the storage's.
+
 ### Amendment 1 fixed-pose page screen probe (2026-11-09; diagnostic only)
 
 `tools/render/coast_page_screen_probe.cpp` now casts independent 512²
