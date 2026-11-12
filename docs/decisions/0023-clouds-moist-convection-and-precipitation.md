@@ -719,3 +719,55 @@ reference dynamics' climate grows more extreme with resolution (P2 48.8 K
 at L4, 60.1 K at L5); V8's level stays undecided until that is
 understood.
 
+## 17. Amendment: V8's level after INV-05 (proposed 2026-11-12, not accepted)
+
+**17.1 What INV-05 found** ([INV-05](../tasks/INV-05-reference-resolution.md),
+closed 2026-11-12):
+- Reference mode's polar caps cool 5–10 K per level (L3–L6) while its
+  tropics agree within 2 K; the larger P2 strengthens a polar jet whose
+  edge winds reach the core's 150 m/s bound at L6. It does not settle by
+  L6, and at L5 its caps are still cooling in year 2.
+- Several resolution-dependent schemes each explain 1–3 K of the caps'
+  14 K between L3 and L5 (saturation adjustment, the evaporation's
+  resolved wind, the overcast limit, L3's geometry); about 8 K is
+  unattributed, consistent with the resolved dynamics' own convergence.
+- Reference mode's first-order upwind vapour advection (ADR-0021 §4.5) is
+  a 6–8 K bias of its caps at every level, which V8's reference at L4
+  carries.
+
+So no level of reference mode is a converged climate to agree with, and
+none is reachable: L6 stops, and the trend from L3 to L6 shows no sign of
+flattening.
+
+**17.2 Options.**
+- **A. V8 stays at L4 as a same-level consistency check** (§16.2's
+  protocol unchanged). It measures whether climate mode reproduces
+  reference mode's climate at the same mesh, not a converged climate;
+  §17.1 is recorded as V8's known limitation. Cost unchanged (≈ 2 h).
+- **B. V8 moves to L5.** Reference mode at L5 is no more converged than
+  at L4 (§17.1) and costs about 12 h; climate mode hardly changes between
+  L4 and L5 (§16.5), so the gate would measure a different reference, not
+  a better one.
+- **C. An extrapolated reference** (L3–L5 to infinite resolution). §17.1's
+  trend has no plateau to extrapolate to; rejected.
+- **D. A, plus the same-level difference at L5 as a diagnostic**: V8 is
+  gated at L4 only, and the L5 difference is recorded alongside it
+  whenever V8 is measured, so that the level dependence stays visible. It
+  adds the L5 run's ≈ 12 h to each measurement.
+
+**17.3 Recommendation: A.** V8's purpose (ADR-0001's V2) is that the fast
+mode reproduces the reference mode it stands in for; at a fixed mesh that
+is well defined, and §16.2's L4 is where reference mode's P2 is closest to
+Earth's. The non-convergence is a property of reference mode, not of the
+two modes' agreement, and is recorded rather than gated. D's L5 run is
+worth doing when reference mode changes (for example §17.4), not at every
+measurement.
+
+**17.4 What it implies for reference-mode changes.** Any change to
+reference mode (such as INV-05's limited second-order vapour advection,
+which cools L4's caps by 6–8 K) changes V8's reference: it needs V8 at L4
+re-measured, and climate mode refitted or its gap recorded, in the same
+decision. That keeps V8's meaning fixed while its reference improves.
+
+**17.5 Status.** Proposed; §16.2 stands until this is accepted.
+
