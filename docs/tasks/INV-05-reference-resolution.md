@@ -1,7 +1,8 @@
 # Investigation INV-05 — Reference mode's resolution dependence
 
 - **Milestone:** P0, after INV-04 and before M9
-- **Status:** started 2026-11-03 (with the user)
+- **Status:** closed 2026-11-12 (with the user); started 2026-11-03. See
+  [Outcome](#outcome-closed-2026-11-12).
 - **Predecessor:** [INV-04](INV-04-v8-transport-and-radiation.md), whose V8 has no
   converged reference above L5
 - **Governing decisions:** ADR-0011 (winds: the reference dynamical core),
@@ -9,6 +10,72 @@
 - **Scope:** why reference mode's climate changes with the mesh level, and
   whether a level exists where it settles. No solver, preset or gate
   changes without a decision; M9 is outside this work.
+
+## Outcome (closed 2026-11-12)
+
+**The question:** why reference mode's climate changes with the mesh
+level (2.8 K colder and P2 48.8 → 60.1 K from L4 to L5, winds past the
+150 m/s bound in year 2 at L6), and whether it settles.
+
+**What happens (§1–§4):** from the same start, the polar caps (poleward of
+60°) cool 5–10 K per level while the tropics agree within 2 K (month 16:
+285.5, 280.0, 270.5, 264.7 K at L3–L6). The larger equator-to-pole
+difference strengthens a smooth zonal jet at 60–80° (not grid-point
+spikes, not the pole) by about 13 m/s per level; the edge winds, which
+carry grid-scale structure the cell winds do not, reach the dynamics'
+bound at L6 (month 24, 150.83 m/s, reproduced). It does not settle by L6,
+and at L5 the caps are still cooling in year 2.
+
+**What explains it.** Of the caps' 14 K between L3 and L5 in year 2,
+measured part by part (§19's table):
+- saturation adjustment on the cell's mean, ≈ 2.6 K (§16, M8-07's
+  sub-grid condensation);
+- the evaporation's resolved wind speed, ≈ 1.7 K (§19);
+- the clouds' overcast limit, ≈ 1 K (§6);
+- L3's almost ocean-only southern cap, ≈ 1 K (§13);
+- about 8 K not attributed to any single scheme, consistent with the
+  resolved dynamics' own convergence.
+
+The full budget (§17, §18) shows the path: in the first months a weaker
+cloud greenhouse and more surface evaporation, of colder, drier cap air;
+from month 4 the sea ice's (S) and snow's (N) albedo amplify it.
+
+**Ruled out as the level difference:** orography (§2), the upwind
+diffusion (§9), the water reaching the caps (§11, §12, with a passive
+tracer), the coastlines and land (§13), the grid-scale damping (§14).
+τ_c is not used in the preset (§15, a void test; the code read
+corrected).
+
+**Found along the way, for V8:** reference mode's first-order upwind
+vapour advection (ADR-0021 §4.5) is a level-dependent numerical diffusion
+of 4.5–13 × 10⁶ m²/s at L3, several times Earth's eddy diffusivity for
+moisture. At L3 it carries about 40 % of the poleward water (§11);
+removing it (a limited second-order scheme) cools every level's caps by
+6–8 K and strengthens the winds (L5 131 m/s in year 2; §9). V8's reference
+at L4 carries this bias.
+
+**Code added (investigation settings, default off; the defaults give the
+baseline exactly):**
+- `vapour_advection_order = 2`, the limited second-order vapour advection
+  (commit 80cc106);
+- `passive_tracer_lifetime_s`, a passive tracer (28360be);
+- `hyperviscosity_damping_s` (fcbf9c9);
+- `evaporation_resolved_wind` (b1f516c);
+- per-cell energy budget diagnostics in `SurfaceEnergyDiagnostics`
+  (c92b019).
+
+The probes are in `tools/v8/reference_*_probe.cpp`; the logs in
+`build/inv05/` here and on the RTX 5070 Ti machine.
+
+**Decisions left with the user (not taken here):**
+1. Adopt the limited second-order vapour advection in reference mode (an
+   ADR-0021 §4.5 amendment), knowing it strengthens the winds towards the
+   150 m/s bound.
+2. How V8 treats a reference that is not converged with level: V8 stays
+   at L4 with the non-convergence a known limitation, or another
+   reference.
+3. Whether the small resolution-dependent parts (sub-grid condensation,
+   the evaporation's wind speed) are worth a fix.
 
 ## What is known (from INV-04)
 
@@ -50,7 +117,7 @@ climate mode's only, but the radiation pair differs between the two.)
 | Surface drag | no dependence: bulk coefficients (1.5e-3 ocean, 4e-3 land) | — |
 | Sub-step count (`substep_count`) | yes: CFL on the mesh's smallest spacing, assuming winds ≤ 150 m/s | the guard was raised from 100 to 150 m/s once already, after a Held–Suarez spin-up reached 100.85 m/s (ADR-0011 §13) |
 | **Orography** (`dynamics_orography_max_step_m`) | **no: at most 800 m between neighbours**, a height, not a slope | the steepest slope allowed doubles per level: steeper mountains, stronger forced flow |
-| **Resolved condensation** (τ_c = 12 h, with Betts–Miller's τ_bm = 2 h) | **no:** fixed times | finer cells resolve stronger ascent; latent heat released in one cell drives more ascent there (grid-point storms). The surface step's own note: with τ_c = 3 h, winds passed 150 m/s within 3 hours at L3. Reference mode's convective share falls from 0.21 at L4 to 0.08 at L5 |
+| **Resolved condensation** (τ_c = 12 h, with Betts–Miller's τ_bm = 2 h; **corrected 2026-11-09, §15: with moist convection on, as in the preset, τ_c is not used and the column condenses the whole excess, saturation adjustment**) | **no:** fixed times | finer cells resolve stronger ascent; latent heat released in one cell drives more ascent there (grid-point storms). The surface step's own note: with τ_c = 3 h, winds passed 150 m/s within 3 hours at L3. Reference mode's convective share falls from 0.21 at L4 to 0.08 at L5 |
 
 Predictions for the trajectories:
 - **orography:** the strongest winds over steep terrain, early, whatever the climate;
@@ -522,4 +589,197 @@ heights are each cell's median sub-cell elevation):
 - The coast cells shrink with level, as they must; with the land shares
   unchanged, the cryosphere's growth (§4) follows the cooling, not the
   coastlines.
+
+## 14. The damping test (2026-11-09)
+
+The grid-scale damping time at 2 h and 32 h against the preset's 8 h
+(`hyperviscosity_damping_s`, commit fcbf9c9), two years each
+(`traj_L3_d2.log`, `traj_L3_d32.log`, `traj_L5_d2.log`, `traj_L5_d32.log`).
+Year 2:
+
+| | 2 h | 8 h | 32 h |
+|---|---:|---:|---:|
+| L3 polar caps | 280.6 K | 281.7 K | 282.2 K |
+| L5 polar caps | 268.5 K | 267.6 K | 266.5 K |
+| L3 P2 | 29.7 K | 28.2 K | 27.4 K |
+| L5 P2 | 44.0 K | 44.9 K | 46.4 K |
+| L5 largest wind | 108 m/s | 110 m/s | 113 m/s |
+
+**Not the damping:** a factor of 16 in the damping time moves the caps by
+about ±1 K (in opposite directions at L3 and L5), against the levels'
+14 K. The damping that changes 16-fold per level at a fixed wavelength
+does not set the caps.
+
+## 15. The condensation-time test: void, and a correction (2026-11-09)
+
+τ_c at 6 h and 48 h against 12 h, two years at L3 and L5
+(`traj_L3_c6.log`, `traj_L3_c48.log`, `traj_L5_c6.log`, `traj_L5_c48.log`):
+**every run is identical to its baseline** to the printed digits. The
+column uses τ_c only without moist convection
+(`atmosphere_column.hpp`: `in_solve_fraction` is 1 with moist convection,
+and the pass after it takes the whole excess too); with it, as in the
+preset, the resolved condensation is saturation adjustment, the whole
+excess over the cell's mean saturation each step (ADR-0023 §4.3). The
+code-read table above said a fixed 12 h; that was wrong.
+
+What it means for the condensation lead: the preset's resolved
+condensation has no time scale and no sub-grid width (M8-07's β = 0), so
+a cell condenses exactly when its mean saturates, and finer cells, whose
+means vary more, saturate more of the time. That is a resolution
+dependence built into the scheme, consistent with §10 and §12 (resolved
+condensation up 40–75 % from L3 to L5 in every band). It is not yet shown
+to set the caps' temperature.
+
+## 16. The sub-grid condensation test (2026-11-10)
+
+M8-07's sub-grid condensation (`cloud_subgrid_width` β; the preset's 0 is
+saturation adjustment) at β = 0.2 and 0.4, two years at L3 and L5
+(`traj_L3_b02.log`, `traj_L3_b04.log`, `traj_L5_b02.log`,
+`traj_L5_b04.log`; checked first that β reaches reference mode: L3's
+first month differs). Year 2:
+
+| | β = 0 | β = 0.2 | β = 0.4 |
+|---|---:|---:|---:|
+| L3 polar caps | 281.7 K | 282.1 K | 281.3 K |
+| L5 polar caps | 267.6 K | 270.5 K | 270.0 K |
+| **L5 − L3, caps** | **−14.1 K** | **−11.5 K** | **−11.4 K** |
+| L5 − L3, P2 | +16.7 K | +15.2 K | +14.4 K |
+| L5 largest wind | 110 m/s | 110 m/s | 105 m/s |
+
+- **A part, not the cause:** sub-grid condensation warms L5's caps by
+  2.3–2.9 K and leaves L3's within 0.4 K, so it removes about 2.6 K (18 %)
+  of the levels' 14 K; doubling β adds nothing more. Saturation
+  adjustment on the cell's mean contributes to the level difference, as
+  §15 reasoned, but most of the gap is elsewhere.
+
+### Status (2026-11-10)
+
+Of the caps' 14 K between L3 and L5 in year 2: about 2.6 K is the
+saturation adjustment (§16), about 1 K the clouds' overcast limit (§6),
+and about 1 K L3's ocean-only southern cap (§13). Ruled out as the rest:
+orography (§2), the upwind diffusion as the level difference (§9), the
+water reaching the caps (§11, §12), the coastlines and land (§13), the
+grid-scale damping (§14). The next step is to measure the caps' energy
+budget in full by level (top of atmosphere, surface, the atmosphere's
+storage), so that the term carrying the rest is found rather than
+guessed.
+
+## 17. The caps' full energy budget (2026-11-10)
+
+Per-cell energy diagnostics (commit c92b019; each cell's share of the
+surface step's sums, closing as `closure_residual_J` does: the caps'
+physics residual is 0.0000 W/m²) with the dynamics' dry and latent
+convergence and the clouds' effects
+([`tools/v8/reference_cap_energy_probe.cpp`](../../tools/v8/reference_cap_energy_probe.cpp);
+`build/inv05/energy_L3.log` … `energy_L5.log`). Upwind (the preset), W/m²
+of the cap:
+
+| Year 2 | S: L3 | L4 | L5 | L5 − L3 | N: L3 | L4 | L5 | L5 − L3 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Sunlight absorbed | 163.7 | 138.6 | 111.1 | **−52.6** | 133.7 | 134.4 | 120.1 | −13.6 |
+| Outgoing longwave | 208.4 | 204.9 | 199.6 | −8.8 | 218.9 | 216.9 | 209.0 | −9.9 |
+| Cloud shortwave effect | −17.4 | −14.7 | −11.3 | +6.1 | −21.5 | −19.5 | −16.1 | +5.4 |
+| Cloud longwave effect | 38.9 | 32.0 | 22.3 | −16.6 | 41.4 | 34.6 | 26.4 | −15.0 |
+| Dynamics, dry | 17.8 | 19.4 | 31.1 | +13.3 | 21.0 | 26.1 | 33.0 | +12.0 |
+| Dynamics, latent | 48.6 | 44.6 | 44.2 | −4.4 | 54.9 | 45.7 | 42.7 | −12.2 |
+| Storage | +4.0 | −20.9 | −40.6 | −44.6 | −29.3 | −35.6 | −43.0 | −13.7 |
+| Sensible, surface to air | 13.3 | 1.2 | −9.9 | −23.2 | 4.9 | −2.5 | −11.3 | −16.2 |
+| Surface temperature (K) | 279.8 | 273.6 | 265.0 | −14.9 | 282.7 | 278.2 | 270.2 | −12.5 |
+
+L5 − L3 earlier (W/m²):
+
+| | S, months 1–3 | S, months 4–12 | N, months 1–3 | N, months 4–12 |
+|---|---:|---:|---:|---:|
+| Sunlight absorbed | +2.9 | −49.0 | −10.7 | +4.9 |
+| Outgoing longwave | +13.9 | +4.0 | +19.6 | +4.2 |
+| Cloud longwave effect | −21.6 | −17.6 | −27.6 | −20.1 |
+| Dynamics, latent | −55.3 | −24.8 | −56.7 | −35.0 |
+| Storage | −53.8 | −73.0 | −85.0 | −30.6 |
+
+- **The south's difference is the sea ice's albedo** once it grows: 53
+  W/m² less sunlight absorbed in year 2 (ice 0.02 → 0.55 of the cap), with
+  the cap still cooling at 41 W/m² at L5 against equilibrium (+4) at L3:
+  the gap is still widening.
+- **The north's is spread:** less sunlight (more snow), less cloud
+  greenhouse, less latent heat brought in; the dry heat brought in rises
+  (+12) and partly offsets.
+- **The first months:** less latent heat brought in (−55 W/m²) and less
+  cloud greenhouse (−22 to −28 W/m²), before the ice. The upwind
+  diffusion is most of the first (§11), yet with it removed the gap
+  remains (§9); the same budget under order 2 (`energy_L3_o2.log` …
+  `energy_L5_o2.log`) shows which term carries it then.
+
+## 18. The budget under order 2: the caps' evaporation (2026-11-10)
+
+The same budget with the limited second-order vapour advection
+(`energy_L3_o2.log` … `energy_L5_o2.log`), where every level receives about
+the same water (§11, §12). L5 − L3, W/m² of the cap:
+
+| | S, months 1–3 | S, 4–12 | S, year 2 | N, months 1–3 | N, 4–12 | N, year 2 |
+|---|---:|---:|---:|---:|---:|---:|
+| Evaporation's latent heat (surface cooling) | **+37.4** | +25.0 | +4.5 | **+35.7** | +26.5 | +5.4 |
+| Cloud longwave effect | −10.3 | −10.6 | −11.5 | −15.0 | −12.5 | −11.6 |
+| Latent heat brought in | +6.4 | +3.9 | +6.8 | −3.9 | −11.4 | +1.1 |
+| Sunlight absorbed | +1.9 | −44.8 | −49.0 | −25.3 | +1.0 | −25.2 |
+| Dry heat brought in | −35.8 | −18.5 | +9.3 | −9.9 | −1.0 | +9.6 |
+| Surface temperature (K) | −4.0 | −7.3 | −13.9 | −3.1 | −6.9 | −13.0 |
+
+- **The first difference is the caps' own evaporation:** with the water
+  supply equal, L5's caps evaporate 37 W/m² more than L3's from the
+  first months (S: 3.5 against 40.9 W/m² in months 1–3), a surface
+  cooling, with the cloud greenhouse 10–15 W/m² weaker throughout; the
+  ice (S) and snow (N) albedo follow from month 4.
+- **A mechanism in the code:** evaporation (ADR-0021 §4.3) is a bulk
+  transfer with the cell's resolved bottom-layer wind speed plus a fixed
+  5 m/s gustiness (`surface_energy.cpp`, `gustiness_m_s`), while the
+  sensible heat uses a fixed exchange coefficient
+  (`air_exchange_W_m2_K`). A cell's mean wind speed is smaller than the
+  mean speed of finer cells over it, so finer meshes resolve more wind
+  speed and evaporate more from the same flow; only the evaporation
+  carries it.
+- Test next: evaporation with the gustiness alone (the resolved wind left
+  out) at every level; if the levels' difference closes, this is it.
+
+## 19. The evaporation-wind test (2026-11-10)
+
+Evaporation with the gustiness alone (`evaporation_resolved_wind = false`,
+commit b1f516c), two years at L3, L4 and L5 (`traj_L3_w0.log` …
+`traj_L5_w0.log`). Year 2:
+
+| Polar caps | L3 | L4 | L5 | L5 − L3 |
+|---|---:|---:|---:|---:|
+| Preset | 281.7 K | 276.0 K | 267.6 K | −14.1 K |
+| Gustiness only | 281.8 K | 276.4 K | 269.4 K | −12.4 K |
+
+**A part, not the cause:** about 1.7 K of the 14 K. The caps' larger
+evaporation at L5 (§18) comes mostly from their air, not the resolved
+wind speed.
+
+## Status (2026-11-10, after §19)
+
+Of the caps' 14 K between L3 and L5 in year 2, the parts found, each
+measured alone (they need not add):
+
+| Part | Size | § |
+|---|---:|---|
+| Saturation adjustment on the cell's mean | ≈ 2.6 K | 16 |
+| The evaporation's resolved wind speed | ≈ 1.7 K | 19 |
+| The clouds' overcast limit | ≈ 1 K | 6 |
+| L3's almost ocean-only southern cap | ≈ 1 K | 13 |
+| **Not explained** | **≈ 8 K** | |
+
+Ruled out as the level difference: orography (§2), the upwind diffusion
+(§9, though it is a 6–8 K bias at every level), the water reaching the
+caps (§11, §12), the coastlines and land (§13), the grid-scale damping
+(§14); τ_c is not used in the preset (§15).
+
+What the budget shows (§17, §18): the caps' difference starts in the
+first months as a weaker cloud greenhouse and more surface evaporation,
+both of colder and drier cap air; from month 4 the sea ice's (S) and
+snow's (N) albedo amplify it, and in year 2 L5's caps are still cooling
+(storage −40 W/m² against +4 at L3), so the two-year gap is not an
+equilibrium one. Several resolution-dependent schemes each contribute a
+part; none found carries most of it. What remains is consistent with the
+resolved dynamics' own convergence (the eddies and the jet resolved
+better with level), which no single switch isolates.
 

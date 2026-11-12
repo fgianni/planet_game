@@ -70,9 +70,14 @@ on the RTX 5070 Ti machine** (started 2026-11-02 09:16, about 29 h; log
 `~/src/planet_game_runs/a3db687/build/inv04/v8_L6_c25.log` there): it
 decides whether reference mode settles by L5. It did not finish: reference
 mode stopped in its second year at L6, its winds past the dynamics' 150 m/s
-bound (ADR-0023 §16.6). **Current: [INV-05](docs/tasks/INV-05-reference-resolution.md),
-reference mode's resolution dependence** (started 2026-11-03). Nothing is
-tuned against V8 meanwhile. ADR-0024 §9's fallback (R_f = 100 W/m², with §9.6's restart) is
+bound (ADR-0023 §16.6). **[INV-05](docs/tasks/INV-05-reference-resolution.md),
+reference mode's resolution dependence, closed 2026-11-12:** the polar caps
+cool 5–10 K per level and do not settle by L6; several resolution-dependent
+schemes each explain 1–3 K and about 8 K is unattributed; reference mode's
+upwind vapour advection is a 6–8 K bias of its caps at every level. Its
+"Outcome" lists the decisions left (a second-order vapour advection, how
+V8 treats an unconverged reference, the small fixes). Nothing is tuned
+against V8 meanwhile. ADR-0024 §9's fallback (R_f = 100 W/m², with §9.6's restart) is
 on in the preset; the column gate is on the residual, 1e-9 W/m² (ADR-0027
 §10); `PlanetRun` has no resume constructor. INV-04's "Outcome" and open
 tasks list the rest. Changes to the fallback or nonlinear solve require an architecture

@@ -1614,7 +1614,6 @@ The first cold L4 coastal-page generation measured ~377 ms on this host,
 including lazy relief rank-table construction; it cannot run on the render
 thread. Warm-generation and asynchronous cache/frame costs are still open.
 
-
 **Merged with a parallel implementation (2026-11-10).** Another session
 had written the same slice independently (`CoastField` with half-float
 pages, local commit `f93d18c`). The merge keeps this field
@@ -1642,3 +1641,126 @@ cache arithmetic above are unchanged.
 The coarse L1 page still flips 44 of 4 096 quad centres, with a maximum
 field error of 812 m. That error is the bilinear reconstruction's, at a
 coarse level, not the storage's.
+
+### Amendment 1 fixed-pose page screen probe (2026-11-09; diagnostic only)
+
+**Historical format note:** the 2026-11-09 tables in this section were
+captured with the original 1 m int16 page before the parallel half-float
+merge. They are not the current binary16 page baseline; see the rerun below.
+
+`tools/render/coast_page_screen_probe.cpp` now casts independent 512²
+pixel-centre unit-sphere rays at a fixed nadir camera and compares direct
+`CoastWaterField::sample()` classification with bilinear `CoastPage` values
+from a chosen uniform resident level. Pages are generated lazily by the
+cube-face key reached by each ray; face inverse round-trips are checked on
+all six faces. The raw reference, page and visibility masks are separate.
+`measure_coast_page_screen.py` erodes two silhouette pixels, measures
+changed centres from **both** binary shores, and counts fully interior
+wet/dry components of area ≥4 pixels that have no overlap in the other
+mask. It can compare two levels at the **same** pose and refuses different
+reference/visibility masks. It does not ray-intersect raised terrain, draw
+triangles or shaders, antialias, prove matched contour displacement or
+identify every inlet connected to the frame. A changed component is not
+automatically an island; a one-pixel missing feature can be several pixels
+from the coarse shore yet still be below the four-pixel area criterion.
+
+Seed 20260928, original probe focus, 75° FOV; all quoted changes are over
+258,064 common interior pixels, and no ≥4-pixel wholly missing component
+was found in these particular binary masks:
+
+| Mesh / altitude / page level | Min samples per px | Resident pages / raw bytes | Page vs independent field: changes / >1 px from either shore | Adjacent-level matched-pose changes / >1 px from either page shore |
+|---|---:|---:|---:|---:|
+| L4 / 0.04 / 6 | 1.25 | 16 / 2.11 MB | 84 / 2 | 6→7: 91 / 1 |
+| L4 / 0.04 / 7 | 2.50 | 48 / 6.34 MB | 79 / 3 | 7→8: 86 / 2 |
+| L4 / 0.04 / 8 | 5.00 | 160 / 21.14 MB | 65 / 1 | — |
+| L4 / 0.02 / 7 | 1.25 | 16 / 2.11 MB | 45 / 0 | 7→8: 54 / 0 |
+| L4 / 0.02 / 8 | 2.50 | 48 / 6.34 MB | 41 / 0 | — |
+| L6 / 0.04 / 6 | 1.25 | 18 / 2.38 MB | 214 / 6 | 6→7: 180 / 2 |
+| L6 / 0.04 / 7 | 2.51 | 52 / 6.87 MB | 94 / 4 | 7→8: 102 / 4 |
+| L6 / 0.04 / 8 | 5.02 | 165 / 21.80 MB | 76 / 0 | — |
+| L6 / 0.175 / 5 | 2.74 | 64 / 8.45 MB | 160 / 3 | 5→6: 113 / 3 |
+| L6 / 0.175 / 6 | 5.47 | 216 / 28.53 MB | 55 / 0 | — |
+
+The L6/0.175 level-5→6 comparison has a **10.63 px** maximum distance
+from the coarse page's binary shore, but the three deep changed pixels
+are separate one-pixel components. The nominal two-samples-per-pixel
+request target does not guarantee that every tiny feature is represented
+by a resident page. All page figures are only pages touched by this view,
+not a global 512-tile flight/cache budget. Cold generation of the 64
+L6/0.175 level-5 pages took ~4.18 s in the headless process (including
+lazy relief rank tables); they cannot be generated on the render thread.
+The binary metrics are **not** the after-AA ≤1 px matched-contour gate,
+nor a proof that four-pixel islands/inlets cannot appear at another pose.
+Actual page residency while loading, raised geometry, both styles, varied
+seeds/sea levels/all faces, continuous zoom and L6 frame/cache gates remain
+open. Production terrain is unchanged.
+
+### Page precision attribution (2026-11-10; probe-only controls)
+
+**Historical format note:** the "Current 1 m page" column below means
+the page format *at the time*, before the accepted half-float merge. The
+unquantized and companded controls remain informative, but the committed
+page is now binary16. Do not use those int16 differences as its gate result.
+
+The fixed-pose probe now resamples only the **same global dyadic nodes**
+needed by its pixel rays, caches the exact `CoastWaterField` doubles at
+those nodes, and bilinearly interpolates them as an unquantized control.
+This leaves the page lattice and camera fixed while removing the committed
+page's 1 m signed-int16 rounding/sign-preserving bias. A second control
+simulates a signed 16-bit logarithmic-magnitude encoding (100 m scale,
+±32767 m range, nonzero sign preserved) and decodes before interpolation.
+It is **not** packed into page bytes or a proposed production format; its
+CPU and shader costs and byte identity have not been measured. The native
+probe exports separate masks; the Python metric reports changes uniquely
+attributable to storage versus errors shared with the unquantized lattice.
+
+At seed 20260928, 75° FOV, 512² unit-sphere pixel-centre rays, 258,064
+interior pixels; each entry is changed pixels / pixels more than 1 px
+from **either** binary shore (not an AA contour displacement):
+
+| Level / altitude / page level | Current 1 m page | Unquantized lattice | Probe-only companded 16-bit |
+|---|---:|---:|---:|
+| L4 / 0.04 / 7 | 79 / 3 | 15 / 2 | 15 / 2 |
+| L4 / 0.04 / 8 | 65 / 1 | 3 / 0 | 6 / 0 |
+| L6 / 0.04 / 7 | 94 / 4 | 65 / 2 | 64 / 2 |
+| L6 / 0.04 / 8 | 76 / 0 | 15 / 0 | 16 / 0 |
+| L6 / 0.175 / 5 | 160 / 3 | 154 / 2 | 154 / 1 |
+
+Matched-pose adjacent-level **page-to-page** comparisons also retain
+deep binary differences with exact lattice nodes: L4/0.04 7→8 has 12
+changes, two >1 px (companded: 11/two); L6/0.04 7→8 has 50/two
+(companded: 48/two); L6/0.175 5→6 has 115/two, maximum 9.06 px
+from the coarse unquantized binary shore (companded: 115/one, max 4.24 px).
+All deep changed components in these controls have only one or two pixels.
+Thus 1 m quantization contributes substantially to **total** coast-pixel
+error, especially on the fine pages, but cannot alone account for the
+remaining small-feature handoff differences. A higher-precision 16-bit
+mapping is worth testing further, **not selected**. The no-feature-≥4 px
+and ≤1 px after-AA gates remain open; no production code or style changed.
+
+### Half-float page rerun (2026-11-12; headless, not rendered)
+
+After the parallel merge made `CoastPage` binary16, the same C++ fixed-pose
+probe was **relinked** against the current presentation archive and run at
+seed 20260928, 75° FOV, 512². Its metadata now identifies `storage
+binary16`; the float control uses the same dyadic lattice without storage
+rounding. The tested half-float page and unquantized control classify
+**identically at every pixel centre** at L4/0.04 page levels 7 and 8, and
+L6/0.04 levels 7 and 8 and L6/0.175 levels 5 and 6. Thus these residuals
+are not the old 1 m storage quantisation error.
+
+| Matched pose / page pair | Coarse/fine vs direct field (changed interior px) | Page-to-page changes | >1 px from either binary page shore | Largest deep changed component |
+|---|---:|---:|---:|---:|
+| L4 / 0.04 / 7→8 | 15 / 3 | 12 | 2 | 1 px |
+| L6 / 0.04 / 7→8 | 65 / 15 | 50 | 2 | 2 px |
+| L6 / 0.175 / 5→6 | 154 / 55 | 115 | 2 | 1 px |
+
+At the L6 planet-blend pose, the largest binary distance from the coarse
+shore is still 9.06 px for an isolated changed pixel. The old 10.63 px
+number belonged to the int16 page. All figures use pixel-centred
+unit-sphere rays and binary masks, **not** antialiased matched-contour
+movement. The old subpixel-coverage probe code from a prior uncommitted
+session is not in this merged tree; its earlier fixed-pose results must not
+be treated as a rerun on binary16. The four-pixel feature, raised-terrain,
+actual mixed cell/tile style, continuous zoom and L6 cache/frame gates
+remain open. Production terrain and both shaders are unchanged.

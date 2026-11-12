@@ -121,6 +121,10 @@ struct SurfaceEnergyParameters {
     // INV-05, investigations only: reference mode's grid-scale damping time
     // (s; 0 keeps AtmosphereDynamicsParameters' 8 h).
     double hyperviscosity_damping_s = 0.0;
+    // INV-05, investigations only: false evaporates with the gustiness
+    // alone, the resolved bottom-layer wind left out (ADR-0021 §4.3 uses
+    // both; true, the preset).
+    bool evaporation_resolved_wind = true;
 };
 
 // The bulk transfer coefficients of evaporation (ADR-0021 §4.3): the tiles'
@@ -379,6 +383,23 @@ struct SurfaceEnergyDiagnostics {
     // ADR-0008 V2: 1e-12 of the moved and stored water plus the rounding
     // floor 4ε of the stored water.
     [[nodiscard]] double water_gate_kg() const noexcept;
+    // INV-05: each cell's share of the step's energy sums (W/m² of cell):
+    // the sunlight its tiles absorbed, what leaves it to space (the column's
+    // outgoing longwave), its storage change (tiles and atmosphere) and the
+    // atmosphere's part, the surface's sensible heat and the evaporation's
+    // latent heat.
+    std::vector<double> cell_absorbed_W_m2;
+    std::vector<double> cell_outgoing_W_m2;
+    std::vector<double> cell_storage_W_m2;
+    std::vector<double> cell_atmosphere_storage_W_m2;
+    std::vector<double> cell_sensible_W_m2;
+    std::vector<double> cell_evaporation_latent_W_m2;
+    // The tiles' melt and freeze heat (latent_heat_J's share) and the
+    // condensation's latent heat returned to the air, so that each cell
+    // closes as closure_residual_J does: absorbed − outgoing (+ transport)
+    // = storage + melt + evaporation − condensation.
+    std::vector<double> cell_melt_latent_W_m2;
+    std::vector<double> cell_condensation_latent_W_m2;
 };
 
 // Advances both tiles of every cell by one backward-Euler step of length dt_s
