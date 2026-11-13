@@ -128,6 +128,26 @@ void ancestor(test::Context& test, const TileKey& key, int up, const TerrainReli
     PLANETSIM_EXPECT(test, make_terrain_tile(key, relief, drawing, &own, &field).coast_key == key);
 }
 
+// V10 (ADR-0022) with coast pages: a tile made with its own page (the
+// settled state) is byte-identical however it is reached. From a fresh
+// relief and field, after a neighbour's, its parent's and a child's pages,
+// and after the tile was made with its parent's page (the state while its
+// own loads, which depends on what was resident by design, A1.3).
+void path_independent(test::Context& test, const TileKey& key, const TerrainSnapshot& terrain,
+                      const std::shared_ptr<const PlanetMesh>& mesh, std::uint64_t seed,
+                      const TileDrawing& drawing, const CoastPage& page, const TileGeometry& tile) {
+    const TerrainRelief fresh(mesh, terrain, seed);
+    const CoastWaterField fresh_field(fresh, terrain);
+    const TileKey beside{key.face, key.level, key.x ^ 1U, key.y};
+    (void)make_coast_page(beside, fresh_field, 3U);
+    const CoastPage parent = make_coast_page(tile_parent(key), fresh_field, 5U);
+    (void)make_coast_page(tile_children(key)[2], fresh_field);
+    (void)make_terrain_tile(key, fresh, drawing, &parent, &fresh_field);
+    const CoastPage again = make_coast_page(key, fresh_field, 2U);
+    PLANETSIM_EXPECT(test, again.signed_water_le == page.signed_water_le);
+    PLANETSIM_EXPECT(test, same_bytes(tile, make_terrain_tile(key, fresh, drawing, &again, &fresh_field)));
+}
+
 }  // namespace
 
 int main() {
@@ -145,6 +165,12 @@ int main() {
     drawing.radius_m = run.parameters().radius_m;
     // A detailed coastal tile and a filtered one (R1-05's probes' tiles).
     check(test, TileKey{5, 2, 3, 0}, relief, field, drawing);
+    {
+        const TileKey key{5, 4, 13, 0};
+        const CoastPage page = make_coast_page(key, field, 8U);
+        const TileGeometry tile = make_terrain_tile(key, relief, drawing, &page, &field);
+        path_independent(test, key, terrain, mesh, scenario.seed, drawing, page, tile);
+    }
     check(test, TileKey{5, 1, 0, 1}, relief, field, drawing);
     // From an ancestor's page, one, three and five levels up.
     const TileKey deep{5, 5, 24, 1};

@@ -1729,6 +1729,34 @@ Still open:
 - the cell mesh's own geometry, which the gate does not need now that
   its coast is read on the sphere.
 
+**V10 and V4 with coast pages (2026-11-13).**
+
+**V10 (ADR-0022: a tile reached by two paths is byte-identical).**
+- With pages, a tile passes through states made with an ancestor's page
+  while its own loads. Those depend on what is resident, by design (A1.3).
+- V10 holds for the settled tile, made with its own page.
+  `test_coast_tile` now makes that page and tile from a fresh relief and
+  water field. Beforehand it makes a neighbour's, its parent's and a
+  child's pages, and the tile itself from its parent's page, with other
+  worker counts. Page and tile are byte-identical.
+
+**V4 (hypsometry).**
+- `TerrainRelief::sample()` is unchanged, so `test_terrain_relief`'s V4
+  stands.
+- The drawn tiles differ where the page sets them: land touching water,
+  or land where the page says water, is drawn at sea level. Scratch
+  measurement, 216 tiles (six per face at each level), seed 20260928:
+
+| Mesh / tile level | Land vertices drawn at sea level | Their mean (largest) height | Drawn mean land height falls |
+|---|---:|---:|---:|
+| L4 / 4 (filtered) | 5.3 % | 110 m (1 453 m) | 0.77 % |
+| L4 / 7 | 0.96 % | 48 m (201 m) | 0.035 % |
+| L6 / 6 | 3.4 % | 111 m (645 m) | 0.47 % |
+| L6 / 9 | 0.37 % | 11 m (38 m) | 0.008 % |
+
+- The largest single drops are on coarse filtered tiles, whose smoothed
+  height disagreed with the page about the coast.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and
