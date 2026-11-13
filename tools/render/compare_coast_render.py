@@ -14,9 +14,11 @@ finest features (at most 16 x 16). Each pose reports:
 - the handoff: the arriving frame (previous pose's tiles and pages) against
   the settled one, at the same pose.
 
-A pixel is water at coverage above 0.5. A differing pixel is deep when its
-reference's eight neighbours are all on its own side: the shore has moved
-by more than about a pixel. Deep regions are 8-connected regions of
+A pixel is water at coverage above 0.5. A differing pixel is deep when the
+reference has no shore in it or its eight neighbours (all nine fully water,
+or fully land): the drawn shore is then more than a pixel from the
+canonical one (ADR-0030's "farther than one projected pixel from the
+canonical contour"). Deep regions are 8-connected regions of
 differences of at least four pixels that hold a deep pixel. The gate
 (ADR-0030 and A1.5a), for each comparison: where a pixel resolves the
 relief's finest features (no wider than half its wavelength), no deep
@@ -67,9 +69,10 @@ def compare(drawn, truth, valid):
     wet_drawn = drawn > 0.5
     wet_truth = truth > 0.5
     differ = (wet_drawn != wet_truth) & valid
-    # Deep: the truth's 3 x 3 neighbourhood is all on the pixel's side.
-    all_wet = ndimage.binary_erosion(wet_truth, structure=EIGHT, border_value=1)
-    all_dry = ndimage.binary_erosion(~wet_truth, structure=EIGHT, border_value=1)
+    # Deep: no shore in the reference's 3 x 3 neighbourhood (all of it fully
+    # water or fully land).
+    all_wet = ndimage.binary_erosion(truth >= 1.0, structure=EIGHT, border_value=1)
+    all_dry = ndimage.binary_erosion(truth <= 0.0, structure=EIGHT, border_value=1)
     deep = differ & (all_wet | all_dry)
     labels, count = ndimage.label(differ, structure=EIGHT)
     deep_regions = 0

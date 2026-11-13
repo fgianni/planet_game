@@ -35,10 +35,11 @@ float coast_page_tap(vec2 page_uv, float layer, float mode, float ramp) {
 	return clamp(0.5 + value / ramp, 0.0, 1.0);
 }
 
-// The water of a pixel, its footprint's mean: four taps a quarter pixel
-// from its centre (a rotated grid, from the page coordinates' screen
-// derivatives dx and dy). A pixel spans several page nodes at coarse
-// levels, where one tap would give a nearly hard edge.
+// The water of a pixel, its footprint's mean: an n x n grid of taps over
+// the pixel (from the page coordinates' screen derivatives dx and dy), at
+// most a page node apart, so n is 2 for most pixels and grows to 8 where
+// a pixel's footprint spans many nodes (grazing views at the limb, a
+// coarser page while its children load). One tap would alias there.
 float coast_page_water_grad(vec2 page_uv, vec2 dx, vec2 dy, float slot, float fallback) {
 	if (slot < -0.5) {
 		return fallback;
@@ -49,13 +50,19 @@ float coast_page_water_grad(vec2 page_uv, vec2 dx, vec2 dy, float slot, float fa
 		return mode > 0.5 ? 1.0 : (mode < -0.5 ? 0.0 : fallback);
 	}
 	float layer = round(layer_and_mode.x);
-	// A point page's zero line, antialiased over half a pixel a tap.
+	float span = max(length(dx), length(dy)) * 256.0; // page nodes across the pixel
+	int n = int(clamp(ceil(span), 2.0, 8.0));
+	// A point page's zero line, antialiased over a tap's share of the pixel.
 	float centre = texture(coast_pages, vec3((clamp(page_uv, 0.0, 1.0) * 256.0 + 0.5) / 257.0, layer)).r;
-	float ramp = max(0.5 * fwidth(centre), 1e-6);
-	return 0.25 * (coast_page_tap(page_uv + 0.125 * dx + 0.375 * dy, layer, mode, ramp) +
-	               coast_page_tap(page_uv - 0.375 * dx + 0.125 * dy, layer, mode, ramp) +
-	               coast_page_tap(page_uv - 0.125 * dx - 0.375 * dy, layer, mode, ramp) +
-	               coast_page_tap(page_uv + 0.375 * dx - 0.125 * dy, layer, mode, ramp));
+	float ramp = max(fwidth(centre) / float(n), 1e-6);
+	float sum = 0.0;
+	for (int j = 0; j < n; j++) {
+		for (int i = 0; i < n; i++) {
+			vec2 at = vec2((float(i) + 0.5) / float(n) - 0.5, (float(j) + 0.5) / float(n) - 0.5);
+			sum += coast_page_tap(page_uv + at.x * dx + at.y * dy, layer, mode, ramp);
+		}
+	}
+	return sum / float(n * n);
 }
 
 // On a tile, whose page coordinates are continuous over its mesh.

@@ -1685,6 +1685,50 @@ Still open:
 - picking;
 - V4, V10 and memory at L6.
 
+**Task 4: the rendered gate passes in every sweep (2026-11-13).**
+Following the user's decisions (ADR-0030 A1.5b: the gate at true-scale
+relief; the limb and shortfall pixels to be fixed):
+
+- **Mipmapped pages (tried, reverted).** Isotropic mip levels over-blurred
+  the tilted low-altitude views (at 2 km, 136 differing pixels against
+  about 30). A 257-node page does not halve onto its own lattice, and a
+  point page's averaged s moves its zero line.
+- **Adaptive taps instead.** A pixel's water is the mean of an n × n grid
+  of taps over its footprint, at most a page node apart. That is 2 × 2
+  for most pixels, and up to 8 × 8 at grazing views and for coarse pages.
+  At L6 orbit the settled frame differs from the field on 64 pixels
+  instead of about 600.
+- **The sweep halves the altitude between poses** (24 000 km to 1.5 km,
+  15 poses), so an arrival is one level coarse, as in a continuous zoom.
+- **The arrival frame against the field is the shortfall state,** reported
+  and not gated (A1.3). The handoff, arrival against settled, is gated.
+- **A deep pixel needs no shore in the reference's 3 × 3 neighbourhood**
+  (all fully water or fully land). That is ADR-0030's "farther than one
+  projected pixel from the canonical contour". The earlier test flagged a
+  pixel the shore crossed, at 0.17 of coverage change.
+
+Results (`build/r105/gate2/*.compare2.log`, `run_sweeps.sh`): L4 and L6,
+seeds 20260928 and 42, two coastal foci each, both styles. That is 16
+sweeps of 14 gated poses (12 000 km to 1.5 km), each pose's settled frame
+against the field and its handoff:
+- **All 16 pass: 0 comparisons outside the gate.**
+- No deep pixel where features are resolved, no coverage jump of 0.5 or
+  more where they are not, and no deep region across any handoff.
+- Both styles give identical results.
+
+R1-04's flight still passes V9 and V13. Wall p95 at L4: 8.0, 8.3 and
+7.3 ms; at L6: 7.9, 8.3 and 11.2 ms. GPU p95 at most 2.4 ms. The other
+Godot tests pass.
+
+Still open:
+- V4 (hypsometry) with shore flattening;
+- V10 (path-independent tile bytes) with pages;
+- the L6 memory budget;
+- picking;
+- the L4 planet band's p99 (24 ms; without pages 8.3);
+- the cell mesh's own geometry, which the gate does not need now that
+  its coast is read on the sphere.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and
