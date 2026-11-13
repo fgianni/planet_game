@@ -604,6 +604,16 @@ Threshold flips are still counted and reported, but do not fail the gate
 there. Where features are resolved, the ≤ 1 px rule above applies as
 written. The four-pixel island rule applies everywhere.
 
+### A1.5b The rendered gate is measured at true-scale relief (with the user, 2026-11-13)
+
+At the scene's own relief exaggeration, raised land hides water behind it
+in oblique views, most at 1 000–4 000 km of altitude. That is correct 3D
+drawing, not a coast error, and a reference on the bare sphere cannot
+model it. The rendered screen-space gate is therefore measured at
+true-scale relief (exaggeration 1). There the drawn coast lies at sea
+level (A1.4), and the canonical contour on the unit sphere is its
+reference (R1-05, "Task 4: the rendered zoom sweep").
+
 ### A1.6 Tasks
 
 1. Build the field (κ, D, s) and `make_coast_page` in `sim/presentation`,
