@@ -70,7 +70,12 @@ TerrainTiles::TerrainTiles(godot::Node3D* parent,
         coast_pages_.instantiate();
         coast_pages_->create_from_images(layers);
         material_->set_shader_parameter("coast_pages", coast_pages_);
+        coast_table_dirty_ = true;
+        rebuild_page_table();
         for (int layer = coast_layer_count - 1; layer >= 0; --layer) free_layers_.push_back(layer);
+        for (int slot = coast_slot_count - 1; slot >= 0; --slot) free_slots_.push_back(slot);
+        coast_slots_dirty_ = true;
+        rebuild_slot_table();
     }
     highest_radius_ = 1.0 + drawing_.relief_exaggeration / drawing_.radius_m *
                                 std::max(0.0, highest_elevation_m - drawing_.sea_level_m);
@@ -265,33 +270,104 @@ TerrainTiles::Page* TerrainTiles::best_page(const presentation::TileKey& key) {
     return nullptr;
 }
 
-// The least recently used page that no cached tile is drawn with gives up
-// its layer; false if there is none.
-bool TerrainTiles::free_unused_page_layer() {
-    auto oldest = pages_.end();
-    for (auto it = pages_.begin(); it != pages_.end(); ++it) {
-        if (it->second.users == 0 && it->second.layer >= 0 && it->second.last_used != frame_ &&
-            (oldest == pages_.end() || it->second.last_used < oldest->second.last_used))
-            oldest = it;
+// A layer for a page drawn with this frame: one that is free, or the layer
+// of the page needed longest ago (not this frame). False if none is.
+bool TerrainTiles::ensure_layer(Page& page) {
+    page.needed = frame_;
+    if (page.layer >= 0 || page.mode == 1.0F || page.mode == -1.0F) return true;
+    if (free_layers_.empty()) {
+        Page* oldest = nullptr;
+        for (auto& [key_id, other] : pages_) {
+            if (other.layer >= 0 && other.needed != frame_ && (oldest == nullptr || other.needed < oldest->needed))
+                oldest = &other;
+        }
+        if (oldest == nullptr) return false;
+        free_layers_.push_back(oldest->layer);
+        oldest->layer = -1;
     }
-    if (oldest == pages_.end()) return false;
-    free_layers_.push_back(oldest->second.layer);
-    pages_.erase(oldest);
+    page.layer = free_layers_.back();
+    free_layers_.pop_back();
+    coast_pages_->update_layer(page_image(&page.page->signed_water_le), page.layer);
+    coast_slots_dirty_ = true;
     return true;
 }
 
 void TerrainTiles::add_page(std::shared_ptr<const presentation::CoastPage> made) {
+    if (free_slots_.empty()) return; // asked for again once pages are evicted
     Page page;
     page.page = std::move(made);
     page.last_used = frame_;
-    page.mode = constant_coast(*page.page);
-    if (page.mode == 0.0F && (!free_layers_.empty() || free_unused_page_layer())) {
-        page.layer = free_layers_.back();
-        free_layers_.pop_back();
-        coast_pages_->update_layer(page_image(&page.page->signed_water_le), page.layer);
-        page.mode = page.page->kind == presentation::CoastPageKind::coverage ? 3.0F : 2.0F;
-    }
+    page.slot = free_slots_.back();
+    free_slots_.pop_back();
+    const float constant = constant_coast(*page.page);
+    page.mode = constant != 0.0F ? constant
+                                 : (page.page->kind == presentation::CoastPageKind::coverage ? 3.0F : 2.0F);
     pages_.insert_or_assign(id(page.page->key), std::move(page));
+    coast_table_dirty_ = true;
+    coast_slots_dirty_ = true;
+}
+
+// Per slot, (layer, mode) as the shaders read them: mode 0 where the page
+// needs a layer and has none, or the slot is free (coast_pages.gdshaderinc).
+void TerrainTiles::rebuild_slot_table() {
+    if (!coast_ || !coast_slots_dirty_) return;
+    coast_slots_dirty_ = false;
+    godot::PackedByteArray data;
+    data.resize(static_cast<std::int64_t>(coast_slot_count) * 2 * static_cast<std::int64_t>(sizeof(float)));
+    auto* texels = reinterpret_cast<float*>(data.ptrw());
+    for (int slot = 0; slot < coast_slot_count; ++slot) {
+        texels[2 * slot] = -1.0F;
+        texels[2 * slot + 1] = 0.0F;
+    }
+    for (const auto& [key_id, page] : pages_) {
+        const bool drawable = page.layer >= 0 || page.mode == 1.0F || page.mode == -1.0F;
+        texels[2 * page.slot] = static_cast<float>(page.layer);
+        texels[2 * page.slot + 1] = drawable ? page.mode : 0.0F;
+    }
+    const godot::Ref<godot::Image> image =
+        godot::Image::create_from_data(coast_slot_count, 1, false, godot::Image::FORMAT_RGF, data);
+    if (coast_slots_.is_null()) {
+        coast_slots_ = godot::ImageTexture::create_from_image(image);
+        material_->set_shader_parameter("coast_slots", coast_slots_);
+    } else {
+        coast_slots_->update(image);
+    }
+}
+
+// Per face, a row of table_size x table_size squares at coast_table_level:
+// (slot, level) of the finest resident page covering each, slot -1 where
+// none does (coast_pages.gdshaderinc).
+void TerrainTiles::rebuild_page_table() {
+    if (!coast_ || !coast_table_dirty_) return;
+    coast_table_dirty_ = false;
+    constexpr int size = 1 << coast_table_level;
+    godot::PackedByteArray data;
+    data.resize(static_cast<std::int64_t>(6 * size) * size * 3 * static_cast<std::int64_t>(sizeof(float)));
+    auto* texels = reinterpret_cast<float*>(data.ptrw());
+    for (std::uint8_t face = 0; face < 6U; ++face) {
+        for (int y = 0; y < size; ++y) {
+            for (int x = 0; x < size; ++x) {
+                const presentation::TileKey key{face, static_cast<std::uint8_t>(coast_table_level),
+                                                static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)};
+                const std::size_t row = 6U * static_cast<std::size_t>(size);
+                float* texel = texels + 3U * (static_cast<std::size_t>(y) * row +
+                                              static_cast<std::size_t>(face) * static_cast<std::size_t>(size) +
+                                              static_cast<std::size_t>(x));
+                const Page* page = best_page(key);
+                texel[0] = page != nullptr ? static_cast<float>(page->slot) : -1.0F;
+                texel[1] = page != nullptr ? static_cast<float>(page->page->key.level) : 0.0F;
+                texel[2] = 0.0F;
+            }
+        }
+    }
+    const godot::Ref<godot::Image> image =
+        godot::Image::create_from_data(6 * size, size, false, godot::Image::FORMAT_RGBF, data);
+    if (coast_table_.is_null()) {
+        coast_table_ = godot::ImageTexture::create_from_image(image);
+        material_->set_shader_parameter("coast_table", coast_table_);
+    } else {
+        coast_table_->update(image);
+    }
 }
 
 void TerrainTiles::evict_pages() {
@@ -305,7 +381,10 @@ void TerrainTiles::evict_pages() {
         if (pages_.size() <= cache_pages) break;
         auto found = pages_.find(key_id);
         if (found->second.layer >= 0) free_layers_.push_back(found->second.layer);
+        free_slots_.push_back(found->second.slot);
         pages_.erase(found);
+        coast_table_dirty_ = true;
+        coast_slots_dirty_ = true;
     }
 }
 
@@ -316,19 +395,15 @@ void TerrainTiles::add(const Made& made) {
         tiles_.erase(previous);
     }
     Entry entry;
-    // The page the tile was made with: a constant, a layer, or (no layer
-    // free, or no page) the drawn surface's waterline. Its layer and mode go
-    // to every vertex (coast_pages.gdshaderinc).
-    float mode = 0.0F;
-    int layer = -1;
+    // The page the tile was made with: its slot goes to every vertex, -1
+    // without a page (coast_pages.gdshaderinc).
+    int slot = -1;
     if (made.with_page) {
         Page& page = pages_.at(id(tile.coast_key));
         ++page.users;
         entry.coast_level = tile.coast_key.level;
         entry.coast_page = id(tile.coast_key);
-        entry.coast_missing = page.mode == 0.0F;
-        mode = page.mode;
-        layer = page.layer;
+        slot = page.slot;
     }
     const std::size_t vertices = tile.positions.size() / 3U;
     godot::PackedFloat32Array custom2;
@@ -338,8 +413,8 @@ void TerrainTiles::add(const Made& made) {
     for (std::size_t v = 0; v < vertices; ++v) {
         coast[4 * v] = with_uv ? tile.coast_uv[2 * v] : 0.0F;
         coast[4 * v + 1] = with_uv ? tile.coast_uv[2 * v + 1] : 0.0F;
-        coast[4 * v + 2] = static_cast<float>(layer);
-        coast[4 * v + 3] = mode;
+        coast[4 * v + 2] = static_cast<float>(slot);
+        coast[4 * v + 3] = 0.0F;
     }
     godot::PackedVector3Array positions;
     godot::PackedVector3Array normals;
@@ -511,12 +586,20 @@ void TerrainTiles::update(const View& view) {
         stats_.translation_error_px =
             std::max(stats_.translation_error_px, planetsim::length(rounding) / nearest * view.focal_px);
         entry.instance->set_visible(true);
-        stats_.coast_without_layer += entry.coast_missing ? 1 : 0;
+        if (entry.coast_level >= 0) {
+            // The page the tile is drawn with, and the finest one for its
+            // place, which the cell mesh's page table reads.
+            Page& page = pages_.at(entry.coast_page);
+            stats_.coast_without_layer += ensure_layer(page) ? 0 : 1;
+            if (Page* best = best_page(key); best != nullptr && best != &page) (void)ensure_layer(*best);
+        }
         stats_.coast_from_ancestor += coast_ && entry.coast_level < static_cast<int>(key.level) ? 1 : 0;
         stats_.deepest_level = std::max<std::int64_t>(stats_.deepest_level, key.level);
     }
     evict();
     evict_pages();
+    rebuild_page_table();
+    rebuild_slot_table();
     stats_.drawn = static_cast<std::int64_t>(drawn_.size());
     stats_.cached = static_cast<std::int64_t>(tiles_.size());
     stats_.pending = static_cast<std::int64_t>(wanted_.size()) - remakes_;

@@ -7,6 +7,7 @@
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
+#include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/texture2d_array.hpp>
 
 #include <condition_variable>
@@ -41,6 +42,18 @@ namespace planetsim::godot_bridge {
 // throughout needs none), and keeps it while any cached tile is drawn
 // with it. The six roots are made at once without pages, so there is
 // always something to draw.
+//
+// The planet-band cell mesh reads the same pages (A1.3) through a page table:
+// for every level-6 square of every face, the finest resident page covering
+// it (its slot and level), rebuilt when the pages change. update() runs in
+// every band, so the pages a view needs are made while the tiles themselves
+// are hidden.
+//
+// A resident page has a slot, fixed while it stays resident, which tiles and
+// the page table refer to; a slot table maps slots to layers. Layers go on
+// demand to the pages the drawn tiles need this frame, and when none is free
+// the page needed longest ago gives its own up: only the slot table changes,
+// and its tiles show the fallback until it is needed again.
 class TerrainTiles {
 public:
     struct View {
@@ -97,11 +110,13 @@ public:
     static constexpr double max_triangle_cells = 0.3; // vertex spacing, in cells, for faithful channels
     static constexpr double mesh_budget_ms = 6.0;   // turning finished tiles into meshes, per update
     static constexpr std::size_t cache_tiles = 512; // about 0.5 MB of vertices each
-    // Coast page layers: 128 x 257² binary16 is 16.9 MB, within ADR-0030's
-    // 64 MiB of coastal constraints. Most tiles need none: R1-04's flights
-    // use at most 40 (L4) and 68 (L6).
-    static constexpr int coast_layer_count = 128;
+    // Coast page layers: 256 x 257² binary16 is 33.8 MB, within ADR-0030's
+    // 64 MiB of coastal constraints. Pages that are water or land throughout
+    // need none.
+    static constexpr int coast_layer_count = 256;
+    static constexpr int coast_slot_count = 4096; // resident pages, at most
     static constexpr std::size_t cache_pages = 384; // 132 KB each in memory: 51 MB
+    static constexpr int coast_table_level = 6;     // the page table's squares: 64 x 64 a face
 
 private:
     struct Entry {
@@ -113,16 +128,17 @@ private:
         double max_radius = 1.0;
         int coast_level = -1;          // the level of the page it was made with, -1 none
         std::uint64_t coast_page = 0;  // that page's id
-        bool coast_missing = false;    // that page needed a layer and found none
     };
 
     // A resident coast page (ADR-0030 A1).
     struct Page {
         std::shared_ptr<const presentation::CoastPage> page;
-        int layer = -1;     // its layer, if it needs one and found one
-        float mode = 0.0F;  // as CUSTOM2.w: 1 / -1 throughout, 2 point, 3 coverage, 0 none
+        int slot = -1;      // fixed while resident
+        int layer = -1;     // its layer while it has one
+        float mode = 0.0F;  // 1 / -1 water or land throughout (no layer), 2 point, 3 coverage
         int users = 0;      // cached tiles made with it
-        std::uint64_t last_used = 0;
+        std::uint64_t last_used = 0;  // in the selection's walk
+        std::uint64_t needed = 0;     // drawn with, this frame or earlier
     };
 
     // A tile to make, with the page to make it with (or none).
@@ -145,8 +161,10 @@ private:
     // The finest resident page for `key`, its own or an ancestor's.
     [[nodiscard]] Page* best_page(const presentation::TileKey& key);
     void add_page(std::shared_ptr<const presentation::CoastPage> page);
-    [[nodiscard]] bool free_unused_page_layer();
+    [[nodiscard]] bool ensure_layer(Page& page);
     void evict_pages();
+    void rebuild_page_table();
+    void rebuild_slot_table();
     void evict();
     void work(bool tiles_only);
 
@@ -157,6 +175,11 @@ private:
     godot::Ref<godot::Texture2DArray> coast_pages_;
     std::vector<int> free_layers_;
     std::unordered_map<std::uint64_t, Page> pages_;
+    godot::Ref<godot::ImageTexture> coast_table_;
+    bool coast_table_dirty_ = false;
+    std::vector<int> free_slots_;
+    godot::Ref<godot::ImageTexture> coast_slots_;
+    bool coast_slots_dirty_ = false;
     std::vector<presentation::TileKey> pages_wanted_;
     std::int64_t remakes_ = 0; // of wanted_, tiles present but wanted with a finer page
     presentation::TileDrawing drawing_;

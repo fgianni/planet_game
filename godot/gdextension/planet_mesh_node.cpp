@@ -1033,7 +1033,9 @@ void PlanetMeshNode::update_terrain_tiles(const godot::PackedFloat64Array& posit
     const bool enabled = weight > 0.0;
     try {
         if (!mesh_ || material_.is_null() || position.size() != 3 || forward.size() != 3) return;
-        if (enabled && !tiles_) {
+        // Made at once and updated in every band: the coast pages the cell
+        // mesh reads (ADR-0030 A1.3) come from the tiles' selection.
+        if (!tiles_) {
             auto relief = std::make_shared<const presentation::TerrainRelief>(mesh_, terrain_, seed_);
             presentation::TileDrawing drawing;
             drawing.relief_exaggeration = relief_exaggeration_;
@@ -1067,11 +1069,9 @@ void PlanetMeshNode::update_terrain_tiles(const godot::PackedFloat64Array& posit
         }
         if (!tiles_) return;
         tiles_->set_visible(enabled);
-        if (enabled) {
-            const double baked = tiles_->drawing().relief_exaggeration;
-            tiles_->update({position[0], position[1], position[2], focal_px, forward[0], forward[1],
-                            forward[2], half_diagonal, baked > 0.0 ? drawn_exaggeration_ / baked : 1.0});
-        }
+        const double baked = tiles_->drawing().relief_exaggeration;
+        tiles_->update({position[0], position[1], position[2], focal_px, forward[0], forward[1],
+                        forward[2], half_diagonal, baked > 0.0 ? drawn_exaggeration_ / baked : 1.0});
     } catch (const std::exception& error) {
         godot::UtilityFunctions::push_error("PlanetMeshNode terrain tiles: ", error.what());
     }

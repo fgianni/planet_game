@@ -1560,6 +1560,49 @@ R1-04's flight, and the same build without pages:
 - **Still open for task 3:** the cell mesh, which does not read pages yet;
   picking; and the rendered gates of task 4.
 
+**Task 3c: the cell mesh reads the pages; layers on demand (2026-11-13).**
+- **Pages for the planet band.** `TerrainTiles` is made at once and its
+  selection runs in every band, so the pages a view needs are made while
+  the tiles are hidden.
+- **The cell mesh** finds each pixel's cube face and place from its
+  direction (the tiles' frames and equal-angle mapping), then reads a page
+  table. The table gives, for each level-6 square of each face, the slot
+  and level of the finest resident page covering it. The cell's fractional
+  cover remains only where no page exists yet.
+- **Slots.** A resident page has a slot, fixed while it stays resident,
+  which tiles (`CUSTOM2.z`) and the table refer to. A slot table maps
+  slots to layers and modes.
+- **Layers on demand.** Layers (now 256, 33.8 MB) go to the pages the drawn
+  tiles need this frame, and to the finest page at their place. When none
+  is free, the page needed longest ago gives its layer up; only the slot
+  table changes, so no tile is remade.
+
+The first version kept a layer per page for as long as any cached tile
+used it. At 4 000 km (L4, cross-fade) all 128 layers were taken, and the
+two layers' coasts disagreed visibly in the dither. With slots and
+on-demand layers they agree (frames compared by eye,
+`godot/tests/capture_coast_pages.gd`, `build/r105/cell2_*.png`).
+
+R1-04's flight:
+
+| | L4 | L6 |
+|---|---|---|
+| Holes (V9), translation rounding (V13) | pass | pass |
+| Frames for tiles to settle at 100 m | 0 | 0 |
+| Then until every drawn tile has its own page | 3.1 s | 6.5 s |
+| Planet-band wall p95 / p99 | 8.2 / 20.3 ms (without pages: 7.2 / 8.3) | 7.7 / 8.4 ms (7.6 / 8.0) |
+| Region-band wall p95 | 8.1 ms | 8.4 ms |
+
+The other Godot tests pass.
+
+Still open for task 3:
+- the cell mesh's geometry (its vertices take height by the cell's land
+  fraction, not by the page);
+- picking;
+- the L4 planet band's p99.
+
+The rendered gates of task 4 are not yet run.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and
