@@ -44,6 +44,16 @@ void vertex() {
 }
 
 void fragment() {
+	// The coast from the pages (ADR-0030 A1), before the cross-fade's
+	// discard: its antialiasing takes screen derivatives, undefined after a
+	// discard in non-uniform control flow. -1 where no page answers yet.
+	float page_water = -1.0;
+	if (tile_surface.x > 0.5) {
+		page_water = coast_page_water(coast_uv, coast_slot, -1.0);
+	} else {
+		vec3 eye = (inverse(MODEL_MATRIX) * vec4(CAMERA_POSITION_WORLD, 1.0)).xyz;
+		page_water = coast_cell_water(coast_sphere_point(model_position, eye), -1.0);
+	}
 	if (view_faded_out(tile_surface.x, FRAGCOORD.xy)) {
 		discard;
 	}
@@ -64,10 +74,11 @@ void fragment() {
 	vec3 direction = normalize(model_position);
 	float amount = detail_amount(direction);
 	float wave_amount = amount * smoothstep(0.0, 1.0, band_fade);
-	// The coast is its page's (ADR-0030 A1) on the cell mesh and the tiles alike;
-	// before a page arrives, the cell's fractional cover or the drawn surface's.
-	float open_water = mix(coast_cell_water(direction, detail_cover(classes.r, detail_uniform(direction, detail_seed_coast), amount)),
-	                       coast_page_water(coast_uv, coast_slot, detail_geometry_water(tile_surface.y)), tile_surface.x);
+	// Before a page answers, the cell's fractional cover on the cell mesh,
+	// the drawn surface's waterline on a tile.
+	float before_pages = mix(detail_cover(classes.r, detail_uniform(direction, detail_seed_coast), amount),
+	                         detail_geometry_water(tile_surface.y), tile_surface.x);
+	float open_water = page_water < 0.0 ? before_pages : page_water;
 	float land_ice = mix(ice_weight, detail_land_ice(ice_weight, classes.r, sea_ice), tile_surface.x);
 	vec4 cover = detail_partition(vec4(classes.g, classes.b, classes.a, land_ice),
 	                              detail_uniform(direction, detail_seed_land_mix), amount);
@@ -103,4 +114,7 @@ void fragment() {
 		base = display_unshaded(base);
 	}
 	ALBEDO = base;
+	if (coast_debug) {
+		ALBEDO = display_unshaded(coast_debug_colour(open_water, tile_surface.x, coast_slot));
+	}
 }

@@ -587,11 +587,15 @@ void TerrainTiles::update(const View& view) {
             std::max(stats_.translation_error_px, planetsim::length(rounding) / nearest * view.focal_px);
         entry.instance->set_visible(true);
         if (entry.coast_level >= 0) {
-            // The page the tile is drawn with, and the finest one for its
-            // place, which the cell mesh's page table reads.
+            // The page the tile is drawn with, and the one the cell mesh's
+            // page table reads at its place (the finest at most at
+            // coast_table_level).
             Page& page = pages_.at(entry.coast_page);
             stats_.coast_without_layer += ensure_layer(page) ? 0 : 1;
-            if (Page* best = best_page(key); best != nullptr && best != &page) (void)ensure_layer(*best);
+            const int up = std::max(0, static_cast<int>(key.level) - coast_table_level);
+            const presentation::TileKey square{key.face, static_cast<std::uint8_t>(key.level - up), key.x >> up,
+                                               key.y >> up};
+            if (Page* table = best_page(square); table != nullptr && table != &page) (void)ensure_layer(*table);
         }
         stats_.coast_from_ancestor += coast_ && entry.coast_level < static_cast<int>(key.level) ? 1 : 0;
         stats_.deepest_level = std::max<std::int64_t>(stats_.deepest_level, key.level);

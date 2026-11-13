@@ -14,8 +14,32 @@
 
 uniform sampler2DArray coast_pages : filter_linear, repeat_disable;
 uniform sampler2D coast_slots : filter_nearest, repeat_disable;
+// R1-05's rendered gates (godot/tests/capture_coast_sweep.gd): the surface
+// shows its water in red, 1 in green on a terrain tile (0 on the cell mesh),
+// and in blue a hash of the tile's page slot (0 without one).
+uniform bool coast_debug = false;
 
-float coast_page_water(vec2 page_uv, float slot, float fallback) {
+vec3 coast_debug_colour(float water, float tile, float slot) {
+	return vec3(water, tile, slot < -0.5 ? 0.0 : 0.2 + 0.8 * fract(slot * 0.618034));
+}
+
+// One tap of a page: the water at a place in it, 0 to 1.
+float coast_page_tap(vec2 page_uv, float layer, float mode, float ramp) {
+	// 257 nodes a side, a node at each texel centre: linear filtering is the
+	// page's bilinear interpolation.
+	vec2 texel = (clamp(page_uv, 0.0, 1.0) * 256.0 + 0.5) / 257.0;
+	float value = texture(coast_pages, vec3(texel, layer)).r;
+	if (mode > 2.5) {
+		return clamp(value + 0.5, 0.0, 1.0);
+	}
+	return clamp(0.5 + value / ramp, 0.0, 1.0);
+}
+
+// The water of a pixel, its footprint's mean: four taps a quarter pixel
+// from its centre (a rotated grid, from the page coordinates' screen
+// derivatives dx and dy). A pixel spans several page nodes at coarse
+// levels, where one tap would give a nearly hard edge.
+float coast_page_water_grad(vec2 page_uv, vec2 dx, vec2 dy, float slot, float fallback) {
 	if (slot < -0.5) {
 		return fallback;
 	}
@@ -24,14 +48,19 @@ float coast_page_water(vec2 page_uv, float slot, float fallback) {
 	if (mode < 1.5) {
 		return mode > 0.5 ? 1.0 : (mode < -0.5 ? 0.0 : fallback);
 	}
-	// 257 nodes a side, a node at each texel centre: linear filtering is the
-	// page's bilinear interpolation.
-	vec2 texel = (page_uv * 256.0 + 0.5) / 257.0;
-	float value = texture(coast_pages, vec3(texel, round(layer_and_mode.x))).r;
-	if (mode > 2.5) {
-		return clamp(value + 0.5, 0.0, 1.0);
-	}
-	return clamp(0.5 + value / max(fwidth(value), 1e-6), 0.0, 1.0);
+	float layer = round(layer_and_mode.x);
+	// A point page's zero line, antialiased over half a pixel a tap.
+	float centre = texture(coast_pages, vec3((clamp(page_uv, 0.0, 1.0) * 256.0 + 0.5) / 257.0, layer)).r;
+	float ramp = max(0.5 * fwidth(centre), 1e-6);
+	return 0.25 * (coast_page_tap(page_uv + 0.125 * dx + 0.375 * dy, layer, mode, ramp) +
+	               coast_page_tap(page_uv - 0.375 * dx + 0.125 * dy, layer, mode, ramp) +
+	               coast_page_tap(page_uv - 0.125 * dx - 0.375 * dy, layer, mode, ramp) +
+	               coast_page_tap(page_uv + 0.375 * dx - 0.125 * dy, layer, mode, ramp));
+}
+
+// On a tile, whose page coordinates are continuous over its mesh.
+float coast_page_water(vec2 page_uv, float slot, float fallback) {
+	return coast_page_water_grad(page_uv, dFdx(page_uv), dFdy(page_uv), slot, fallback);
 }
 
 // The planet-band cell mesh reads the same pages (A1.3) through a page
@@ -50,6 +79,31 @@ const vec3 coast_face_u[6] = vec3[](vec3(0.0, 0.0, -1.0), vec3(0.0, 0.0, 1.0), v
 const vec3 coast_face_v[6] = vec3[](vec3(0.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, -1.0),
 	vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0));
 
+// Where the view ray through a point of the drawn surface meets the unit
+// sphere, all in model space (planet-centred, radii). The canonical coast
+// lies on that sphere: the tiles draw water at sea level, while the cell
+// mesh's flat faces sag below it and its land stands above, so its own
+// surface point would shift the coast, most at grazing angles. Past the
+// sphere's silhouette, the surface point's own direction.
+vec3 coast_sphere_point(vec3 surface, vec3 eye) {
+	vec3 ray = normalize(surface - eye);
+	float b = dot(eye, ray);
+	float disc = b * b - (dot(eye, eye) - 1.0);
+	if (disc < 0.0) {
+		return normalize(surface);
+	}
+	float t = -b - sqrt(disc);
+	return t > 0.0 ? normalize(eye + ray * t) : normalize(surface);
+}
+
+// A direction's place on a given cube face, u and v in [0, 1] (the
+// equal-angle mapping: u = atan(U) 4 / pi, then [0, 1]).
+vec2 coast_on_face(vec3 direction, int face) {
+	vec2 plane = vec2(dot(direction, coast_face_u[face]), dot(direction, coast_face_v[face])) /
+	             dot(direction, coast_face_normal[face]);
+	return clamp((atan(plane) * 4.0 / 3.14159265358979 + 1.0) * 0.5, 0.0, 1.0);
+}
+
 // The water of a cell-mesh point, from the page covering its direction, or
 // the fallback where no page does yet.
 float coast_cell_water(vec3 direction, float fallback) {
@@ -62,12 +116,16 @@ float coast_cell_water(vec3 direction, float fallback) {
 			face = f;
 		}
 	}
-	// The equal-angle mapping: u = atan(U) 4 / pi, then [0, 1].
-	vec2 plane = vec2(dot(direction, coast_face_u[face]), dot(direction, coast_face_v[face])) / best;
-	vec2 on_face = clamp((atan(plane) * 4.0 / 3.14159265358979 + 1.0) * 0.5, 0.0, 1.0);
+	vec2 on_face = coast_on_face(direction, face);
 	vec2 square = min(floor(on_face * coast_table_squares), vec2(coast_table_squares - 1.0));
 	vec2 entry = texelFetch(coast_table, ivec2(int(square.x) + face * int(coast_table_squares), int(square.y)), 0).rg;
 	float tiles = exp2(entry.y);
 	vec2 tile = min(floor(on_face * tiles), vec2(tiles - 1.0));
-	return coast_page_water(on_face * tiles - tile, entry.x, fallback);
+	// The screen derivatives of the place, from the direction's (continuous)
+	// on this pixel's own face: a page's own coordinates jump by a whole page
+	// where a pixel quad straddles two pages, and the face's own where it
+	// straddles two faces.
+	vec2 dx = (coast_on_face(direction + dFdx(direction), face) - on_face) * tiles;
+	vec2 dy = (coast_on_face(direction + dFdy(direction), face) - on_face) * tiles;
+	return coast_page_water_grad(on_face * tiles - tile, dx, dy, entry.x, fallback);
 }

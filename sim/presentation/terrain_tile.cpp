@@ -135,6 +135,7 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
         Vec3d position; // planet-centred, radii
         double height_m = 0.0;
         double rank = 0.0;
+        bool wet = false; // with a coast page: its classification
     };
     std::vector<Point> points(static_cast<std::size_t>(ring * ring));
     // Tiles too coarse to show sub-cell relief (fewer than five vertices
@@ -167,11 +168,63 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
                     water = half_to_float(half_from_float(static_cast<float>(
                         coast_node_value(*field, coast->key.level, point.direction, coast_hint))));
                 }
-                point.height_m = water > 0.0 ? std::min(point.height_m, 0.0) : std::max(point.height_m, 0.0);
+                point.wet = water > 0.0;
+                point.height_m = point.wet ? std::min(point.height_m, 0.0) : std::max(point.height_m, 0.0);
             }
             point.rank = sample.rank;
-            point.position = point.direction * (1.0 + exaggeration * std::max(0.0, point.height_m));
         }
+    }
+    const auto at_point = [&](std::int64_t i, std::int64_t j) -> const Point& {
+        return points[static_cast<std::size_t>((j + 1) * ring + (i + 1))];
+    };
+    if (coast != nullptr) {
+        // Land touching water (its eight neighbours, the ring's included)
+        // lies at sea level too, so every triangle the coast crosses is at
+        // sea level and the coast lies on the sphere, where the page puts it,
+        // whatever the relief's exaggeration (A1.4: shore vertices at zero
+        // height). Without it a raised land vertex lifts the coast inside its
+        // triangle, and the view shifts it by the parallax.
+        // The classification one line further out, so that the ring's
+        // points see all their neighbours, as the neighbouring tile does.
+        constexpr std::int64_t outer = ring + 2;
+        std::vector<std::uint8_t> wet(static_cast<std::size_t>(outer * outer), 0U);
+        for (std::int64_t j = -2; j <= lines + 1; ++j) {
+            for (std::int64_t i = -2; i <= lines + 1; ++i) {
+                std::uint8_t& cell = wet[static_cast<std::size_t>((j + 2) * outer + (i + 2))];
+                if (i >= -1 && j >= -1 && i <= lines && j <= lines) {
+                    cell = at_point(i, j).wet ? 1U : 0U;
+                    continue;
+                }
+                const double px = page_node(key.x, coast->key.x, i);
+                const double py = page_node(key.y, coast->key.y, j);
+                if (px >= 0.0 && py >= 0.0 && px <= coast_page_intervals && py <= coast_page_intervals) {
+                    cell = coast->bilinear_signed_water_m(px, py) > 0.0 ? 1U : 0U;
+                } else {
+                    CellId coast_hint = hint;
+                    const Vec3d direction = tile_face_direction(key.face, face_coordinate(key.x, key.level, i),
+                                                                face_coordinate(key.y, key.level, j));
+                    cell = half_to_float(half_from_float(static_cast<float>(
+                               coast_node_value(*field, coast->key.level, direction, coast_hint)))) > 0.0 ? 1U : 0U;
+                }
+            }
+        }
+        std::vector<bool> shore(points.size(), false);
+        for (std::int64_t j = -1; j <= lines; ++j) {
+            for (std::int64_t i = -1; i <= lines; ++i) {
+                if (wet[static_cast<std::size_t>((j + 2) * outer + (i + 2))] != 0U) continue;
+                bool touches = false;
+                for (std::int64_t dj = -1; dj <= 1 && !touches; ++dj)
+                    for (std::int64_t di = -1; di <= 1 && !touches; ++di)
+                        touches = wet[static_cast<std::size_t>((j + 2 + dj) * outer + (i + 2 + di))] != 0U;
+                shore[static_cast<std::size_t>((j + 1) * ring + (i + 1))] = touches;
+            }
+        }
+        for (std::size_t index = 0; index < points.size(); ++index) {
+            if (shore[index]) points[index].height_m = 0.0;
+        }
+    }
+    for (Point& point : points) {
+        point.position = point.direction * (1.0 + exaggeration * std::max(0.0, point.height_m));
     }
     const auto at = [&](std::int64_t i, std::int64_t j) -> const Point& {
         return points[static_cast<std::size_t>((j + 1) * ring + (i + 1))];

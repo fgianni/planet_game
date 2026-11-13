@@ -1603,6 +1603,88 @@ Still open for task 3:
 
 The rendered gates of task 4 are not yet run.
 
+**Task 4: the rendered zoom sweep (2026-11-13).**
+
+The tools:
+- `godot/tests/capture_coast_sweep.gd` flies the main scene to a coastal
+  focus at eight altitudes (24 000 km to 2 km). Both styles have a
+  `coast_debug` output: water in red, tile/cell mesh in green, the page
+  slot in blue.
+- At each altitude it saves two frames: on arrival, while the previous
+  pose's tiles and pages are still drawn; and once the tiles and pages
+  have arrived. Each comes with its exact camera; the ray formula is
+  checked against Godot's `project_ray_normal`.
+- `tools/render/coast_render_reference.cpp` casts the same rays at the
+  canonical field, up to 16 × 16 a pixel.
+- `tools/render/compare_coast_render.py` measures each frame against it,
+  and arrival against settled (the handoff):
+  - resolved pixels (no wider than half the finest wavelength): no deep
+    pixel;
+  - finer features: no coverage change of 0.5 or more (A1.5a);
+  - the handoff: no deep region of four pixels or more (an island or
+    inlet appearing solely with LOD).
+- The first pose is the cold start, reported but not gated.
+
+Five fixes came out of the first sweeps:
+1. **The cell mesh reads its coast where the view ray meets the unit
+   sphere,** not at its own surface point. Its flat faces sag below the
+   sphere and its land stands above, which shifted the coast most at the
+   limb (12 000 km: 478 jumps against the field down to 49).
+2. **Tile land touching water lies at sea level,** with an extra ring
+   classified so neighbouring tiles agree. Every triangle the coast
+   crosses is then at zero height, as A1.4 says, and the coast lies on
+   the sphere. Otherwise a raised vertex lifted the coast inside its
+   triangle and the view shifted it.
+3. **A pixel's water is the mean of four taps** at a quarter pixel, from
+   the page coordinates' screen derivatives. One tap gave nearly hard
+   edges where a pixel spans several nodes.
+4. **The coast is evaluated before the cross-fade's `discard`.** After
+   it, screen derivatives are undefined, and the taps collapsed.
+5. **Cell-mesh derivatives come from the direction mapped on the
+   pixel's own face.** Otherwise they jump by a page, or by a face's
+   coordinates, where a pixel quad straddles two of them.
+
+Also: the layers go to 448 (59.2 MB, a view of about 240 coastal tiles
+needed more than 256), and only the page the cell-mesh table reads gets a
+second layer.
+
+**Exaggerated relief.** At the scene's own exaggeration, raised land hides
+water behind it in oblique views, most at 1 000–4 000 km. The bare-sphere
+reference cannot model that, so these sweeps use true-scale relief
+(exaggeration 1), where the drawn coast lies at sea level. That condition
+is part of the result. At exaggeration 0 and 1 the results agree.
+
+**Results** at true-scale relief: L4 and L6, seeds 20260928 and 42, two
+coastal foci each, both styles (16 sweeps, 112 gated poses; logs
+`build/r105/gate/*.compare.log`):
+- **Both styles give identical results in every sweep.**
+- **10 sweeps pass outright.**
+- **The other six (three pose groups, map and stylised alike) have 2, 2
+  and 3 comparisons outside,** each one to four single pixels. Every one
+  is a coverage change just past the threshold (0.50–0.62), never a deep
+  region. They are either in the arrival (shortfall) state, or on the
+  cell mesh within 12 px of the limb, where the ground squeezes into a
+  few pixels and four taps cannot average it.
+  - One of them, L6 seed 20260928 focus 1 at 12 000 km (settled), has
+    two pixels at 3.6 and 6.3 px from the limb. They persist with a
+    48-ray reference.
+  - The handoff ones come from the arrival frame's coarser state. The
+    settled frame matches the field there (e.g. 1.00 / 0.40 against
+    0.94 / 0.31).
+- **Wherever features are resolved:** no deep pixel at all, settled or
+  arriving.
+- **Across all handoffs:** no deep region.
+
+R1-04's flight and the Godot tests still pass. Frame-time p95 at L4: 12.7
+(planet), 11.5 (region) and 7.9 ms (local); at L6: 8.4, 9.1 and 10.5 ms.
+
+Still open:
+- the limb and shortfall pixels (a mipmapped page array, sampled with
+  derivatives, would average long footprints);
+- the cell mesh's own geometry;
+- picking;
+- V4, V10 and memory at L6.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

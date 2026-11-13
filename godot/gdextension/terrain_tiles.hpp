@@ -110,10 +110,10 @@ public:
     static constexpr double max_triangle_cells = 0.3; // vertex spacing, in cells, for faithful channels
     static constexpr double mesh_budget_ms = 6.0;   // turning finished tiles into meshes, per update
     static constexpr std::size_t cache_tiles = 512; // about 0.5 MB of vertices each
-    // Coast page layers: 256 x 257² binary16 is 33.8 MB, within ADR-0030's
+    // Coast page layers: 448 x 257² binary16 is 59.2 MB, within ADR-0030's
     // 64 MiB of coastal constraints. Pages that are water or land throughout
-    // need none.
-    static constexpr int coast_layer_count = 256;
+    // need none; a view with about 240 coastal tiles drawn needs over 256.
+    static constexpr int coast_layer_count = 448;
     static constexpr int coast_slot_count = 4096; // resident pages, at most
     static constexpr std::size_t cache_pages = 384; // 132 KB each in memory: 51 MB
     static constexpr int coast_table_level = 6;     // the page table's squares: 64 x 64 a face
