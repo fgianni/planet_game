@@ -1757,6 +1757,41 @@ Still open:
 - The largest single drops are on coarse filtered tiles, whose smoothed
   height disagreed with the page about the coast.
 
+**L6 memory: compact pages and bounded copies (2026-11-14).**
+Measured before (2026-11-13, L6 sweeps): the GPU page array was 59 MB, and
+the pages' memory copies another 85–185 MB (642–1 398 pages). That is two to
+four times ADR-0030's 64 MiB (67.1 MB). Following the user's choice:
+
+- **Uniform pages keep only their sign.** A page that is water or land
+  throughout needs no layer (slot mode ±1) and no copy. A tile made with
+  one gets a stand-in from `make_uniform_coast_page`, built by the worker
+  that makes the tile. `test_coast_tile` checks that the stand-in gives the
+  same tile as the real page.
+- **At most 120 page copies (15.9 MB), least recently used first.** A copy
+  is kept only for a page needed this frame that has no layer yet. A page
+  whose copy was dropped is made again if a tile needs it.
+- **384 layers (50.7 MB)**, given out on demand, the oldest first (LRU).
+- **The total is fixed at 66.6 MB**, within 64 MiB; the tile stats report
+  it (`coast_memory_mb`, `coast_page_copies`).
+
+Results:
+- **All 16 sweeps pass again** (`build/r105/gate3`, same sweeps as above):
+  0 comparisons outside the gate.
+- **Memory:** 66.6 MB at every pose. Every sweep reaches the 120-copy cap,
+  and uses 227–384 layers. No drawn tile was left without a layer.
+- **Second GPU:** these sweeps ran on the integrated Intel GPU (Mesa). After
+  a reboot, the display had moved there. The gate does not depend on frame
+  time, so this adds a second GPU to the evidence.
+- **R1-04's flight on the RTX 4070 Ti**
+  (`__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia`): V9 and
+  V13 pass.
+  - Wall p95 at L4: 4.8, 9.0 and 7.1 ms; at L6: 8.4, 7.7 and 4.6 ms.
+  - GPU p95 at most 1.5 ms.
+  - The L4 planet band's p99 is 7.6 ms, against 24 ms before.
+- **The other Godot tests pass**, run with CI's arguments.
+
+Still open: picking; the cell mesh's own geometry (not needed by the gate).
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

@@ -90,6 +90,8 @@ public:
         std::int64_t coast_pages_pending = 0;  // wanted, not yet made
         std::int64_t coast_from_ancestor = 0;  // drawn tiles made with an ancestor's page, or none
         std::int64_t coast_remakes = 0;        // tiles wanted again, with a finer page
+        std::int64_t coast_page_copies = 0;    // pages whose memory copy is kept
+        double coast_memory_mb = 0.0;          // the layers allocated and the copies kept
     };
 
     TerrainTiles(godot::Node3D* parent, std::shared_ptr<const presentation::TerrainRelief> relief,
@@ -110,10 +112,13 @@ public:
     static constexpr double max_triangle_cells = 0.3; // vertex spacing, in cells, for faithful channels
     static constexpr double mesh_budget_ms = 6.0;   // turning finished tiles into meshes, per update
     static constexpr std::size_t cache_tiles = 512; // about 0.5 MB of vertices each
-    // Coast page layers: 448 x 257² binary16 is 59.2 MB, within ADR-0030's
-    // 64 MiB of coastal constraints. Pages that are water or land throughout
-    // need none; a view with about 240 coastal tiles drawn needs over 256.
-    static constexpr int coast_layer_count = 448;
+    // ADR-0030's 64 MiB (67.1 MB) of coastal constraints: 384 layers of
+    // 257² binary16 (50.7 MB) and the memory copies of at most 120 pages
+    // (15.9 MB). A page that is water or land throughout keeps neither, only
+    // its sign; a page whose copy was dropped is made again if its layer is
+    // given up and a drawn tile needs it once more.
+    static constexpr int coast_layer_count = 384;
+    static constexpr std::size_t coast_page_copies = 120;
     static constexpr int coast_slot_count = 4096; // resident pages, at most
     static constexpr std::size_t cache_pages = 384; // 132 KB each in memory: 51 MB
     static constexpr int coast_table_level = 6;     // the page table's squares: 64 x 64 a face
@@ -132,7 +137,9 @@ private:
 
     // A resident coast page (ADR-0030 A1).
     struct Page {
-        std::shared_ptr<const presentation::CoastPage> page;
+        presentation::TileKey key;
+        presentation::CoastPageKind kind = presentation::CoastPageKind::point;
+        std::shared_ptr<const presentation::CoastPage> page; // the memory copy, if kept
         int slot = -1;      // fixed while resident
         int layer = -1;     // its layer while it has one
         float mode = 0.0F;  // 1 / -1 water or land throughout (no layer), 2 point, 3 coverage
@@ -141,10 +148,15 @@ private:
         std::uint64_t needed = 0;     // drawn with, this frame or earlier
     };
 
-    // A tile to make, with the page to make it with (or none).
+    // A tile to make, with the page to make it with: a copy, or a uniform
+    // page's sign (the worker makes its stand-in), or none.
     struct Job {
         presentation::TileKey key;
         std::shared_ptr<const presentation::CoastPage> page;
+        bool uniform = false;
+        presentation::TileKey page_key;
+        presentation::CoastPageKind kind = presentation::CoastPageKind::point;
+        bool water = false;
     };
 
     struct Made {
@@ -158,8 +170,11 @@ private:
     void select(const presentation::TileKey& key, const View& view);
     void add(const Made& made);
     void release(Entry& entry);
-    // The finest resident page for `key`, its own or an ancestor's.
+    // The finest resident page for `key`, its own or an ancestor's; and the
+    // finest a tile can be made with (one with a copy, or uniform).
     [[nodiscard]] Page* best_page(const presentation::TileKey& key);
+    [[nodiscard]] Page* usable_page(const presentation::TileKey& key);
+    void trim_page_copies();
     void add_page(std::shared_ptr<const presentation::CoastPage> page);
     [[nodiscard]] bool ensure_layer(Page& page);
     void evict_pages();
@@ -181,6 +196,7 @@ private:
     godot::Ref<godot::ImageTexture> coast_slots_;
     bool coast_slots_dirty_ = false;
     std::vector<presentation::TileKey> pages_wanted_;
+    std::vector<presentation::TileKey> pages_again_; // copies to make again, for the next update
     std::int64_t remakes_ = 0; // of wanted_, tiles present but wanted with a finer page
     presentation::TileDrawing drawing_;
     godot::Ref<godot::ShaderMaterial> material_;

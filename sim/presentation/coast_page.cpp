@@ -144,6 +144,21 @@ CoastPage make_coast_page(const TileKey& key, const CoastWaterField& field, std:
     return page;
 }
 
+CoastPage make_uniform_coast_page(const TileKey& key, CoastPageKind kind, bool water) {
+    validate(key);
+    CoastPage page;
+    page.key = key;
+    page.kind = kind;
+    const double magnitude = kind == CoastPageKind::coverage ? 0.5 : 1.0;
+    const std::uint16_t bits = half_from_float(static_cast<float>(water ? magnitude : -magnitude));
+    page.signed_water_le.resize(static_cast<std::size_t>(coast_page_nodes) * coast_page_nodes * 2);
+    for (std::size_t offset = 0; offset < page.signed_water_le.size(); offset += 2) {
+        page.signed_water_le[offset] = static_cast<std::uint8_t>(bits & 0xffU);
+        page.signed_water_le[offset + 1] = static_cast<std::uint8_t>(bits >> 8U);
+    }
+    return page;
+}
+
 std::uint16_t CoastPage::half_bits(std::uint32_t x, std::uint32_t y) const {
     if (x >= coast_page_nodes || y >= coast_page_nodes ||
         signed_water_le.size() != static_cast<std::size_t>(coast_page_nodes) * coast_page_nodes * 2)

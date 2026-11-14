@@ -71,6 +71,13 @@ struct CoastPage {
 [[nodiscard]] CoastPage make_coast_page(const TileKey& key, const CoastWaterField& field,
                                         std::size_t workers = 1, int cap = coast_footprint_cap);
 
+// A page that is water (or land) throughout, of a given kind: every node
+// +1 / -1 for a point page, +0.5 / -0.5 for a coverage page. A streamer
+// keeps only the sign of such a page and makes it again when a tile needs
+// it; a tile made with it is the same as with the page it stands for
+// (a tile reads only a uniform page's sign).
+[[nodiscard]] CoastPage make_uniform_coast_page(const TileKey& key, CoastPageKind kind, bool water);
+
 // Round-to-nearest-even IEEE binary16, and back.
 [[nodiscard]] std::uint16_t half_from_float(float value) noexcept;
 [[nodiscard]] float half_to_float(std::uint16_t bits) noexcept;

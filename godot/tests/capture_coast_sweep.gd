@@ -109,6 +109,8 @@ func _save(output: String, name: String, altitude_km: float, globe: Node3D, came
 		"coast_from_ancestor %d" % int(stats.get("coast_from_ancestor", 0)),
 		"coast_layers %d" % int(stats.get("coast_layers", 0)),
 		"coast_pages %d" % int(stats.get("coast_pages", 0)),
+		"coast_page_copies %d" % int(stats.get("coast_page_copies", 0)),
+		"coast_memory_mb %.1f" % float(stats.get("coast_memory_mb", 0.0)),
 		"coast_without_layer %d" % int(stats.get("coast_without_layer", 0)),
 	])
 	var file := FileAccess.open(output.path_join(name + ".txt"), FileAccess.WRITE)

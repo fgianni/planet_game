@@ -1098,6 +1098,8 @@ godot::Dictionary PlanetMeshNode::get_terrain_tile_stats() const {
         result["coast_pages_pending"] = stats.coast_pages_pending;
         result["coast_from_ancestor"] = stats.coast_from_ancestor;
         result["coast_remakes"] = stats.coast_remakes;
+        result["coast_page_copies"] = stats.coast_page_copies;
+        result["coast_memory_mb"] = stats.coast_memory_mb;
     }
     return result;
 }

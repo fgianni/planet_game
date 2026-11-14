@@ -145,6 +145,10 @@ void TerrainTiles::work(bool tiles_only) {
             done_pages_.push_back(std::move(page));
             continue;
         }
+        if (job.uniform) {
+            job.page = std::make_shared<const presentation::CoastPage>(
+                presentation::make_uniform_coast_page(job.page_key, job.kind, job.water));
+        }
         Made made;
         made.with_page = job.page != nullptr;
         made.tile = made.with_page
@@ -225,9 +229,13 @@ void TerrainTiles::select(const presentation::TileKey& key, const View& view) {
         int best_level = -1;
         if (Page* best = best_page(key); best != nullptr) {
             best->last_used = frame_;
-            best_level = best->page->key.level;
+            best_level = best->key.level;
         }
-        if (best_level > self->second.coast_level) {
+        // Remade only with a page it can be made with, so a page without its
+        // copy does not ask for the same tile every frame.
+        if (Page* usable = usable_page(key);
+            usable != nullptr && static_cast<int>(usable->key.level) > self->second.coast_level) {
+            usable->last_used = frame_;
             wanted_.push_back(key);
             ++remakes_;
         }
@@ -270,11 +278,28 @@ TerrainTiles::Page* TerrainTiles::best_page(const presentation::TileKey& key) {
     return nullptr;
 }
 
+TerrainTiles::Page* TerrainTiles::usable_page(const presentation::TileKey& key) {
+    for (int up = 0; up <= static_cast<int>(key.level); ++up) {
+        const presentation::TileKey ancestor{key.face, static_cast<std::uint8_t>(key.level - up), key.x >> up,
+                                             key.y >> up};
+        if (auto found = pages_.find(id(ancestor)); found != pages_.end()) {
+            const Page& page = found->second;
+            if (page.page != nullptr || page.mode == 1.0F || page.mode == -1.0F) return &found->second;
+        }
+    }
+    return nullptr;
+}
+
 // A layer for a page drawn with this frame: one that is free, or the layer
-// of the page needed longest ago (not this frame). False if none is.
+// of the page needed longest ago (not this frame). False if none is, or the
+// page needs its copy again to fill one (it is then asked for).
 bool TerrainTiles::ensure_layer(Page& page) {
     page.needed = frame_;
     if (page.layer >= 0 || page.mode == 1.0F || page.mode == -1.0F) return true;
+    if (page.page == nullptr) {
+        pages_again_.push_back(page.key); // queued with the next update's pages
+        return false;
+    }
     if (free_layers_.empty()) {
         Page* oldest = nullptr;
         for (auto& [key_id, other] : pages_) {
@@ -293,18 +318,48 @@ bool TerrainTiles::ensure_layer(Page& page) {
 }
 
 void TerrainTiles::add_page(std::shared_ptr<const presentation::CoastPage> made) {
+    // A page made again for its copy keeps its slot.
+    if (auto present = pages_.find(id(made->key)); present != pages_.end()) {
+        if (present->second.page == nullptr && present->second.mode >= 2.0F) present->second.page = std::move(made);
+        present->second.last_used = frame_;
+        return;
+    }
     if (free_slots_.empty()) return; // asked for again once pages are evicted
     Page page;
-    page.page = std::move(made);
+    page.key = made->key;
+    page.kind = made->kind;
     page.last_used = frame_;
     page.slot = free_slots_.back();
     free_slots_.pop_back();
-    const float constant = constant_coast(*page.page);
-    page.mode = constant != 0.0F ? constant
-                                 : (page.page->kind == presentation::CoastPageKind::coverage ? 3.0F : 2.0F);
-    pages_.insert_or_assign(id(page.page->key), std::move(page));
+    const float constant = constant_coast(*made);
+    page.mode = constant != 0.0F ? constant : (made->kind == presentation::CoastPageKind::coverage ? 3.0F : 2.0F);
+    // A uniform page keeps only its sign: a tile made with it gets a
+    // stand-in (make_uniform_coast_page).
+    if (constant == 0.0F) page.page = std::move(made);
+    pages_.insert_or_assign(id(page.key), std::move(page));
     coast_table_dirty_ = true;
     coast_slots_dirty_ = true;
+}
+
+// At most coast_page_copies memory copies: the copies of the pages used
+// longest ago go. A page keeps its slot and layer; a page drawn with this
+// frame and still without a layer keeps its copy to fill one. A queued
+// tile holds its own reference to the copy it is made with.
+void TerrainTiles::trim_page_copies() {
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> kept; // last used or needed, id
+    for (const auto& [key_id, page] : pages_) {
+        if (page.page != nullptr) kept.emplace_back(std::max(page.last_used, page.needed), key_id);
+    }
+    if (kept.size() <= coast_page_copies) return;
+    std::sort(kept.begin(), kept.end());
+    std::size_t excess = kept.size() - coast_page_copies;
+    for (const auto& [used, key_id] : kept) {
+        if (excess == 0) break;
+        Page& page = pages_.at(key_id);
+        if (page.layer < 0 && page.needed == frame_) continue;
+        page.page = nullptr;
+        --excess;
+    }
 }
 
 // Per slot, (layer, mode) as the shaders read them: mode 0 where the page
@@ -355,7 +410,7 @@ void TerrainTiles::rebuild_page_table() {
                                               static_cast<std::size_t>(x));
                 const Page* page = best_page(key);
                 texel[0] = page != nullptr ? static_cast<float>(page->slot) : -1.0F;
-                texel[1] = page != nullptr ? static_cast<float>(page->page->key.level) : 0.0F;
+                texel[1] = page != nullptr ? static_cast<float>(page->key.level) : 0.0F;
                 texel[2] = 0.0F;
             }
         }
@@ -501,9 +556,7 @@ void TerrainTiles::update(const View& view) {
         pages.swap(done_pages_);
     }
     const double start = now_ms();
-    for (auto& page : pages) {
-        if (!pages_.contains(id(page->key))) add_page(std::move(page));
-    }
+    for (auto& page : pages) add_page(std::move(page));
     stats_.meshed = 0;
     std::size_t used = 0;
     for (; used < finished.size() && now_ms() - start < mesh_budget_ms; ++used) {
@@ -527,6 +580,7 @@ void TerrainTiles::update(const View& view) {
     drawn_.clear();
     wanted_.clear();
     pages_wanted_.clear();
+    pages_wanted_.swap(pages_again_);
     remakes_ = 0;
     for (std::uint8_t face = 0; face < 6U; ++face) select({face, 0U, 0U, 0U}, view);
 
@@ -544,9 +598,16 @@ void TerrainTiles::update(const View& view) {
         for (const auto& key : wanted_) {
             const std::uint64_t key_id = id(key);
             if (waiting.contains(key_id) || in_flight_.contains(key_id) || !queued.insert(key_id).second) continue;
-            Job job{key, nullptr};
+            Job job;
+            job.key = key;
             if (coast_) {
-                if (const Page* page = best_page(key); page != nullptr) job.page = page->page;
+                if (const Page* page = usable_page(key); page != nullptr) {
+                    job.page = page->page;
+                    job.uniform = page->page == nullptr;
+                    job.page_key = page->key;
+                    job.kind = page->kind;
+                    job.water = page->mode > 0.0F;
+                }
             }
             queue_.push_back(std::move(job));
         }
@@ -554,8 +615,10 @@ void TerrainTiles::update(const View& view) {
         queued.clear();
         for (const auto& key : pages_wanted_) {
             const std::uint64_t key_id = id(key);
-            if (pages_.contains(key_id) || pages_in_flight_.contains(key_id) || !queued.insert(key_id).second)
-                continue;
+            const auto present = pages_.find(key_id);
+            const bool complete = present != pages_.end() &&
+                                  (present->second.page != nullptr || present->second.mode < 2.0F);
+            if (complete || pages_in_flight_.contains(key_id) || !queued.insert(key_id).second) continue;
             page_queue_.push_back(key);
         }
         stats_.coast_pages_pending = static_cast<std::int64_t>(page_queue_.size() + pages_in_flight_.size());
@@ -602,6 +665,7 @@ void TerrainTiles::update(const View& view) {
     }
     evict();
     evict_pages();
+    trim_page_copies();
     rebuild_page_table();
     rebuild_slot_table();
     stats_.drawn = static_cast<std::int64_t>(drawn_.size());
@@ -610,6 +674,11 @@ void TerrainTiles::update(const View& view) {
     stats_.coast_remakes = remakes_;
     stats_.coast_layers = coast_ ? coast_layer_count - static_cast<std::int64_t>(free_layers_.size()) : 0;
     stats_.coast_pages = static_cast<std::int64_t>(pages_.size());
+    stats_.coast_page_copies = 0;
+    for (const auto& [key_id, page] : pages_) stats_.coast_page_copies += page.page != nullptr ? 1 : 0;
+    constexpr double page_mb = presentation::coast_page_nodes * presentation::coast_page_nodes * 2.0 / 1e6;
+    stats_.coast_memory_mb =
+        coast_ ? page_mb * static_cast<double>(coast_layer_count + stats_.coast_page_copies) : 0.0;
 }
 
 }  // namespace planetsim::godot_bridge

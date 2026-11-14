@@ -177,6 +177,33 @@ int main() {
     ancestor(test, deep, 1, relief, field, drawing);
     ancestor(test, deep, 3, relief, field, drawing);
     ancestor(test, deep, 5, relief, field, drawing);
+    // A page that is water or land throughout gives the same tile as its
+    // stand-in from make_uniform_coast_page: a tile reads only its sign.
+    {
+        int uniform_found = 0;
+        for (std::uint32_t y = 0; y < 32U && uniform_found < 2; ++y) {
+            for (std::uint32_t x = 0; x < 32U && uniform_found < 2; ++x) {
+                const TileKey key{0, 5, x, y};
+                const CoastPage page = make_coast_page(key, field, 8U);
+                bool water = true;
+                bool land = true;
+                for (std::uint32_t j = 0; j < coast_page_nodes && (water || land); ++j)
+                    for (std::uint32_t i = 0; i < coast_page_nodes; ++i) {
+                        water = water && page.signed_water_m(i, j) > 0.0;
+                        land = land && page.signed_water_m(i, j) <= 0.0;
+                    }
+                if (!water && !land) continue;
+                // The neighbours' ring must not see a coast either, so take
+                // tiles whose ring points are on the same side.
+                const CoastPage stand_in = make_uniform_coast_page(key, page.kind, water);
+                const TileGeometry real = make_terrain_tile(key, relief, drawing, &page, &field);
+                const TileGeometry made = make_terrain_tile(key, relief, drawing, &stand_in, &field);
+                PLANETSIM_EXPECT(test, made.positions == real.positions && made.custom1 == real.custom1);
+                ++uniform_found;
+            }
+        }
+        PLANETSIM_EXPECT(test, uniform_found == 2);
+    }
     // A page must be the tile's own or an ancestor's, with its field.
     const CoastPage other = make_coast_page(TileKey{5, 2, 2, 0}, field, 8U);
     bool rejected = false;
