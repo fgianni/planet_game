@@ -49,7 +49,7 @@ var _capture_focus_cell := -1
 
 func _ready() -> void:
 	_hud.action.connect(_ui_action)
-	_hud.set_help("Camera\nDrag: turn the globe\nShift+drag: heading and tilt\nWheel: zoom at cursor\nRight-click: inspect a cell\n\nPresentation\n1–9: views and overlays\nS: switch style   N: day/night   C: clouds\n[ ] (or ^ $): relief −/+   F12: screenshot\n\nRun\nL: toggle live climate   Space: pause   +/−: speed\nR: new seed   P: next preset   PgUp/PgDn: resolution\n\nF1: Help   Esc: close panel\n\nSolar forcing in Controls affects only live climate at the next simulation step. Recorded playback is read-only.")
+	_hud.set_help("Camera\nDrag: turn the globe\nShift+drag: heading and tilt\nWheel: zoom at cursor\nRight-click: inspect a cell\nInspect: zoom to the cell or clear selection\n\nPresentation\n1–9: views and overlays\nS: switch style   N: day/night   C: clouds\n[ ] (or ^ $): relief −/+   F12: screenshot\n\nRun\nL: toggle live climate   Space: pause   +/−: speed\nR: new seed   P: next preset   PgUp/PgDn: resolution\n\nF1: Help   Esc: close panel\n\nSolar forcing in Controls affects only live climate at the next simulation step. Recorded playback is read-only.")
 	var view := 0
 	var style := "stylised"
 	var presentation_record := ""
@@ -300,7 +300,15 @@ func _ui_action(kind: String, value: Variant) -> void:
 			_capture_series.call_deferred()
 		"cancel_capture_series":
 			_capture_series_cancelled = true
-	if kind not in ["regenerate", "solar", "capture", "capture_series", "cancel_capture_series"]:
+		"focus_selected":
+			if _selected_cell >= 0:
+				_globe.fly_to(_selected_cell, minf(_globe.get_altitude_m(), 100_000.0))
+				_hud.log_event("Action", "Zoom to cell %d" % _selected_cell)
+		"clear_selection":
+			_selected_cell = -1
+			_hud.log_event("Action", "Selection cleared")
+	if kind not in ["regenerate", "solar", "capture", "capture_series", "cancel_capture_series",
+			"focus_selected", "clear_selection"]:
 		_hud.log_event("Action", "%s: %s" % [kind.replace("_", " "), str(value)])
 
 
@@ -519,4 +527,5 @@ func _update_hud() -> void:
 		"live": _planet.has_live_run(), "relief": _planet.get_relief_exaggeration(),
 		"speed": live_steps_per_second if _planet.has_live_run() else
 			presentation_frames_per_second if _planet.has_presentation_record() else simulated_hours_per_second,
-		"selection": selection + ("\n" + legend if not legend.is_empty() else "")})
+		"selection": selection + ("\n" + legend if not legend.is_empty() else ""),
+		"has_selection": _selected_cell >= 0})

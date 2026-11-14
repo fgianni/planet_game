@@ -230,10 +230,24 @@ func _make_inspector() -> void:
 	selection.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(selection)
 	_controls["selection"] = selection
+	var actions := HBoxContainer.new()
+	box.add_child(actions)
+	var focus := Button.new()
+	focus.text = "Zoom to cell"
+	focus.tooltip_text = "Move to the selected cell, down to 100 km if farther away"
+	focus.pressed.connect(func() -> void: action.emit("focus_selected", null))
+	actions.add_child(focus)
+	_controls["focus_selected"] = focus
+	var clear := Button.new()
+	clear.text = "Clear selection"
+	clear.pressed.connect(func() -> void: action.emit("clear_selection", null))
+	actions.add_child(clear)
+	_controls["clear_selection"] = clear
 	var copy := Button.new()
 	copy.text = "Copy readings"
 	copy.pressed.connect(func() -> void: DisplayServer.clipboard_set(selection.text))
 	box.add_child(copy)
+	_controls["copy_selection"] = copy
 
 
 func update_state(state: Dictionary) -> void:
@@ -252,6 +266,8 @@ func update_state(state: Dictionary) -> void:
 	_controls["solar"].editable = state.live
 	_controls["solar_apply"].disabled = not state.live
 	_controls["selection"].text = state.selection
+	for name in ["focus_selected", "clear_selection", "copy_selection"]:
+		_controls[name].disabled = not state.has_selection
 
 
 func set_planet_setup(seed: int, preset: String, level: int) -> void:
