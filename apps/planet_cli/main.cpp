@@ -1538,6 +1538,9 @@ struct ReferenceOptions {
     std::string zonal_csv;
     std::optional<bool> moist_convection;   // ADR-0023 §4.2; empty: the preset's
     bool climate_only = false;   // parity: measure climate mode alone, no gate
+    // INV-05: reference mode's horizontal vapour advection, 1 upwind (the
+    // preset), 2 limited second-order (investigation setting).
+    int vapour_advection_order = 1;
 };
 
 [[nodiscard]] ReferenceOptions parse_reference_options(int argument_count, char** arguments) {
@@ -1569,6 +1572,11 @@ struct ReferenceOptions {
                 throw std::invalid_argument("--moist-convection takes 0 or 1");
             }
             options.moist_convection = value == "1";
+        } else if (argument == "--vapour-advection-order") {
+            if (value != "1" && value != "2") {
+                throw std::invalid_argument("--vapour-advection-order takes 1 or 2");
+            }
+            options.vapour_advection_order = value == "1" ? 1 : 2;
         } else if (argument == "--climate-only") {
             if (value != "0" && value != "1") {
                 throw std::invalid_argument("--climate-only takes 0 or 1");
@@ -1790,7 +1798,11 @@ int run_parity(const ReferenceOptions& options) {
         scenario.initial_mode = mode;
         scenario.atmosphere_layers = options.layers;
         scenario.moist_convection = options.moist_convection;
-        planetsim::PlanetRun run(scenario, workers);
+        const int order = options.vapour_advection_order;
+        planetsim::PlanetRun run(scenario, workers, planetsim::ClimateCirculationUse::coupled,
+                                 [order](planetsim::SurfaceEnergyParameters& p) {
+                                     p.vapour_advection_order = order;
+                                 });
         if (reference) {
             const auto spun = static_cast<planetsim::SimulationTick>(
                 std::llround(options.spin_up_years * 365.25 * 1'440.0));
