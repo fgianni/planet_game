@@ -67,15 +67,15 @@ baseline exactly):**
 The probes are in `tools/v8/reference_*_probe.cpp`; the logs in
 `build/inv05/` here and on the RTX 5070 Ti machine.
 
-**Decisions left with the user (not taken here):**
-1. Adopt the limited second-order vapour advection in reference mode (an
-   ADR-0021 §4.5 amendment), knowing it strengthens the winds towards the
-   150 m/s bound.
-2. How V8 treats a reference that is not converged with level: V8 stays
-   at L4 with the non-convergence a known limitation, or another
-   reference.
-3. Whether the small resolution-dependent parts (sub-grid condensation,
-   the evaporation's wind speed) are worth a fix.
+**Decisions (with the user):**
+1. **Upwind kept** (2026-11-16, ADR-0023 §17.8): the limited second-order
+   vapour advection stays an investigation setting. With it V8 at L4 is
+   −3.28 K and reference mode's P2 59.1 K (§17.7); the upwind polar bias
+   is a known limitation.
+2. **V8 stays at L4 as a same-level check** (2026-11-16, ADR-0023 §17,
+   option A); the non-convergence is its known limitation.
+3. Open: whether the small resolution-dependent parts (sub-grid
+   condensation, the evaporation's wind speed) are worth a fix.
 
 ## What is known (from INV-04)
 

@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-15
 - **Accepted:** 2026-10-16
-- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17); 2026-10-17 — §4.3.2: autoconversion integrated exactly with the step's condensation, no threshold; §4.4.1: the convective floor from the start-of-step trigger (§12, tasks M8-03, M8-04; accepted 2026-10-17); 2026-10-17 — §4.4.1: the cloud fraction from the cloud water at a fixed in-cloud path, the same in both modes (§13, task M8-05; accepted 2026-10-17); 2026-10-18 — §4.2.4, §4.3.2: convective condensate through the cloud water (§14, task M8-05; accepted 2026-10-18); 2026-10-18 — §5 V8: each mode's own spin-up (§15, task M8-05; accepted 2026-10-18); 2026-10-22 — §5 V8 at L4 over three years (§16, investigation INV-04; accepted 2026-10-22)
+- **Amended:** 2026-10-16 — §4.2: condensation inside the column solve and a continuous onset of convection; §5: V7 tests stability, the climatological latent heating moves to V9; the start from rest on the winds' orography (§11, task M8-02; accepted 2026-10-17); 2026-10-17 — §4.3.2: autoconversion integrated exactly with the step's condensation, no threshold; §4.4.1: the convective floor from the start-of-step trigger (§12, tasks M8-03, M8-04; accepted 2026-10-17); 2026-10-17 — §4.4.1: the cloud fraction from the cloud water at a fixed in-cloud path, the same in both modes (§13, task M8-05; accepted 2026-10-17); 2026-10-18 — §4.2.4, §4.3.2: convective condensate through the cloud water (§14, task M8-05; accepted 2026-10-18); 2026-10-18 — §5 V8: each mode's own spin-up (§15, task M8-05; accepted 2026-10-18); 2026-10-22 — §5 V8 at L4 over three years (§16, investigation INV-04; accepted 2026-10-22); 2026-11-12 — §5 V8 stays at L4 as a same-level check, reference mode's upwind vapour advection kept (§17, investigation INV-05; accepted 2026-11-16)
 - **Milestone:** P0 / M8 (clouds and precipitation)
 - **Context documents:** `docs/DEVELOPMENT_SPEC_v0_8.md` §13 M8, §23, §24, §31.2 (the cloud channels); Planetary Civilization Simulator — Design Record v1.4, §5, §15
 - **Related:** ADR-0001 (V1 water budget, V2 climate–reference parity), ADR-0003 (PSNAP migration), ADR-0006 (sub-steps), ADR-0008 (snow, rain and snow at the surface), ADR-0010 (layered atmosphere, grey longwave, Γ_c adjustment, §3.3 C deferring Betts–Miller to M8), ADR-0011 (winds, ascent), ADR-0018 (presentation channels `cloud_cover`, `cloud_thickness`), ADR-0021 (vapour, evaporation, saturation rainout; §13.7 V9 deferred to M8)
@@ -719,7 +719,7 @@ reference dynamics' climate grows more extreme with resolution (P2 48.8 K
 at L4, 60.1 K at L5); V8's level stays undecided until that is
 understood.
 
-## 17. Amendment: V8's level after INV-05 (proposed 2026-11-12, not accepted)
+## 17. Amendment: V8's level after INV-05 (proposed 2026-11-12, accepted 2026-11-16)
 
 **17.1 What INV-05 found** ([INV-05](../tasks/INV-05-reference-resolution.md),
 closed 2026-11-12):
@@ -769,7 +769,7 @@ which cools L4's caps by 6–8 K) changes V8's reference: it needs V8 at L4
 re-measured, and climate mode refitted or its gap recorded, in the same
 decision. That keeps V8's meaning fixed while its reference improves.
 
-**17.5 Status.** Proposed; §16.2 stands until this is accepted.
+**17.5 Status.** Accepted with the user 2026-11-16: option A. V8 is gated at L4 under §16.2's protocol as a same-level consistency check; §17.1 is its known limitation.
 
 **17.6 V8 at L4 re-measured at the current commit (2026-11-12).** §16.2's
 protocol at commit 8f77e02 (after INV-05's default-off settings and
@@ -806,3 +806,20 @@ climate mode, whose transport was fitted against the upwind reference
 (ADR-0027, ADR-0028), would need its transport refitted to agree with it.
 Under §17.4 that is part of the same decision.
 
+**17.8 Reference mode keeps the upwind vapour advection (accepted with the
+user 2026-11-16).** INV-05's limited second-order advection stays an
+investigation setting (`vapour_advection_order`, default 1), not the
+preset:
+- at L4 it makes reference mode less Earth-like, not more (P2 59.1 K
+  against upwind's 46.5 K and Earth's ≈ 42 K): the upwind diffusion offsets
+  other biases (INV-05's unattributed part, the cloud scheme, saturation
+  adjustment), and removing it alone worsens the climate;
+- refitting climate mode to it (§17.4) would fit a reference that is not
+  converged with level;
+- it strengthens the winds towards the 150 m/s bound (L5 131 m/s in two
+  years, INV-05 §9).
+
+The upwind scheme's polar bias (6–8 K at every level, INV-05 §9) is a
+known limitation of reference mode and of V8's reference. V8 at L4 stays
++0.473 K (§17.6). Revisit when the other biases are understood; the
+switch and §17.7's measurement make adopting it later cheap.
