@@ -4,6 +4,7 @@
 #include <bit>
 #include <cmath>
 #include <numbers>
+#include <numbers>
 #include <stdexcept>
 #include <thread>
 
@@ -181,6 +182,42 @@ double CoastPage::bilinear_signed_water_m(double x, double y) const {
     const double tx = x - x0, ty = y - y0;
     return (1 - ty) * ((1 - tx) * signed_water_m(x0, y0) + tx * signed_water_m(x0 + 1U, y0)) +
            ty * ((1 - tx) * signed_water_m(x0, y0 + 1U) + tx * signed_water_m(x0 + 1U, y0 + 1U));
+}
+
+double coast_page_value_at(const TileKey& key, const Vec3d& direction,
+                           const CoastWaterField& field, const CoastPage* page) {
+    if (key.face >= 6 || key.level > tile_max_level ||
+        key.x >= (1U << key.level) || key.y >= (1U << key.level) ||
+        (page != nullptr && page->key != key))
+        throw std::invalid_argument("invalid coast page query");
+    constexpr Vec3d normals[] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0},
+                                 {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    constexpr Vec3d us[] = {{0, 0, -1}, {0, 0, 1}, {1, 0, 0},
+                            {1, 0, 0}, {1, 0, 0}, {-1, 0, 0}};
+    constexpr Vec3d vs[] = {{0, 1, 0}, {0, 1, 0}, {0, 0, -1},
+                            {0, 0, 1}, {0, 1, 0}, {0, 1, 0}};
+    const double facing = dot(direction, normals[key.face]);
+    if (!(facing > 0.0)) throw std::invalid_argument("direction outside coast page face");
+    const double tiles = static_cast<double>(1U << key.level);
+    const double x = std::clamp(((std::atan(dot(direction, us[key.face]) / facing) * 4.0 /
+                                   std::numbers::pi + 1.0) * 0.5 * tiles - key.x) * coast_page_intervals,
+                                0.0, static_cast<double>(coast_page_intervals));
+    const double y = std::clamp(((std::atan(dot(direction, vs[key.face]) / facing) * 4.0 /
+                                   std::numbers::pi + 1.0) * 0.5 * tiles - key.y) * coast_page_intervals,
+                                0.0, static_cast<double>(coast_page_intervals));
+    if (page != nullptr) return page->bilinear_signed_water_m(x, y);
+
+    const auto x0 = std::min(static_cast<std::uint32_t>(x), coast_page_intervals - 1U);
+    const auto y0 = std::min(static_cast<std::uint32_t>(y), coast_page_intervals - 1U);
+    CellId hint{0};
+    const auto node = [&](std::uint32_t nx, std::uint32_t ny) {
+        const double value = coast_node_value(field, key.level, coast_page_direction(key, nx, ny), hint);
+        return static_cast<double>(half_to_float(half_from_float(
+            static_cast<float>(std::clamp(value, -65504.0, 65504.0)))));
+    };
+    const double tx = x - x0, ty = y - y0;
+    return (1.0 - ty) * ((1.0 - tx) * node(x0, y0) + tx * node(x0 + 1U, y0)) +
+           ty * ((1.0 - tx) * node(x0, y0 + 1U) + tx * node(x0 + 1U, y0 + 1U));
 }
 
 } // namespace planetsim::presentation

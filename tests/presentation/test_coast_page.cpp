@@ -57,11 +57,35 @@ void shared_nodes(planetsim::test::Context& test) {
     PLANETSIM_EXPECT(test, again.signed_water_le == right.signed_water_le);
     PLANETSIM_EXPECT(test, parent.bilinear_signed_water_m(0, 0) == parent.signed_water_m(0, 0));
     PLANETSIM_EXPECT(test, std::isfinite(parent.bilinear_signed_water_m(127.5, 32.5)));
+    // Picking can outlive a page's CPU copy while its GPU layer remains.
+    // The four reconstructed half-float nodes must reproduce that layer's
+    // interpolation, for point and coverage pages, including near edges.
+    for (const CoastPage* page : {&parent, &left, &right}) {
+        for (const double x : {0.25, 63.5, 127.25, 255.75})
+            for (const double y : {0.5, 128.125, 255.5}) {
+                const double u = -1.0 + 2.0 * (page->key.x + x / 256.0) /
+                                               static_cast<double>(1U << page->key.level);
+                const double v = -1.0 + 2.0 * (page->key.y + y / 256.0) /
+                                               static_cast<double>(1U << page->key.level);
+                const Vec3d direction = tile_face_direction(page->key.face, u, v);
+                PLANETSIM_EXPECT_NEAR(test, coast_page_value_at(page->key, direction, field, page),
+                                      page->bilinear_signed_water_m(x, y), 1e-8);
+                PLANETSIM_EXPECT_NEAR(test, coast_page_value_at(page->key, direction, field),
+                                      page->bilinear_signed_water_m(x, y), 1e-8);
+            }
+    }
     const TileKey coastal_key{5, 1, 0, 1};
     const auto page_start = std::chrono::steady_clock::now();
     // Level 1 at L4 is a coverage level: its sign is compared, not its value.
     const CoastPage coastal = make_coast_page(coastal_key, field, 8U);
     PLANETSIM_EXPECT(test, coastal.kind == CoastPageKind::coverage);
+    for (double x : {0.5, 127.5, 255.5}) {
+        const double u = -1.0 + 2.0 * (coastal_key.x + x / 256.0) / 2.0;
+        const double v = -1.0 + 2.0 * (coastal_key.y + 127.5 / 256.0) / 2.0;
+        const Vec3d direction = tile_face_direction(coastal_key.face, u, v);
+        PLANETSIM_EXPECT_NEAR(test, coast_page_value_at(coastal_key, direction, field),
+                              coastal.bilinear_signed_water_m(x, 127.5), 1e-8);
+    }
     const double generation_ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - page_start).count();
     std::size_t centre_flips = 0, wet_nodes = 0, dry_nodes = 0;

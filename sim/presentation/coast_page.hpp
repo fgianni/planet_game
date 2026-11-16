@@ -78,6 +78,12 @@ struct CoastPage {
 // (a tile reads only a uniform page's sign).
 [[nodiscard]] CoastPage make_uniform_coast_page(const TileKey& key, CoastPageKind kind, bool water);
 
+// Point query of the stored page's bilinear field at a direction on its
+// face. If its CPU copy was evicted but its GPU layer remains, reconstruct
+// only the four binary16 nodes needed by a pick (not a whole 132 KB page).
+[[nodiscard]] double coast_page_value_at(const TileKey& key, const Vec3d& direction,
+                                         const CoastWaterField& field, const CoastPage* page = nullptr);
+
 // Round-to-nearest-even IEEE binary16, and back.
 [[nodiscard]] std::uint16_t half_from_float(float value) noexcept;
 [[nodiscard]] float half_to_float(std::uint16_t bits) noexcept;

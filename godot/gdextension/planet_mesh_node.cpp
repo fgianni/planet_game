@@ -1114,6 +1114,12 @@ double PlanetMeshNode::get_surface_radius(const godot::Vector3& direction) const
         const auto sample = tiles_->relief().sample(Vec3d{d.x, d.y, d.z}, CellId{surface_hint_});
         surface_hint_ = sample.cell.value();
         const auto& drawing = tiles_->drawing();
+        // A water page flattens the tile geometry to sea level, even where
+        // the independent relief would put land above it. Pick that surface,
+        // not the relief underneath the visible water. With no drawable page
+        // the tile shader uses the old surface-waterline fallback too.
+        const auto coast = tiles_->coast_value_at(Vec3d{d.x, d.y, d.z}, true);
+        if (coast && *coast > 0.0) return 1.0;
         return 1.0 + drawn_exaggeration_ / drawing.radius_m *
                          std::max(0.0, sample.elevation_m - drawing.sea_level_m);
     }

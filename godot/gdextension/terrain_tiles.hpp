@@ -15,6 +15,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -107,6 +108,11 @@ public:
     [[nodiscard]] const Stats& stats() const noexcept { return stats_; }
     [[nodiscard]] const presentation::TerrainRelief& relief() const noexcept { return *relief_; }
     [[nodiscard]] const presentation::TileDrawing& drawing() const noexcept { return drawing_; }
+    // The page actually drawn at a direction: the cell-mesh table in the
+    // planet band, or the selected tile's page in the tile band. No page (or
+    // a missing GPU layer) means the shader uses its fallback instead.
+    [[nodiscard]] std::optional<double> coast_value_at(const planetsim::Vec3d& direction,
+                                                       bool tile_band) const;
 
     static constexpr double split_error_px = 4.0;   // geometric error on screen that splits a tile
     static constexpr double max_triangle_cells = 0.3; // vertex spacing, in cells, for faithful channels

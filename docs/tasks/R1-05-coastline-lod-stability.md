@@ -1792,6 +1792,25 @@ Results:
 
 Still open: picking; the cell mesh's own geometry (not needed by the gate).
 
+**Picking slice (2026-11-16; not full acceptance).** The tile-band
+`get_surface_radius` now uses the page attached to the *drawn tile*, not a
+newer page that has arrived but whose tile has not yet replaced its parent.
+Where that page classifies water, the picking surface is at sea level, as
+the tile's water vertices are. With no drawable page the old relief fallback
+remains, matching the shader fallback. When a GPU layer survives eviction of
+the CPU copy, a point query reconstructs just the four binary16 nodes needed
+for its bilinear value; a headless test compares it to the retained page at
+point and coverage levels. The planet-band fan geometry itself is unchanged.
+
+`test_coast_picking.gd` settles pages at a coastal L4 focus and checks that
+picks at 2 000, 100 and 5 km ray-project back to the cursor and resolve a
+cell. Measured pick times in that headless run were 0.111, 0.132 and
+0.138 ms. This is a geometric smoke test, **not** a comparison to a rendered
+AA pixel's water classification or a collision-mesh audit. It does not close
+ADR-0030 A1.4's picking/collision gate. The cell mesh's own page-following
+geometry also remains open; the 16 rendered coast sweeps and 66.6 MB memory
+result above are unchanged, not rerun by this slice.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

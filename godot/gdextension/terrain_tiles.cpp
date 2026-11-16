@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <numbers>
 
 namespace planetsim::godot_bridge {
 namespace {
@@ -65,7 +66,7 @@ TerrainTiles::TerrainTiles(godot::Node3D* parent,
                            std::shared_ptr<const presentation::CoastWaterField> coast)
     : relief_(std::move(relief)), coast_(std::move(coast)), drawing_(drawing), material_(std::move(material)) {
     if (coast_) {
-        godot::TypedArray<godot::Ref<godot::Image>> layers;
+        godot::TypedArray<godot::Image> layers;
         for (int layer = 0; layer < coast_layer_count; ++layer) layers.push_back(page_image(nullptr));
         coast_pages_.instantiate();
         coast_pages_->create_from_images(layers);
@@ -276,6 +277,59 @@ TerrainTiles::Page* TerrainTiles::best_page(const presentation::TileKey& key) {
         if (auto found = pages_.find(id(ancestor)); found != pages_.end()) return &found->second;
     }
     return nullptr;
+}
+
+std::optional<double> TerrainTiles::coast_value_at(const planetsim::Vec3d& direction,
+                                                   bool tile_band) const {
+    if (!coast_) return std::nullopt;
+    const double ax = std::abs(direction.x), ay = std::abs(direction.y), az = std::abs(direction.z);
+    const std::uint8_t face = ax >= ay && ax >= az ? (direction.x >= 0 ? 0 : 1) :
+                              ay >= az ? (direction.y >= 0 ? 2 : 3) : (direction.z >= 0 ? 4 : 5);
+    constexpr planetsim::Vec3d normals[] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0},
+                                             {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    constexpr planetsim::Vec3d us[] = {{0, 0, -1}, {0, 0, 1}, {1, 0, 0},
+                                        {1, 0, 0}, {1, 0, 0}, {-1, 0, 0}};
+    constexpr planetsim::Vec3d vs[] = {{0, 1, 0}, {0, 1, 0}, {0, 0, -1},
+                                        {0, 0, 1}, {0, 1, 0}, {0, 1, 0}};
+    const double facing = dot(direction, normals[face]);
+    const double u = std::clamp((std::atan(dot(direction, us[face]) / facing) * 4.0 /
+                                 std::numbers::pi + 1.0) * 0.5, 0.0, 1.0);
+    const double v = std::clamp((std::atan(dot(direction, vs[face]) / facing) * 4.0 /
+                                 std::numbers::pi + 1.0) * 0.5, 0.0, 1.0);
+    const auto square = [&](std::uint8_t level) {
+        const auto count = 1U << level;
+        return presentation::TileKey{face, level,
+            std::min(static_cast<std::uint32_t>(u * count), count - 1U),
+            std::min(static_cast<std::uint32_t>(v * count), count - 1U)};
+    };
+    const Page* page = nullptr;
+    if (tile_band) {
+        // Drawn leaves include parent stand-ins while children are loading.
+        // Their coast key, not the finest resident page, controls the image.
+        for (const auto& key : drawn_) {
+            if (key.face != face || key != square(key.level)) continue;
+            const auto tile = tiles_.find(id(key));
+            if (tile == tiles_.end() || tile->second.coast_level < 0) break;
+            const auto found = pages_.find(tile->second.coast_page);
+            if (found != pages_.end()) page = &found->second;
+            break;
+        }
+    } else {
+        auto key = square(static_cast<std::uint8_t>(coast_table_level));
+        for (;;) {
+            if (const auto found = pages_.find(id(key)); found != pages_.end()) {
+                page = &found->second;
+                break;
+            }
+            if (key.level == 0) break;
+            key = presentation::tile_parent(key);
+        }
+    }
+    if (page == nullptr || (page->layer < 0 && std::abs(page->mode) != 1.0F))
+        return std::nullopt;
+    if (page->mode == 1.0F) return 1.0;
+    if (page->mode == -1.0F) return -1.0;
+    return presentation::coast_page_value_at(page->key, direction, *coast_, page->page.get());
 }
 
 TerrainTiles::Page* TerrainTiles::usable_page(const presentation::TileKey& key) {
