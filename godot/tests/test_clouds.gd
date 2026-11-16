@@ -21,7 +21,9 @@ func _run() -> void:
 	_build_scene()
 	_planet.rebuild(2, 6_371_000.0, 1, "earth_like")
 	_planet.load_presentation_record(arguments[0])
-	_planet.set_presentation_frame(_planet.get_presentation_frame_count() - 1)
+	var selected := _select_cloudiest_frame()
+	print("cloud test frame %d/%d, peak cover %.3f, mean cover × thickness %.4f" % [
+		selected.frame + 1, _planet.get_presentation_frame_count(), selected.cover, selected.score])
 	_planet.set_day_night_shading(false)
 	await process_frame
 
@@ -59,6 +61,33 @@ func _run() -> void:
 	assert(sky_clouded > sky_clear + 0.05, "from the ground the clouds were not seen overhead")
 	print("M8-06 cloud layer pass")
 	quit(0)
+
+
+## Pick the frame that best exercises the cloud material. The recording must
+## contain a genuinely cloudy frame; it need not happen to end on one.
+func _select_cloudiest_frame() -> Dictionary:
+	var best_frame := -1
+	var best_cover := -1.0
+	var best_score := -1.0
+	for frame in _planet.get_presentation_frame_count():
+		_planet.set_presentation_frame(frame)
+		var cover: PackedFloat32Array = _planet.get_channel_values("cloud_cover")
+		var thickness: PackedFloat32Array = _planet.get_channel_values("cloud_thickness")
+		if cover.size() != thickness.size() or cover.is_empty():
+			continue
+		var peak := 0.0
+		var score := 0.0
+		for cell in cover.size():
+			peak = maxf(peak, cover[cell])
+			score += cover[cell] * thickness[cell] / cover.size()
+		if score > best_score:
+			best_score = score
+			best_cover = peak
+			best_frame = frame
+	assert(best_frame >= 0 and best_cover > 0.5,
+		"the presentation record has no frame with cloud cover above 0.5")
+	_planet.set_presentation_frame(best_frame)
+	return {"frame": best_frame, "cover": best_cover, "score": best_score}
 
 
 func _build_scene() -> void:

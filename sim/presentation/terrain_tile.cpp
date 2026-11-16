@@ -1,8 +1,11 @@
 #include "sim/presentation/terrain_tile.hpp"
 
+#include "sim/presentation/coast_page.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <stdexcept>
 
 namespace planetsim::presentation {
 namespace {
@@ -105,7 +108,22 @@ double tile_angular_size(const TileKey& key) {
     return std::numbers::pi / 2.0 / std::ldexp(1.0, key.level);
 }
 
-TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, const TileDrawing& drawing) {
+TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, const TileDrawing& drawing,
+                               const CoastPage* coast, const CoastWaterField* field) {
+    // The page is the tile's own or an ancestor's: the same face, a level
+    // no finer, holding the tile.
+    const int page_depth = coast != nullptr ? static_cast<int>(key.level) - static_cast<int>(coast->key.level) : 0;
+    if (coast != nullptr && (field == nullptr || coast->key.face != key.face || page_depth < 0 ||
+                             (key.x >> page_depth) != coast->key.x || (key.y >> page_depth) != coast->key.y)) {
+        throw std::invalid_argument("a tile's coast page must be its own or an ancestor's, with the water field");
+    }
+    // Grid line i of the tile, in the page's node coordinates (exact for an
+    // ancestor up to three levels up: its nodes are every 8 / 2^page_depth lines).
+    const auto page_node = [&](std::uint32_t tile_index, std::uint32_t page_index, std::int64_t i) {
+        const double in_tiles = (static_cast<double>(tile_index) * tile_grid + static_cast<double>(i)) /
+                                (static_cast<double>(tile_grid) * std::ldexp(1.0, page_depth));
+        return (in_tiles - static_cast<double>(page_index)) * coast_page_intervals;
+    };
     const PlanetMesh& mesh = relief.mesh();
     const std::size_t cell_count = mesh.cell_count();
     constexpr std::int64_t lines = tile_grid + 1;
@@ -117,6 +135,7 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
         Vec3d position; // planet-centred, radii
         double height_m = 0.0;
         double rank = 0.0;
+        bool wet = false; // with a coast page: its classification
     };
     std::vector<Point> points(static_cast<std::size_t>(ring * ring));
     // Tiles too coarse to show sub-cell relief (fewer than five vertices
@@ -135,9 +154,77 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
                                                  : relief.sample(point.direction, hint);
             hint = sample.cell;
             point.height_m = sample.elevation_m - drawing.sea_level_m;
+            if (coast != nullptr) {
+                // The page's value, or outside the page the value the
+                // neighbouring page of its level holds there (rounded the
+                // same way).
+                const double px = page_node(key.x, coast->key.x, i);
+                const double py = page_node(key.y, coast->key.y, j);
+                double water = 0.0;
+                if (px >= 0.0 && py >= 0.0 && px <= coast_page_intervals && py <= coast_page_intervals) {
+                    water = coast->bilinear_signed_water_m(px, py);
+                } else {
+                    CellId coast_hint = sample.cell;
+                    water = half_to_float(half_from_float(static_cast<float>(
+                        coast_node_value(*field, coast->key.level, point.direction, coast_hint))));
+                }
+                point.wet = water > 0.0;
+                point.height_m = point.wet ? std::min(point.height_m, 0.0) : std::max(point.height_m, 0.0);
+            }
             point.rank = sample.rank;
-            point.position = point.direction * (1.0 + exaggeration * std::max(0.0, point.height_m));
         }
+    }
+    const auto at_point = [&](std::int64_t i, std::int64_t j) -> const Point& {
+        return points[static_cast<std::size_t>((j + 1) * ring + (i + 1))];
+    };
+    if (coast != nullptr) {
+        // Land touching water (its eight neighbours, the ring's included)
+        // lies at sea level too, so every triangle the coast crosses is at
+        // sea level and the coast lies on the sphere, where the page puts it,
+        // whatever the relief's exaggeration (A1.4: shore vertices at zero
+        // height). Without it a raised land vertex lifts the coast inside its
+        // triangle, and the view shifts it by the parallax.
+        // The classification one line further out, so that the ring's
+        // points see all their neighbours, as the neighbouring tile does.
+        constexpr std::int64_t outer = ring + 2;
+        std::vector<std::uint8_t> wet(static_cast<std::size_t>(outer * outer), 0U);
+        for (std::int64_t j = -2; j <= lines + 1; ++j) {
+            for (std::int64_t i = -2; i <= lines + 1; ++i) {
+                std::uint8_t& cell = wet[static_cast<std::size_t>((j + 2) * outer + (i + 2))];
+                if (i >= -1 && j >= -1 && i <= lines && j <= lines) {
+                    cell = at_point(i, j).wet ? 1U : 0U;
+                    continue;
+                }
+                const double px = page_node(key.x, coast->key.x, i);
+                const double py = page_node(key.y, coast->key.y, j);
+                if (px >= 0.0 && py >= 0.0 && px <= coast_page_intervals && py <= coast_page_intervals) {
+                    cell = coast->bilinear_signed_water_m(px, py) > 0.0 ? 1U : 0U;
+                } else {
+                    CellId coast_hint = hint;
+                    const Vec3d direction = tile_face_direction(key.face, face_coordinate(key.x, key.level, i),
+                                                                face_coordinate(key.y, key.level, j));
+                    cell = half_to_float(half_from_float(static_cast<float>(
+                               coast_node_value(*field, coast->key.level, direction, coast_hint)))) > 0.0 ? 1U : 0U;
+                }
+            }
+        }
+        std::vector<bool> shore(points.size(), false);
+        for (std::int64_t j = -1; j <= lines; ++j) {
+            for (std::int64_t i = -1; i <= lines; ++i) {
+                if (wet[static_cast<std::size_t>((j + 2) * outer + (i + 2))] != 0U) continue;
+                bool touches = false;
+                for (std::int64_t dj = -1; dj <= 1 && !touches; ++dj)
+                    for (std::int64_t di = -1; di <= 1 && !touches; ++di)
+                        touches = wet[static_cast<std::size_t>((j + 2 + dj) * outer + (i + 2 + di))] != 0U;
+                shore[static_cast<std::size_t>((j + 1) * ring + (i + 1))] = touches;
+            }
+        }
+        for (std::size_t index = 0; index < points.size(); ++index) {
+            if (shore[index]) points[index].height_m = 0.0;
+        }
+    }
+    for (Point& point : points) {
+        point.position = point.direction * (1.0 + exaggeration * std::max(0.0, point.height_m));
     }
     const auto at = [&](std::int64_t i, std::int64_t j) -> const Point& {
         return points[static_cast<std::size_t>((j + 1) * ring + (i + 1))];
@@ -151,6 +238,7 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
 
     TileGeometry tile;
     tile.key = key;
+    if (coast != nullptr) tile.coast_key = coast->key;
     tile.origin = tile_center_direction(key);
     tile.min_radius = 1e300;
     tile.max_radius = 0.0;
@@ -169,6 +257,8 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
         Vec3d direction;
         double height_m;
         double rank;
+        double page_x = 0.0; // the vertex's place in the coast page, [0, 1]
+        double page_y = 0.0;
     };
     const auto emit_triangle = [&](const std::array<Vertex, 3>& corners_in) {
         std::array<Vertex, 3> v = corners_in;
@@ -198,6 +288,7 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
             // position (§4.9); a tile's VERTEX is relative to its origin.
             append(tile.custom1, vertex.direction);
             tile.custom1.push_back(static_cast<float>(vertex.height_m));
+            if (coast != nullptr) append(tile.coast_uv, vertex.page_x, vertex.page_y);
             const double radius = length(vertex.position);
             tile.min_radius = std::min(tile.min_radius, radius);
             tile.max_radius = std::max(tile.max_radius, radius);
@@ -205,7 +296,9 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
     };
     const auto vertex_at = [&](std::int64_t i, std::int64_t j) {
         const Point& p = at(i, j);
-        return Vertex{p.position, normal_at(i, j), p.direction, p.height_m, p.rank};
+        return Vertex{p.position, normal_at(i, j), p.direction, p.height_m, p.rank,
+                      coast != nullptr ? page_node(key.x, coast->key.x, i) / coast_page_intervals : 0.0,
+                      coast != nullptr ? page_node(key.y, coast->key.y, j) / coast_page_intervals : 0.0};
     };
 
     for (std::int64_t j = 0; j < tile_grid; ++j) {

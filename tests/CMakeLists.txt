@@ -52,6 +52,8 @@ add_planetsim_test(test_coast_water_field presentation/test_coast_water_field.cp
 target_link_libraries(test_coast_water_field PRIVATE PlanetSim::Presentation)
 add_planetsim_test(test_coast_page presentation/test_coast_page.cpp)
 target_link_libraries(test_coast_page PRIVATE PlanetSim::Presentation)
+add_planetsim_test(test_coast_tile presentation/test_coast_tile.cpp)
+target_link_libraries(test_coast_tile PRIVATE PlanetSim::Presentation)
 add_planetsim_test(test_terrain_tile presentation/test_terrain_tile.cpp)
 target_link_libraries(test_terrain_tile PRIVATE PlanetSim::Presentation)
 add_planetsim_test(test_golden_snapshot regression/test_golden_snapshot.cpp)

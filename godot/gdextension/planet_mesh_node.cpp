@@ -7,6 +7,7 @@
 #include "sim/planet/run/planet_run.hpp"
 #include "sim/planet/planet_state.hpp"
 #include "sim/planet/terrain/terrain_generator.hpp"
+#include "sim/presentation/coast_water_field.hpp"
 #include "sim/presentation/detail_seed.hpp"
 #include "sim/presentation/presentation_record.hpp"
 
@@ -1032,7 +1033,9 @@ void PlanetMeshNode::update_terrain_tiles(const godot::PackedFloat64Array& posit
     const bool enabled = weight > 0.0;
     try {
         if (!mesh_ || material_.is_null() || position.size() != 3 || forward.size() != 3) return;
-        if (enabled && !tiles_) {
+        // Made at once and updated in every band: the coast pages the cell
+        // mesh reads (ADR-0030 A1.3) come from the tiles' selection.
+        if (!tiles_) {
             auto relief = std::make_shared<const presentation::TerrainRelief>(mesh_, terrain_, seed_);
             presentation::TileDrawing drawing;
             drawing.relief_exaggeration = relief_exaggeration_;
@@ -1042,7 +1045,10 @@ void PlanetMeshNode::update_terrain_tiles(const godot::PackedFloat64Array& posit
             double highest_m = terrain_.sea_level_m;
             for (const float value : terrain_.hypsometry_m) highest_m = std::max(highest_m, static_cast<double>(value));
             for (const float value : terrain_.mean_elevation_m) highest_m = std::max(highest_m, static_cast<double>(value));
-            tiles_ = std::make_unique<TerrainTiles>(this, std::move(relief), drawing, material_, highest_m);
+            // ADR-0030 Amendment 1: the canonical coast, from the same relief.
+            auto coast = std::make_shared<const presentation::CoastWaterField>(*relief, terrain_);
+            tiles_ = std::make_unique<TerrainTiles>(this, std::move(relief), drawing, material_, highest_m,
+                                                    std::move(coast));
         }
         tiles_active_ = enabled;
         tiles_weight_ = weight;
@@ -1063,11 +1069,9 @@ void PlanetMeshNode::update_terrain_tiles(const godot::PackedFloat64Array& posit
         }
         if (!tiles_) return;
         tiles_->set_visible(enabled);
-        if (enabled) {
-            const double baked = tiles_->drawing().relief_exaggeration;
-            tiles_->update({position[0], position[1], position[2], focal_px, forward[0], forward[1],
-                            forward[2], half_diagonal, baked > 0.0 ? drawn_exaggeration_ / baked : 1.0});
-        }
+        const double baked = tiles_->drawing().relief_exaggeration;
+        tiles_->update({position[0], position[1], position[2], focal_px, forward[0], forward[1],
+                        forward[2], half_diagonal, baked > 0.0 ? drawn_exaggeration_ / baked : 1.0});
     } catch (const std::exception& error) {
         godot::UtilityFunctions::push_error("PlanetMeshNode terrain tiles: ", error.what());
     }
@@ -1088,6 +1092,14 @@ godot::Dictionary PlanetMeshNode::get_terrain_tile_stats() const {
         for (const auto count : stats.drawn_by_level) by_level.push_back(count);
         result["drawn_by_level"] = by_level;
         result["translation_error_px"] = stats.translation_error_px;
+        result["coast_layers"] = stats.coast_layers;
+        result["coast_without_layer"] = stats.coast_without_layer;
+        result["coast_pages"] = stats.coast_pages;
+        result["coast_pages_pending"] = stats.coast_pages_pending;
+        result["coast_from_ancestor"] = stats.coast_from_ancestor;
+        result["coast_remakes"] = stats.coast_remakes;
+        result["coast_page_copies"] = stats.coast_page_copies;
+        result["coast_memory_mb"] = stats.coast_memory_mb;
     }
     return result;
 }

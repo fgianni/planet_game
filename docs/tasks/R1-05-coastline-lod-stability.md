@@ -1312,6 +1312,486 @@ As the probe notes, a connectivity boundary on a cell edge is not a
 continuous height zero, so a canonical coast needs a continuous form of
 the rule. The proposed amendment to ADR-0030 gives one (§ "Amendment 1").
 
+**Amendment 1 task 2: the pages in screen space (2026-11-10; probe only).**
+`tools/render/coast_screen_probe.cpp` places a nadir pinhole camera (512²
+px, 60° field of view) over coastal foci on the canonical contour, found by
+bisection along a fixed sequence of great-circle steps. It casts 4 × 4 rays
+a pixel onto the bare sphere; raised geometry is a later gate.
+
+Each pixel's water coverage is computed three ways:
+- **the reference:** canonical s at every ray;
+- **the page level:** the coarsest level with at least two nodes a pixel
+  at the nadir;
+- **one level coarser and one level finer** than that.
+
+A pixel is water at coverage above 0.5. A differing pixel is **deep** when
+all eight neighbours of the comparison's reference mask are on its own side.
+A difference region of four pixels or more is reported, and flagged when it
+contains a deep pixel (an island or inlet that would appear or disappear).
+
+Seeds 20260928 and 42, at L4 and L6; logs `build/r105/handoff_L*_aa4.log`.
+Deep pixels summed over each configuration's foci (3, or 2 for L6 seed 42):
+
+| Altitude (pixel width) | L4 20260928 | L4 42 | L6 20260928 | L6 42 |
+|---|---|---|---|---|
+| 12 000 km (27 km) | 7 / 6 / 7 / 4 | 4 / 5 / 3 / 1 | 15 / 11 / 8 / 11 | 3 / 5 / 10 / 2 |
+| 4 000 km (9.0 km) | 2 / 0 / 1 / 3 | 1 / 2 / 1 / 1 | 2 / 2 / 2 / 1 | 6 / 7 / 1 / 3 |
+| 1 000 km (2.3 km) | 0 / 0 / 1 / 0 | 0 / 0 / 0 / 0 | 0 / 0 / 2 / 1 | 1 / 0 / 0 / 1 |
+| 250, 50, 10 and 2 km | 0 everywhere | 0 | 0 | 0 |
+
+Each cell gives, in order: pages against the field; one level coarser
+against the field; the handoff from one level coarser to the page level;
+and from the page level to one level finer.
+
+- **At 250 km and below** nothing is deep in any comparison, in any of the
+  four configurations: the pages meet the ≤1 px rule against the field and
+  across both handoffs.
+- **No deep region of four pixels or more** appears at any altitude. The
+  largest difference region is 7 px, without a deep pixel.
+- **The remaining deep pixels are isolated, from 1 000 km up.** At most 15
+  per configuration, among about 84 000 visible pixels each at orbit. There
+  a pixel is 4–50 times the relief's finest wavelength (2.3 km at L4,
+  0.58 km at L6). Point sampling, even at 16 rays, then flips pixels near
+  half coverage arbitrarily, so these counts measure sampling noise as well
+  as the pages.
+- The gate allows sub-pixel features to merge at orbit, but not a
+  resolvable jump. That needs coarse pages that store a **filtered**
+  coverage of the fine field instead of point values, and a coverage
+  reference to judge them; neither is built yet. Until then, the orbit
+  rows are not a pass.
+- Each pose (three renders plus the reference, 24 threads) takes 1–20 s,
+  and the page cache holds 50–260 pages a pose: 6.6–34 MB of node bytes.
+  This measures no frame cost.
+
+Not covered yet: cube-face seams in view, a focus near an L6 depression,
+raised geometry, either style or Godot.
+
+**Filtered coverage pages at orbit, seams and depressions (2026-11-10;
+probe only).** `coast_screen_probe` gains:
+- **A coverage page kind.** Each node holds its footprint's water coverage
+  minus 0.5, from S × S sub-samples of s, with S = the node spacing over
+  half the relief's finest wavelength, capped at 16. Levels with S = 1 keep
+  point pages.
+- **A coverage reference** of up to 64 × 64 rays a pixel.
+- **Seam foci:** coast crossings of cube-face edges.
+- **Depression foci:** the centres of L6's inland depression cells.
+
+Logs are `build/r105/coverage_*.log`. Deep pixels at 12 000 km, in the same
+four comparisons as above:
+
+| | Point pages | Coverage pages |
+|---|---|---|
+| L4 20260928 | 7 / 6 / 7 / 4 | 0 / 0 / 0 / 1 |
+| L4 42 | 4 / 5 / 3 / 1 | 7 / 4 / 1 / 1 |
+| L6 20260928 | 15 / 11 / 8 / 11 | 4 / 1 / 1 / 3 |
+| L6 42 | 3 / 5 / 10 / 2 | 3 / 1 / 0 / 1 |
+
+- **Coverage pages reduce the orbit deep pixels, but not to zero.** L4
+  seed 42 is worse against the field. At L6 both the footprint cap (16)
+  and the reference cap (64 rays) fall short of resolving 0.58 km features
+  at orbit.
+- **A coverage page with S = 2 is cruder than a point page.** L6 seed
+  20260928 at 250 km has 4 deep pixels one level coarser (none with point
+  pages). Coverage should start only where S ≥ 3 or so.
+- **Seams:** L4 seam foci behave like other coasts. L6's have up to 4
+  isolated deep pixels at 4 000 km, and none above 1 below 1 000 km. No
+  seam artefact is visible: edge nodes of coverage pages are not yet
+  shared between faces, and this sample does not show it.
+- **Depressions:** no water appears where the field has none. Views
+  centred on depression cells have 0 water pixels in the reference and in
+  the pages at 50 km and below, and 242 against 242 at 250 km (L6 seed
+  20260928). Where ocean is in view, the water counts agree within 0.05 %.
+- **No deep region of four pixels or more**, at any altitude or kind.
+- **Open: the orbit metric.** At orbit, binarising coverage at 0.5 makes
+  any pixel near half coverage a candidate flip. A "resolvable jump" there
+  may be better measured as a per-pixel coverage change (for example
+  ≥ 0.5) than as a flip at the threshold. That is a reading of ADR-0030's
+  gate, to settle with the user.
+- Each pose takes 3–21 s (24 threads); coverage pages at L6's coarse
+  levels cost up to 256 sub-samples a node. Neither cost is a runtime
+  design.
+
+**The headless gate under ADR-0030 A1.5a (2026-11-10; probe only).**
+The user chose the reading in ADR-0030 A1.5a: where features are
+sub-pixel, a resolvable jump is a coverage change of 0.5 or more. The
+probe now reports such jumps and the largest change. Coverage pages start
+at S ≥ 3, and point pages stay below that.
+
+The eight configurations were rerun: coast foci, both seeds, L4 and L6;
+seam foci, L4 and L6; depression foci, L6, both seeds. That is 161 poses,
+logs `build/r105/jump_*.log`.
+
+- **Coverage jumps of 0.5 or more: none** at the page level and in either
+  handoff. The largest per-pixel change is 0.25 against the field and
+  0.31 across a handoff.
+- **Where features are resolved** (250 km and below), the ≤ 1 px rule
+  holds as written: no deep pixel at the page level or across the
+  handoffs.
+- **No deep region of four pixels or more**, anywhere.
+- **The shortfall state** (one level coarser, while children load) has a
+  single jump, of exactly 0.50: L6 seed 42, 250 km. A1.3 reports this
+  state rather than hiding it.
+- Isolated threshold flips remain at orbit (up to 7 per configuration
+  against the field), reported as A1.5a requires.
+
+The headless page representation meets the screen-space gate in this
+sample, with these limits: flat footprint (no raised geometry), nadir
+views only, two seeds, and a probe-only coverage kind. That kind samples a
+face-aligned footprint, so cube-face edge nodes are not yet shared
+between faces.
+
+**Task 3a, the library's coverage pages, and their cost (2026-11-10).**
+`make_coast_page` now has both kinds (commit `55361d0`):
+- point values where a level resolves the relief's finest features;
+- footprint coverage − 0.5 where it needs at least 3 sub-samples a side,
+  at most `coast_footprint_cap`.
+
+The footprint depends on the node's direction alone. Rerunning the probe on
+the library pages (`build/r105/library_*.log`: L4 coast, L6 seed 42 coast,
+L6 seam) reproduces the probe-kind results: no coverage jump at the page
+level or across handoffs; the one shortfall jump (0.50, L6 seed 42, 250 km)
+is unchanged.
+
+The footprint cap, L6 seed 20260928, three coast foci
+(`build/r105/cap{16,8,4}_*.log`):
+- **Cap 16 and cap 8** give the same gate results: 3 / 0 / 1 / 4 deep
+  pixels at 12 000 km, and no jump.
+- **Cap 4** gives 4 / 0 / 2 / 2 deep pixels at 12 000 km, still no jump,
+  and no deep region of four pixels.
+- The pages do differ: summed coverage error 68.4, 68.5 and 70.6 px at the
+  first orbit pose.
+
+One thread, a page (scratch timing, this machine):
+
+| L6 level (sub-samples a side at cap 16) | Cap 16 | Cap 8 | Cap 4 |
+|---|---:|---:|---:|
+| 1–3 (16) | 6.2–6.4 s | 1.6 s | 0.41–0.44 s |
+| 4 (9) | 2.0 s | 1.5 s | 0.40 s |
+| 5 (5) | 0.61 s | 0.61 s | 0.39 s |
+| 6 (3) | 0.22 s | 0.22 s | 0.22 s |
+| 7 and finer (point) | 0.026 s | 0.026 s | 0.026 s |
+
+A cold orbit view needs about 50–100 coarse pages, which on the app's 12
+tile workers means roughly 30–50 s at cap 16, 8–13 s at cap 8 and 2–4 s at
+cap 4.
+
+**Task 3b** (commit `6af7a18`): tiles follow their page. On the filtered
+coastal L1 tile (face 5, 0/1), 561 of 6 144 surface vertices change side
+(9.1 %, against the first probe's 10.9 % of samples); on the detailed L2
+tile, 12.
+
+**Task 3c, first form: the styles read the pages (2026-11-11).**
+- **Workers.** `TerrainTiles` makes every tile with its own coast page (the
+  water field from the same relief), and its geometry follows the page.
+- **The GPU array.** Pages go to a 128-layer `Texture2DArray` of binary16
+  (16.9 MB). A page that is water or land throughout takes no layer.
+- **The shaders.** Both styles' surface shaders read the page through
+  `godot/shaders/coast_pages.gdshaderinc`. A tile's vertices carry their
+  page coordinates, layer and mode in `CUSTOM2`. Per-instance uniforms
+  would have held layer and mode, but the Compatibility renderer allows
+  4 096 items, too few for the tile cache.
+- **The roots** start without pages, so there is always something to
+  draw, and are made again with them.
+- The cell mesh does not read pages yet.
+
+Results:
+- **Pass:** R1-04's flight at L4 and L6 (V9: no holes; V13 passes), with
+  at most 42 (L4) and 68 (L6) layers in use. Also the Godot tests for cell
+  texels, detail coverage, display transfer, the globe camera, scene
+  lighting, style switching, the R2 overlay, clouds and the climate lab.
+
+Two regressions against the same build without pages (same machine):
+
+| | Without pages | With pages |
+|---|---|---|
+| Frames to settle at 100 m, L4 / L6 | 0 / 0 | about 8 400 / 15 300 (a few seconds) |
+| Planet-band wall p99, L4 | 8.3 ms | 20 ms (47–73 ms with 448 layers) |
+
+The cause is the cost of a page, one thread at L6:
+
+| L6 level | Tile alone | Page | Kind |
+|---|---:|---:|---|
+| 2 | 0.54 ms | 420 ms | coverage |
+| 4 | 0.81 ms | 396 ms | coverage |
+| 6 | 0.75 ms | 220 ms | coverage |
+| 8–18 | 0.69 ms | 25 ms | point |
+
+A page costs 35 to 600 times its tile, so a tile that waits for its own
+page streams that much later. The next step follows A1.3 ("drawn as it
+stands" while children load):
+- A child's vertices all lie on its parent page's nodes, so a tile can be
+  drawn at once from its nearest resident ancestor's page. That is the
+  shortfall state the probe measured, with no coverage jumps.
+- Pages get their own queue, behind the tiles, and a tile is made again
+  (0.75 ms) when its own page arrives.
+
+**Task 3c: pages stream behind the tiles (2026-11-11).** Commit `c442f32`
+lets a tile be made with an ancestor's page while its own loads (A1.3).
+`TerrainTiles` now streams pages separately:
+- Each tile is made at once with the finest resident page, its own or an
+  ancestor's, and made again (about 0.75 ms) when a finer one arrives.
+- Of the twelve workers, six make only tiles; the others make pages first.
+- A page keeps its layer while any cached tile is drawn with it.
+
+R1-04's flight, and the same build without pages:
+
+| | Without pages | First form (each tile waits for its page) | Streamed |
+|---|---|---|---|
+| Frames to settle at 100 m, L4 / L6 | 0 / 0 | about 8 400 / 15 300 | 0 / 0 |
+| Then until every drawn tile has its own page, L4 / L6 | — | — | 1.7 s / 5.6 s |
+| Planet-band wall p95 / p99, L4 | 7.2 / 8.3 ms | 9.7 / 20 ms | 9.6 / 22 ms |
+| Planet-band wall p95 / p99, L6 | 7.6 / 8.0 ms | | 7.4 / 9.6 ms |
+| Region and local wall p95, L6 | 10.0 / 10.8 ms | | 8.6 / 10.6 ms |
+
+- **Passes:** V9 (no holes) and V13. No drawn tile ever lacked a layer: at
+  most 13 (L4) and 2 (L6) layers in use during the descent.
+- **The descent outruns the pages.** The scripted descent from orbit to
+  100 m takes about one second, faster than coarse coverage pages (about
+  0.4 s each, the first building the relief's rank tables). Until they
+  arrive, the coast comes from an ancestor's page or, before any, from the
+  drawn surface's waterline.
+- **Resident pages at the 100 m hold:** 457 at L4 (about 60 MB), above
+  the 384-page cache, because a page in use by a cached tile is kept.
+- **The L4 planet band's p99** (22 ms against 8.3) is most likely the page
+  array created on the main thread; it is not yet addressed.
+- **The other Godot tests pass:** cell texels, detail coverage, display
+  transfer, the globe camera, scene lighting, the climate lab, style
+  switching, the R2 overlay and clouds.
+- **Still open for task 3:** the cell mesh, which does not read pages yet;
+  picking; and the rendered gates of task 4.
+
+**Task 3c: the cell mesh reads the pages; layers on demand (2026-11-13).**
+- **Pages for the planet band.** `TerrainTiles` is made at once and its
+  selection runs in every band, so the pages a view needs are made while
+  the tiles are hidden.
+- **The cell mesh** finds each pixel's cube face and place from its
+  direction (the tiles' frames and equal-angle mapping), then reads a page
+  table. The table gives, for each level-6 square of each face, the slot
+  and level of the finest resident page covering it. The cell's fractional
+  cover remains only where no page exists yet.
+- **Slots.** A resident page has a slot, fixed while it stays resident,
+  which tiles (`CUSTOM2.z`) and the table refer to. A slot table maps
+  slots to layers and modes.
+- **Layers on demand.** Layers (now 256, 33.8 MB) go to the pages the drawn
+  tiles need this frame, and to the finest page at their place. When none
+  is free, the page needed longest ago gives its layer up; only the slot
+  table changes, so no tile is remade.
+
+The first version kept a layer per page for as long as any cached tile
+used it. At 4 000 km (L4, cross-fade) all 128 layers were taken, and the
+two layers' coasts disagreed visibly in the dither. With slots and
+on-demand layers they agree (frames compared by eye,
+`godot/tests/capture_coast_pages.gd`, `build/r105/cell2_*.png`).
+
+R1-04's flight:
+
+| | L4 | L6 |
+|---|---|---|
+| Holes (V9), translation rounding (V13) | pass | pass |
+| Frames for tiles to settle at 100 m | 0 | 0 |
+| Then until every drawn tile has its own page | 3.1 s | 6.5 s |
+| Planet-band wall p95 / p99 | 8.2 / 20.3 ms (without pages: 7.2 / 8.3) | 7.7 / 8.4 ms (7.6 / 8.0) |
+| Region-band wall p95 | 8.1 ms | 8.4 ms |
+
+The other Godot tests pass.
+
+Still open for task 3:
+- the cell mesh's geometry (its vertices take height by the cell's land
+  fraction, not by the page);
+- picking;
+- the L4 planet band's p99.
+
+The rendered gates of task 4 are not yet run.
+
+**Task 4: the rendered zoom sweep (2026-11-13).**
+
+The tools:
+- `godot/tests/capture_coast_sweep.gd` flies the main scene to a coastal
+  focus at eight altitudes (24 000 km to 2 km). Both styles have a
+  `coast_debug` output: water in red, tile/cell mesh in green, the page
+  slot in blue.
+- At each altitude it saves two frames: on arrival, while the previous
+  pose's tiles and pages are still drawn; and once the tiles and pages
+  have arrived. Each comes with its exact camera; the ray formula is
+  checked against Godot's `project_ray_normal`.
+- `tools/render/coast_render_reference.cpp` casts the same rays at the
+  canonical field, up to 16 × 16 a pixel.
+- `tools/render/compare_coast_render.py` measures each frame against it,
+  and arrival against settled (the handoff):
+  - resolved pixels (no wider than half the finest wavelength): no deep
+    pixel;
+  - finer features: no coverage change of 0.5 or more (A1.5a);
+  - the handoff: no deep region of four pixels or more (an island or
+    inlet appearing solely with LOD).
+- The first pose is the cold start, reported but not gated.
+
+Five fixes came out of the first sweeps:
+1. **The cell mesh reads its coast where the view ray meets the unit
+   sphere,** not at its own surface point. Its flat faces sag below the
+   sphere and its land stands above, which shifted the coast most at the
+   limb (12 000 km: 478 jumps against the field down to 49).
+2. **Tile land touching water lies at sea level,** with an extra ring
+   classified so neighbouring tiles agree. Every triangle the coast
+   crosses is then at zero height, as A1.4 says, and the coast lies on
+   the sphere. Otherwise a raised vertex lifted the coast inside its
+   triangle and the view shifted it.
+3. **A pixel's water is the mean of four taps** at a quarter pixel, from
+   the page coordinates' screen derivatives. One tap gave nearly hard
+   edges where a pixel spans several nodes.
+4. **The coast is evaluated before the cross-fade's `discard`.** After
+   it, screen derivatives are undefined, and the taps collapsed.
+5. **Cell-mesh derivatives come from the direction mapped on the
+   pixel's own face.** Otherwise they jump by a page, or by a face's
+   coordinates, where a pixel quad straddles two of them.
+
+Also: the layers go to 448 (59.2 MB, a view of about 240 coastal tiles
+needed more than 256), and only the page the cell-mesh table reads gets a
+second layer.
+
+**Exaggerated relief.** At the scene's own exaggeration, raised land hides
+water behind it in oblique views, most at 1 000–4 000 km. The bare-sphere
+reference cannot model that, so these sweeps use true-scale relief
+(exaggeration 1), where the drawn coast lies at sea level. That condition
+is part of the result. At exaggeration 0 and 1 the results agree.
+
+**Results** at true-scale relief: L4 and L6, seeds 20260928 and 42, two
+coastal foci each, both styles (16 sweeps, 112 gated poses; logs
+`build/r105/gate/*.compare.log`):
+- **Both styles give identical results in every sweep.**
+- **10 sweeps pass outright.**
+- **The other six (three pose groups, map and stylised alike) have 2, 2
+  and 3 comparisons outside,** each one to four single pixels. Every one
+  is a coverage change just past the threshold (0.50–0.62), never a deep
+  region. They are either in the arrival (shortfall) state, or on the
+  cell mesh within 12 px of the limb, where the ground squeezes into a
+  few pixels and four taps cannot average it.
+  - One of them, L6 seed 20260928 focus 1 at 12 000 km (settled), has
+    two pixels at 3.6 and 6.3 px from the limb. They persist with a
+    48-ray reference.
+  - The handoff ones come from the arrival frame's coarser state. The
+    settled frame matches the field there (e.g. 1.00 / 0.40 against
+    0.94 / 0.31).
+- **Wherever features are resolved:** no deep pixel at all, settled or
+  arriving.
+- **Across all handoffs:** no deep region.
+
+R1-04's flight and the Godot tests still pass. Frame-time p95 at L4: 12.7
+(planet), 11.5 (region) and 7.9 ms (local); at L6: 8.4, 9.1 and 10.5 ms.
+
+Still open:
+- the limb and shortfall pixels (a mipmapped page array, sampled with
+  derivatives, would average long footprints);
+- the cell mesh's own geometry;
+- picking;
+- V4, V10 and memory at L6.
+
+**Task 4: the rendered gate passes in every sweep (2026-11-13).**
+Following the user's decisions (ADR-0030 A1.5b: the gate at true-scale
+relief; the limb and shortfall pixels to be fixed):
+
+- **Mipmapped pages (tried, reverted).** Isotropic mip levels over-blurred
+  the tilted low-altitude views (at 2 km, 136 differing pixels against
+  about 30). A 257-node page does not halve onto its own lattice, and a
+  point page's averaged s moves its zero line.
+- **Adaptive taps instead.** A pixel's water is the mean of an n × n grid
+  of taps over its footprint, at most a page node apart. That is 2 × 2
+  for most pixels, and up to 8 × 8 at grazing views and for coarse pages.
+  At L6 orbit the settled frame differs from the field on 64 pixels
+  instead of about 600.
+- **The sweep halves the altitude between poses** (24 000 km to 1.5 km,
+  15 poses), so an arrival is one level coarse, as in a continuous zoom.
+- **The arrival frame against the field is the shortfall state,** reported
+  and not gated (A1.3). The handoff, arrival against settled, is gated.
+- **A deep pixel needs no shore in the reference's 3 × 3 neighbourhood**
+  (all fully water or fully land). That is ADR-0030's "farther than one
+  projected pixel from the canonical contour". The earlier test flagged a
+  pixel the shore crossed, at 0.17 of coverage change.
+
+Results (`build/r105/gate2/*.compare2.log`, `run_sweeps.sh`): L4 and L6,
+seeds 20260928 and 42, two coastal foci each, both styles. That is 16
+sweeps of 14 gated poses (12 000 km to 1.5 km), each pose's settled frame
+against the field and its handoff:
+- **All 16 pass: 0 comparisons outside the gate.**
+- No deep pixel where features are resolved, no coverage jump of 0.5 or
+  more where they are not, and no deep region across any handoff.
+- Both styles give identical results.
+
+R1-04's flight still passes V9 and V13. Wall p95 at L4: 8.0, 8.3 and
+7.3 ms; at L6: 7.9, 8.3 and 11.2 ms. GPU p95 at most 2.4 ms. The other
+Godot tests pass.
+
+Still open:
+- V4 (hypsometry) with shore flattening;
+- V10 (path-independent tile bytes) with pages;
+- the L6 memory budget;
+- picking;
+- the L4 planet band's p99 (24 ms; without pages 8.3);
+- the cell mesh's own geometry, which the gate does not need now that
+  its coast is read on the sphere.
+
+**V10 and V4 with coast pages (2026-11-13).**
+
+**V10 (ADR-0022: a tile reached by two paths is byte-identical).**
+- With pages, a tile passes through states made with an ancestor's page
+  while its own loads. Those depend on what is resident, by design (A1.3).
+- V10 holds for the settled tile, made with its own page.
+  `test_coast_tile` now makes that page and tile from a fresh relief and
+  water field. Beforehand it makes a neighbour's, its parent's and a
+  child's pages, and the tile itself from its parent's page, with other
+  worker counts. Page and tile are byte-identical.
+
+**V4 (hypsometry).**
+- `TerrainRelief::sample()` is unchanged, so `test_terrain_relief`'s V4
+  stands.
+- The drawn tiles differ where the page sets them: land touching water,
+  or land where the page says water, is drawn at sea level. Scratch
+  measurement, 216 tiles (six per face at each level), seed 20260928:
+
+| Mesh / tile level | Land vertices drawn at sea level | Their mean (largest) height | Drawn mean land height falls |
+|---|---:|---:|---:|
+| L4 / 4 (filtered) | 5.3 % | 110 m (1 453 m) | 0.77 % |
+| L4 / 7 | 0.96 % | 48 m (201 m) | 0.035 % |
+| L6 / 6 | 3.4 % | 111 m (645 m) | 0.47 % |
+| L6 / 9 | 0.37 % | 11 m (38 m) | 0.008 % |
+
+- The largest single drops are on coarse filtered tiles, whose smoothed
+  height disagreed with the page about the coast.
+
+**L6 memory: compact pages and bounded copies (2026-11-14).**
+Measured before (2026-11-13, L6 sweeps): the GPU page array was 59 MB, and
+the pages' memory copies another 85–185 MB (642–1 398 pages). That is two to
+four times ADR-0030's 64 MiB (67.1 MB). Following the user's choice:
+
+- **Uniform pages keep only their sign.** A page that is water or land
+  throughout needs no layer (slot mode ±1) and no copy. A tile made with
+  one gets a stand-in from `make_uniform_coast_page`, built by the worker
+  that makes the tile. `test_coast_tile` checks that the stand-in gives the
+  same tile as the real page.
+- **At most 120 page copies (15.9 MB), least recently used first.** A copy
+  is kept only for a page needed this frame that has no layer yet. A page
+  whose copy was dropped is made again if a tile needs it.
+- **384 layers (50.7 MB)**, given out on demand, the oldest first (LRU).
+- **The total is fixed at 66.6 MB**, within 64 MiB; the tile stats report
+  it (`coast_memory_mb`, `coast_page_copies`).
+
+Results:
+- **All 16 sweeps pass again** (`build/r105/gate3`, same sweeps as above):
+  0 comparisons outside the gate.
+- **Memory:** 66.6 MB at every pose. Every sweep reaches the 120-copy cap,
+  and uses 227–384 layers. No drawn tile was left without a layer.
+- **Second GPU:** these sweeps ran on the integrated Intel GPU (Mesa). After
+  a reboot, the display had moved there. The gate does not depend on frame
+  time, so this adds a second GPU to the evidence.
+- **R1-04's flight on the RTX 4070 Ti**
+  (`__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia`): V9 and
+  V13 pass.
+  - Wall p95 at L4: 4.8, 9.0 and 7.1 ms; at L6: 8.4, 7.7 and 4.6 ms.
+  - GPU p95 at most 1.5 ms.
+  - The L4 planet band's p99 is 7.6 ms, against 24 ms before.
+- **The other Godot tests pass**, run with CI's arguments.
+
+Still open: picking; the cell mesh's own geometry (not needed by the gate).
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

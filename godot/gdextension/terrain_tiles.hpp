@@ -1,11 +1,14 @@
 #pragma once
 
+#include "sim/presentation/coast_page.hpp"
 #include "sim/presentation/terrain_tile.hpp"
 
 #include <godot_cpp/classes/array_mesh.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
+#include <godot_cpp/classes/image_texture.hpp>
+#include <godot_cpp/classes/texture2d_array.hpp>
 
 #include <condition_variable>
 #include <cstdint>
@@ -29,6 +32,28 @@ namespace planetsim::godot_bridge {
 // keeps them in a bounded cache; and places every drawn tile at
 // origin - camera in double precision, under a top-level node so the
 // planet node's own 32-bit offset never reaches them.
+//
+// With a coast water field (ADR-0030 Amendment 1), coast pages stream
+// behind the tiles: a page costs 35 to 600 times its tile. Each tile is
+// made at once with the finest resident page, its own or an ancestor's
+// (A1.3: the finest resident page is drawn as it stands), and made again
+// when a finer one arrives; its geometry follows that page. A page goes to
+// a layer of one texture array the styles read (one that is water or land
+// throughout needs none), and keeps it while any cached tile is drawn
+// with it. The six roots are made at once without pages, so there is
+// always something to draw.
+//
+// The planet-band cell mesh reads the same pages (A1.3) through a page table:
+// for every level-6 square of every face, the finest resident page covering
+// it (its slot and level), rebuilt when the pages change. update() runs in
+// every band, so the pages a view needs are made while the tiles themselves
+// are hidden.
+//
+// A resident page has a slot, fixed while it stays resident, which tiles and
+// the page table refer to; a slot table maps slots to layers. Layers go on
+// demand to the pages the drawn tiles need this frame, and when none is free
+// the page needed longest ago gives its own up: only the slot table changes,
+// and its tiles show the fallback until it is needed again.
 class TerrainTiles {
 public:
     struct View {
@@ -47,7 +72,7 @@ public:
         std::int64_t drawn = 0;
         std::int64_t cached = 0;
         std::int64_t meshed = 0;   // turned into meshes this update
-        std::int64_t pending = 0;  // wanted, not yet ready
+        std::int64_t pending = 0;  // wanted, not yet ready (missing tiles; not remakes)
         std::int64_t deepest_level = 0;
         double mesh_ms = 0.0;
         std::vector<std::int64_t> drawn_by_level;
@@ -57,11 +82,22 @@ public:
         // the origin and only rotating, and a tile's vertices fixed relative
         // to it, this is what could make the terrain jitter.
         double translation_error_px = 0.0;
+        // Coast pages (ADR-0030 A1): layers in use, and drawn tiles whose
+        // page found no free layer (they fall back to the drawn surface).
+        std::int64_t coast_layers = 0;
+        std::int64_t coast_without_layer = 0;
+        std::int64_t coast_pages = 0;          // resident
+        std::int64_t coast_pages_pending = 0;  // wanted, not yet made
+        std::int64_t coast_from_ancestor = 0;  // drawn tiles made with an ancestor's page, or none
+        std::int64_t coast_remakes = 0;        // tiles wanted again, with a finer page
+        std::int64_t coast_page_copies = 0;    // pages whose memory copy is kept
+        double coast_memory_mb = 0.0;          // the layers allocated and the copies kept
     };
 
     TerrainTiles(godot::Node3D* parent, std::shared_ptr<const presentation::TerrainRelief> relief,
                  presentation::TileDrawing drawing, godot::Ref<godot::ShaderMaterial> material,
-                 double highest_elevation_m);
+                 double highest_elevation_m,
+                 std::shared_ptr<const presentation::CoastWaterField> coast = nullptr);
     ~TerrainTiles();
     TerrainTiles(const TerrainTiles&) = delete;
     TerrainTiles& operator=(const TerrainTiles&) = delete;
@@ -76,6 +112,16 @@ public:
     static constexpr double max_triangle_cells = 0.3; // vertex spacing, in cells, for faithful channels
     static constexpr double mesh_budget_ms = 6.0;   // turning finished tiles into meshes, per update
     static constexpr std::size_t cache_tiles = 512; // about 0.5 MB of vertices each
+    // ADR-0030's 64 MiB (67.1 MB) of coastal constraints: 384 layers of
+    // 257² binary16 (50.7 MB) and the memory copies of at most 120 pages
+    // (15.9 MB). A page that is water or land throughout keeps neither, only
+    // its sign; a page whose copy was dropped is made again if its layer is
+    // given up and a drawn tile needs it once more.
+    static constexpr int coast_layer_count = 384;
+    static constexpr std::size_t coast_page_copies = 120;
+    static constexpr int coast_slot_count = 4096; // resident pages, at most
+    static constexpr std::size_t cache_pages = 384; // 132 KB each in memory: 51 MB
+    static constexpr int coast_table_level = 6;     // the page table's squares: 64 x 64 a face
 
 private:
     struct Entry {
@@ -85,19 +131,73 @@ private:
         std::uint64_t last_used = 0;
         double min_radius = 1.0; // of the drawn surface
         double max_radius = 1.0;
+        int coast_level = -1;          // the level of the page it was made with, -1 none
+        std::uint64_t coast_page = 0;  // that page's id
+    };
+
+    // A resident coast page (ADR-0030 A1).
+    struct Page {
+        presentation::TileKey key;
+        presentation::CoastPageKind kind = presentation::CoastPageKind::point;
+        std::shared_ptr<const presentation::CoastPage> page; // the memory copy, if kept
+        int slot = -1;      // fixed while resident
+        int layer = -1;     // its layer while it has one
+        float mode = 0.0F;  // 1 / -1 water or land throughout (no layer), 2 point, 3 coverage
+        int users = 0;      // cached tiles made with it
+        std::uint64_t last_used = 0;  // in the selection's walk
+        std::uint64_t needed = 0;     // drawn with, this frame or earlier
+    };
+
+    // A tile to make, with the page to make it with: a copy, or a uniform
+    // page's sign (the worker makes its stand-in), or none.
+    struct Job {
+        presentation::TileKey key;
+        std::shared_ptr<const presentation::CoastPage> page;
+        bool uniform = false;
+        presentation::TileKey page_key;
+        presentation::CoastPageKind kind = presentation::CoastPageKind::point;
+        bool water = false;
+    };
+
+    struct Made {
+        presentation::TileGeometry tile;
+        bool with_page = false;
     };
 
     [[nodiscard]] static std::uint64_t id(const presentation::TileKey& key) noexcept;
     [[nodiscard]] bool wants_split(const presentation::TileKey& key, const Entry& entry, const View& view) const;
     [[nodiscard]] bool culled(const presentation::TileKey& key, const Entry& entry, const View& view) const;
     void select(const presentation::TileKey& key, const View& view);
-    void add(const presentation::TileGeometry& tile);
+    void add(const Made& made);
+    void release(Entry& entry);
+    // The finest resident page for `key`, its own or an ancestor's; and the
+    // finest a tile can be made with (one with a copy, or uniform).
+    [[nodiscard]] Page* best_page(const presentation::TileKey& key);
+    [[nodiscard]] Page* usable_page(const presentation::TileKey& key);
+    void trim_page_copies();
+    void add_page(std::shared_ptr<const presentation::CoastPage> page);
+    [[nodiscard]] bool ensure_layer(Page& page);
+    void evict_pages();
+    void rebuild_page_table();
+    void rebuild_slot_table();
     void evict();
-    void work();
+    void work(bool tiles_only);
 
     godot::Node3D* root_ = nullptr; // top-level holder of the tile instances
     std::uint64_t root_id_ = 0;     // its ObjectID: the planet node may have freed it first
     std::shared_ptr<const presentation::TerrainRelief> relief_;
+    std::shared_ptr<const presentation::CoastWaterField> coast_;
+    godot::Ref<godot::Texture2DArray> coast_pages_;
+    std::vector<int> free_layers_;
+    std::unordered_map<std::uint64_t, Page> pages_;
+    godot::Ref<godot::ImageTexture> coast_table_;
+    bool coast_table_dirty_ = false;
+    std::vector<int> free_slots_;
+    godot::Ref<godot::ImageTexture> coast_slots_;
+    bool coast_slots_dirty_ = false;
+    std::vector<presentation::TileKey> pages_wanted_;
+    std::vector<presentation::TileKey> pages_again_; // copies to make again, for the next update
+    std::int64_t remakes_ = 0; // of wanted_, tiles present but wanted with a finer page
     presentation::TileDrawing drawing_;
     godot::Ref<godot::ShaderMaterial> material_;
     double highest_radius_ = 1.0;
@@ -107,12 +207,16 @@ private:
     std::uint64_t frame_ = 0;
     Stats stats_;
 
-    // Worker threads make tiles from `queue_` into `done_`.
+    // Worker threads make tiles from `queue_` into `done_`, and, when no
+    // tile waits, pages from `page_queue_` into `done_pages_`.
     std::mutex mutex_;
     std::condition_variable wake_;
-    std::deque<presentation::TileKey> queue_;
+    std::deque<Job> queue_;
     std::unordered_set<std::uint64_t> in_flight_;
-    std::vector<presentation::TileGeometry> done_;
+    std::vector<Made> done_;
+    std::deque<presentation::TileKey> page_queue_;
+    std::unordered_set<std::uint64_t> pages_in_flight_;
+    std::vector<std::shared_ptr<const presentation::CoastPage>> done_pages_;
     bool stopping_ = false;
     std::vector<std::thread> workers_;
 };

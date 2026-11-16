@@ -4,8 +4,9 @@
   The pre-acceptance feasibility prerequisite was expressly waived; the
   validation gates below were **not** waived for implementation or completion.
   Amendment 1 (a per-pixel coast from canonical pages, with the
-  connected-ocean rule) was accepted with the user on 2026-11-05. It is not
-  implemented, and its gates are not passed.
+  connected-ocean rule) was accepted with the user on 2026-11-05, with
+  A1.5a (2026-11-10) and A1.3a (2026-11-11). Its headless library parts
+  are implemented; the renderer and its gates are not.
 - **Amends:** ADR-0022 §4.8–4.9's terrain-LOD coastline contract. Independently
   sampled coarse tiles currently disagree with detailed relief between shared
   vertices. The existing renderer remains unchanged until validation passes.
@@ -532,6 +533,33 @@ pages.
 - **Memory:** pages are stored at 2 bytes a sample, and cached and evicted
   like tiles, within the 64 MiB coastal budget.
 
+### A1.3a Two page kinds (accepted with the user, 2026-11-11)
+
+Amends A1.3's "a page holds s". Under A1.5a's reading, a page coarser than
+the relief's finest features has to hold a filtered coast, not point
+values. A page's kind follows from its level:
+
+- **Point:** s at each node, where a node spacing needs fewer than 3
+  sub-samples a side at half the relief's finest wavelength. A parent's
+  nodes are every other node of its children's, value for value.
+- **Coverage:** elsewhere, each node holds its footprint's water coverage
+  minus 0.5, so water is still a value above 0. The footprint is S × S
+  sub-samples of s across one nominal node spacing, with S that ratio
+  capped at 4 (`coast_footprint_cap`). It is laid out on a tangent basis
+  that depends on the node's direction alone, so cube-face edge nodes have
+  one value whichever face computes them. A pixel's coverage reads the
+  bilinear value + 0.5.
+
+The cap trades cost against fidelity:
+- At L6 (R1-05, "Task 3a"), caps 16, 8 and 4 give the same gate results:
+  no coverage jump, no deep region of four pixels.
+- A coarse page then costs about 0.4 s on one thread, against 6.3 s at
+  cap 16. A cold orbit view needs 2–4 s on twelve workers, against
+  30–50 s.
+
+Coverage at two levels is two different filters; their handoff is what
+the screen-space gate measures. Page bytes and their size are unchanged.
+
 ### A1.4 Geometry follows the classification (amends decision 4)
 
 - **Water vertices sit at sea level.** A vertex where the page says water
@@ -561,6 +589,30 @@ ADR-0030's implementation and completion gates stand unchanged, the
   references at several poses, seeds, L4 and L6, and all faces.
 - **V-A3, the cost:** page generation time, resident page bytes at L6
   (within 64 MiB) and frame times, under R1-04's flight.
+
+### A1.5a Reading of the screen-space gate where features are sub-pixel (with the user, 2026-11-10)
+
+Where the relief's finest wavelength is below a pixel (at L6, 0.58 km;
+from about 1 000 km of altitude up in R1-05's probe), a pixel near half
+water coverage can flip at the 0.5 threshold under any representation.
+There, a **resolvable jump** is a pixel whose water coverage changes by
+0.5 or more:
+- between a page level and the next, at the same pose (the handoffs);
+- or against a reference that resolves the finest features.
+
+Threshold flips are still counted and reported, but do not fail the gate
+there. Where features are resolved, the ≤ 1 px rule above applies as
+written. The four-pixel island rule applies everywhere.
+
+### A1.5b The rendered gate is measured at true-scale relief (with the user, 2026-11-13)
+
+At the scene's own relief exaggeration, raised land hides water behind it
+in oblique views, most at 1 000–4 000 km of altitude. That is correct 3D
+drawing, not a coast error, and a reference on the bare sphere cannot
+model it. The rendered screen-space gate is therefore measured at
+true-scale relief (exaggeration 1). There the drawn coast lies at sea
+level (A1.4), and the canonical contour on the unit sphere is its
+reference (R1-05, "Task 4: the rendered zoom sweep").
 
 ### A1.6 Tasks
 

@@ -59,7 +59,9 @@ void shared_nodes(planetsim::test::Context& test) {
     PLANETSIM_EXPECT(test, std::isfinite(parent.bilinear_signed_water_m(127.5, 32.5)));
     const TileKey coastal_key{5, 1, 0, 1};
     const auto page_start = std::chrono::steady_clock::now();
-    const CoastPage coastal = make_coast_page(coastal_key, field);
+    // Level 1 at L4 is a coverage level: its sign is compared, not its value.
+    const CoastPage coastal = make_coast_page(coastal_key, field, 8U);
+    PLANETSIM_EXPECT(test, coastal.kind == CoastPageKind::coverage);
     const double generation_ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - page_start).count();
     std::size_t centre_flips = 0, wet_nodes = 0, dry_nodes = 0;
@@ -76,9 +78,9 @@ void shared_nodes(planetsim::test::Context& test) {
             wet_nodes += drawn > 0.0;
             dry_nodes += drawn <= 0.0;
         }
-    std::cout << "L4 coastal page generation " << generation_ms << " ms (cold rank tables), midpoint flips "
-              << centre_flips
-              << "/4096, max signed-field error " << max_bilinear_error_m << " m\n";
+    std::cout << "L4 coastal coverage page generation " << generation_ms
+              << " ms on 8 threads (cold rank tables), midpoint flips " << centre_flips << "/4096\n";
+    (void)max_bilinear_error_m;
     PLANETSIM_EXPECT(test, wet_nodes > 0 && dry_nodes > 0);
     bool rejected = false;
     try { (void)make_coast_page(TileKey{6, 0, 0, 0}, field); }
@@ -141,8 +143,33 @@ bool on_face(std::uint8_t face, const Vec3d& d, double& u, double& v) {
     return true;
 }
 
-// V-A2: pages are deterministic and agree exactly at shared points.
+// The child of `key` with the most canonical sign changes along its
+// diagonal: a fixed descent that stays on a coast.
+TileKey coastal_child(const TileKey& key, const CoastWaterField& field) {
+    TileKey best_key = key;
+    int best = -1;
+    for (const TileKey& child : planetsim::presentation::tile_children(key)) {
+        int crossings = 0;
+        bool previous = false;
+        for (std::uint32_t k = 0; k <= 64U; ++k) {
+            const bool wet =
+                field.signed_water_m(planetsim::presentation::coast_page_direction(child, k * 4U, k * 4U)) > 0.0;
+            crossings += k > 0U && wet != previous ? 1 : 0;
+            previous = wet;
+        }
+        if (crossings > best) {
+            best = crossings;
+            best_key = child;
+        }
+    }
+    return best_key;
+}
+
+// V-A2: pages are deterministic and agree exactly at shared nodes; each
+// level has its kind (point or coverage).
 void pages(planetsim::test::Context& test, const CoastWaterField& field) {
+    using planetsim::presentation::CoastPageKind;
+    using planetsim::presentation::coast_node_value;
     using planetsim::presentation::make_coast_page;
     // A coastal level-2 key, found by a fixed coarse scan.
     TileKey coastal{};
@@ -165,16 +192,50 @@ void pages(planetsim::test::Context& test, const CoastWaterField& field) {
             }
         }
     }
-    const auto start = std::chrono::steady_clock::now();
-    const CoastPage page = make_coast_page(coastal, field);
-    const double page_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-    PLANETSIM_EXPECT(test, page.signed_water_le == make_coast_page(coastal, field).signed_water_le);
+    // At L4 (finest wavelength 2.3 km), level 2 is a coverage level and
+    // level 5 a point level.
+    const auto& relief = field.relief();
+    PLANETSIM_EXPECT(test, planetsim::presentation::coast_page_kind(2U, relief) == CoastPageKind::coverage);
+    PLANETSIM_EXPECT(test, planetsim::presentation::coast_page_kind(5U, relief) == CoastPageKind::point);
 
-    // Parent and children: every other child point is the parent's.
+    // The coverage page: deterministic for any worker count, values within
+    // [-0.5, 0.5], and its neighbour shares its edge.
+    const auto start = std::chrono::steady_clock::now();
+    const CoastPage cover = make_coast_page(coastal, field, 8U);
+    const double cover_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    PLANETSIM_EXPECT(test, cover.kind == CoastPageKind::coverage);
+    PLANETSIM_EXPECT(test, cover.signed_water_le == make_coast_page(coastal, field, 3U).signed_water_le);
+    int outside = 0;
+    int wet = 0;
+    for (std::uint32_t y = 0; y < coast_page_nodes; ++y) {
+        for (std::uint32_t x = 0; x < coast_page_nodes; ++x) {
+            const double v = cover.signed_water_m(x, y);
+            outside += v < -0.5 || v > 0.5 ? 1 : 0;
+            wet += v > 0.0 ? 1 : 0;
+        }
+    }
+    PLANETSIM_EXPECT(test, outside == 0);
+    PLANETSIM_EXPECT(test, wet > 0 && wet < static_cast<int>(coast_page_nodes * coast_page_nodes));
+    int edge_mismatches = 0;
+    const TileKey right{coastal.face, coastal.level, coastal.x ^ 1U, coastal.y};
+    const CoastPage beside = make_coast_page(right, field, 8U);
+    const std::uint32_t mine = coastal.x < right.x ? coast_page_intervals : 0U;
+    for (std::uint32_t j = 0; j <= coast_page_intervals; ++j) {
+        edge_mismatches += cover.half_bits(mine, j) != beside.half_bits(coast_page_intervals - mine, j) ? 1 : 0;
+    }
+    PLANETSIM_EXPECT(test, edge_mismatches == 0);
+
+    // A coastal point page, three levels down: its children repeat its
+    // nodes.
+    TileKey point_key = coastal;
+    for (int k = 0; k < 3; ++k) point_key = coastal_child(point_key, field);
+    const CoastPage page = make_coast_page(point_key, field, 8U);
+    PLANETSIM_EXPECT(test, page.kind == CoastPageKind::point);
+    PLANETSIM_EXPECT(test, page.signed_water_le == make_coast_page(point_key, field).signed_water_le);
     int child_mismatches = 0;
-    const auto children = planetsim::presentation::tile_children(coastal);
+    const auto children = planetsim::presentation::tile_children(point_key);
     for (std::size_t c = 0; c < 4U; ++c) {
-        const CoastPage child = make_coast_page(children[c], field);
+        const CoastPage child = make_coast_page(children[c], field, 8U);
         const std::uint32_t ox = (children[c].x & 1U) * (coast_page_intervals / 2U);
         const std::uint32_t oy = (children[c].y & 1U) * (coast_page_intervals / 2U);
         for (std::uint32_t l = 0; l <= coast_page_intervals; l += 2U) {
@@ -185,20 +246,8 @@ void pages(planetsim::test::Context& test, const CoastWaterField& field) {
     }
     PLANETSIM_EXPECT(test, child_mismatches == 0);
 
-    // Same-face neighbours share an edge.
-    int edge_mismatches = 0;
-    const TileKey right{coastal.face, coastal.level, coastal.x ^ 1U, coastal.y};
-    const CoastPage beside = make_coast_page(right, field);
-    const std::uint32_t mine = coastal.x < right.x ? coast_page_intervals : 0U;
-    for (std::uint32_t j = 0; j <= coast_page_intervals; ++j) {
-        edge_mismatches += page.half_bits(mine, j) != beside.half_bits(coast_page_intervals - mine, j) ? 1 : 0;
-    }
-    PLANETSIM_EXPECT(test, edge_mismatches == 0);
-
-    // Across cube faces: every level-0 face edge, matched to the page of the
-    // adjacent face that holds the same point.
-    std::array<CoastPage, 6> faces;
-    for (std::uint8_t face = 0; face < 6U; ++face) faces[face] = make_coast_page({face, 0U, 0U, 0U}, field);
+    // Across cube faces: every node of every level-0 face edge (a coverage
+    // level), computed from the adjacent face's own lattice direction.
     int face_points = 0;
     int face_mismatches = 0;
     int unmatched = 0;
@@ -221,7 +270,13 @@ void pages(planetsim::test::Context& test, const CoastWaterField& field) {
                     if (ri != 0U && ri != coast_page_intervals && rj != 0U && rj != coast_page_intervals) continue;
                     found = true;
                     ++face_points;
-                    face_mismatches += faces[other].half_bits(ri, rj) != faces[face].half_bits(i, j) ? 1 : 0;
+                    CellId h1{0};
+                    CellId h2{0};
+                    const Vec3d d_other = planetsim::presentation::coast_page_direction({other, 0U, 0U, 0U}, ri, rj);
+                    const float mine_value = static_cast<float>(coast_node_value(field, 0U, d, h1));
+                    const float theirs = static_cast<float>(coast_node_value(field, 0U, d_other, h2));
+                    face_mismatches += planetsim::presentation::half_from_float(mine_value) !=
+                                               planetsim::presentation::half_from_float(theirs) ? 1 : 0;
                 }
                 unmatched += found ? 0 : 1;
             }
@@ -230,26 +285,27 @@ void pages(planetsim::test::Context& test, const CoastWaterField& field) {
     PLANETSIM_EXPECT(test, unmatched == 0);
     PLANETSIM_EXPECT(test, face_mismatches == 0);
 
-    // The bilinear reading against the field itself, inside the coastal page
-    // (a measurement: the screen-space gate is task 2's).
+    // The point page's bilinear reading against the field itself (a
+    // measurement: the screen-space gate is R1-05's probe).
     int disagreements = 0;
     constexpr int probes = 20000;
     CellId hint{0};
     for (int k = 0; k < probes; ++k) {
         const double fi = std::fmod(0.5 + 0.7548776662466927 * (k + 1), 1.0) * coast_page_intervals;
         const double fj = std::fmod(0.5 + 0.5698402909980532 * (k + 1), 1.0) * coast_page_intervals;
-        const double u = planetsim::presentation::coast_page_coordinate(coastal.x, coastal.level, 0U) +
-                         2.0 * fi / (coast_page_intervals * std::ldexp(1.0, coastal.level));
-        const double v = planetsim::presentation::coast_page_coordinate(coastal.y, coastal.level, 0U) +
-                         2.0 * fj / (coast_page_intervals * std::ldexp(1.0, coastal.level));
-        const auto s = field.sample(planetsim::presentation::tile_face_direction(coastal.face, u, v), hint);
+        const double u = planetsim::presentation::coast_page_coordinate(point_key.x, point_key.level, 0U) +
+                         2.0 * fi / (coast_page_intervals * std::ldexp(1.0, point_key.level));
+        const double v = planetsim::presentation::coast_page_coordinate(point_key.y, point_key.level, 0U) +
+                         2.0 * fj / (coast_page_intervals * std::ldexp(1.0, point_key.level));
+        const auto s = field.sample(planetsim::presentation::tile_face_direction(point_key.face, u, v), hint);
         hint = s.cell;
         disagreements += (page.bilinear_signed_water_m(fi, fj) > 0.0) != (s.signed_water_m > 0.0) ? 1 : 0;
     }
-    std::cout << "coastal page face " << int(coastal.face) << " L" << int(coastal.level) << " (" << coastal.x << ", "
-              << coastal.y << "), " << best << " diagonal crossings, " << page_s << " s; child and neighbour edges "
-              << "agree; " << face_points << " face-edge points agree; bilinear vs field "
-              << disagreements << " of " << probes << '\n';
+    std::cout << "coverage page face " << int(coastal.face) << " L" << int(coastal.level) << " (" << coastal.x
+              << ", " << coastal.y << "), " << best << " diagonal crossings, " << wet << " wet nodes, " << cover_s
+              << " s on 8 threads; point page L" << int(point_key.level) << " (" << point_key.x << ", "
+              << point_key.y << "): children agree; " << face_points
+              << " face-edge nodes agree; bilinear vs field " << disagreements << " of " << probes << '\n';
     PLANETSIM_EXPECT(test, disagreements * 100 < probes);
 }
 

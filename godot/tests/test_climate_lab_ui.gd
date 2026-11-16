@@ -17,11 +17,25 @@ func _run() -> void:
 	ui.toggle_tab("Controls")
 	assert(ui.is_drawer_open())
 	ui.toggle_tab("Inspect")
+	main._update_hud()
+	assert(ui._controls["focus_selected"].disabled and ui._controls["copy_selection"].disabled)
 	main._selected_cell = 0
 	main._update_hud()
 	assert(ui._controls["selection"].text.contains("Cell 0"),
 		"selected-cell readings belong in the inspector")
 	assert(ui._controls["selection"].text.contains("mean elevation"))
+	assert(not ui._controls["focus_selected"].disabled and not ui._controls["clear_selection"].disabled)
+	var globe: Node3D = main.get_node("CameraPivot")
+	var previous_range: float = globe._target["range"]
+	main._ui_action("focus_selected", null)
+	var target: Array = globe._target["focus"]
+	var selected_direction: Vector3 = planet.get_cell_direction(0).normalized()
+	assert(Vector3(target[0], target[1], target[2]).distance_to(selected_direction) < 1e-5)
+	assert(globe._target["range"] < previous_range,
+		"zoom to cell should approach it from orbit")
+	main._ui_action("clear_selection", null)
+	main._update_hud()
+	assert(main._selected_cell == -1 and ui._controls["focus_selected"].disabled)
 	ui.close_drawer()
 	assert(not ui.is_drawer_open())
 	assert(not planet.queue_live_solar_factor(1.02), "preview cannot accept a forcing command")
@@ -39,6 +53,9 @@ func _run() -> void:
 	ui.toggle_tab("Log")
 	main._ui_action("clouds", false)
 	main._ui_action("relief", 4.0)
+	main._selected_cell = 0
+	main._ui_action("focus_selected", null)
+	main._ui_action("clear_selection", null)
 	assert(planet.get_live_state_hash() == initial_hash,
 		"drawer and presentation controls must not mutate the live simulation")
 	ui.close_drawer()
