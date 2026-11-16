@@ -780,3 +780,29 @@ precipitation ratio 0.970140977 (gate fails), climate
 10489696834538135003, reference 7837964125437775335. INV-05's additions
 leave the preset's V8 unchanged.
 
+**17.7 V8 at L4 with the limited second-order vapour advection
+(2026-11-16).** §16.2's protocol at commit 8714e02 with
+`--vapour-advection-order 2` (reference mode only; climate mode's state
+hash is unchanged), the RTX 5070 Ti machine, 120 min. Reference mode ran
+all 13 years without reaching the 150 m/s bound.
+
+| | Climate | Reference, upwind (§17.6) | Reference, order 2 |
+|---|---:|---:|---:|
+| Surface, years 11–13 (K) | 291.191 | 291.664 | 287.908 |
+| Land / ocean (K) | 287.37 / 292.75 | — | 284.75 / 289.20 |
+| Snow share of land / ice share of ocean | 0.211 / 0.087 | — | 0.236 / 0.156 |
+| P2 equator-to-pole (K) | 45.8 | 46.5 | 59.1 |
+| Precipitation (m/yr) | 1.505 | 1.460 | 1.433 |
+| V8: reference − climate / precipitation ratio | | +0.473 K / 0.970 | **−3.283 K / 0.952** |
+
+Reference mode's zonal means, order 2 minus upwind (K, 10° bands from
+85° S): −6.9, −7.5, −10.7, −9.9, −5.9, −3.1, −1.4, −0.6, −0.3, −0.1, −0.1,
+−1.0, −2.8, −5.5, −10.5, −11.5, −9.9, −8.4. The tropics are unchanged
+within 1 K; poleward of 40° reference mode is 5–12 K colder, and its P2
+(59.1 K) is close to the upwind L5 reference's (60.1 K, §16.5). Removing
+the upwind diffusion at L4 does to reference mode what a level of
+resolution does (INV-05 §9, §11), and moves V8 from +0.47 K to −3.28 K:
+climate mode, whose transport was fitted against the upwind reference
+(ADR-0027, ADR-0028), would need its transport refitted to agree with it.
+Under §17.4 that is part of the same decision.
+
