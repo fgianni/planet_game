@@ -1,8 +1,9 @@
 # ADR-0029 — Land's water in climate mode
 
 - **Status:** Proposed (2026-10-29). Option A was measured 2026-10-30 (§6).
-  B against C is deferred until after INV-05 (with the user, 2026-11-05,
-  when INV-04 closed).
+  B against C was deferred until after INV-05 (with the user, 2026-11-05,
+  when INV-04 closed). **Option C, with B scheduled before M10, drafted
+  2026-11-17 for the user's review (§7); not accepted.**
 - **Date:** 2026-10-29
 - **Milestone:** P0, between M8 and M9 (investigation INV-04)
 - **Context documents:** `docs/tasks/INV-04-v8-transport-and-radiation.md`
@@ -142,4 +143,50 @@ and the Hadley overturning converges on the equator (+18 / −17 Sv at
 10° S / 10° N, against −4 / −13 with them); land's water rises only from
 1.7 to 2.4 W/m², still a tenth of reference mode's. A remaining 4–5 K and
 half the overturning have another cause.
+
+## 7. Decision (proposed 2026-11-17, not accepted): C now, B before M10
+
+**7.1 What is accepted as P0's limitation.** Climate mode brings land
+about a tenth of reference mode's water (land latent heat 1.7 against
+23.0 W/m² at L4, INV-04; 2.4 W/m² without ADR-0028's waves, §6). The
+cause is structural (§6): its water stays in the bottom layer and its
+Hadley overturning is 4–10 times weaker than reference mode's. No defect
+was found to fix (option A, §6), and INV-05 found reference mode itself
+unconverged with level (ADR-0023 §17), so there is no settled target to
+tune towards. The limitation is recorded, not tuned around: no scripted
+land moisture, no P − E correction.
+
+**7.2 What it means for M9 (hydrology, rivers and lakes).** M9 is built
+on climate mode's land P − E as it is:
+- soil moisture, infiltration, runoff, catchments, discharge, lakes and
+  the snowmelt input are built and closed on the model's own fluxes, so
+  their water budgets and routing are right in structure whatever the
+  amount;
+- their amounts are low: the rivers would carry about a quarter of
+  Earth's discharge (§3, C). M9's validation states this, and checks its
+  routing and lakes also on reference mode's P − E at L4 (from a
+  reference run's land fluxes), so that a fix to the amount (7.3) does
+  not need M9 rebuilt;
+- M9's acceptance does not gate on absolute discharge.
+
+**7.3 B is scheduled before M10.** The specification's M10 needs climate
+mode to carry water over land: rainfall recycling, the dieback threshold,
+and "a controlled clearing experiment shows reduced downwind
+precipitation". On today's climate mode, land's rain hardly depends on
+land's evaporation upwind, so that test cannot pass by physics. So:
+- option B (a heating-constrained azonal circulation, ADR-0011 §17.6's
+  named revisit) becomes its own task between M9 and M10, with its own
+  ADR, refit and V8 at L4 (ADR-0023 §17);
+- it must show water moved to land, not only upward (§3, B's risk);
+- M10 does not start until it is done or a replacement is decided.
+
+**7.4 What would reopen this.** If land's water matters to the game
+before M10 (for example M9's rivers as a play surface), B moves ahead of
+M9. If B's first measurement shows the constrained flow cannot bring land
+its water, the M10 acceptance on downwind precipitation is revisited with
+the user.
+
+**7.5 Status.** Proposed for the user's review. On acceptance: the header,
+the specification's M9 and M10 notes, and CLAUDE.md are updated, and B's
+task is added to `docs/tasks/README.md` as planned.
 
