@@ -1811,6 +1811,55 @@ ADR-0030 A1.4's picking/collision gate. The cell mesh's own page-following
 geometry also remains open; the 16 rendered coast sweeps and 66.6 MB memory
 result above are unchanged, not rerun by this slice.
 
+**Picking on the drawn surface, with its gate (2026-11-18).** ADR-0030 A1.4:
+picking and collision use the page classification and the drawn geometry.
+
+- **The drawn geometry.**
+  - A tile keeps its grid of drawn heights (`TileGeometry::grid_height`,
+    33² floats).
+  - `tile_surface_radius` finds where a direction meets the grid triangle
+    holding it, as `make_terrain_tile` emits it. Shore land is flattened to
+    sea level there too, which the relief fallback missed. A quad's diagonal
+    is a chord, so the triangle is chosen by the side of the plane through
+    the centre and the diagonal.
+  - `test_coast_tile` compares it with the tile's own emitted triangles, at
+    2 000 random points each on two plain tiles and two with pages: worst
+    1.3e-8 radii (8 cm, float vertices).
+  - `get_surface_radius` uses it in the tile band, at the drawn exaggeration
+    (the shader's `relief_rescale`). Where no drawn tile covers the
+    direction, the old relief fallback stands.
+- **The page classification.** `PlanetMeshNode.get_coast_water(direction)`
+  gives the drawn page's class: 1 water, 0 land, -1 no page (the fallback
+  draws). It reads the drawn tile's page in the tile band and the page
+  table's page in the planet band, as the shaders do.
+- **The gate.** `capture_coast_sweep.gd` picks a grid of pixel centres,
+  every 16 px, in each settled frame (2 700 picks). `compare_coast_render.py`
+  compares each pick's class with the drawn pixel. The gate is no
+  disagreement where the reference has no shore in the pixel's 3 × 3
+  neighbourhood, the rendered gate's "deep" rule.
+
+Results, the 16 sweeps on the RTX 4070 Ti (`build/r105/gate4`):
+- **All 16 pass:** 0 comparisons outside the gate, picks included.
+- **224 gated poses, 571 028 picks judged:**
+  - 0 disagree at a deep pixel;
+  - 156 disagree beside the shore, where a pixel's mean coverage and its
+    centre can differ;
+  - 0 picks without a page.
+- **Pick time:** at most 0.093 ms.
+- **R1-04's flight:** V9 and V13 pass. Wall p95 at L4 is 3.1, 8.5 and
+  8.1 ms; at L6, 8.0, 9.4 and 3.9 ms. `test_globe_camera` passes, and so does
+  `test_coast_picking` at L4.
+- **`test_coast_picking` at L6** does not settle within its 30 s. Its first
+  pose (2 000 km) is a cold start that needs about 200 coverage pages; the
+  L6 sweeps' 24 000 km warmup pose likewise does not settle within 60 s,
+  before and after the memory change. It is a cold-start throughput limit,
+  not a loop: the page queue shrinks steadily.
+
+Still open: the planet band's picking uses the cell mesh's own surface, so
+it is not yet page-following geometry. That is "the cell mesh's own
+geometry", which the rendered gate does not need. Its picks' classification
+already follows the pages, and passes the gate above.
+
 ## Acceptance after the decision
 
 - A scripted zoom holds the same coastal focus, freezes simulation and

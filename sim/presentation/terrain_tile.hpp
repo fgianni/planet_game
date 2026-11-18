@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace planetsim::presentation {
@@ -65,6 +66,9 @@ struct TileGeometry {
     TileKey coast_key;               // the page it was made with (its own or an ancestor's)
     double min_radius = 0.0;         // of the drawn surface, for culling and collision
     double max_radius = 0.0;
+    // The drawn radius - 1 of each grid node, (tile_grid + 1)^2 row by row:
+    // with tile_surface_radius, the drawn surface for picking (A1.4).
+    std::vector<float> grid_height;
 };
 
 // With a coast page (ADR-0030 A1.4), the tile's own or, while its own
@@ -82,5 +86,13 @@ struct TileGeometry {
 [[nodiscard]] TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief,
                                              const TileDrawing& drawing, const CoastPage* coast = nullptr,
                                              const CoastWaterField* field = nullptr);
+
+// Where the radial line through `direction` meets the tile's drawn surface
+// (the grid triangle the direction is in, as make_terrain_tile emits it),
+// in radii, from the tile's grid_height scaled by `height_scale` (the
+// shader's relief_rescale, the drawn exaggeration over the tile's own);
+// nullopt outside the tile.
+[[nodiscard]] std::optional<double> tile_surface_radius(const TileKey& key, const std::vector<float>& grid_height,
+                                                        const Vec3d& direction, double height_scale = 1.0);
 
 }  // namespace planetsim::presentation

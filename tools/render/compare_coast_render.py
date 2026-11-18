@@ -26,6 +26,13 @@ pixel; where it does not, no pixel's coverage changing by 0.5 or more.
 For the handoff also: no deep region (an island or inlet of four pixels or
 more that appears or disappears solely with LOD). With --warmup N, the
 first N poses (the sweep's cold start) are reported, not gated.
+
+Picking (ADR-0030 A1.4): where the settled frame has picks
+(NN_settled.picks), each pick's drawn page classification is compared with
+the drawn pixel (water at coverage above 0.5), at the pixels the gate
+judges. The gate: no disagreement at a pixel with no shore in the
+reference's 3 x 3 neighbourhood. Picks without a page (the fallback draws)
+are counted, not judged.
 """
 
 import argparse
@@ -87,6 +94,29 @@ def compare(drawn, truth, valid):
                 jumps=int(np.sum(change >= 0.5)), max_change=float(change.max()) if change.size else 0.0)
 
 
+def picks(path, drawn, truth, valid):
+    """Pick classifications against the drawn pixels: (judged, disagree at
+    deep pixels, disagree beside the shore, without a page)."""
+    all_wet = ndimage.binary_erosion(truth >= 1.0, structure=EIGHT, border_value=1)
+    all_dry = ndimage.binary_erosion(truth <= 0.0, structure=EIGHT, border_value=1)
+    judged = deep = shore = no_page = 0
+    for line in Path(path).read_text().splitlines():
+        x, y, water = line.split()
+        x, y = int(x), int(y)
+        if water == "miss" or not valid[y, x]:
+            continue
+        if water == "-1":
+            no_page += 1
+            continue
+        judged += 1
+        if (water == "1") != (drawn[y, x] > 0.5):
+            if all_wet[y, x] or all_dry[y, x]:
+                deep += 1
+            else:
+                shore += 1
+    return judged, deep, shore, no_page
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("sweep")
@@ -104,7 +134,7 @@ def main():
     failures = 0
     print(f"L{args.level} seed {args.seed}: finest wavelength {finest_km:.3f} km")
     print("pose altitude band pixel_km resolved | arrive vs field | settled vs field | handoff arrive->settled"
-          "  (differ/deep/deep regions/largest/jumps/max change)")
+          "  (differ/deep/deep regions/largest/jumps/max change) | picks judged/deep/shore/no page")
     for settled_txt in sorted(sweep.glob("*_settled.txt")):
         stem = settled_txt.name.split("_")[0]
         arrive_txt = sweep / f"{stem}_arrive.txt"
@@ -129,9 +159,15 @@ def main():
         line = f"{stem} {altitude_km:.0f} {info['band'][0]} {pixel_km:.3f} {'yes' if resolved else 'no'}"
         for r in results:
             line += " | {differ}/{deep}/{deep_regions}/{largest}/{jumps}/{max_change:.2f}".format(**r)
+        picked = None
+        if (sweep / f"{stem}_settled.picks").exists():
+            picked = picks(sweep / f"{stem}_settled.picks", settled, truth, valid)
+            line += " | picks {}/{}/{}/{}".format(*picked)
         print(line)
         if int(stem) < args.warmup:
             continue
+        if picked is not None and picked[1] > 0:
+            failures += 1
         for index, r in enumerate(results):
             handoff = arrive is not None and index == len(results) - 1
             bad = (r["deep"] > 0 if resolved else r["jumps"] > 0) or (handoff and r["deep_regions"] > 0)

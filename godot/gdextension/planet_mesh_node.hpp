@@ -131,6 +131,10 @@ class PlanetMeshNode : public godot::MeshInstance3D {
     // Distance from the centre, in planet radii, of the surface as drawn
     // (the displaced cell fans) along a direction: for camera collision.
     [[nodiscard]] double get_surface_radius(const godot::Vector3& direction) const;
+    // ADR-0030 A1.4: the drawn coast page's classification along a direction
+    // (the drawn tile's page in the tile band, the page table's in the planet
+    // band): 1 water, 0 land, -1 no page (the shader's fallback draws).
+    [[nodiscard]] std::int64_t get_coast_water(const godot::Vector3& direction) const;
     [[nodiscard]] godot::Vector3 get_cell_direction(std::int64_t cell) const;
     [[nodiscard]] double get_cell_land_fraction(std::int64_t cell) const;
     [[nodiscard]] double get_cell_elevation_m(std::int64_t cell) const;

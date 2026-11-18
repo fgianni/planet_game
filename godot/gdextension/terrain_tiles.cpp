@@ -279,12 +279,14 @@ TerrainTiles::Page* TerrainTiles::best_page(const presentation::TileKey& key) {
     return nullptr;
 }
 
-std::optional<double> TerrainTiles::coast_value_at(const planetsim::Vec3d& direction,
-                                                   bool tile_band) const {
-    if (!coast_) return std::nullopt;
+namespace {
+
+// A direction's cube face and its place on it, u and v in [0, 1] (the
+// equal-angle mapping, as coast_pages.gdshaderinc).
+void face_place(const planetsim::Vec3d& direction, std::uint8_t& face, double& u, double& v) {
     const double ax = std::abs(direction.x), ay = std::abs(direction.y), az = std::abs(direction.z);
-    const std::uint8_t face = ax >= ay && ax >= az ? (direction.x >= 0 ? 0 : 1) :
-                              ay >= az ? (direction.y >= 0 ? 2 : 3) : (direction.z >= 0 ? 4 : 5);
+    face = ax >= ay && ax >= az ? (direction.x >= 0 ? 0 : 1) :
+           ay >= az ? (direction.y >= 0 ? 2 : 3) : (direction.z >= 0 ? 4 : 5);
     constexpr planetsim::Vec3d normals[] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0},
                                              {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
     constexpr planetsim::Vec3d us[] = {{0, 0, -1}, {0, 0, 1}, {1, 0, 0},
@@ -292,30 +294,50 @@ std::optional<double> TerrainTiles::coast_value_at(const planetsim::Vec3d& direc
     constexpr planetsim::Vec3d vs[] = {{0, 1, 0}, {0, 1, 0}, {0, 0, -1},
                                         {0, 0, 1}, {0, 1, 0}, {0, 1, 0}};
     const double facing = dot(direction, normals[face]);
-    const double u = std::clamp((std::atan(dot(direction, us[face]) / facing) * 4.0 /
-                                 std::numbers::pi + 1.0) * 0.5, 0.0, 1.0);
-    const double v = std::clamp((std::atan(dot(direction, vs[face]) / facing) * 4.0 /
-                                 std::numbers::pi + 1.0) * 0.5, 0.0, 1.0);
-    const auto square = [&](std::uint8_t level) {
-        const auto count = 1U << level;
-        return presentation::TileKey{face, level,
-            std::min(static_cast<std::uint32_t>(u * count), count - 1U),
-            std::min(static_cast<std::uint32_t>(v * count), count - 1U)};
-    };
+    u = std::clamp((std::atan(dot(direction, us[face]) / facing) * 4.0 / std::numbers::pi + 1.0) * 0.5, 0.0, 1.0);
+    v = std::clamp((std::atan(dot(direction, vs[face]) / facing) * 4.0 / std::numbers::pi + 1.0) * 0.5, 0.0, 1.0);
+}
+
+presentation::TileKey square_at(std::uint8_t face, double u, double v, std::uint8_t level) {
+    const auto count = 1U << level;
+    return presentation::TileKey{face, level, std::min(static_cast<std::uint32_t>(u * count), count - 1U),
+                                 std::min(static_cast<std::uint32_t>(v * count), count - 1U)};
+}
+
+} // namespace
+
+const TerrainTiles::Entry* TerrainTiles::drawn_entry(const planetsim::Vec3d& direction,
+                                                     presentation::TileKey& key) const {
+    std::uint8_t face = 0;
+    double u = 0.0, v = 0.0;
+    face_place(direction, face, u, v);
+    for (const auto& drawn : drawn_) {
+        if (drawn.face != face || drawn != square_at(face, u, v, drawn.level)) continue;
+        const auto tile = tiles_.find(id(drawn));
+        if (tile == tiles_.end()) return nullptr;
+        key = drawn;
+        return &tile->second;
+    }
+    return nullptr;
+}
+
+std::optional<double> TerrainTiles::coast_value_at(const planetsim::Vec3d& direction,
+                                                   bool tile_band) const {
+    if (!coast_) return std::nullopt;
     const Page* page = nullptr;
     if (tile_band) {
         // Drawn leaves include parent stand-ins while children are loading.
         // Their coast key, not the finest resident page, controls the image.
-        for (const auto& key : drawn_) {
-            if (key.face != face || key != square(key.level)) continue;
-            const auto tile = tiles_.find(id(key));
-            if (tile == tiles_.end() || tile->second.coast_level < 0) break;
-            const auto found = pages_.find(tile->second.coast_page);
-            if (found != pages_.end()) page = &found->second;
-            break;
+        presentation::TileKey key;
+        const Entry* tile = drawn_entry(direction, key);
+        if (tile != nullptr && tile->coast_level >= 0) {
+            if (const auto found = pages_.find(tile->coast_page); found != pages_.end()) page = &found->second;
         }
     } else {
-        auto key = square(static_cast<std::uint8_t>(coast_table_level));
+        std::uint8_t face = 0;
+        double u = 0.0, v = 0.0;
+        face_place(direction, face, u, v);
+        auto key = square_at(face, u, v, static_cast<std::uint8_t>(coast_table_level));
         for (;;) {
             if (const auto found = pages_.find(id(key)); found != pages_.end()) {
                 page = &found->second;
@@ -330,6 +352,14 @@ std::optional<double> TerrainTiles::coast_value_at(const planetsim::Vec3d& direc
     if (page->mode == 1.0F) return 1.0;
     if (page->mode == -1.0F) return -1.0;
     return presentation::coast_page_value_at(page->key, direction, *coast_, page->page.get());
+}
+
+std::optional<double> TerrainTiles::surface_radius_at(const planetsim::Vec3d& direction,
+                                                      double height_scale) const {
+    presentation::TileKey key;
+    const Entry* tile = drawn_entry(direction, key);
+    if (tile == nullptr) return std::nullopt;
+    return presentation::tile_surface_radius(key, tile->grid_height, direction, height_scale);
 }
 
 TerrainTiles::Page* TerrainTiles::usable_page(const presentation::TileKey& key) {
@@ -514,6 +544,7 @@ void TerrainTiles::add(const Made& made) {
         entry.coast_page = id(tile.coast_key);
         slot = page.slot;
     }
+    entry.grid_height = tile.grid_height;
     const std::size_t vertices = tile.positions.size() / 3U;
     godot::PackedFloat32Array custom2;
     custom2.resize(static_cast<std::int64_t>(vertices * 4U));

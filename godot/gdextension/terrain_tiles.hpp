@@ -113,6 +113,12 @@ public:
     // a missing GPU layer) means the shader uses its fallback instead.
     [[nodiscard]] std::optional<double> coast_value_at(const planetsim::Vec3d& direction,
                                                        bool tile_band) const;
+    // The drawn tiles' surface along a direction, in radii (A1.4: picking on
+    // the drawn geometry, shore flattening included), heights scaled by
+    // `height_scale` as the shader's relief_rescale; nullopt where no drawn
+    // tile covers it.
+    [[nodiscard]] std::optional<double> surface_radius_at(const planetsim::Vec3d& direction,
+                                                          double height_scale) const;
 
     static constexpr double split_error_px = 4.0;   // geometric error on screen that splits a tile
     static constexpr double max_triangle_cells = 0.3; // vertex spacing, in cells, for faithful channels
@@ -139,6 +145,7 @@ private:
         double max_radius = 1.0;
         int coast_level = -1;          // the level of the page it was made with, -1 none
         std::uint64_t coast_page = 0;  // that page's id
+        std::vector<float> grid_height; // the drawn grid, for picking
     };
 
     // A resident coast page (ADR-0030 A1).
@@ -171,6 +178,9 @@ private:
     };
 
     [[nodiscard]] static std::uint64_t id(const presentation::TileKey& key) noexcept;
+    // The drawn tile holding a direction (a leaf of this frame's selection),
+    // and its key; nullptr for none.
+    [[nodiscard]] const Entry* drawn_entry(const planetsim::Vec3d& direction, presentation::TileKey& key) const;
     [[nodiscard]] bool wants_split(const presentation::TileKey& key, const Entry& entry, const View& view) const;
     [[nodiscard]] bool culled(const presentation::TileKey& key, const Entry& entry, const View& view) const;
     void select(const presentation::TileKey& key, const View& view);

@@ -250,6 +250,8 @@ void PlanetMeshNode::_bind_methods() {
                                 &PlanetMeshNode::get_coastal_focus);
     godot::ClassDB::bind_method(godot::D_METHOD("get_surface_radius", "direction"),
                                 &PlanetMeshNode::get_surface_radius);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_coast_water", "direction"),
+                                &PlanetMeshNode::get_coast_water);
     godot::ClassDB::bind_method(godot::D_METHOD("get_cell_direction", "cell"),
                                  &PlanetMeshNode::get_cell_direction);
     godot::ClassDB::bind_method(godot::D_METHOD("get_cell_land_fraction", "cell"),
@@ -1104,20 +1106,32 @@ godot::Dictionary PlanetMeshNode::get_terrain_tile_stats() const {
     return result;
 }
 
+std::int64_t PlanetMeshNode::get_coast_water(const godot::Vector3& direction) const {
+    if (!tiles_ || direction.length_squared() <= 0.0F) return -1;
+    const godot::Vector3 d = direction.normalized();
+    // The band whose surface is drawn opaque there: the tiles past the
+    // cross-fade's middle, else the cell mesh.
+    const auto value = tiles_->coast_value_at(Vec3d{d.x, d.y, d.z}, tiles_active_ && tiles_weight_ >= 0.5);
+    if (!value) return -1;
+    return *value > 0.0 ? 1 : 0;
+}
+
 double PlanetMeshNode::get_surface_radius(const godot::Vector3& direction) const {
     if (!mesh_ || center_radius_.size() != mesh_->cell_count() || direction.length_squared() <= 0.0F)
         return 1.0;
     if (tiles_active_ && tiles_ && tiles_weight_ >= 0.5) {
         // The tiles draw the sub-cell relief, at the drawn exaggeration:
-        // collide with it.
+        // collide with the drawn tile's own triangles (ADR-0030 A1.4: its
+        // page's water and shore at sea level).
         const godot::Vector3 d = direction.normalized();
+        const double baked = tiles_->drawing().relief_exaggeration;
+        if (const auto drawn = tiles_->surface_radius_at(Vec3d{d.x, d.y, d.z},
+                                                         baked > 0.0 ? drawn_exaggeration_ / baked : 1.0))
+            return *drawn;
+        // No drawn tile here yet: the relief, as the tile will draw it.
         const auto sample = tiles_->relief().sample(Vec3d{d.x, d.y, d.z}, CellId{surface_hint_});
         surface_hint_ = sample.cell.value();
         const auto& drawing = tiles_->drawing();
-        // A water page flattens the tile geometry to sea level, even where
-        // the independent relief would put land above it. Pick that surface,
-        // not the relief underneath the visible water. With no drawable page
-        // the tile shader uses the old surface-waterline fallback too.
         const auto coast = tiles_->coast_value_at(Vec3d{d.x, d.y, d.z}, true);
         if (coast && *coast > 0.0) return 1.0;
         return 1.0 + drawn_exaggeration_ / drawing.radius_m *

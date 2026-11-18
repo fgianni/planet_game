@@ -226,6 +226,12 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
     for (Point& point : points) {
         point.position = point.direction * (1.0 + exaggeration * std::max(0.0, point.height_m));
     }
+    std::vector<float> grid_height;
+    grid_height.reserve(static_cast<std::size_t>(lines * lines));
+    for (std::int64_t j = 0; j < lines; ++j)
+        for (std::int64_t i = 0; i < lines; ++i)
+            grid_height.push_back(static_cast<float>(
+                exaggeration * std::max(0.0, points[static_cast<std::size_t>((j + 1) * ring + (i + 1))].height_m)));
     const auto at = [&](std::int64_t i, std::int64_t j) -> const Point& {
         return points[static_cast<std::size_t>((j + 1) * ring + (i + 1))];
     };
@@ -240,6 +246,7 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
     tile.key = key;
     if (coast != nullptr) tile.coast_key = coast->key;
     tile.origin = tile_center_direction(key);
+    tile.grid_height = std::move(grid_height);
     tile.min_radius = 1e300;
     tile.max_radius = 0.0;
     const auto texel = [&](std::size_t index) {
@@ -331,6 +338,45 @@ TileGeometry make_terrain_tile(const TileKey& key, const TerrainRelief& relief, 
         skirt(tile_grid, k + 1, tile_grid, k);
     }
     return tile;
+}
+
+std::optional<double> tile_surface_radius(const TileKey& key, const std::vector<float>& grid_height,
+                                          const Vec3d& direction, double height_scale) {
+    constexpr std::uint32_t lines = tile_grid + 1U;
+    if (key.face >= 6 || grid_height.size() != static_cast<std::size_t>(lines) * lines) return std::nullopt;
+    const FaceFrame& frame = faces[key.face];
+    const double facing = dot(direction, frame.normal);
+    if (!(facing > 0.0)) return std::nullopt;
+    // The direction's grid coordinates in the tile (inverse of warp).
+    const double scale = static_cast<double>(tile_grid) * std::ldexp(1.0, key.level) / 2.0;
+    const auto grid = [&](const Vec3d& axis, std::uint32_t tile) {
+        const double u = std::atan(dot(direction, axis) / facing) * 4.0 / std::numbers::pi;
+        return (u + 1.0) * scale - static_cast<double>(tile) * tile_grid;
+    };
+    const double gi = grid(frame.u_axis, key.x);
+    const double gj = grid(frame.v_axis, key.y);
+    if (!(gi >= 0.0 && gj >= 0.0 && gi <= tile_grid && gj <= tile_grid)) return std::nullopt;
+    const auto i = std::min(static_cast<std::uint32_t>(gi), tile_grid - 1U);
+    const auto j = std::min(static_cast<std::uint32_t>(gj), tile_grid - 1U);
+    const auto node = [&](std::uint32_t a, std::uint32_t b) {
+        const Vec3d d = tile_face_direction(key.face, face_coordinate(key.x, key.level, a),
+                                            face_coordinate(key.y, key.level, b));
+        return d * (1.0 + height_scale * static_cast<double>(grid_height[static_cast<std::size_t>(b) * lines + a]));
+    };
+    // The quad's two triangles, (00, 11, 10) and (00, 01, 11). Grid lines
+    // are great circles, so the quad's edges project radially onto them; its
+    // diagonal is a chord, so the side is the side of the plane through the
+    // centre and the diagonal.
+    const Vec3d p00 = node(i, j);
+    const Vec3d p11 = node(i + 1U, j + 1U);
+    const Vec3d p10 = node(i + 1U, j);
+    const Vec3d diagonal = cross(p00, p11);
+    const Vec3d other = (dot(diagonal, direction) >= 0.0) == (dot(diagonal, p10) >= 0.0) ? p10 : node(i, j + 1U);
+    const Vec3d normal = cross(p11 - p00, other - p00);
+    const Vec3d unit = normalized(direction);
+    const double along = dot(normal, unit);
+    if (along == 0.0) return std::nullopt;
+    return dot(normal, p00) / along;
 }
 
 }  // namespace planetsim::presentation

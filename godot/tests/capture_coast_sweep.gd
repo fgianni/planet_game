@@ -12,6 +12,12 @@ extends SceneTree
 ## Arguments: --focus=x,y,z (a direction), --altitudes=km,km,...,
 ## --output=DIR and optionally --exaggeration=X (the relief's); and the main scene's --subdivision=N, --seed=N and
 ## --style=map|stylised.
+##
+## Picking (A1.4): in each settled frame the cursor is put on a grid of
+## pixel centres, every --pick-step=N pixels (16; 0 for none), and each
+## pick's drawn page classification is saved (NN_settled.picks: x y water,
+## water 1, land 0, -1 no page, "miss" off the planet), for
+## tools/render/compare_coast_render.py to compare with the drawn pixel.
 
 
 func _initialize() -> void:
@@ -23,12 +29,15 @@ func _run() -> void:
 	var focus := Vector3(1.0, 0.0, 0.0)
 	var altitudes: Array = [12000.0, 4000.0, 1000.0, 250.0, 50.0, 10.0, 2.0]
 	var exaggeration := -1.0 # the scene's own unless given
+	var pick_step := 16
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--output="):
 			output = argument.trim_prefix("--output=")
 		elif argument.begins_with("--focus="):
 			var parts := argument.trim_prefix("--focus=").split(",")
 			focus = Vector3(parts[0].to_float(), parts[1].to_float(), parts[2].to_float()).normalized()
+		elif argument.begins_with("--pick-step="):
+			pick_step = argument.trim_prefix("--pick-step=").to_int()
 		elif argument.begins_with("--exaggeration="):
 			exaggeration = argument.trim_prefix("--exaggeration=").to_float()
 		elif argument.begins_with("--altitudes="):
@@ -69,6 +78,8 @@ func _run() -> void:
 		await process_frame
 		await process_frame
 		_save(output, "%02d_settled" % index, altitude_km, globe, camera, planet)
+		if pick_step > 0:
+			_picks(output.path_join("%02d_settled.picks" % index), pick_step, globe, planet)
 		index += 1
 	main.free()
 	quit(0)
@@ -118,6 +129,27 @@ func _save(output: String, name: String, altitude_km: float, globe: Node3D, came
 	file.close()
 	print("captured %s at %.0f km (%s), %d tiles drawn" % [name, altitude_km, globe.get_current_band(),
 		int(stats.get("drawn", 0))])
+
+
+## The drawn page's classification under a grid of cursor positions (pixel
+## centres), with the pick time.
+func _picks(path: String, step: int, globe: Node3D, planet: PlanetMeshNode) -> void:
+	var size := root.get_visible_rect().size
+	var lines := PackedStringArray()
+	var start := Time.get_ticks_usec()
+	var count := 0
+	for y in range(step / 2, int(size.y), step):
+		for x in range(step / 2, int(size.x), step):
+			var hit = globe.pick(Vector2(x + 0.5, y + 0.5))
+			count += 1
+			if hit == null:
+				lines.append("%d %d miss" % [x, y])
+			else:
+				lines.append("%d %d %d" % [x, y, planet.get_coast_water(hit)])
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string("\n".join(lines) + "\n")
+	file.close()
+	print("  %d picks, %.3f ms each" % [count, (Time.get_ticks_usec() - start) / 1000.0 / maxf(count, 1)])
 
 
 ## Numbers at full double precision, space-separated.

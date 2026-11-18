@@ -27,6 +27,35 @@ namespace {
            a.coast_uv == b.coast_uv;
 }
 
+// Picking (A1.4): tile_surface_radius against the tile's own emitted
+// surface triangles, along the radial line of random directions in it.
+void surface(test::Context& test, const TileGeometry& tile) {
+    const std::size_t triangles = 2U * tile_grid * tile_grid;
+    std::uint64_t state = 12345U;
+    const auto next = [&] {
+        state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+        return static_cast<double>(state >> 11U) / 9007199254740992.0;
+    };
+    // Random points inside random surface triangles.
+    double worst = 0.0;
+    int missed = 0;
+    for (int n = 0; n < 2000; ++n) {
+        const auto t = static_cast<std::size_t>(next() * triangles);
+        double a = next(), b = next();
+        if (a + b > 1.0) { a = 1.0 - a; b = 1.0 - b; }
+        const Vec3d p0 = absolute(tile, 3 * t), p1 = absolute(tile, 3 * t + 1), p2 = absolute(tile, 3 * t + 2);
+        const Vec3d point = p0 + (p1 - p0) * a + (p2 - p0) * b;
+        const auto radius = tile_surface_radius(tile.key, tile.grid_height, point);
+        if (!radius) { ++missed; continue; }
+        worst = std::max(worst, std::abs(*radius - length(point)));
+    }
+    std::cout << "  surface radius against the emitted triangles: worst " << worst << " radii, " << missed
+              << " missed\n";
+    PLANETSIM_EXPECT(test, missed == 0);
+    PLANETSIM_EXPECT(test, worst < 5e-8); // float vertices: about 8 cm
+    PLANETSIM_EXPECT(test, !tile_surface_radius(tile.key, tile.grid_height, tile.origin * -1.0));
+}
+
 void check(test::Context& test, const TileKey& key, const TerrainRelief& relief, const CoastWaterField& field,
            const TileDrawing& drawing) {
     const CoastPage page = make_coast_page(key, field, 8U);
@@ -38,6 +67,8 @@ void check(test::Context& test, const TileKey& key, const TerrainRelief& relief,
     const std::size_t vertices = tile.positions.size() / 3U;
     PLANETSIM_EXPECT(test, vertices == plain.positions.size() / 3U);
     PLANETSIM_EXPECT(test, tile.coast_uv.size() == 2U * vertices);
+    surface(test, plain);
+    surface(test, tile);
 
     // Every surface vertex lies on a page node and follows its sign.
     const std::size_t surface = 6U * tile_grid * tile_grid;
