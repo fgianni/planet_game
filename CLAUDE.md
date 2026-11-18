@@ -40,7 +40,8 @@ Key constraints: - standalone C++20 PlanetSim core; - no Godot
 dependency in simulation code; - headless build/tests first; - SI
 units; - deterministic and testable implementation; - physical
 state/fluxes rather than scripted climate modifiers; - production code
-and tests together; - do not proceed to M9 unless explicitly requested.
+and tests together; - M9 was started at the user's request (2026-11-18);
+do not proceed to M10 unless explicitly requested.
 
 Most recent investigation: [INV-04](docs/tasks/INV-04-v8-transport-and-radiation.md)
 (closed 2026-11-05; its "Outcome" section has the summary and the
@@ -84,11 +85,16 @@ C** — climate mode's dry land (a tenth of reference mode's land water) is
 a recorded P0 limitation; M9 builds on its own P − E, validated also on
 reference mode's, not gated on absolute discharge; option B (a
 heating-constrained azonal circulation) is task M9b-01, between M9 and
-M10, and M10 waits for it. ADR-0024 §9's fallback (R_f = 100 W/m², with §9.6's restart) is
+M10, and M10 waits for it.
+
+**Current milestone: P0 / M9 — Hydrology, rivers and lakes** (started with
+the user 2026-11-18). Its plan and four decisions are in the proposed
+[ADR-0032](docs/decisions/0032-hydrology-soil-rivers-and-lakes.md) (audit,
+M9-01 to M9-05); nothing is implemented until it is accepted. ADR-0024 §9's fallback (R_f = 100 W/m², with §9.6's restart) is
 on in the preset; the column gate is on the residual, 1e-9 W/m² (ADR-0027
 §10); `PlanetRun` has no resume constructor. INV-04's "Outcome" and open
 tasks list the rest. Changes to the fallback or nonlinear solve require an architecture
-decision. M9 must not start unless explicitly requested.
+decision. M10 must not start unless explicitly requested.
 
 The rendering track (specification §31.10) runs in parallel with the P0
 milestones. Its first task is

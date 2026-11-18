@@ -32,6 +32,7 @@ status, date, consequences, validation plan, and supersession relationships.
 | 0029 | [Land's water in climate mode](0029-land-water-in-climate-mode.md) | Accepted 2026-11-18: option C, B as task M9b-01 before M10 | 2026-10-29 |
 | 0030 | [A shared coastline for terrain LOD](0030-coastline-stable-terrain-lod.md) | Accepted direction; pre-acceptance gate expressly waived, implementation gates open; Amendment 1 (per-pixel coast pages, connected-ocean rule) accepted 2026-11-05, with A1.5a (orbit gate reading) and A1.3a (point and coverage pages); headless parts implemented | 2026-11-02 |
 | 0031 | [Factories: engineered assemblies that compile to network nodes](0031-factories-engineered-then-network-nodes.md) | Proposed; not before P1 | 2026-10-29 |
+| 0032 | [Hydrology: soil water, groundwater, rivers and lakes](0032-hydrology-soil-rivers-and-lakes.md) | Proposed (M9's plan and four decisions, for the user's review) | 2026-11-18 |
 
 Records cite the design record by version and section (for example "Design
 Record v0.4, §28"). The current design record is
