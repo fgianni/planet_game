@@ -1,9 +1,9 @@
 # ADR-0029 — Land's water in climate mode
 
-- **Status:** Proposed (2026-10-29). Option A was measured 2026-10-30 (§6).
-  B against C was deferred until after INV-05 (with the user, 2026-11-05,
-  when INV-04 closed). **Option C, with B scheduled before M10, drafted
-  2026-11-17 for the user's review (§7); not accepted.**
+- **Status:** Accepted (2026-11-18, with the user): option C, with B
+  scheduled between M9 and M10 (§7). Proposed 2026-10-29; option A
+  measured 2026-10-30 (§6); B against C deferred until after INV-05
+  (2026-11-05).
 - **Date:** 2026-10-29
 - **Milestone:** P0, between M8 and M9 (investigation INV-04)
 - **Context documents:** `docs/tasks/INV-04-v8-transport-and-radiation.md`
@@ -144,7 +144,7 @@ and the Hadley overturning converges on the equator (+18 / −17 Sv at
 1.7 to 2.4 W/m², still a tenth of reference mode's. A remaining 4–5 K and
 half the overturning have another cause.
 
-## 7. Decision (proposed 2026-11-17, not accepted): C now, B before M10
+## 7. Decision (proposed 2026-11-17, accepted 2026-11-18): C now, B before M10
 
 **7.1 What is accepted as P0's limitation.** Climate mode brings land
 about a tenth of reference mode's water (land latent heat 1.7 against
@@ -186,7 +186,7 @@ M9. If B's first measurement shows the constrained flow cannot bring land
 its water, the M10 acceptance on downwind precipitation is revisited with
 the user.
 
-**7.5 Status.** Proposed for the user's review. On acceptance: the header,
-the specification's M9 and M10 notes, and CLAUDE.md are updated, and B's
-task is added to `docs/tasks/README.md` as planned.
+**7.5 Status.** Accepted with the user 2026-11-18. The specification's M9
+and M10 carry notes on it, CLAUDE.md records it, and B's task (M9b-01) is
+listed in `docs/tasks/README.md` as planned.
 

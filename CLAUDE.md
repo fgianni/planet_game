@@ -50,8 +50,7 @@ because its transport brings almost no water to land. ADR-0027 (accepted
 2026-10-23) mixes each transport group's heat (`heat_group_mixing = 1`).
 ADR-0028 (accepted 2026-10-26) adds the equatorial waves' exchange to the
 eddy diffusivity; at c = 50 m/s V8 passed at L4 (−0.146 K), but by
-compensation. ADR-0029 (proposed: land's water in climate mode; B or C deferred until
-after INV-05) found
+compensation. ADR-0029 (land's water in climate mode; accepted 2026-11-18, option C) found
 (2026-10-30) that at the same sea-surface temperature climate mode's
 tropical air is 9–12 K colder than reference mode's, its Hadley overturning
 4–10 times weaker, its water held in the bottom layer, and the waves
@@ -80,7 +79,12 @@ same-level consistency check, the non-convergence its known limitation,
 and reference mode keeps the upwind advection (§17.8; with the
 second-order scheme V8 at L4 is −3.28 K, §17.7). V8 at L4 is +0.473 K
 (fails the 0.3 K gate; §17.6). Whether the small resolution-dependent
-parts are worth a fix is open. ADR-0024 §9's fallback (R_f = 100 W/m², with §9.6's restart) is
+parts are worth a fix is open. **ADR-0029 (accepted 2026-11-18): option
+C** — climate mode's dry land (a tenth of reference mode's land water) is
+a recorded P0 limitation; M9 builds on its own P − E, validated also on
+reference mode's, not gated on absolute discharge; option B (a
+heating-constrained azonal circulation) is task M9b-01, between M9 and
+M10, and M10 waits for it. ADR-0024 §9's fallback (R_f = 100 W/m², with §9.6's restart) is
 on in the preset; the column gate is on the residual, 1e-9 W/m² (ADR-0027
 §10); `PlanetRun` has no resume constructor. INV-04's "Outcome" and open
 tasks list the rest. Changes to the fallback or nonlinear solve require an architecture

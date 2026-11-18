@@ -1407,6 +1407,17 @@ M9 nor changes the current INV-04 investigation.
 Soil moisture, infiltration, runoff, catchments, river discharge,
 depression/lake handling and M4 snowmelt input.
 
+ADR-0029 §7 (accepted 2026-11-18): M9 is built on climate mode's land
+P − E as it is, about a tenth of reference mode's land water at L4, a
+recorded P0 limitation. Its budgets and routing close on the model's own
+fluxes; its validation also checks routing and lakes on reference mode's
+land P − E at L4, and its acceptance does not gate on absolute discharge
+(about a quarter of Earth's).
+
+Between M9 and M10, task M9b-01 (ADR-0029 §7.3, option B): a
+heating-constrained azonal circulation in climate mode that carries water
+to land, with its own ADR, refit and V8 at L4 (ADR-0023 §17).
+
 ### M10 --- Vegetation and the living biosphere
 
 Added in v0.6: the biodiversity index per region and biome, with its
@@ -1415,6 +1426,10 @@ P2.
 
 Climate suitability, vegetation fraction, evapotranspiration, albedo and
 soil-water coupling.
+
+M10 starts after M9b-01 (ADR-0029 §7.3): rainfall recycling and the
+clearing experiment's reduced downwind precipitation need climate mode to
+carry water over land, which it does not before M9b-01.
 
 Extended by design v0.9 section 24.12, in this order:
 
