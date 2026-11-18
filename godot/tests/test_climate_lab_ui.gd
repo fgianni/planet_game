@@ -14,9 +14,13 @@ func _run() -> void:
 	var planet: PlanetMeshNode = main.get_node("Planet")
 	main._paused = true
 	assert(not ui.is_drawer_open())
-	ui.toggle_tab("Controls")
-	assert(ui.is_drawer_open())
-	ui.toggle_tab("Inspect")
+	ui.open_tab("Controls")
+	assert(ui.is_drawer_open() and ui.get_open_tab() == "Controls")
+	ui.open_tab("Inspect")
+	assert(ui.get_open_tab() == "Inspect")
+	# Opening an already open tab is idempotent; only toggle closes it.
+	ui.open_tab("Inspect")
+	assert(ui.get_open_tab() == "Inspect")
 	main._update_hud()
 	assert(ui._controls["focus_selected"].disabled and ui._controls["copy_selection"].disabled)
 	main._selected_cell = 0

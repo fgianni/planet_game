@@ -73,14 +73,24 @@ func _resize() -> void:
 
 func toggle_tab(tab: String) -> void:
 	if _drawer.visible and _tabs.get_tab_title(_tabs.current_tab) == tab:
-		_drawer.visible = false
+		close_drawer()
 	else:
-		for index in _tabs.get_tab_count():
-			if _tabs.get_tab_title(index) == tab:
-				_tabs.current_tab = index
-		_drawer.visible = true
-	for name in _buttons:
-		_buttons[name].button_pressed = _drawer.visible and name == tab
+		open_tab(tab)
+
+
+func open_tab(tab: String) -> void:
+	for index in _tabs.get_tab_count():
+		if _tabs.get_tab_title(index) == tab:
+			_tabs.current_tab = index
+			_drawer.visible = true
+			for name in _buttons:
+				_buttons[name].button_pressed = name == tab
+			return
+	push_error("Unknown climate-lab tab: " + tab)
+
+
+func get_open_tab() -> String:
+	return _tabs.get_tab_title(_tabs.current_tab) if _drawer.visible else ""
 
 
 func close_drawer() -> void:

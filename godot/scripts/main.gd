@@ -49,7 +49,7 @@ var _capture_focus_cell := -1
 
 func _ready() -> void:
 	_hud.action.connect(_ui_action)
-	_hud.set_help("Camera\nDrag: turn the globe\nShift+drag: heading and tilt\nWheel: zoom at cursor\nRight-click: inspect a cell\nInspect: zoom to the cell or clear selection\n\nPresentation\n1–9: views and overlays\nS: switch style   N: day/night   C: clouds\n[ ] (or ^ $): relief −/+   F12: screenshot\n\nRun\nL: toggle live climate   Space: pause   +/−: speed\nR: new seed   P: next preset   PgUp/PgDn: resolution\n\nF1: Help   Esc: close panel\n\nSolar forcing in Controls affects only live climate at the next simulation step. Recorded playback is read-only.")
+	_hud.set_help("Camera\nDrag: turn the globe\nShift+drag: heading and tilt\nWheel: zoom at cursor\nRight-click: select a cell and open Inspect\nInspect: zoom to the cell or clear selection\n\nPresentation\n1–9: views and overlays\nS: switch style   N: day/night   C: clouds   I: Inspect\n[ ] (or ^ $): relief −/+   F12: screenshot\n\nRun\nL: toggle live climate   Space: pause   +/−: speed\nR: new seed   P: next preset   PgUp/PgDn: resolution\n\nF1: Help   Esc: close panel\n\nSolar forcing in Controls affects only live climate at the next simulation step. Recorded playback is read-only.")
 	var view := 0
 	var style := "stylised"
 	var presentation_record := ""
@@ -172,6 +172,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if event.keycode == KEY_F1:
 			_hud.toggle_tab("Help")
+			return
+		if event.keycode == KEY_I and not event.ctrl_pressed and not event.alt_pressed:
+			_hud.toggle_tab("Inspect")
 			return
 	if _globe.handle_input(event):
 		return
@@ -460,6 +463,8 @@ func _select_cell(screen_position: Vector2) -> void:
 	# The ground as drawn, at every altitude (R1-04 step 6).
 	var ground = _globe.pick(screen_position)
 	_selected_cell = _planet.find_cell(ground) if ground != null else -1
+	if _selected_cell >= 0:
+		_hud.open_tab("Inspect")
 
 
 func _altitude_text(metres: float) -> String:
